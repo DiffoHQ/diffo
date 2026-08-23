@@ -57,21 +57,21 @@
     "shiki": "^4.4.1"
   },
   "devDependencies": {
-    "@biomejs/biome": "^2.5.7",
+    "@biomejs/biome": "^2.5.9",
     "@testing-library/react": "^16.3.2",
-    "@types/node": "^25.5.2",
+    "@types/node": "^26.2.0",
     "@types/react": "^19.1.2",
     "@types/react-dom": "^19.1.2",
-    "@vitejs/plugin-react": "^6.0.1",
+    "@vitejs/plugin-react": "^6.1.0",
     "jsdom": "^30.0.1",
     "react": "^19.1.0",
     "react-dom": "^19.1.0",
-    "tsdown": "^0.21.7",
-    "tsx": "^4.19.4",
-    "typescript": "^6.0.2",
-    "vite": "^8.0.3",
+    "tsdown": "^0.22.14",
+    "tsx": "^4.23.12",
+    "typescript": "^7.0.2",
+    "vite": "^8.2.2",
     "vitepress": "^1.6.4",
-    "vitest": "^4.0.5"
+    "vitest": "^4.1.11"
   },
   "engines": {
     "node": ">=24"
