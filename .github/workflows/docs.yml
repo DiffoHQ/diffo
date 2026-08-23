@@ -34,7 +34,7 @@ jobs:
       - uses: actions/configure-pages@v4
       - run: pnpm install --frozen-lockfile
       - run: pnpm docs:build
-      - uses: actions/upload-pages-artifact@v3
+      - uses: actions/upload-pages-artifact@v5
         with:
           path: docs/.vitepress/dist
 
