@@ -1,0 +1,4 @@
+# Not a real monorepo — this file exists only to carry the allowBuilds entry
+# below, which lets pnpm run esbuild's install script (needed by vite/tsdown).
+allowBuilds:
+  esbuild: true

@@ -1,0 +1,157 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 880 690" width="880" height="690" role="img" aria-label="Diffo architecture, animated, agent-first: your coding agent writes the code and opens the review; a local Diffo server watches the changeset; the agent starts diffo poll while the review opens in your browser; your comments and Finish review return to the agent through the poll; the agent answers and fixes, the review updates live, and the agent polls again.">
+<defs>
+<marker id="arrAccent" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+  <path d="M0 0 L10 5 L0 10 z" fill="#8250df"/>
+</marker>
+</defs>
+<rect width="880" height="690" fill="#ffffff"/>
+<rect x="14" y="40" width="852" height="620" rx="14" fill="none" stroke="#d0d7de" stroke-width="1.4" stroke-dasharray="7 6"/>
+<text x="34" y="30" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="12.5" letter-spacing="1.2" fill="#8b949e">YOUR MACHINE · NOTHING LEAVES IT</text>
+<text x="440" y="76" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="12.5" letter-spacing="0.8" fill="#8b949e">Your agent, the author of the change</text>
+<rect x="170" y="88" width="540" height="140" rx="12" fill="none" stroke="#d0d7de" stroke-width="1.2" stroke-dasharray="5 5"/>
+<text x="440" y="114" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="12.5" font-weight="600" letter-spacing="2" fill="#6639ba">ANY CODING AGENT</text>
+<rect x="200" y="128" width="140" height="60" rx="8" fill="#f6f8fa" stroke="#d0d7de" stroke-width="1.3"/>
+<text x="270.0" y="163.0" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="14.5" font-weight="600" fill="#1f2328">Claude Code</text>
+<rect x="370" y="128" width="140" height="60" rx="8" fill="#f6f8fa" stroke="#d0d7de" stroke-width="1.3"/>
+<text x="440.0" y="163.0" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="14.5" font-weight="600" fill="#1f2328">Cursor</text>
+<rect x="540" y="128" width="140" height="60" rx="8" fill="#f6f8fa" stroke="#d0d7de" stroke-width="1.3"/>
+<text x="610.0" y="163.0" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="14.5" font-weight="600" fill="#1f2328">Codex · …</text>
+<text x="440" y="214" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="11.5" font-style="italic" fill="#636c76">the Diffo Agent Skill teaches each one the loop</text>
+<rect x="290" y="268" width="300" height="70" rx="10" fill="#f6f8fa" stroke="#d0d7de" stroke-width="1.4"/>
+<text x="440.0" y="299.0" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="16" font-weight="600" fill="#1f2328">The git changeset</text>
+<text x="440.0" y="321.0" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="12.5" fill="#636c76">uncommitted work · a branch · a range</text>
+<rect x="240" y="378" width="400" height="78" rx="10" fill="#f6f8fa" stroke="#8250df" stroke-width="1.4"/>
+<text x="440.0" y="413.0" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="16" font-weight="600" fill="#1f2328">Diffo server</text>
+<text x="440.0" y="435.0" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="12.5" fill="#636c76">localhost only · reads your git · state in ~/.diffo</text>
+<rect x="290" y="500" width="300" height="74" rx="10" fill="#f6f8fa" stroke="#d0d7de" stroke-width="1.4"/>
+<text x="440.0" y="533.0" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="16" font-weight="600" fill="#1f2328">Your browser</text>
+<text x="440.0" y="555.0" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="12.5" fill="#636c76">read · comment · finish review</text>
+<text x="440" y="600" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="12.5" letter-spacing="0.8" fill="#8b949e">You, reading the review</text>
+<path d="M440,228 L440,266" fill="none" stroke="#8250df" stroke-width="1.6" marker-end="url(#arrAccent)"/>
+<text x="452" y="252" text-anchor="start" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="12.5" font-style="italic" fill="#636c76">writes the code · fixes</text>
+<path d="M440,338 L440,376" fill="none" stroke="#8250df" stroke-width="1.6" marker-end="url(#arrAccent)"/>
+<text x="452" y="362" text-anchor="start" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="12.5" font-style="italic" fill="#636c76">watched live</text>
+<path d="M200,228 L200,417 L238,417" fill="none" stroke="#8250df" stroke-width="1.6" marker-end="url(#arrAccent)" marker-start="url(#arrAccent)"/>
+<text x="190" y="300" text-anchor="end" font-family="ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, monospace" font-size="11.5" fill="#6639ba">diffo poll</text>
+<text x="190" y="317" text-anchor="end" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="12.5" font-style="italic" fill="#636c76">polls, outbound-only</text>
+<text x="190" y="334" text-anchor="end" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="12.5" font-style="italic" fill="#636c76">feedback out, answers back</text>
+<path d="M410,456 L410,498" fill="none" stroke="#8250df" stroke-width="1.6" marker-end="url(#arrAccent)"/>
+<text x="398" y="482" text-anchor="end" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="12.5" font-style="italic" fill="#636c76">the review, live</text>
+<path d="M470,500 L470,458" fill="none" stroke="#8250df" stroke-width="1.6" marker-end="url(#arrAccent)"/>
+<text x="482" y="482" text-anchor="start" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="12.5" font-style="italic" fill="#6639ba">comments · Finish review</text>
+<path d="M200,228 L200,417 L238,417" fill="none" stroke="#6639ba"
+  stroke-width="2.4" stroke-dasharray="4 7" opacity="0">
+  <animate attributeName="opacity" dur="20s" repeatCount="indefinite"
+    values="0;0;0.9;0.9" keyTimes="0;0.3;0.32;1"/>
+  <animate attributeName="stroke-dashoffset" from="0" to="-22" dur="0.9s" repeatCount="indefinite"/>
+</path>
+<circle r="5" fill="#57606a" opacity="0">
+  <animateMotion dur="20s" repeatCount="indefinite" calcMode="linear"
+    path="M440,228 L440,266" keyPoints="0;0;1;1" keyTimes="0;0.008;0.138;1"/>
+  <animate attributeName="opacity" dur="20s" repeatCount="indefinite"
+    values="0;0;1;1;0;0" keyTimes="0;0.008;0.018;0.132;0.138;1"/>
+</circle>
+<circle r="5" fill="#57606a" opacity="0">
+  <animateMotion dur="20s" repeatCount="indefinite" calcMode="linear"
+    path="M440,338 L440,376" keyPoints="0;0;1;1" keyTimes="0;0.158;0.288;1"/>
+  <animate attributeName="opacity" dur="20s" repeatCount="indefinite"
+    values="0;0;1;1;0;0" keyTimes="0;0.158;0.168;0.282;0.288;1"/>
+</circle>
+<circle r="5" fill="#57606a" opacity="0">
+  <animateMotion dur="20s" repeatCount="indefinite" calcMode="linear"
+    path="M410,456 L410,498" keyPoints="0;0;1;1" keyTimes="0;0.308;0.438;1"/>
+  <animate attributeName="opacity" dur="20s" repeatCount="indefinite"
+    values="0;0;1;1;0;0" keyTimes="0;0.308;0.318;0.432;0.438;1"/>
+</circle>
+<circle r="5" fill="#6639ba" opacity="0">
+  <animateMotion dur="20s" repeatCount="indefinite" calcMode="linear"
+    path="M470,500 L470,458" keyPoints="0;0;1;1" keyTimes="0;0.458;0.588;1"/>
+  <animate attributeName="opacity" dur="20s" repeatCount="indefinite"
+    values="0;0;1;1;0;0" keyTimes="0;0.458;0.468;0.582;0.588;1"/>
+</circle>
+<circle r="5" fill="#6639ba" opacity="0">
+  <animateMotion dur="20s" repeatCount="indefinite" calcMode="linear"
+    path="M470,500 L470,458" keyPoints="0;0;1;1" keyTimes="0;0.608;0.678;1"/>
+  <animate attributeName="opacity" dur="20s" repeatCount="indefinite"
+    values="0;0;1;1;0;0" keyTimes="0;0.608;0.618;0.672;0.678;1"/>
+</circle>
+<circle r="5" fill="#6639ba" opacity="0">
+  <animateMotion dur="20s" repeatCount="indefinite" calcMode="linear"
+    path="M238,417 L200,417 L200,228" keyPoints="0;0;1;1" keyTimes="0;0.698;0.768;1"/>
+  <animate attributeName="opacity" dur="20s" repeatCount="indefinite"
+    values="0;0;1;1;0;0" keyTimes="0;0.698;0.708;0.762;0.768;1"/>
+</circle>
+<circle r="5" fill="#6639ba" opacity="0">
+  <animateMotion dur="20s" repeatCount="indefinite" calcMode="linear"
+    path="M200,228 L200,417 L238,417" keyPoints="0;0;1;1" keyTimes="0;0.788;0.86;1"/>
+  <animate attributeName="opacity" dur="20s" repeatCount="indefinite"
+    values="0;0;1;1;0;0" keyTimes="0;0.788;0.798;0.854;0.86;1"/>
+</circle>
+<circle r="5" fill="#6639ba" opacity="0">
+  <animateMotion dur="20s" repeatCount="indefinite" calcMode="linear"
+    path="M410,456 L410,498" keyPoints="0;0;1;1" keyTimes="0;0.88;0.953;1"/>
+  <animate attributeName="opacity" dur="20s" repeatCount="indefinite"
+    values="0;0;1;1;0;0" keyTimes="0;0.88;0.89;0.947;0.953;1"/>
+</circle>
+<circle r="5" fill="#6639ba" opacity="0">
+  <animateMotion dur="20s" repeatCount="indefinite" calcMode="linear"
+    path="M440,228 L440,266" keyPoints="0;0;1;1" keyTimes="0;0.788;0.86;1"/>
+  <animate attributeName="opacity" dur="20s" repeatCount="indefinite"
+    values="0;0;1;1;0;0" keyTimes="0;0.788;0.798;0.854;0.86;1"/>
+</circle>
+<circle r="5" fill="#6639ba" opacity="0">
+  <animateMotion dur="20s" repeatCount="indefinite" calcMode="linear"
+    path="M440,338 L440,376" keyPoints="0;0;1;1" keyTimes="0;0.88;0.953;1"/>
+  <animate attributeName="opacity" dur="20s" repeatCount="indefinite"
+    values="0;0;1;1;0;0" keyTimes="0;0.88;0.89;0.947;0.953;1"/>
+</circle>
+<rect x="170" y="88" width="540" height="140" rx="12" fill="none"
+  stroke="#57606a" stroke-width="2.2" opacity="0">
+  <animate attributeName="opacity" dur="20s" repeatCount="indefinite"
+    values="0;0;0.9;0.9;0;0" keyTimes="0;0;0.015;0.135;0.15;1"/>
+</rect>
+<rect x="240" y="378" width="400" height="78" rx="10" fill="none"
+  stroke="#57606a" stroke-width="2.2" opacity="0">
+  <animate attributeName="opacity" dur="20s" repeatCount="indefinite"
+    values="0;0;0.9;0.9;0;0" keyTimes="0;0.15;0.165;0.285;0.3;1"/>
+</rect>
+<rect x="290" y="500" width="300" height="74" rx="10" fill="none"
+  stroke="#57606a" stroke-width="2.2" opacity="0">
+  <animate attributeName="opacity" dur="20s" repeatCount="indefinite"
+    values="0;0;0.9;0.9;0;0" keyTimes="0;0.3;0.315;0.435;0.45;1"/>
+</rect>
+<rect x="170" y="88" width="540" height="140" rx="12" fill="none"
+  stroke="#6639ba" stroke-width="2.2" opacity="0">
+  <animate attributeName="opacity" dur="20s" repeatCount="indefinite"
+    values="0;0;0.9;0.9;0;0" keyTimes="0;0.69;0.705;0.785;0.8;1"/>
+</rect>
+<rect x="290" y="500" width="300" height="74" rx="10" fill="none"
+  stroke="#6639ba" stroke-width="2.2" opacity="0">
+  <animate attributeName="opacity" dur="20s" repeatCount="indefinite"
+    values="0;0;0.9;0.9;0;0" keyTimes="0;0.93;0.945;0.985;1;1"/>
+</rect>
+<text x="440" y="648" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif"
+  font-size="13.5" fill="#636c76" opacity="1">1 · your agent writes the code
+  <animate attributeName="opacity" dur="20s" repeatCount="indefinite" values="1;1;0;0" keyTimes="0;0.135;0.15;1"/>
+</text>
+<text x="440" y="648" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif"
+  font-size="13.5" fill="#636c76" opacity="0">2 · …and opens the review; a local server watches the changeset
+  <animate attributeName="opacity" dur="20s" repeatCount="indefinite" values="0;0;1;1;0;0" keyTimes="0;0.15;0.165;0.285;0.3;1"/>
+</text>
+<text x="440" y="648" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif"
+  font-size="13.5" fill="#636c76" opacity="0">3 · the agent starts diffo poll · the review opens in your browser
+  <animate attributeName="opacity" dur="20s" repeatCount="indefinite" values="0;0;1;1;0;0" keyTimes="0;0.3;0.315;0.435;0.45;1"/>
+</text>
+<text x="440" y="648" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif"
+  font-size="13.5" fill="#6639ba" opacity="0">4 · you read and comment: a Change to make, or a Question to answer
+  <animate attributeName="opacity" dur="20s" repeatCount="indefinite" values="0;0;1;1;0;0" keyTimes="0;0.45;0.465;0.585;0.6;1"/>
+</text>
+<text x="440" y="648" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif"
+  font-size="13.5" fill="#6639ba" opacity="0">5 · send now, or batch with Finish review; it returns through the poll
+  <animate attributeName="opacity" dur="20s" repeatCount="indefinite" values="0;0;1;1;0;0" keyTimes="0;0.6;0.615;0.765;0.78;1"/>
+</text>
+<text x="440" y="648" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif"
+  font-size="13.5" fill="#6639ba" opacity="0">6 · the agent answers &amp; fixes; replies land inline, the diff updates, and it polls again ↻
+  <animate attributeName="opacity" dur="20s" repeatCount="indefinite" values="0;0;1;1;0" keyTimes="0;0.78;0.795;0.995;1"/>
+</text>
+</svg>

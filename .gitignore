@@ -1,0 +1,39 @@
+# Dependencies and build output
+node_modules/
+dist/
+docs/.vitepress/cache/
+docs/.vitepress/dist/
+*.tsbuildinfo
+coverage/
+*.tgz
+
+# Local machine state
+.DS_Store
+Thumbs.db
+*.log
+.vscode/
+.idea/
+*.swp
+
+# Local config and agent scratch. `.env` is per-developer; `.env.example` is the
+# tracked template.
+.env
+.env.*
+!.env.example
+.claude/
+CLAUDE.local.md
+
+# Review databases. Diffo's real store is ~/.diffo/diffo.db, but a scratch
+# $DIFFO_DB pointed inside the repo must never be committed.
+*.db
+*.sqlite
+*.sqlite3
+
+# The clips are NOT ignored. `docs/` embeds the .mp4 files directly, and VitePress
+# resolves a raw-HTML src as a real asset import — so an untracked clip is a hard
+# `docs:build` failure on a fresh clone, not a broken <video>. They ship with the repo.
+
+# The recording harness. It drives a browser and a pty to film the clips, needs
+# Chrome, ffmpeg and a real agent to run, and ships nothing — the clips it produces
+# are what the repo carries.
+tools/capture/

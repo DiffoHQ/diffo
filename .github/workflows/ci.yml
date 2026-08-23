@@ -1,0 +1,43 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+# CI only reads the repo; never hand the job a writable token.
+permissions:
+  contents: read
+
+# Supersede stale PR runs; never cancel a main push mid-run.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      - run: pnpm typecheck
+
+      - run: pnpm test
+
+      - run: pnpm build
+
+      - run: pnpm lint
+
+      # The docs embed clips and diagrams as real asset imports, so a missing or
+      # misnamed file fails the build. This is the only gate that catches that:
+      # the Docs workflow runs on main pushes, and only on the public repo.
+      - run: pnpm docs:build

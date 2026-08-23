@@ -1,0 +1,103 @@
+<!DOCTYPE html>
+<!--
+  Source for assets/social-preview.png — the 1280×640 card GitHub shows when the
+  repo is linked anywhere. Committed rather than hand-made in a design tool so the
+  card can be regenerated when the tagline or the mark changes:
+
+    "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome" \
+      --headless --disable-gpu --hide-scrollbars \
+      --screenshot=assets/social-preview.png --window-size=1280,640 \
+      assets/social-preview.html
+
+  System fonts only, on purpose: the render happens once, locally, and a webfont
+  that fails to load silently swaps the whole card's voice.
+-->
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <style>
+      * { margin: 0; padding: 0; box-sizing: border-box; }
+
+      html, body { width: 1280px; height: 640px; }
+
+      body {
+        background: #14161b;
+        color: #f4f3f0;
+        font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif;
+        display: grid;
+        grid-template-columns: 1fr;
+        align-content: center;
+        gap: 34px;
+        padding: 0 96px;
+      }
+
+      /* A single bar of the diff-add green along the bottom — the only colour on
+         the card, so it reads as a signature rather than decoration. Positioned
+         rather than a border: a border on `body` is clipped at this fixed size. */
+      .rule {
+        position: fixed;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        height: 8px;
+        background: #2f6f4f;
+      }
+
+      .row { display: flex; align-items: center; gap: 30px; }
+
+      .tile { width: 104px; height: 104px; flex: none; }
+
+      h1 {
+        font-size: 96px;
+        font-weight: 700;
+        letter-spacing: -0.04em;
+        line-height: 0.9;
+      }
+
+      p.tagline {
+        font-size: 42px;
+        font-weight: 500;
+        letter-spacing: -0.02em;
+        line-height: 1.18;
+        max-width: 19ch;
+      }
+
+      p.tagline b { color: #ffffff; font-weight: 500; }
+      p.tagline span { color: #9b9a95; }
+
+      .foot {
+        display: flex;
+        gap: 40px;
+        font-size: 21px;
+        letter-spacing: 0.01em;
+        color: #7e7d78;
+      }
+      .foot b { color: #b6b5af; font-weight: 500; }
+    </style>
+  </head>
+  <body>
+    <div class="row">
+      <!-- assets/logo-tile.svg, inverted: a light tile carries further than a dark
+           one on a dark card. Same geometry, so the two stay one drawing. -->
+      <svg class="tile" viewBox="0 0 32 32" xmlns="http://www.w3.org/2000/svg">
+        <rect width="32" height="32" rx="8" fill="#f4f3f0" />
+        <g fill="none" stroke="#14161b" stroke-width="2" stroke-linecap="round">
+          <path d="M6 8.2h5" />
+          <path d="M6 21.8h5M8.5 19.3v5" />
+          <path d="M15.5 8.2h10.5M15.5 15h7M15.5 21.8h9" />
+        </g>
+      </svg>
+      <h1>Diffo</h1>
+    </div>
+
+    <p class="tagline"><b>AI writes the code.</b><br /><span>You still have to read it.</span></p>
+
+    <div class="foot">
+      <span><b>Local, live code review</b> for the changeset your agent just wrote</span>
+      <span>Apache&#8209;2.0</span>
+      <span>github.com/DiffoHQ/diffo</span>
+    </div>
+
+    <div class="rule"></div>
+  </body>
+</html>

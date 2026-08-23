@@ -1,0 +1,19 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" width="96" height="96">
+  <!--
+    The Diffo mark: a diff gutter beside three lines of code.
+
+    For light grounds. GitHub strips <style> from rendered SVGs and serves one
+    file to both themes, so the ink is stated outright here and the README pairs
+    this file with logo-dark.svg through <picture>. In the app the mark inherits
+    currentColor instead; see the `i-logo` symbol in src/ui/components/Icon.tsx.
+
+    One drawing, three weights — 2.6 here, 4 in public/favicon.svg (a stroke that
+    reads at 96px lands on one device pixel at 16 and greys out), 2.4 in the app.
+    Change one and change all three.
+  -->
+  <g fill="none" stroke="#17191e" stroke-width="2.6" stroke-linecap="round">
+    <path d="M5 7.5h4"/>
+    <path d="M5 22.5h4M7 20.5v4"/>
+    <path d="M14 7.5h13M14 15h9M14 22.5h11"/>
+  </g>
+</svg>

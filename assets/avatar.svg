@@ -1,0 +1,19 @@
+<svg width="1024" height="1024" viewBox="0 0 1024 1024" xmlns="http://www.w3.org/2000/svg">
+  <!--
+    The Diffo avatar — the org/profile picture on GitHub and other services.
+    Same motif as logo.svg (diff lines with gutter marks) but full-color on a
+    dark tile, sized for avatar use. avatar.png is rendered from this file at
+    1024x1024 (e.g. `npx @resvg/resvg-js-cli avatar.svg avatar.png`).
+  -->
+  <rect width="1024" height="1024" rx="180" fill="#0D1117"/>
+  <!-- context lines (neutral) -->
+  <line x1="236" y1="272" x2="560" y2="272" stroke="#30363D" stroke-width="48" stroke-linecap="round"/>
+  <line x1="236" y1="752" x2="640" y2="752" stroke="#30363D" stroke-width="48" stroke-linecap="round"/>
+  <!-- removed line -->
+  <line x1="360" y1="592" x2="788" y2="592" stroke="#F85149" stroke-width="56" stroke-linecap="round"/>
+  <line x1="212" y1="592" x2="284" y2="592" stroke="#F85149" stroke-width="56" stroke-linecap="round"/>
+  <!-- added line -->
+  <line x1="360" y1="432" x2="788" y2="432" stroke="#3FB950" stroke-width="56" stroke-linecap="round"/>
+  <line x1="212" y1="432" x2="284" y2="432" stroke="#3FB950" stroke-width="56" stroke-linecap="round"/>
+  <line x1="248" y1="396" x2="248" y2="468" stroke="#3FB950" stroke-width="56" stroke-linecap="round"/>
+</svg>

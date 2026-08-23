@@ -1,0 +1,21 @@
+# The CLA workflow already allowlists dependabot[bot], so its PRs skip the
+# signature gate and CI is the only gate they face.
+version: 2
+updates:
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+    groups:
+      # One PR per ecosystem rather than per package — this is a small repo and
+      # the three CI gates are the real check either way.
+      dev-dependencies:
+        dependency-type: development
+      production-dependencies:
+        dependency-type: production
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly

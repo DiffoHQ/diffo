@@ -1,0 +1,27 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="32" height="32">
+  <!--
+    The Diffo mark, optically sized for a tab.
+
+    Same drawing as the `logo` symbol in src/ui/components/Icon.tsx, at 2.2
+    stroke instead of 1.7. At 16px a 1.7 stroke lands on roughly one pixel and
+    greys out; 2.2 lands on two and stays a shape. The heavier stroke eats the
+    gap between the gutter and the code, so the two columns are pushed apart
+    and the signs lengthened to stay signs rather than blobs. Two drawings,
+    one mark — change one and change the other.
+
+    A favicon can't inherit currentColor, so the ink is stated outright and
+    flipped for a dark tab strip. Chrome, Firefox and Safari 17+ all honour a
+    media query inside an SVG icon.
+  -->
+  <style>
+    .ink { stroke: #1d1d1f; }
+    @media (prefers-color-scheme: dark) {
+      .ink { stroke: #f5f5f7; }
+    }
+  </style>
+  <g class="ink" fill="none" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M10 7.2H20.8M10 12h7.8M10 16.8h9.9"/>
+    <path d="M3 7.2h3"/>
+    <path d="M3 16.8h3M4.5 15.2v3.2"/>
+  </g>
+</svg>

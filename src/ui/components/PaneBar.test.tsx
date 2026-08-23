@@ -1,0 +1,60 @@
+// @vitest-environment jsdom
+import { cleanup, fireEvent, render, screen } from '@testing-library/react'
+import { afterEach, describe, expect, it, vi } from 'vitest'
+import { PaneBar } from './PaneBar.js'
+
+afterEach(cleanup)
+
+function bar(over: Partial<Parameters<typeof PaneBar>[0]> = {}) {
+  return (
+    <PaneBar
+      left={3}
+      total={9}
+      hideReviewed={false}
+      onHideReviewed={() => {}}
+      hideTests={false}
+      onHideTests={() => {}}
+      testCount={0}
+      onlyChanged={false}
+      onOnlyChanged={() => {}}
+      changedCount={0}
+      viewMode="unified"
+      onSetViewMode={() => {}}
+      allCollapsed={false}
+      onToggleCollapseAll={() => {}}
+      {...over}
+    />
+  )
+}
+
+describe('the file-list toggle', () => {
+  it('is the bar’s first control — it sits at the edge of the panel it opens', () => {
+    const { container } = render(bar({ navHidden: false, onToggleNav: () => {} }))
+    expect(container.querySelector('.pane-bar')?.firstElementChild?.className).toContain('pane-nav')
+  })
+
+  it('says what the click will do, not what the state is', () => {
+    const onToggleNav = vi.fn()
+    const { rerender } = render(bar({ navHidden: false, onToggleNav }))
+    fireEvent.click(screen.getByLabelText('Hide the file list'))
+    expect(onToggleNav).toHaveBeenCalled()
+
+    rerender(bar({ navHidden: true, onToggleNav }))
+    expect(screen.getByLabelText('Show the file list')).toBeTruthy()
+  })
+
+  it('reports the panel’s state to a screen reader', () => {
+    const { rerender } = render(bar({ navHidden: false, onToggleNav: () => {} }))
+    expect(screen.getByLabelText('Hide the file list').getAttribute('aria-pressed')).toBe('true')
+    rerender(bar({ navHidden: true, onToggleNav: () => {} }))
+    expect(screen.getByLabelText('Show the file list').getAttribute('aria-pressed')).toBe('false')
+  })
+
+  it('stays out of the bar entirely when there is no panel to toggle', () => {
+    const { container } = render(bar())
+    expect(container.querySelector('.pane-nav')).toBeNull()
+    expect(container.querySelector('.pane-bar')?.firstElementChild?.className).toContain(
+      'prog-track',
+    )
+  })
+})

@@ -1,0 +1,19 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" width="256" height="256">
+  <!--
+    The tile treatment: the mark reversed out of a solid ground. It brings its own
+    background, so one file holds on a light page, a dark page, a dock and a social
+    card alike — which is why the social preview and any app tile use this rather
+    than the bare mark. Not for the README hero: a filled tile reads heavy beside
+    a heading.
+
+    Reversed-out ink needs a lighter stroke and longer signs than the same drawing
+    on paper: at 2.4 the gutter's − and + closed up into dots and the whole mark
+    read as a bulleted list.
+  -->
+  <rect width="32" height="32" rx="8" fill="#17191e"/>
+  <g fill="none" stroke="#fbfbf9" stroke-width="2" stroke-linecap="round">
+    <path d="M6 8.2h5"/>
+    <path d="M6 21.8h5M8.5 19.3v5"/>
+    <path d="M15.5 8.2h10.5M15.5 15h7M15.5 21.8h9"/>
+  </g>
+</svg>

@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" width="96" height="96">
+  <!-- The mark for dark grounds. Same geometry as logo.svg; ink only differs. -->
+  <g fill="none" stroke="#f0efec" stroke-width="2.6" stroke-linecap="round">
+    <path d="M5 7.5h4"/>
+    <path d="M5 22.5h4M7 20.5v4"/>
+    <path d="M14 7.5h13M14 15h9M14 22.5h11"/>
+  </g>
+</svg>

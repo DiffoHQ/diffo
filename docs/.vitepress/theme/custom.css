@@ -1,0 +1,189 @@
+/*
+ * Screen-recorded clips.
+ *
+ * These are MP4 rather than GIF: same recordings, roughly a quarter of the bytes,
+ * decoded on the GPU, and actually pausable when scrolled out of view. `preload="none"`
+ * keeps a clip off the wire until the reader reaches it.
+ */
+.clip {
+  display: block;
+  width: 100%;
+  height: auto;
+  border-radius: 8px;
+}
+
+/*
+ * Light/dark pairing follows `html.dark`, which is the class VitePress itself toggles.
+ * A CSS `prefers-color-scheme` query would read the OS setting instead, so a reader who
+ * flipped only the site theme would be left looking at the wrong clip.
+ */
+.clip-dark {
+  display: none;
+}
+
+html.dark .clip-dark {
+  display: block;
+}
+
+html.dark .clip-light {
+  display: none;
+}
+
+/* ──────────────────────────────────────────────────────────────────────────
+ * Home page.
+ *
+ * VitePress renders markdown written under a `layout: home` frontmatter into a
+ * `.vp-doc` block that runs the full width of the layout, while the hero and the
+ * feature grid above it sit in a 1152px container. Re-aligning the two is what
+ * makes the page read as one column rather than two stacked designs.
+ * ────────────────────────────────────────────────────────────────────────── */
+.VPHome .vp-doc.container {
+  max-width: calc(1152px + 48px);
+  margin: 0 auto;
+  padding: 0 24px 96px;
+}
+
+@media (min-width: 640px) {
+  .VPHome .vp-doc.container {
+    max-width: calc(1152px + 96px);
+    padding: 0 48px 96px;
+  }
+}
+
+@media (min-width: 960px) {
+  .VPHome .vp-doc.container {
+    max-width: calc(1152px + 128px);
+    padding: 0 64px 96px;
+  }
+}
+
+/* Whitespace separates the sections; the default rule's border-top reads as a
+ * seam once there are only four of them. */
+.VPHome .vp-doc h2 {
+  margin: 72px 0 20px;
+  padding-top: 0;
+  border-top: 0;
+  letter-spacing: -0.02em;
+}
+
+.VPHome .vp-doc h2 + p,
+.VPHome .vp-doc h2 + .home-clip {
+  margin-top: 0;
+}
+
+/* The feature icons are inline SVG rather than emoji, so they inherit a colour. */
+.VPHome .VPFeature .icon svg {
+  width: 24px;
+  height: 24px;
+  color: var(--vp-c-brand-1);
+}
+
+.home-clip {
+  border: 1px solid var(--vp-c-divider);
+}
+
+/* The loop, in four steps: a 2x2 so no step is left orphaned on its own row. */
+.home-steps {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 16px;
+  margin-top: 24px;
+}
+
+.VPHome .home-step {
+  padding: 22px;
+  border: 1px solid var(--vp-c-divider);
+  border-radius: 12px;
+  background-color: var(--vp-c-bg-soft);
+}
+
+.VPHome .home-step-n {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  margin-bottom: 14px;
+  border-radius: 8px;
+  background-color: var(--vp-c-default-soft);
+  color: var(--vp-c-brand-1);
+  font-size: 13px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.VPHome .home-step h3 {
+  margin: 0 0 8px;
+  font-size: 16px;
+  font-weight: 600;
+  line-height: 1.4;
+  letter-spacing: normal;
+}
+
+.VPHome .home-step p {
+  margin: 0;
+  font-size: 14px;
+  line-height: 1.7;
+  color: var(--vp-c-text-2);
+}
+
+/* Read next: a markdown list, laid out as cards. The list stays markdown so the
+ * links keep VitePress's base handling and client-side routing. */
+.VPHome .home-next ul {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 16px;
+  margin: 24px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.VPHome .home-next li {
+  margin: 0;
+}
+
+.VPHome .home-next li > a {
+  display: block;
+  height: 100%;
+  padding: 18px 20px;
+  border: 1px solid var(--vp-c-divider);
+  border-radius: 12px;
+  color: var(--vp-c-text-1);
+  font-weight: 600;
+  text-decoration: none;
+  transition:
+    border-color 0.25s,
+    background-color 0.25s;
+}
+
+.VPHome .home-next li > a:hover {
+  border-color: var(--vp-c-brand-1);
+  background-color: var(--vp-c-bg-soft);
+}
+
+.VPHome .home-next li > a span {
+  display: block;
+  margin-top: 4px;
+  font-size: 13px;
+  font-weight: 400;
+  line-height: 1.6;
+  color: var(--vp-c-text-2);
+}
+
+@media (max-width: 960px) {
+  .home-steps,
+  .VPHome .home-next ul {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+@media (max-width: 640px) {
+  .home-steps,
+  .VPHome .home-next ul {
+    grid-template-columns: 1fr;
+  }
+
+  .VPHome .vp-doc h2 {
+    margin-top: 56px;
+  }
+}

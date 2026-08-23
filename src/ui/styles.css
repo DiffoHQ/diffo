@@ -1,0 +1,5530 @@
+/* ============================================================
+   INK — the palette. Chrome is achromatic, so the code and its diff are the
+   only coloured things on the page.
+
+   Two accent roles that never merge:
+     --acc    interactive — primary action, selection, Viewed, progress, focus.
+     --attn   attention — changed-since-read, agent in flight. Amber, the one
+              hue in the chrome.
+
+   --add / --del may also appear in the rail, on a file's git status (`+` born,
+   `−` died) and nowhere else — always doubled by shape, so nothing depends on
+   hue alone.
+   ============================================================ */
+
+:root {
+  /* --- neutrals: a ground, one grey, three inks, two hairlines --- */
+  --paper: #ffffff;
+  --fill: #f5f5f7;
+  --fill-2: #ebebed;
+  --ink: #1d1d1f;
+  --ink-2: #515154;
+  --ink-3: #6e6e73;
+  --hair: #e5e5e7;
+  --hair-2: #f0f0f2;
+
+  /* --- motion: one curve, two speeds. Every animated property uses these. --- */
+  --ease-out: cubic-bezier(0.22, 0.7, 0.2, 1);
+  --dur: 0.14s; /* hovers, fades */
+  --dur-move: 0.24s; /* things that travel: the rail, folds, modals */
+
+  /* --- role 1: interactive --- */
+  --acc: #1d1d1f;
+  --acc-fg: #ffffff;
+  --acc-wash: #edeef0;
+  --acc-line: #c9c4d6;
+
+  /* --- role 2: attention. The only hue in the chrome. --- */
+  --attn: #9a6206;
+  --attn-wash: #faf1e2;
+  --attn-line: #e6cfa0;
+
+  /* ---------- the diff: the one place colour is the content ---------- */
+  --add: #248a3d;
+  --add-tint: rgba(36, 138, 61, 0.055);
+  --add-row: rgba(36, 138, 61, 0.1);
+  --add-word: rgba(36, 138, 61, 0.22);
+  --del: #c9252d;
+  --del-tint: rgba(201, 37, 45, 0.05);
+  --del-row: rgba(201, 37, 45, 0.085);
+  --del-word: rgba(201, 37, 45, 0.2);
+  --danger: #c9252d;
+  --danger-wash: #fdeded;
+
+  --dir-ico: #3f7fc9;
+
+  /* --- gap expanders: the one deliberate GitHub-ism, blue like the original --- */
+  --exp-wash: #ddf4ff;
+  --exp-ink: #0969da;
+  --exp-hover: #0969da;
+  --exp-hover-fg: #ffffff;
+
+  /* --- type: sans everywhere except code, paths, keyboard hints --- */
+  --sans:
+    -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", Roboto, Helvetica, Arial,
+    sans-serif;
+  --mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+
+  --t-11: 11px; /* positions, counts, badges */
+  --t-12: 12px; /* metadata */
+  --t-125: 12.5px; /* code, paths, small controls */
+  --t-13: 13px; /* controls, rows */
+  --t-14: 14px; /* prose */
+  --t-15: 15px; /* wordmark */
+  --t-17: 17px; /* modal titles */
+
+  --s-0: 2px;
+  --s-1: 4px;
+  --s-2: 6px;
+  --s-3: 8px;
+  --s-4: 10px;
+  --s-5: 12px;
+  --s-6: 16px;
+  --s-7: 20px;
+  --s-8: 26px;
+
+  --conv: min(100%, 1040px);
+
+  --r-sm: 6px; /* icon buttons, inputs, small controls */
+  --r: 10px; /* cards, menus */
+  --r-lg: 16px; /* modals */
+  --r-pill: 999px; /* buttons, chips */
+
+  --lift: 0 1px 2px rgba(0, 0, 0, 0.04), 0 12px 32px -16px rgba(0, 0, 0, 0.14);
+  --lift-lg: 0 24px 64px -20px rgba(0, 0, 0, 0.28);
+
+  --bg: var(--paper);
+  --bg-subtle: var(--fill);
+  --fg: var(--ink);
+  --fg-muted: var(--ink-3);
+  --border: var(--hair);
+  --accent: var(--acc);
+  --add-bg: var(--add-row);
+  --add-fg: var(--add);
+  --del-bg: var(--del-row);
+  --del-fg: var(--del);
+}
+
+/*
+ * Both themes get real values — designed, not inverted. The media query carries
+ * the system preference; the [data-theme] rules let an explicit toggle win in
+ * *both* directions, which a media query alone cannot do.
+ */
+@media (prefers-color-scheme: dark) {
+  :root {
+    --paper: #000000;
+    --fill: #1c1c1e;
+    --fill-2: #2c2c2e;
+    --ink: #f5f5f7;
+    --ink-2: #c7c7cc;
+    --ink-3: #8e8e93;
+    --hair: #2c2c2e;
+    --hair-2: #1f1f21;
+    --acc: #f5f5f7;
+    --acc-fg: #000000;
+    --acc-wash: #262234;
+    --acc-line: #403b54;
+    --attn: #e0a83c;
+    --attn-wash: #2a2214;
+    --attn-line: #5c4818;
+    --add: #30d158;
+    --add-tint: rgba(48, 209, 88, 0.075);
+    --add-row: rgba(48, 209, 88, 0.13);
+    --add-word: rgba(48, 209, 88, 0.28);
+    --del: #ff453a;
+    --del-tint: rgba(255, 69, 58, 0.07);
+    --del-row: rgba(255, 69, 58, 0.12);
+    --del-word: rgba(255, 69, 58, 0.26);
+    --danger: #ff453a;
+    --danger-wash: #2a1211;
+    --dir-ico: #64a9f2;
+    --exp-wash: rgba(56, 139, 253, 0.16);
+    --exp-ink: #4493f8;
+    --exp-hover: #1f6feb;
+    --exp-hover-fg: #ffffff;
+    --lift: 0 1px 2px rgba(0, 0, 0, 0.5), 0 12px 32px -16px rgba(0, 0, 0, 0.8);
+    --lift-lg: 0 24px 64px -20px rgba(0, 0, 0, 0.85);
+  }
+}
+
+:root[data-theme="dark"] {
+  --paper: #000000;
+  --fill: #1c1c1e;
+  --fill-2: #2c2c2e;
+  --ink: #f5f5f7;
+  --ink-2: #c7c7cc;
+  --ink-3: #8e8e93;
+  --hair: #2c2c2e;
+  --hair-2: #1f1f21;
+  --acc: #f5f5f7;
+  --acc-fg: #000000;
+  --acc-wash: #262234;
+  --acc-line: #403b54;
+  --attn: #e0a83c;
+  --attn-wash: #2a2214;
+  --attn-line: #5c4818;
+  --add: #30d158;
+  --add-tint: rgba(48, 209, 88, 0.075);
+  --add-row: rgba(48, 209, 88, 0.13);
+  --add-word: rgba(48, 209, 88, 0.28);
+  --del: #ff453a;
+  --del-tint: rgba(255, 69, 58, 0.07);
+  --del-row: rgba(255, 69, 58, 0.12);
+  --del-word: rgba(255, 69, 58, 0.26);
+  --danger: #ff453a;
+  --danger-wash: #2a1211;
+  --dir-ico: #64a9f2;
+  --exp-wash: rgba(56, 139, 253, 0.16);
+  --exp-ink: #4493f8;
+  --exp-hover: #1f6feb;
+  --exp-hover-fg: #ffffff;
+  --lift: 0 1px 2px rgba(0, 0, 0, 0.5), 0 12px 32px -16px rgba(0, 0, 0, 0.8);
+  --lift-lg: 0 24px 64px -20px rgba(0, 0, 0, 0.85);
+}
+
+:root[data-theme="light"] {
+  --paper: #ffffff;
+  --fill: #f5f5f7;
+  --fill-2: #ebebed;
+  --ink: #1d1d1f;
+  --ink-2: #515154;
+  --ink-3: #6e6e73;
+  --hair: #e5e5e7;
+  --hair-2: #f0f0f2;
+  --acc: #1d1d1f;
+  --acc-fg: #ffffff;
+  --acc-wash: #edeef0;
+  --acc-line: #c9c4d6;
+  --attn: #9a6206;
+  --attn-wash: #faf1e2;
+  --attn-line: #e6cfa0;
+  --add: #248a3d;
+  --add-tint: rgba(36, 138, 61, 0.055);
+  --add-row: rgba(36, 138, 61, 0.1);
+  --add-word: rgba(36, 138, 61, 0.22);
+  --del: #c9252d;
+  --del-tint: rgba(201, 37, 45, 0.05);
+  --del-row: rgba(201, 37, 45, 0.085);
+  --del-word: rgba(201, 37, 45, 0.2);
+  --danger: #c9252d;
+  --danger-wash: #fdeded;
+  --dir-ico: #3f7fc9;
+  --exp-wash: #ddf4ff;
+  --exp-ink: #0969da;
+  --exp-hover: #0969da;
+  --exp-hover-fg: #ffffff;
+  --lift: 0 1px 2px rgba(0, 0, 0, 0.04), 0 12px 32px -16px rgba(0, 0, 0, 0.14);
+  --lift-lg: 0 24px 64px -20px rgba(0, 0, 0, 0.28);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  margin: 0;
+  height: 100%;
+}
+
+body {
+  font-family: var(--sans);
+  font-size: var(--t-14);
+  line-height: 1.55;
+  letter-spacing: -0.005em;
+  -webkit-font-smoothing: antialiased;
+  background: var(--paper);
+  color: var(--ink);
+}
+
+/* ---------- icons ---------- */
+.icon {
+  display: block;
+  flex: 0 0 auto;
+}
+
+.chevron {
+  display: flex;
+  color: var(--ink-3);
+  flex: 0 0 auto;
+  transition: transform 0.16s;
+}
+
+.chevron-shut {
+  transform: rotate(-90deg);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .chevron {
+    transition: none;
+  }
+}
+
+.kbd {
+  font-family: var(--mono);
+  font-size: var(--t-11);
+  color: var(--ink-3);
+  background: var(--fill);
+  border-radius: 5px;
+  padding: 2px 5px;
+}
+
+.layout {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
+/* ---------- header: one bar ---------- */
+
+.top {
+  display: flex;
+  align-items: center;
+  gap: var(--s-6);
+  height: 53px;
+  flex-shrink: 0;
+  padding: 0 var(--s-6);
+  border-bottom: 1px solid var(--hair);
+  white-space: nowrap;
+}
+
+.mark {
+  display: flex;
+  align-items: center;
+  gap: var(--s-3);
+  font-size: var(--t-15);
+  font-weight: 600;
+  letter-spacing: -0.02em;
+}
+
+.mark .icon {
+  width: 19px;
+  height: 19px;
+}
+
+.repo {
+  font-family: var(--mono);
+  font-size: var(--t-13);
+  color: var(--ink-3);
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.where {
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+  min-width: 0;
+}
+
+.where-bit {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  font-family: var(--mono);
+  font-size: var(--t-12);
+  color: var(--ink-3);
+  min-width: 0;
+  max-width: 22ch;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.where-bit svg {
+  flex: none;
+  opacity: 0.75;
+}
+
+.grow {
+  flex: 1;
+  min-width: var(--s-3);
+}
+
+.cmp {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  font-size: var(--t-125);
+  color: var(--ink-2);
+  flex-shrink: 0;
+}
+
+.cmp-side {
+  font-family: var(--mono);
+  font-size: var(--t-12);
+  color: var(--ink);
+}
+
+.cmp-side-base {
+  color: var(--ink-2);
+}
+
+.cmp-arrow {
+  color: var(--ink-3);
+  width: 12px;
+  height: 12px;
+}
+
+.cmp-n {
+  font-family: var(--mono);
+  font-size: 11.5px;
+  font-variant-numeric: tabular-nums;
+  padding-left: var(--s-3);
+  border-left: 1px solid var(--hair);
+  margin-left: var(--s-1);
+}
+
+.prog-track {
+  width: 56px;
+  height: 3px;
+  border-radius: 2px;
+  background: var(--fill-2);
+  overflow: hidden;
+}
+
+.prog-track i {
+  display: block;
+  height: 3px;
+  background: var(--acc);
+  border-radius: 2px;
+  transition: width 0.35s var(--ease-out);
+}
+
+.stat-add {
+  color: var(--add);
+}
+
+.stat-del {
+  color: var(--del);
+}
+
+@media (max-width: 1080px) {
+  .top {
+    gap: var(--s-5);
+  }
+
+  .cmp-n {
+    display: none;
+  }
+}
+
+@media (max-width: 900px) {
+  .cmp,
+  .repo {
+    display: none;
+  }
+}
+
+/* ---------- body ---------- */
+
+.body {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+}
+
+/* ---------- the rail: the queue ---------- */
+
+.rail {
+  /* Set per-session by the resize handle; the fallback is the designed width. */
+  width: var(--rail-w, 264px);
+  flex-shrink: 0;
+  border-right: 1px solid var(--hair);
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  overflow: hidden;
+  /* Rows adapt to the width they actually get — see the @container rules. */
+  container-type: inline-size;
+  transition:
+    width var(--dur-move) var(--ease-out),
+    opacity 0.18s ease;
+}
+
+.rail-dragging .rail {
+  transition: none;
+}
+
+.nav-hidden .rail {
+  width: 0;
+  opacity: 0;
+  border-right-color: transparent;
+  pointer-events: none;
+  visibility: hidden;
+  transition:
+    width var(--dur-move) var(--ease-out),
+    opacity 0.16s ease,
+    visibility 0s var(--dur-move);
+}
+
+.nav-hidden .rail-resize {
+  display: none;
+}
+
+.rail-resize {
+  flex: 0 0 auto;
+  width: 7px;
+  margin: 0 -3px;
+  position: relative;
+  z-index: 5;
+  cursor: col-resize;
+  touch-action: none;
+}
+
+.rail-resize::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 50%;
+  width: 2px;
+  transform: translateX(-50%);
+}
+
+.rail-resize:hover::after,
+.rail-resize:active::after {
+  background: var(--acc);
+}
+
+.rail-search {
+  padding: var(--s-5) 14px var(--s-4);
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+}
+
+.sb {
+  position: relative;
+  display: flex;
+  align-items: center;
+  flex: 1;
+  min-width: 0;
+}
+
+.rail-filter-on {
+  color: var(--attn);
+}
+
+.rail-tally {
+  padding: 0 var(--s-6) var(--s-3);
+  font-size: var(--t-11);
+  color: var(--ink-3);
+}
+
+.menu-n {
+  margin-left: 6px;
+  font-size: var(--t-11);
+  color: var(--ink-3);
+  font-variant-numeric: tabular-nums;
+}
+
+.sb > svg {
+  position: absolute;
+  left: 9px;
+  color: var(--ink-3);
+  pointer-events: none;
+}
+
+.nav-search {
+  width: 100%;
+  height: 30px;
+  padding: 0 34px 0 31px;
+  font: inherit;
+  font-size: var(--t-13);
+  color: var(--ink);
+  background: var(--fill);
+  border: 0;
+  border-radius: var(--r-sm);
+}
+
+.nav-search::placeholder {
+  color: var(--ink-3);
+}
+
+.nav-search::-webkit-search-cancel-button {
+  -webkit-appearance: none;
+  appearance: none;
+}
+
+.sb-clear {
+  position: absolute;
+  right: 5px;
+  width: 22px;
+  height: 22px;
+  border: 0;
+  padding: 0;
+  border-radius: var(--r-sm);
+  background: transparent;
+  color: var(--ink-3);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.sb-clear:hover {
+  background: var(--fill-2);
+  color: var(--ink);
+}
+
+.sb-clear:focus-visible {
+  outline: 2px solid var(--acc);
+  outline-offset: -1px;
+}
+
+.nav-search:focus {
+  outline: 2px solid var(--acc);
+  outline-offset: -1px;
+}
+
+.sb .kbd {
+  position: absolute;
+  right: var(--s-3);
+  background: var(--paper);
+}
+
+/* ---------- the two lists: Files | Threads ---------- */
+
+.tabs {
+  display: flex;
+  gap: 2px;
+  margin: 10px 12px 6px;
+  padding: 2px;
+  background: var(--fill);
+  border-radius: var(--r-sm);
+  flex: none;
+}
+
+.tab {
+  flex: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 5px 8px;
+  border: none;
+  border-radius: 4px;
+  background: none;
+  font: inherit;
+  font-size: var(--t-12);
+  color: var(--ink-3);
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.tab[aria-selected="true"] {
+  background: var(--paper);
+  color: var(--ink);
+  font-weight: 600;
+}
+
+.tab-n {
+  font-size: var(--t-11);
+  color: var(--ink-3);
+  font-variant-numeric: tabular-nums;
+}
+
+.tab[aria-selected="true"] .tab-n {
+  color: var(--ink-2);
+}
+
+.tab-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--attn);
+  flex: none;
+}
+
+/* ---------- thread rows ---------- */
+.clist {
+  flex: 1;
+  overflow: auto;
+  padding-bottom: var(--s-4);
+}
+
+/*
+ * The file rows' geometry, verbatim — 15px box, minmax(0,1fr), auto — so the
+ * rail's two lists line up column for column. minmax(0,1fr) rather than 1fr: a
+ * bare 1fr track's min-content floor lets long question text push out of the rail.
+ *
+ * No border-bottom: hover and selection carry the boundary instead, as the file
+ * tree above already does.
+ */
+.crow {
+  display: grid;
+  grid-template-columns: 15px minmax(0, 1fr) auto;
+  align-items: start;
+  gap: var(--s-3);
+  width: 100%;
+  padding: 7px 14px 8px var(--s-5);
+}
+
+.crow > * {
+  min-width: 0;
+}
+
+.crow:hover {
+  background: var(--fill);
+}
+
+.crow[aria-current="true"] {
+  background: var(--acc-wash);
+}
+
+.crow-mark {
+  width: 15px;
+  height: 15px;
+  margin-top: 2px;
+  padding: 0;
+  border-radius: 50%;
+  border: 1.25px solid var(--hair);
+  background: transparent;
+  color: transparent;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition:
+    background var(--dur),
+    border-color var(--dur),
+    color var(--dur);
+}
+
+.crow-mark svg {
+  width: 9px;
+  height: 9px;
+}
+
+.crow:hover .crow-mark:not(:disabled) {
+  border-color: var(--ink-3);
+  color: var(--ink-3);
+}
+
+.crow .crow-mark:hover:not(:disabled) {
+  border-color: var(--ink-2);
+  color: var(--ink-2);
+  background: var(--fill-2);
+}
+
+.crow-mark:focus-visible {
+  outline: 2px solid var(--acc);
+  outline-offset: 1px;
+}
+
+.crow-mark:disabled {
+  cursor: default;
+}
+
+.crow-mark[aria-pressed="true"] {
+  background: var(--acc);
+  border-color: var(--acc);
+  color: var(--acc-fg);
+}
+
+.crow:hover .crow-mark[aria-pressed="true"] {
+  border-color: var(--acc);
+  color: var(--acc-fg);
+}
+
+.crow-pick {
+  min-width: 0;
+  display: block;
+  border: none;
+  background: none;
+  font: inherit;
+  color: inherit;
+  text-align: left;
+  padding: 0;
+  cursor: pointer;
+}
+
+.crow-pick:focus-visible {
+  outline: 2px solid var(--acc);
+  outline-offset: 2px;
+  border-radius: var(--r-sm);
+}
+
+/* Invariant 1 — the title is your question, and only ever your question.
+   `display: block` is load-bearing: text-overflow needs a block box, and
+   min-width:0 is inert on an inline one. */
+.crow-q {
+  display: block;
+  font-size: var(--t-13);
+  line-height: 1.4;
+  color: var(--ink-2);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.crow-hot .crow-q {
+  color: var(--ink);
+  font-weight: 600;
+}
+
+.crow-done .crow-q {
+  color: var(--ink-3);
+}
+
+.crow-sub {
+  display: block;
+  margin-top: 1px;
+  font-size: var(--t-12);
+  line-height: 1.4;
+  color: var(--ink-3);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.crow-where {
+  font-family: var(--mono);
+  font-size: var(--t-11);
+}
+
+.crow-where-gone {
+  text-decoration: line-through;
+}
+
+.crow-sep {
+  opacity: 0.5;
+  padding: 0 2px;
+}
+
+.crow-state-agent {
+  color: var(--attn);
+}
+
+.crow-when {
+  grid-column: 3;
+  grid-row: 1;
+  margin-top: 3px;
+  font-size: var(--t-11);
+  color: var(--ink-3);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.crow-hot .crow-when {
+  color: var(--attn);
+}
+
+/* The file rows' passive→action swap, in the same slot.
+
+   Scoped under .crow: the button also wears .row-act, whose `display: flex` is
+   declared far below this. At equal specificity the later rule wins, so a bare
+   `.crow-del` loses the tie and the trash renders on every row — on top of the
+   time, which shares this cell. */
+.crow .crow-del {
+  grid-column: 3;
+  grid-row: 1;
+  display: none;
+  align-self: start;
+}
+
+.crow:hover .crow-when,
+.crow:focus-within .crow-when {
+  display: none;
+}
+
+.crow:hover .crow-del,
+.crow:focus-within .crow-del {
+  display: flex;
+  opacity: 1;
+  transition: opacity var(--dur) ease;
+  @starting-style {
+    opacity: 0;
+  }
+}
+
+.row-act-danger:hover {
+  background: var(--danger-wash);
+  color: var(--danger);
+}
+
+.clist-clear {
+  display: block;
+  width: 100%;
+  padding: var(--s-4) var(--s-6);
+  border: none;
+  background: none;
+  font: inherit;
+  font-size: var(--t-12);
+  color: var(--ink-3);
+  text-align: left;
+  cursor: pointer;
+}
+
+.clist-clear:hover {
+  color: var(--danger);
+}
+
+.rail-empty .clist-clear {
+  padding: var(--s-3) 0 0;
+}
+
+.clist-quiet {
+  padding: var(--s-4) var(--s-6) var(--s-2);
+  font-size: var(--t-13);
+  line-height: 1.5;
+  color: var(--ink-2);
+}
+
+.clist-quiet-n {
+  color: var(--ink-3);
+  font-size: var(--t-12);
+}
+
+.row-count-hot {
+  color: var(--attn);
+}
+
+.row-since {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--ink-3);
+  flex: none;
+}
+
+.row-since-changed {
+  background: var(--attn);
+}
+
+.rail-scroll {
+  flex: 1;
+  overflow-y: auto;
+  padding-bottom: var(--s-4);
+  scrollbar-width: thin;
+  scrollbar-color: var(--hair) transparent;
+}
+
+.rail-rule {
+  height: 1px;
+  background: var(--hair);
+  margin: var(--s-0) 0;
+}
+
+.rail-empty {
+  color: var(--ink-3);
+  padding: var(--s-3) var(--s-6);
+  font-size: var(--t-13);
+}
+
+/* ---------- section headers: live counts ---------- */
+
+.sec-head {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  width: 100%;
+  font-size: 11.5px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+  padding: 5px var(--s-6) 7px;
+  border: 0;
+  background: transparent;
+  font-family: inherit;
+}
+
+.sec-n {
+  margin-left: auto;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0;
+}
+
+.sec-head-fold {
+  cursor: pointer;
+}
+
+.sec-head-fold:hover {
+  color: var(--ink-2);
+}
+
+.sec-row {
+  display: flex;
+  align-items: center;
+}
+
+.sec-row .sec-head {
+  flex: 1;
+  min-width: 0;
+}
+
+/* Scoped under .sec-row: the button also wears .row-act, whose display:flex is
+ * declared later — a bare .sec-act would lose the tie and always show. */
+.sec-row .sec-act {
+  display: none;
+  margin-right: 9px;
+}
+
+.sec-row:hover .sec-act,
+.sec-row:focus-within .sec-act {
+  display: flex;
+  opacity: 1;
+  transition: opacity var(--dur) ease;
+  @starting-style {
+    opacity: 0;
+  }
+}
+
+.sec-row-hasact:hover .sec-n,
+.sec-row-hasact:focus-within .sec-n {
+  display: none;
+}
+
+.sec-head-hot {
+  color: var(--attn);
+}
+
+/* ---------- "needs you": pinned, narrow, only when non-empty ---------- */
+
+.pin {
+  padding: var(--s-0) 0 var(--s-4);
+}
+
+.pin-row {
+  display: grid;
+  grid-template-columns: 15px 1fr;
+  gap: 9px;
+  width: 100%;
+  padding: 7px var(--s-6);
+  border: 0;
+  background: transparent;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.pin-row:hover {
+  background: var(--attn-wash);
+}
+
+.pin-row > svg {
+  color: var(--attn);
+  margin-top: 2px;
+}
+
+/* min-width: 0, or the grid child refuses to shrink, the ellipsis never fires, and
+ * the text escapes the rail instead of truncating. */
+.pin-text {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.pin-t1 {
+  font-size: var(--t-125);
+  color: var(--ink);
+  font-weight: 500;
+  letter-spacing: -0.008em;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pin-more {
+  display: block;
+  width: 100%;
+  padding: var(--s-1) var(--s-6) var(--s-0) 40px;
+  border: 0;
+  background: transparent;
+  color: var(--ink-3);
+  font: inherit;
+  font-size: 11.5px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.pin-more:hover {
+  color: var(--ink-2);
+}
+
+.pin-t2 {
+  font-size: 11.5px;
+  color: var(--ink-3);
+  font-family: var(--mono);
+  margin-top: 1px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* ---------- the row ----------
+ * A container div, never a <button>: a button cannot legally contain a button, and
+ * the parser silently closes the outer one.
+ */
+
+.row {
+  display: grid;
+  grid-template-columns: 15px 1fr auto;
+  align-items: center;
+  gap: var(--s-3);
+  width: 100%;
+  padding: 5px 14px 5px var(--s-5);
+  font-size: var(--t-13);
+  color: var(--ink-2);
+  transition: background var(--dur) ease;
+  animation: slide-in 0.18s var(--ease-out) both;
+}
+
+@keyframes slide-in {
+  from {
+    opacity: 0;
+    transform: translateX(-4px);
+  }
+}
+
+.pin-row {
+  animation: slide-in 0.18s var(--ease-out) both;
+}
+
+.row:hover {
+  background: var(--fill);
+}
+
+.row[aria-current="true"] {
+  background: var(--fill);
+  color: var(--ink);
+}
+
+.row-pick {
+  min-width: 0;
+  border: 0;
+  background: transparent;
+  font: inherit;
+  color: inherit;
+  padding: 0;
+  text-align: left;
+  cursor: pointer;
+  display: block;
+}
+
+.row-pick:focus-visible {
+  outline: 2px solid var(--acc);
+  outline-offset: 2px;
+  border-radius: var(--r-sm);
+}
+
+.row-name {
+  min-width: 0;
+  display: flex;
+  align-items: baseline;
+  gap: var(--s-2);
+  font-family: var(--mono);
+  font-size: var(--t-12);
+  overflow: hidden;
+  white-space: nowrap;
+}
+
+.row-base {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.row[aria-current="true"] .row-base {
+  font-weight: 600;
+  color: var(--ink);
+}
+
+/* ---------- the leading slot: did you read it ---------- */
+.row-box {
+  width: 15px;
+  height: 15px;
+  padding: 0;
+  flex: 0 0 15px;
+  border: none;
+  background: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+}
+
+.row-box:disabled {
+  cursor: default;
+}
+
+.row-box:focus-visible {
+  outline: 2px solid var(--acc);
+  outline-offset: 1px;
+  border-radius: var(--s-1);
+}
+
+.row-box:hover:not(:disabled) .markbox {
+  border-color: var(--ink-2);
+}
+
+.markbox {
+  width: 15px;
+  height: 15px;
+  flex: 0 0 15px;
+  border-radius: var(--s-1);
+  border: 1.5px solid var(--ink-3);
+  background: transparent;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: transparent;
+  transition:
+    background var(--dur),
+    border-color var(--dur);
+}
+
+.markbox svg {
+  width: 10px;
+  height: 10px;
+}
+
+.markbox[data-state="on"] {
+  background: var(--acc);
+  border-color: var(--acc);
+  color: var(--acc-fg);
+}
+
+.markbox[data-state="mixed"]::after {
+  content: "";
+  flex: none; /* the dash is the state — nothing may shrink it */
+  width: 8px;
+  height: 2px;
+  border-radius: 1px;
+  background: var(--ink-2);
+}
+
+/* ---------- folder rows ---------- */
+
+.row-dir .row-pick {
+  grid-column: 2;
+  display: flex;
+  align-items: center;
+}
+
+.row-dir .row-name {
+  align-items: center;
+  gap: var(--s-2);
+}
+
+.dir-ico {
+  display: flex;
+  flex: 0 0 auto;
+  color: var(--dir-ico);
+}
+
+.row-done .dir-ico {
+  color: var(--ink-3);
+}
+
+/* ---------- the name: what git did ---------- */
+.row-st {
+  flex: 0 0 auto;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.row-st-add {
+  color: var(--add);
+}
+
+.row-st-del {
+  color: var(--del);
+}
+
+.row-was {
+  flex: 0 1 auto;
+  color: var(--ink-3);
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.row-base-del {
+  text-decoration: line-through;
+}
+
+.row-done {
+  color: var(--ink-3);
+}
+
+/* ---------- hover actions, VS Code style ---------- */
+
+.row-right {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
+
+/* Truly absent until hover — an invisible-but-present pair of buttons reserved
+ * ~45px of every row, which a 264px rail cannot spare. `display` (not opacity) is
+ * what lets the passive state use the full width the rest of the time. */
+.row-acts {
+  display: none;
+  align-items: center;
+  gap: 1px;
+}
+
+.row:hover .row-acts,
+.row:focus-within .row-acts {
+  display: flex;
+  opacity: 1;
+  transition: opacity var(--dur) ease;
+  /* Fade in from the display swap — old engines just skip the fade. */
+  @starting-style {
+    opacity: 0;
+  }
+}
+
+.row-passive {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+}
+
+.row:hover .row-passive,
+.row:focus-within .row-passive {
+  display: none;
+}
+
+.row-act {
+  width: 22px;
+  height: 22px;
+  border-radius: var(--r-sm);
+  border: 0;
+  padding: 0;
+  background: transparent;
+  color: var(--ink-3);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.row-act:hover {
+  background: var(--fill-2);
+  color: var(--ink);
+}
+
+.row-act:focus-visible {
+  outline: 2px solid var(--acc);
+  outline-offset: -1px;
+}
+
+.row-count {
+  font-size: var(--t-11);
+  color: var(--ink-3);
+  font-variant-numeric: tabular-nums;
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+}
+
+/* ---------- reading pane ---------- */
+
+.reading-pane {
+  flex: 1;
+  /* A column, so the docked card can be pushed to the pane's bottom edge rather
+     than trailing the last file. On a short changeset those are far apart. */
+  display: flex;
+  flex-direction: column;
+  overflow-y: scroll;
+  scrollbar-gutter: stable;
+  scrollbar-width: thin;
+  scrollbar-color: var(--hair) transparent;
+}
+
+/* The sweep corrects scrollTop by hand for the height it removes above the viewport
+   (see ReadingPane). Native scroll anchoring would compensate a second time, so the
+   two together overshoot — this pane opts out and does it itself. */
+.reading-pane-barred {
+  overflow-anchor: none;
+}
+
+.reading-col {
+  flex: 1 0 auto;
+  padding: var(--s-3) var(--s-8) 120px;
+}
+
+/* The bar is a boundary, not the first card's lid — hold it off by the same
+   var(--s-6) that separates one file from the next, so the rhythm is unbroken. */
+.reading-pane-barred .reading-col {
+  padding-top: var(--s-6);
+}
+
+/* ---------- the burndown bar ---------- */
+
+.pane-bar {
+  position: sticky;
+  top: 0;
+  z-index: 5;
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: var(--s-3);
+  height: 36px;
+  padding: 0 var(--s-8);
+  background: var(--paper);
+  border-bottom: 1px solid var(--hair);
+}
+
+.pane-left {
+  font-family: var(--mono);
+  font-size: var(--t-12);
+  color: var(--ink-3);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.pane-sw {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s-2);
+  flex-shrink: 0;
+  padding: 3px var(--s-3);
+  border: none;
+  border-radius: var(--r-pill);
+  background: none;
+  font: inherit;
+  font-size: var(--t-12);
+  color: var(--ink-3);
+  cursor: pointer;
+  transition:
+    color var(--dur) var(--ease-out),
+    background var(--dur) var(--ease-out);
+}
+
+.pane-sw:hover {
+  background: var(--fill);
+  color: var(--ink);
+}
+
+.pane-sw-on {
+  color: var(--ink);
+}
+
+.pane-sw:focus-visible {
+  outline: 2px solid var(--acc);
+  outline-offset: 1px;
+}
+
+.pane-track {
+  position: relative;
+  flex: 0 0 20px;
+  width: 20px;
+  height: 12px;
+  border-radius: 6px;
+  background: var(--fill-2);
+  transition: background var(--dur) var(--ease-out);
+}
+
+.pane-track i {
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--ink-3);
+  transition:
+    transform var(--dur) var(--ease-out),
+    background var(--dur) var(--ease-out);
+}
+
+.pane-sw-on .pane-track {
+  background: var(--acc);
+}
+
+.pane-sw-on .pane-track i {
+  transform: translateX(8px);
+  background: var(--acc-fg);
+}
+
+.pane-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border: none;
+  border-radius: var(--r-sm);
+  background: none;
+  color: var(--ink-3);
+  cursor: pointer;
+  transition:
+    color var(--dur) var(--ease-out),
+    background var(--dur) var(--ease-out);
+}
+
+.pane-icon:hover {
+  background: var(--fill);
+  color: var(--ink);
+}
+
+.pane-icon[aria-pressed="true"] {
+  background: var(--fill-2);
+  color: var(--ink);
+}
+
+.pane-icon:focus-visible {
+  outline: 2px solid var(--acc);
+  outline-offset: 1px;
+}
+
+/* The panel's own control, at the panel's edge. It never sits lit: an open panel
+   is the normal state, and a permanently filled button is noise. When the panel
+   IS collapsed the icon steps up a tone — something is folded away over there. */
+.pane-nav[aria-pressed="true"] {
+  background: none;
+}
+
+.pane-nav[aria-pressed="false"] {
+  color: var(--ink-2);
+}
+
+.pane-modes {
+  display: inline-flex;
+  align-items: center;
+  gap: 1px;
+  flex: none;
+  padding: 1px;
+  border-radius: var(--r-sm);
+  background: var(--fill);
+}
+
+.pane-modes .pane-icon {
+  width: 22px;
+  height: 22px;
+}
+
+.pane-modes .pane-icon:not([aria-pressed="true"]):hover {
+  background: var(--fill-2);
+}
+
+.pane-act {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s-2);
+  flex: none;
+  height: 24px;
+  padding: 0 var(--s-3);
+  border: none;
+  border-radius: var(--r-sm);
+  background: none;
+  font: inherit;
+  font-size: var(--t-12);
+  color: var(--ink-3);
+  cursor: pointer;
+  transition:
+    color var(--dur) var(--ease-out),
+    background var(--dur) var(--ease-out);
+}
+
+.pane-act:hover {
+  background: var(--fill);
+  color: var(--ink);
+}
+
+.pane-act:focus-visible {
+  outline: 2px solid var(--acc);
+  outline-offset: 1px;
+}
+
+.pane-sep {
+  flex: none;
+  width: 1px;
+  height: 16px;
+  margin: 0 var(--s-1);
+  background: var(--hair);
+}
+
+.reading-pane-barred .file-header {
+  top: 36px;
+}
+
+.empty-acts {
+  display: flex;
+  align-items: center;
+  gap: var(--s-3);
+  margin-top: var(--s-6);
+}
+
+/* ---------- the finished state ---------- */
+
+.pane-done {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  padding: 68px var(--s-8) 56px;
+}
+
+.pane-done h2 {
+  margin: 0;
+  font-size: 21px;
+  font-weight: 600;
+  color: var(--ink);
+  animation: done-rise 0.5s var(--ease-out) 0.82s both;
+}
+
+/* The count, as a bar. A sentence makes you read a number; the bar is the number. */
+.done-meter {
+  width: min(300px, 100%);
+  margin-top: var(--s-6);
+  animation: done-rise 0.5s var(--ease-out) 0.96s both;
+}
+
+.done-bar {
+  height: 6px;
+  border-radius: 3px;
+  background: var(--fill);
+  overflow: hidden;
+}
+
+.done-bar i {
+  display: block;
+  height: 100%;
+  background: var(--acc);
+  transform-origin: left;
+  transform: scaleX(var(--p, 1));
+  animation: done-fill 0.85s var(--ease-out) 1.02s both;
+}
+
+.done-stats {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-wrap: wrap;
+  gap: var(--s-2) var(--s-5);
+  margin-top: var(--s-4);
+  font-size: var(--t-125);
+  color: var(--ink-2);
+}
+
+.done-stat {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.done-size {
+  gap: var(--s-2);
+  font-family: var(--mono);
+  font-variant-numeric: tabular-nums;
+}
+
+.done-unsent {
+  gap: 4px;
+  padding: 1px var(--s-2) 1px 5px;
+  border: 1px solid var(--attn-line);
+  border-radius: var(--r-pill);
+  background: var(--attn-wash);
+  color: var(--attn);
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+}
+
+.pane-done .empty-acts {
+  animation: done-rise 0.5s var(--ease-out) 1.08s both;
+}
+
+.done-n {
+  font-family: var(--mono);
+  font-variant-numeric: tabular-nums;
+  color: var(--ink);
+}
+
+/* ---------- the payoff, docked ----------
+ * The same component as the celebration above, in the shape it takes when files are
+ * still on screen behind it.
+ *
+ * Last in the pane's flow and `sticky bottom: 0`, which pins it to the bottom of the
+ * scrollport for the entire scroll and lets it settle after the content at the end.
+ * `fixed` would escape the pane and float over the rail; absolute would scroll away
+ * with the content; first-in-flow would take its height out of the top.
+ *
+ * Sticky alone only reaches the bottom edge when the content is tall enough to push
+ * it there; on a three-file changeset it stranded the card mid-pane. The column above
+ * grows into the spare height, so the card's flow position IS the bottom either way.
+ */
+.done-card {
+  position: sticky;
+  bottom: 0;
+  z-index: 6;
+  flex: none;
+  margin: 0 var(--s-8) var(--s-6);
+  padding: 14px 16px;
+  border: 1px solid var(--hair);
+  border-radius: 12px;
+  background: var(--paper);
+  box-shadow: var(--lift);
+  animation: done-dock 0.52s cubic-bezier(0.18, 1.3, 0.34, 1) both;
+}
+
+/* It arrives from under the bottom edge and overshoots by a hair, then the row
+ * lights up left to right — seal, sentence, action. Over in ~0.8s: a payoff, not a
+ * cutscene. The single easing carries the opacity past 1 early, so the card is
+ * solid before it stops moving. */
+.done-card .done-seal {
+  position: relative;
+  animation: done-seal-pop 0.44s cubic-bezier(0.2, 1.55, 0.35, 1) 0.14s both;
+}
+
+/* The ring the full-size seal throws, once, at this scale. */
+.done-card .done-seal::after {
+  content: "";
+  position: absolute;
+  inset: -2px;
+  border-radius: var(--r-pill);
+  border: 1.5px solid var(--acc);
+  animation: seal-ring 0.8s var(--ease-out) 0.44s both;
+}
+
+.done-card .done-said {
+  animation: done-line 0.42s var(--ease-out) 0.2s both;
+}
+
+.done-card .done-acts {
+  animation: done-line 0.42s var(--ease-out) 0.27s both;
+}
+
+.done-card .done-caveat {
+  animation: done-line 0.42s var(--ease-out) 0.32s both;
+}
+
+.done-card .done-close {
+  animation: fade-in 0.3s var(--ease-out) 0.4s both;
+}
+
+.done-card-row {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+.done-seal {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  border-radius: var(--r-pill);
+  border: 1.5px solid var(--acc);
+  color: var(--acc);
+}
+
+/* The payoff, full size: a filled disc that pops, draws its tick, then throws a
+ * ring and a spark burst. The order is the point — you watch it get sealed. */
+.done-seal-drawn {
+  position: relative;
+  width: 52px;
+  height: 52px;
+  margin-bottom: var(--s-6);
+  border: 0;
+  background: var(--acc);
+  color: var(--acc-fg);
+  animation: seal-in 0.62s cubic-bezier(0.2, 1.6, 0.35, 1) 0.06s both;
+}
+
+.done-seal-drawn::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: var(--r-pill);
+  border: 2px solid var(--acc);
+  animation: seal-ring 0.95s var(--ease-out) 0.82s both;
+}
+
+.done-tick {
+  position: relative;
+  z-index: 1;
+}
+
+.done-tick path {
+  /* ~21 user units of path; 22 clears it with room to spare. */
+  stroke-dasharray: 22;
+  animation: tick-draw 0.5s cubic-bezier(0.65, 0, 0.35, 1) 0.44s both;
+}
+
+.done-spark {
+  position: absolute;
+  inset: 0;
+}
+
+.done-spark i {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 2.5px;
+  height: 10px;
+  margin: -5px 0 0 -1.25px;
+  border-radius: 2px;
+  background: var(--acc);
+  transform: rotate(var(--a)) translateY(-28px);
+  animation: spark-out 0.66s cubic-bezier(0.2, 0.8, 0.3, 1) 0.78s both;
+}
+
+.done-spark i:nth-child(1) {
+  --a: 0deg;
+}
+.done-spark i:nth-child(2) {
+  --a: 45deg;
+}
+.done-spark i:nth-child(3) {
+  --a: 90deg;
+}
+.done-spark i:nth-child(4) {
+  --a: 135deg;
+}
+.done-spark i:nth-child(5) {
+  --a: 180deg;
+}
+.done-spark i:nth-child(6) {
+  --a: 225deg;
+}
+.done-spark i:nth-child(7) {
+  --a: 270deg;
+}
+.done-spark i:nth-child(8) {
+  --a: 315deg;
+}
+
+/* Every other ray shorter and later: an even burst reads mechanical. */
+.done-spark i:nth-child(even) {
+  height: 6px;
+  opacity: 0.5;
+  animation-delay: 0.86s;
+}
+
+.done-said {
+  flex: 1;
+  min-width: 0;
+}
+
+.done-head {
+  display: block;
+  font-size: var(--t-14);
+  font-weight: 600;
+  color: var(--ink);
+}
+
+.done-card .done-stats {
+  justify-content: flex-start;
+  gap: var(--s-1) var(--s-4);
+  margin-top: 3px;
+  color: var(--ink-3);
+}
+
+.done-acts {
+  flex: none;
+}
+
+.done-close {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border: none;
+  border-radius: var(--r-sm);
+  background: none;
+  color: var(--ink-3);
+  cursor: pointer;
+  transition:
+    color var(--dur) var(--ease-out),
+    background var(--dur) var(--ease-out);
+}
+
+.done-close:hover {
+  background: var(--fill);
+  color: var(--ink);
+}
+
+.done-close:focus-visible {
+  outline: 2px solid var(--acc);
+  outline-offset: 1px;
+}
+
+/* ---------- the landed offer ----------
+ * The previous review's changeset was committed away; this suggests the fresh
+ * start. Full shape reuses .empty-state — this is the docked banner sitting
+ * above a NEW diff whose review still carries the old round. Quiet on purpose:
+ * a suggestion, not a payoff, so no animation and no accent seal. */
+.landed-card {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  margin-bottom: var(--s-6);
+  padding: 12px 16px;
+  border: 1px solid var(--hair);
+  border-radius: 12px;
+  background: var(--paper);
+  box-shadow: var(--lift);
+}
+
+.landed-seal {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  border-radius: var(--r-pill);
+  border: 1.5px solid var(--ink-3);
+  color: var(--ink-3);
+}
+
+.landed-said {
+  flex: 1;
+  min-width: 0;
+  font-size: var(--t-14);
+  color: var(--ink-2);
+}
+
+.landed-acts {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: var(--s-3);
+}
+
+.landed-sha {
+  font-family: var(--mono);
+  font-variant-numeric: tabular-nums;
+  color: var(--ink);
+}
+
+.landed-subject {
+  color: var(--ink);
+}
+
+.landed-full .landed-sha,
+.landed-full .landed-subject {
+  color: var(--ink-2);
+}
+
+.cov-note-error {
+  color: var(--danger);
+}
+
+.done-caveat {
+  display: flex;
+  align-items: center;
+  gap: var(--s-3);
+  margin-top: var(--s-4);
+  padding-top: 11px;
+  border-top: 1px solid var(--hair);
+  font-size: var(--t-125);
+  color: var(--ink-2);
+  text-align: left;
+}
+
+.done-caveat .icon {
+  flex: none;
+  color: var(--attn);
+}
+
+.done-caveat-text {
+  flex: 1;
+}
+
+.done-caveat-act {
+  flex: none;
+  height: 24px;
+  padding: 0 10px;
+  border: 1px solid var(--hair);
+  border-radius: var(--r-sm);
+  background: none;
+  font: inherit;
+  font-size: var(--t-12);
+  color: var(--ink-2);
+  cursor: pointer;
+  white-space: nowrap;
+  transition:
+    background var(--dur) var(--ease-out),
+    border-color var(--dur) var(--ease-out);
+}
+
+.done-caveat-act:hover {
+  background: var(--fill);
+  border-color: var(--ink-3);
+  color: var(--ink);
+}
+
+.pane-done .done-caveat {
+  max-width: 48ch;
+  margin-top: var(--s-6);
+  animation: done-rise 0.5s var(--ease-out) 1.02s both;
+}
+
+@keyframes done-dock {
+  from {
+    opacity: 0;
+    transform: translateY(78px) scale(0.97);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@keyframes done-seal-pop {
+  from {
+    opacity: 0;
+    transform: scale(0.3) rotate(-30deg);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1) rotate(0);
+  }
+}
+
+@keyframes done-line {
+  from {
+    opacity: 0;
+    transform: translateY(7px);
+  }
+}
+
+@keyframes done-rise {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+}
+
+@keyframes done-fill {
+  from {
+    transform: scaleX(0);
+  }
+}
+
+@keyframes seal-in {
+  from {
+    opacity: 0;
+    transform: scale(0.5);
+  }
+}
+
+@keyframes spark-out {
+  0% {
+    opacity: 0;
+    transform: rotate(var(--a)) translateY(-26px) scaleY(0.3);
+  }
+  25% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+    transform: rotate(var(--a)) translateY(-46px) scaleY(1);
+  }
+}
+
+@keyframes seal-ring {
+  from {
+    opacity: 0.4;
+    transform: scale(1);
+  }
+  to {
+    opacity: 0;
+    transform: scale(2.1);
+  }
+}
+
+@keyframes tick-draw {
+  from {
+    stroke-dashoffset: 22;
+  }
+  to {
+    stroke-dashoffset: 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .done-seal-drawn,
+  .done-seal-drawn::after,
+  .done-spark i,
+  .done-tick path,
+  .done-bar i,
+  .pane-done h2,
+  .done-meter,
+  .pane-done .empty-acts,
+  .pane-done .done-caveat,
+  .done-card,
+  .done-card .done-seal,
+  .done-card .done-said,
+  .done-card .done-acts,
+  .done-card .done-caveat,
+  .done-card .done-close {
+    animation: none;
+  }
+
+  .done-seal-drawn::after,
+  .done-card .done-seal::after,
+  .done-spark {
+    display: none;
+  }
+
+  .done-tick path {
+    stroke-dasharray: none;
+  }
+}
+
+.reading-pane::-webkit-scrollbar,
+.rail-scroll::-webkit-scrollbar {
+  width: 12px;
+}
+
+.reading-pane::-webkit-scrollbar-thumb,
+.rail-scroll::-webkit-scrollbar-thumb {
+  background: var(--border);
+  border-radius: 6px;
+  border: 3px solid var(--bg);
+  background-clip: padding-box;
+}
+
+.reading-pane::-webkit-scrollbar-thumb:hover,
+.rail-scroll::-webkit-scrollbar-thumb:hover {
+  background: var(--fg-muted);
+  border: 3px solid var(--bg);
+  background-clip: padding-box;
+}
+
+.reading-pane::-webkit-scrollbar-track,
+.rail-scroll::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+/* ---------- the file card ---------- */
+
+.file-section {
+  margin-bottom: var(--s-6);
+  border: 1px solid var(--hair);
+  border-radius: var(--r);
+  /* `clip`, never `hidden`: hidden makes this box the sticky containing block, which
+   * silently disables the file header's stickiness. clip keeps the rounded-corner
+   * clipping without creating a scroll container. */
+  overflow: clip;
+  background: var(--paper);
+  scroll-margin-top: var(--s-3);
+}
+
+/* ---------- file header: GitHub's anatomy, in GitHub's order ---------- */
+.file-header {
+  display: flex;
+  align-items: center;
+  gap: var(--s-3);
+  min-height: 42px;
+  padding: 5px var(--s-3) 5px var(--s-2);
+  background: var(--fill);
+  border-bottom: 1px solid var(--hair);
+  position: sticky;
+  top: 0;
+  z-index: 3;
+  cursor: pointer;
+  user-select: none;
+}
+
+.file-section-collapsed .file-header {
+  border-bottom: none;
+}
+
+.file-chevron {
+  color: var(--ink-3);
+  flex-shrink: 0;
+  padding: 0 var(--s-0);
+  background: none;
+  border: 0;
+  cursor: pointer;
+}
+
+.file-status {
+  font-size: 11.5px;
+  color: var(--ink-3);
+  flex: 0 0 auto;
+}
+
+.file-status-added {
+  color: var(--add);
+}
+
+.file-status-deleted {
+  color: var(--del);
+}
+
+.file-since {
+  flex: 0 0 auto;
+  padding: 3px var(--s-2);
+  border-radius: var(--r-pill);
+  background: var(--attn-wash);
+  color: var(--attn);
+  font-size: var(--t-11);
+  font-family: var(--sans);
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.file-path {
+  font-family: var(--mono);
+  font-size: var(--t-125);
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.file-dir {
+  color: var(--ink-3);
+}
+
+.file-base {
+  color: var(--ink);
+  font-weight: 600;
+}
+
+.file-oldpath {
+  color: var(--ink-3);
+  text-decoration: line-through;
+}
+
+.ghb {
+  position: relative;
+  width: 26px;
+  height: 26px;
+  border-radius: var(--r-sm);
+  border: 0;
+  padding: 0;
+  background: transparent;
+  color: var(--ink-3);
+  cursor: pointer;
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition:
+    background 0.13s,
+    color 0.13s;
+}
+
+.ghb:hover {
+  background: var(--fill-2);
+  color: var(--ink);
+}
+
+.ghb:focus-visible {
+  outline: 2px solid var(--acc);
+  outline-offset: -1px;
+}
+
+.file-copy {
+  opacity: 0;
+  transition: opacity 0.14s;
+}
+
+.file-header:hover .file-copy,
+.file-copy:focus-visible {
+  opacity: 1;
+}
+
+.ghb-badge {
+  position: absolute;
+  top: -1px;
+  right: -1px;
+  min-width: 13px;
+  height: 13px;
+  border-radius: var(--r-pill);
+  background: var(--acc);
+  color: var(--acc-fg);
+  font-size: 9px;
+  font-weight: 700;
+  line-height: 13px;
+  text-align: center;
+  font-family: var(--sans);
+  padding: 0 3px;
+}
+
+.dstat {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  flex: 0 0 auto;
+  font-family: var(--mono);
+  font-size: 11.5px;
+  font-variant-numeric: tabular-nums;
+}
+
+.sq {
+  display: flex;
+  gap: 2px;
+}
+
+.sq i {
+  width: 8px;
+  height: 8px;
+  border-radius: 2px;
+  background: var(--hair-2);
+  display: block;
+  box-shadow: inset 0 0 0 1px var(--hair);
+}
+
+.sq i.sq-a {
+  background: var(--add);
+  box-shadow: none;
+}
+
+.sq i.sq-d {
+  background: var(--del);
+  box-shadow: none;
+}
+
+.file-stub {
+  padding: var(--s-6) var(--s-5);
+  color: var(--ink-3);
+}
+
+.file-stub-large {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--s-2) var(--s-4);
+}
+
+/* ---------- hunks ---------- */
+
+.hunk-boundary td {
+  padding: 0;
+  background: var(--fill);
+  border-top: 1px solid var(--hair);
+  border-bottom: 1px solid var(--hair);
+}
+
+.hunk:first-child .hunk-boundary td {
+  border-top: 0;
+}
+
+.hunk-boundary-bar {
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+  /* No left padding: the expander cluster sits flush in the gutter, GitHub-style. */
+  padding: 0 var(--s-3) 0 0;
+  min-height: 27px;
+  font-family: var(--mono);
+  font-size: var(--t-11);
+  font-variant-numeric: tabular-nums;
+  color: var(--ink-3);
+}
+
+/* A band that opens with text (no expanders) restores its own left inset. */
+.hunk-boundary-bar > .hunk-at:first-child {
+  margin-left: var(--s-3);
+}
+
+.hunk-at {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.hunk-at-scope {
+  color: var(--ink-2);
+}
+
+/* ---------- the diff ---------- */
+
+.hunk-lines {
+  width: 100%;
+  border-collapse: collapse;
+  font-family: var(--mono);
+  font-size: var(--t-125);
+  line-height: 1.65;
+  --line-h: calc(1.65 * var(--t-125));
+}
+
+/*
+ * A *blank* context line has no inline content, so its cells produce no line box and
+ * the row came out 3px shorter than its neighbours. On a table row `height` is a
+ * minimum, so a wrapped line still grows past it.
+ */
+.hunk-lines tr.line {
+  height: var(--line-h);
+}
+
+.line:hover {
+  background: var(--fill);
+}
+
+.line-no {
+  position: relative;
+  width: 1%;
+  min-width: 2.9em;
+  padding: 0 0.7em;
+  text-align: right;
+  color: var(--ink-3);
+  font-size: var(--t-11);
+  user-select: none;
+  vertical-align: top;
+  font-variant-numeric: tabular-nums;
+}
+
+.line-no + .line-no {
+  border-right: 1px solid var(--hair);
+}
+
+.line-marker {
+  width: 1%;
+  padding: 0 0.35em;
+  text-align: center;
+  font-weight: 600;
+  color: var(--ink-3);
+  user-select: none;
+  vertical-align: top;
+}
+
+.line-code {
+  padding: 0 0.6em 0 0.5em;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.line-add {
+  background: var(--add-row);
+}
+
+.line-add .line-marker {
+  color: var(--add);
+  box-shadow: inset 2px 0 0 var(--add);
+}
+
+.line-del {
+  background: var(--del-row);
+}
+
+.line-del .line-marker {
+  color: var(--del);
+  box-shadow: inset 2px 0 0 var(--del);
+}
+
+.line-add .word-changed,
+.line-half-add .word-changed {
+  background: var(--add-word);
+  border-radius: 3px;
+  box-shadow: 0 0 0 1px var(--add-word);
+}
+
+.line-del .word-changed,
+.line-half-del .word-changed {
+  background: var(--del-word);
+  border-radius: 3px;
+  box-shadow: 0 0 0 1px var(--del-word);
+}
+
+/*
+ * Viewed fades the *code*, not the conversation. The opacity used to sit on the
+ * table, and a table's opacity takes its thread rows down with it — so a live comment
+ * on a file you'd ticked Viewed rendered greyed out. A child cannot undo an
+ * ancestor's opacity, so the fade sits on the code rows and leaves `.thread-row` at
+ * full strength.
+ */
+.hunk-viewed .hunk-lines > tbody > tr.line,
+.hunk-viewed .hunk-lines > tbody > tr.hunk-boundary {
+  opacity: 0.45;
+}
+
+.hunk-selected {
+  box-shadow: inset 2px 0 0 var(--acc-line);
+}
+
+/*
+ * Gap expanders — GitHub's, on purpose. The cluster sits flush against the band's
+ * left edge, roughly over the line-number gutter; a big gap stacks two half-height
+ * buttons (down over up, each pointing at the region it reveals), a gap that fits
+ * one step shows a single unfold-all. Hover floods the button GitHub-blue.
+ */
+.gap-x {
+  display: flex;
+  flex-direction: column;
+  align-self: stretch;
+  flex: none;
+  width: 3em;
+}
+
+.gap-btn {
+  flex: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 0;
+  padding: 0;
+  min-height: 0;
+  background: var(--exp-wash);
+  color: var(--exp-ink);
+  cursor: pointer;
+  font: inherit;
+  transition:
+    background var(--dur) var(--ease-out),
+    color var(--dur) var(--ease-out);
+}
+
+.gap-btn:hover {
+  background: var(--exp-hover);
+  color: var(--exp-hover-fg);
+}
+
+/* Re-fold — chrome, not GitHub: an achromatic control like every other one. */
+.gap-fold {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  align-self: stretch;
+  border: 0;
+  background: transparent;
+  color: var(--ink-3);
+  border-radius: var(--r-sm);
+  padding: 0 var(--s-2);
+  min-width: 28px;
+  cursor: pointer;
+  font: inherit;
+}
+
+.gap-fold:hover {
+  background: var(--fill-2);
+  color: var(--ink);
+}
+
+/* A fully opened gap: the band collapses to a hairline of plain paper so the
+ * context reads as one continuous run, keeping only the re-fold control. */
+.hunk-boundary-merged td {
+  background: transparent;
+  border-top: 0;
+  border-bottom: 0;
+}
+
+.hunk-boundary-merged .hunk-boundary-bar {
+  min-height: 0;
+}
+
+.hunk-boundary-merged .gap-fold {
+  margin-left: var(--s-1);
+  padding: 0 var(--s-2);
+  min-height: 16px;
+  opacity: 0.55;
+}
+
+.hunk-boundary-merged .gap-fold:hover {
+  opacity: 1;
+}
+
+/* The tail band — a gap with no hunk below it to host the controls. */
+.gap-band .hunk-boundary td {
+  border-bottom: 0;
+}
+
+.hunk-expand-failed {
+  padding: 3px var(--s-2);
+  border-radius: var(--r-pill);
+  background: var(--attn-wash);
+  color: var(--attn);
+  font-family: var(--sans);
+  white-space: nowrap;
+}
+
+.hunk-lines-split {
+  table-layout: fixed;
+}
+
+.hunk-lines-split .line-no {
+  width: 3.2em;
+  min-width: 3.2em;
+  padding: 0 0.6em;
+}
+
+.line-half {
+  width: 50%;
+  padding: 0 1em 0 0.4em;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.line-half-add {
+  background: var(--add-bg);
+}
+
+.line-half-del {
+  background: var(--del-bg);
+}
+
+.line-half-empty {
+  background: var(--bg-subtle);
+  opacity: 0.5;
+}
+
+.image-diff {
+  display: flex;
+  gap: 1rem;
+  padding: 1rem;
+  justify-content: center;
+}
+
+.image-side {
+  margin: 0;
+  text-align: center;
+}
+
+.image-side img {
+  max-width: 100%;
+  max-height: 420px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+}
+
+.image-side-base img {
+  border-color: var(--del-fg);
+}
+
+.image-side-head img {
+  border-color: var(--add-fg);
+}
+
+.image-side figcaption {
+  color: var(--fg-muted);
+  font-size: 12px;
+  margin-top: 0.3rem;
+}
+
+/* Same chip language as the Viewed toggle beside it — a tiny icon-only ghost
+ * button was invisible, and preview is the main way to read a doc file. */
+.file-preview-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s-2);
+  flex: 0 0 auto;
+  height: 26px;
+  padding: 0 9px;
+  border-radius: var(--r-sm);
+  border: 1px solid var(--hair);
+  background: var(--paper);
+  font: inherit;
+  font-size: var(--t-125);
+  color: var(--ink-2);
+  cursor: pointer;
+  transition:
+    border-color 0.13s,
+    color 0.13s;
+}
+
+.file-preview-btn:hover {
+  border-color: var(--ink-3);
+  color: var(--ink);
+}
+
+.file-preview-btn:focus-visible {
+  outline: 2px solid var(--acc);
+  outline-offset: 1px;
+}
+
+.file-preview-btn .icon {
+  color: var(--ink-3);
+}
+
+.file-preview-btn:hover .icon {
+  color: var(--ink-2);
+}
+
+.file-viewed-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s-2);
+  flex: 0 0 auto;
+  height: 26px;
+  padding: 0 9px;
+  border-radius: var(--r-sm);
+  border: 1px solid var(--hair);
+  background: var(--paper);
+  font: inherit;
+  font-size: var(--t-125);
+  color: var(--ink-2);
+  cursor: pointer;
+  transition:
+    border-color 0.13s,
+    color 0.13s;
+}
+
+.file-viewed-toggle:hover {
+  border-color: var(--ink-3);
+  color: var(--ink);
+}
+
+.file-viewed-toggle .markbox {
+  width: 14px;
+  height: 14px;
+  flex: 0 0 14px;
+}
+
+.file-viewed-toggle[aria-pressed="true"] {
+  color: var(--ink);
+}
+
+.file-viewed-toggle:focus-visible {
+  outline: 2px solid var(--acc);
+  outline-offset: 1px;
+}
+
+.hunk-badge {
+  margin-left: var(--s-4);
+  padding: 3px var(--s-2);
+  border-radius: var(--r-pill);
+  background: var(--attn-wash);
+  color: var(--attn);
+  font-size: var(--t-11);
+  font-family: var(--sans);
+}
+
+.hunk-since-review {
+  box-shadow: inset 2px 0 0 var(--attn);
+}
+
+@keyframes hunk-pulse {
+  from {
+    box-shadow: inset 2px 0 0 var(--attn);
+    background: var(--attn-wash);
+  }
+  to {
+    box-shadow: inset 2px 0 0 transparent;
+    background: transparent;
+  }
+}
+
+.hunk-fresh {
+  animation: hunk-pulse 2.5s ease-out;
+}
+
+/* Picking a thread scrolls the page out from under you, so the card that landed
+ * says so itself: a ring that fades over a beat, the same gesture a fresh hunk
+ * makes. Loud enough to catch the eye, gone before it can nag. */
+@keyframes thread-found {
+  0% {
+    box-shadow: 0 0 0 0 transparent;
+  }
+  22% {
+    box-shadow: 0 0 16px 1px var(--found);
+  }
+  55% {
+    box-shadow: 0 0 16px 1px var(--found);
+  }
+  100% {
+    box-shadow: 0 0 22px 4px transparent;
+  }
+}
+
+/* A halo, not a ring: blurred and mostly transparent, so it reads as light landing
+ * on the card rather than a border drawn around it. Eased in and out, and never
+ * linear — a hard-edged ring at full accent was a slap where a glance was wanted. */
+.thread[data-found] {
+  --found: color-mix(in srgb, var(--acc) 26%, transparent);
+  animation: thread-found 1.6s ease-in-out;
+}
+
+/* A file card gets the same greeting at the only scale that works for it. Haloing
+ * the card would light the window's edges — the card is taller than the screen —
+ * so the header takes it: the one band that always lands where the reader looks. */
+@keyframes file-found {
+  0%,
+  100% {
+    background: var(--fill);
+  }
+  22%,
+  55% {
+    background: color-mix(in srgb, var(--acc) 14%, var(--fill));
+  }
+}
+
+.file-section[data-found] > .file-header {
+  animation: file-found 1.6s ease-in-out;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .file-section[data-found] > .file-header {
+    animation: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .thread[data-found] {
+    animation: none;
+  }
+}
+
+/* ---------- states ---------- */
+
+.center-note {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  align-items: center;
+  justify-content: center;
+  gap: var(--s-3);
+  padding: var(--s-8);
+  color: var(--ink-3);
+  text-align: center;
+}
+
+.center-note h2 {
+  margin: 0;
+  font-size: var(--t-17);
+  font-weight: 600;
+  color: var(--ink);
+}
+
+.center-note p {
+  margin: 0;
+  max-width: 52ch;
+  font-size: 13.5px;
+}
+
+.center-note-error svg {
+  color: var(--danger);
+}
+
+.center-note-error p {
+  font-family: var(--mono);
+  font-size: var(--t-125);
+  color: var(--ink-2);
+}
+
+.shimmer {
+  width: min(340px, 60vw);
+  height: 11px;
+  border-radius: var(--r-sm);
+  margin-bottom: var(--s-0);
+  background: linear-gradient(90deg, var(--fill) 25%, var(--fill-2) 37%, var(--fill) 63%);
+  background-size: 400% 100%;
+  animation: shimmer 1.5s linear infinite;
+}
+
+.shimmer-short {
+  width: min(220px, 40vw);
+  margin-bottom: var(--s-4);
+}
+
+@keyframes shimmer {
+  0% {
+    background-position: 100% 0;
+  }
+  100% {
+    background-position: 0 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .shimmer {
+    animation: none;
+  }
+}
+
+.load-more {
+  padding: var(--s-6) 0;
+}
+
+/* The end of the list, and the one thing you might not know standing at it: some
+ * files never came. No rule — the cards above already have edges, and a second one
+ * spanning a different width just looked like a seam. */
+.pane-hidden {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-wrap: wrap;
+  gap: var(--s-2) var(--s-4);
+  margin: var(--s-6) auto var(--s-8);
+  font-size: var(--t-125);
+  color: var(--ink-3);
+}
+
+.pane-hidden-said {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s-2);
+}
+
+.pane-hidden-said .icon {
+  color: var(--ink-3);
+}
+
+.empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 5px;
+  padding: 52px var(--s-8);
+  text-align: center;
+  color: var(--ink-3);
+}
+
+.empty-state svg {
+  color: var(--ink-3);
+  margin-bottom: var(--s-4);
+}
+
+.empty-state h2 {
+  margin: 0;
+  font-size: var(--t-17);
+  font-weight: 600;
+  color: var(--ink);
+}
+
+.empty-state p {
+  margin: 0;
+  max-width: 44ch;
+  font-size: var(--t-14);
+}
+
+/* ---------- comment loop ---------- */
+
+/*
+ * Absolute, not floated: as a hidden float it still took part in layout and pushed
+ * the line number onto a second line in the 2.5em gutter, so context rows ran 31px
+ * against 20px and the whole diff jittered. On hover it covers the number.
+ */
+.line-comment-btn {
+  position: absolute;
+  left: 1px;
+  top: 50%;
+  transform: translateY(-50%);
+  opacity: 0;
+  width: 18px;
+  height: 18px;
+  padding: 0;
+  border: none;
+  border-radius: var(--r-sm);
+  background: var(--acc);
+  color: var(--acc-fg);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.line-comment-btn svg {
+  width: 11px;
+  height: 11px;
+}
+
+tr:hover .line-comment-btn {
+  opacity: 1;
+}
+
+.line-comment-btn:focus-visible {
+  opacity: 1;
+}
+
+.thread-row > td {
+  padding: 0.35rem 0.8rem;
+  background: var(--bg-subtle);
+  border-top: 1px solid var(--border);
+  border-bottom: 1px solid var(--border);
+}
+
+.thread-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.thread {
+  border: 1px solid var(--hair);
+  border-radius: var(--r);
+  background: var(--paper);
+  font-family: var(--sans);
+  font-size: var(--t-13);
+  max-width: var(--conv);
+  overflow: hidden;
+  /* Picking a thread in the pane scrolls it to the TOP of the reading pane, and
+   * "top" is under up to two sticky lids: the burndown bar (36px) and, inside a
+   * file card, that file's header (42px). Hold the card off by whichever apply,
+   * plus a hairline of air, or the lids sit on the first line of the comment. */
+  scroll-margin-top: var(--s-3);
+}
+
+.file-section .thread {
+  scroll-margin-top: 50px;
+}
+
+.reading-pane-barred .thread {
+  scroll-margin-top: 44px;
+}
+
+.reading-pane-barred .file-section .thread {
+  scroll-margin-top: 86px;
+}
+
+.thread-resolved {
+  opacity: 0.6;
+}
+
+/* The card is banded, GitHub-style: a slim head that says where the comment landed
+ * and folds it away, the conversation on paper, and a tinted foot that holds the
+ * reply field and the two ways out. The bands are what keep a two-line thread from
+ * reading as a stray line of text dropped into the diff. */
+.thread-head {
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+  padding: 5px var(--s-4) 5px var(--s-2);
+  border-bottom: 1px solid var(--hair);
+  background: var(--hair-2);
+  font-size: var(--t-12);
+  color: var(--ink-3);
+}
+
+.thread-shut {
+  padding: 3px;
+  border: 0;
+  border-radius: var(--r-sm);
+  background: none;
+  cursor: pointer;
+}
+
+.thread-shut:hover {
+  color: var(--ink);
+  background: var(--fill-2);
+}
+
+/* The badges keep their width, so the anchor label is what gives when the head
+   runs out of room. */
+.thread-where {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.thread-where-n {
+  color: var(--ink-3);
+  font-variant-numeric: tabular-nums;
+}
+
+/* Struck through the same way the rail strikes it — the path is where the comment
+   landed, and that place is gone. */
+.thread-where-gone {
+  font-family: var(--mono);
+  text-decoration: line-through;
+}
+
+.thread-shut-peek {
+  display: block;
+  width: 100%;
+  padding: var(--s-3) var(--s-5);
+  border: 0;
+  background: none;
+  color: var(--ink-2);
+  font: inherit;
+  font-size: var(--t-13);
+  text-align: left;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  cursor: pointer;
+}
+
+.thread-shut-peek:hover {
+  background: var(--hair-2);
+}
+
+.thread-marks {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s-2);
+  margin-left: auto;
+}
+
+.thread-collapsed {
+  border-bottom: 0;
+}
+
+.thread-collapsed .thread-collapsed-summary {
+  padding: var(--s-1) 0;
+}
+
+.thread-spacer {
+  flex: 1;
+}
+
+/* ---------- chips: one tone per meaning, no borders ---------- */
+
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 11.5px;
+  font-weight: 500;
+  border-radius: var(--r-pill);
+  padding: 3px 9px;
+  flex: 0 0 auto;
+  font-variant-numeric: tabular-nums;
+}
+
+.chip-mute {
+  color: var(--ink-3);
+  background: var(--fill);
+}
+
+.chip-ok {
+  color: var(--add);
+  background: var(--add-tint);
+}
+
+.chip-attn {
+  color: var(--attn);
+  background: var(--attn-wash);
+}
+
+.thread-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  flex: 0 0 auto;
+  white-space: nowrap;
+  padding: 3px var(--s-2);
+  border-radius: var(--r-pill);
+  background: var(--attn-wash);
+  color: var(--attn);
+  font-size: var(--t-11);
+}
+
+.thread-message-pending {
+  opacity: 0.9;
+}
+
+.thread-message-pending .cmt-when {
+  color: var(--ink-3);
+}
+
+.pending-dots {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 0;
+}
+
+.pending-dots i {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--ink-3);
+  opacity: 0.5;
+}
+
+.thread-message-unanswered {
+  opacity: 1;
+}
+
+.thread-message-unanswered .cmt-when {
+  font-style: italic;
+}
+
+.pending-none {
+  color: var(--ink-3);
+  font-size: 12px;
+}
+
+.thread-copied {
+  color: var(--add-fg);
+  font-size: 12px;
+}
+
+.thread-context-toggle {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  border: none;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg-subtle);
+  color: var(--ink-3);
+  font: inherit;
+  font-size: var(--t-125);
+  padding: 5px var(--s-4);
+  cursor: pointer;
+  text-align: left;
+}
+
+.thread-context-toggle:hover {
+  color: var(--ink-2);
+}
+
+.thread-context-n {
+  margin-left: auto;
+  font-size: var(--t-11);
+  opacity: 0.75;
+}
+
+.thread-context {
+  margin: 0 var(--s-4) var(--s-3);
+  padding: 0.35rem 0;
+  border: 1px solid var(--hair);
+  border-radius: var(--r-sm);
+  background: var(--paper);
+  font-family: var(--mono);
+  font-size: 11px;
+  overflow-x: auto;
+  white-space: pre;
+}
+
+.ctx-line {
+  display: block;
+  padding: 0 0.6rem;
+}
+
+.ctx-add {
+  background: var(--add-bg);
+}
+
+.ctx-del {
+  background: var(--del-bg);
+}
+
+/* ---------- the thread: GitHub's thread shape ---------- */
+
+.thread-messages {
+  display: flex;
+  flex-direction: column;
+}
+
+.cmt {
+  padding: var(--s-4) var(--s-5);
+}
+
+.cmt + .cmt {
+  border-top: 1px solid var(--hair-2);
+}
+
+.cmt-head {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--s-1) var(--s-3);
+  margin-bottom: 5px;
+}
+
+.cmt-who {
+  font-size: var(--t-13);
+  font-weight: 600;
+  color: var(--ink);
+}
+
+.cmt-who-reviewer {
+  color: var(--acc);
+}
+
+.cmt-who-agent {
+  color: var(--attn);
+}
+
+.cmt-when {
+  font-size: var(--t-12);
+  color: var(--ink-3);
+  font-variant-numeric: tabular-nums;
+}
+
+.cmt-body {
+  font-size: var(--t-14);
+  line-height: 1.6;
+  color: var(--ink);
+  padding-left: 30px;
+}
+
+.cmt-body > :is(p, ul, ol, blockquote, h1, h2, h3, h4, h5, h6) {
+  max-width: 88ch;
+}
+
+/* ---------- rendered markdown ---------- */
+
+.markdown > *:first-child {
+  margin-top: 0;
+}
+
+.markdown > *:last-child {
+  margin-bottom: 0;
+}
+
+.markdown p,
+.markdown ul,
+.markdown ol,
+.markdown blockquote,
+.markdown pre {
+  margin: 0 0 var(--s-4);
+}
+
+.markdown ul,
+.markdown ol {
+  padding-left: var(--s-7);
+}
+
+.markdown li {
+  margin-bottom: 3px;
+}
+
+.markdown code {
+  font-family: var(--mono);
+  font-size: var(--t-125);
+  background: var(--fill);
+  padding: 2px 5px;
+  border-radius: 5px;
+}
+
+.markdown pre {
+  background: var(--fill);
+  border-radius: var(--s-3);
+  padding: 9px 11px;
+  overflow-x: auto;
+}
+
+.markdown pre code {
+  background: none;
+  padding: 0;
+}
+
+.markdown blockquote {
+  border-left: 2px solid var(--hair);
+  padding-left: var(--s-5);
+  color: var(--ink-2);
+}
+
+.markdown a {
+  color: var(--ink);
+  text-decoration: underline;
+  text-decoration-color: var(--ink-3);
+}
+
+.markdown h1,
+.markdown h2,
+.markdown h3,
+.markdown h4,
+.markdown h5,
+.markdown h6 {
+  font-size: var(--t-14);
+  font-weight: 600;
+  margin: var(--s-5) 0 var(--s-1);
+}
+
+.markdown table {
+  border-collapse: collapse;
+  font-size: var(--t-125);
+  margin-bottom: var(--s-4);
+}
+
+.markdown th,
+.markdown td {
+  border: 1px solid var(--hair);
+  padding: var(--s-1) var(--s-3);
+  text-align: left;
+}
+
+.markdown hr {
+  border: 0;
+  border-top: 1px solid var(--hair);
+  margin: var(--s-5) 0;
+}
+
+/* A rendered ```mermaid fence. The SVG carries its own colors; the figure just
+ * gives it a quiet frame and keeps a wide diagram scrollable, not overflowing. */
+.markdown .mermaid-figure {
+  background: var(--fill);
+  border-radius: var(--s-3);
+  padding: var(--s-3);
+  margin-bottom: var(--s-4);
+  overflow-x: auto;
+}
+
+.markdown .mermaid-figure svg {
+  display: block;
+  margin: 0 auto;
+}
+
+.markdown .mermaid-broken {
+  font-size: var(--t-125);
+  color: var(--ink-2);
+  margin-bottom: var(--s-1);
+}
+
+/* Document scale for the preview modal — the base .markdown sizes are tuned for
+ * comment cards, where a heading is a label, not a chapter break. */
+.md-doc {
+  font-size: var(--t-14);
+  line-height: 1.65;
+  max-width: 74ch;
+}
+
+.md-doc p,
+.md-doc ul,
+.md-doc ol,
+.md-doc blockquote,
+.md-doc pre,
+.md-doc table {
+  margin-bottom: var(--s-5);
+}
+
+.md-doc h1,
+.md-doc h2,
+.md-doc h3,
+.md-doc h4,
+.md-doc h5,
+.md-doc h6 {
+  margin: var(--s-8) 0 var(--s-3);
+}
+
+.md-doc h1 {
+  font-size: 22px;
+  letter-spacing: -0.015em;
+}
+
+.md-doc h2 {
+  font-size: var(--t-17);
+  padding-bottom: var(--s-2);
+  border-bottom: 1px solid var(--hair);
+}
+
+.md-doc h3 {
+  font-size: var(--t-15);
+}
+
+.md-doc img {
+  max-width: 100%;
+  height: auto;
+}
+
+/* ---------- the comment box: GitHub's shape ---------- */
+
+.cbox {
+  border: 1px solid var(--hair);
+  border-radius: var(--r);
+  background: var(--paper);
+  overflow: hidden;
+  margin: var(--s-4) 0;
+  max-width: var(--conv);
+}
+
+.cbox:focus-within {
+  border-color: var(--acc-line);
+}
+
+.cbox-head {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: var(--s-3) var(--s-4);
+  border-bottom: 1px solid var(--hair);
+  background: var(--fill);
+}
+
+.cbox-title {
+  font-size: var(--t-125);
+  color: var(--ink-2);
+}
+
+.cbox-head .scope-chip,
+.cbox-head .cbox-widen {
+  flex: 0 0 auto;
+}
+
+.cbox-close {
+  margin-left: auto;
+  width: 24px;
+  height: 24px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 0;
+  padding: 0;
+  border-radius: var(--r-sm);
+  background: transparent;
+  color: var(--ink-3);
+  cursor: pointer;
+}
+
+.cbox-close:hover {
+  background: var(--fill-2);
+  color: var(--ink);
+}
+
+.cbox-close:focus-visible {
+  outline: 2px solid var(--acc);
+  outline-offset: -1px;
+}
+
+.avatar {
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  flex: 0 0 22px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--fill-2);
+  color: var(--ink-2);
+}
+
+.avatar-you {
+  background: var(--acc);
+  color: var(--acc-fg);
+}
+
+.avatar-agent {
+  background: var(--attn-wash);
+  color: var(--attn);
+  box-shadow: inset 0 0 0 1px var(--attn-line);
+}
+
+.avatar svg {
+  width: 12px;
+  height: 12px;
+}
+
+.cbox-tabs {
+  display: flex;
+  gap: var(--s-0);
+  padding: var(--s-2) var(--s-2) 0;
+  border-bottom: 1px solid var(--hair);
+  background: var(--fill);
+}
+
+.cbox-tab {
+  font: inherit;
+  font-size: var(--t-125);
+  padding: var(--s-2) var(--s-5);
+  border: 1px solid transparent;
+  border-bottom: 0;
+  background: transparent;
+  color: var(--ink-3);
+  cursor: pointer;
+  border-radius: 7px 7px 0 0;
+  margin-bottom: -1px;
+}
+
+.cbox-tab[aria-selected="true"] {
+  background: var(--paper);
+  color: var(--ink);
+  font-weight: 600;
+  border-color: var(--hair);
+  border-bottom: 1px solid var(--paper);
+}
+
+.cbox-mdbar {
+  display: flex;
+  align-items: center;
+  gap: 1px;
+  padding: 5px 7px;
+  border-bottom: 1px solid var(--hair-2);
+  flex-wrap: wrap;
+}
+
+.cbox-mdb {
+  width: 26px;
+  height: 26px;
+  border-radius: var(--r-sm);
+  border: 0;
+  padding: 0;
+  background: transparent;
+  color: var(--ink-3);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.cbox-mdb:hover {
+  background: var(--fill);
+  color: var(--ink);
+}
+
+.cbox-mdb:focus-visible {
+  outline: 2px solid var(--acc);
+  outline-offset: -1px;
+}
+
+.cbox-mdsep {
+  width: 1px;
+  height: var(--s-6);
+  background: var(--hair);
+  margin: 0 5px;
+}
+
+.cbox-body {
+  padding: 11px var(--s-5);
+}
+
+/* Scoped past `.thread-input`, which still owns the reply box's own border. */
+.cbox .cbox-input {
+  border: 0;
+  background: transparent;
+  min-height: 66px;
+  padding: 0;
+  font-size: var(--t-14);
+}
+
+.cbox .cbox-input:focus {
+  outline: none;
+  border: 0;
+}
+
+.cbox-preview {
+  font-size: var(--t-14);
+  line-height: 1.6;
+  color: var(--ink);
+  min-height: 66px;
+}
+
+.cbox-preview-empty {
+  color: var(--ink-3);
+}
+
+.scope-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s-2);
+  font-size: 11.5px;
+  font-family: var(--mono);
+  background: var(--fill);
+  border: 1px solid var(--hair);
+  border-radius: var(--r-pill);
+  padding: 3px var(--s-1) 3px 9px;
+  color: var(--ink-2);
+}
+
+.scope-chip svg {
+  color: var(--ink-3);
+}
+
+.scope-chip-x {
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  border: 0;
+  padding: 0;
+  background: transparent;
+  color: var(--ink-3);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.scope-chip-x svg {
+  width: 9px;
+  height: 9px;
+}
+
+.scope-chip-x:hover {
+  background: var(--fill-2);
+  color: var(--ink);
+}
+
+.cbox-widen {
+  font-size: 11.5px;
+  color: var(--ink-3);
+  background: transparent;
+  border: 0;
+  cursor: pointer;
+  padding: 3px var(--s-2);
+  border-radius: var(--r-sm);
+  font-family: inherit;
+}
+
+.cbox-widen:hover {
+  background: var(--fill);
+  color: var(--ink);
+}
+
+.cbox-openers {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 5px;
+  padding: 0 var(--s-5) 9px;
+}
+
+.cbox-opener {
+  font: inherit;
+  font-size: var(--t-12);
+  line-height: 1;
+  color: var(--ink-2);
+  background: transparent;
+  border: 1px solid var(--hair);
+  border-radius: var(--r-pill);
+  padding: 4px 9px;
+  cursor: pointer;
+  transition:
+    border-color 0.14s,
+    background 0.14s,
+    color 0.14s;
+}
+
+.cbox-opener:hover {
+  background: var(--fill);
+  border-color: var(--ink-3);
+  color: var(--ink);
+}
+
+.cbox-opener:focus-visible {
+  outline: 2px solid var(--acc);
+  outline-offset: 1px;
+}
+
+.cbox-foot {
+  display: flex;
+  align-items: center;
+  gap: var(--s-3);
+  padding: 9px var(--s-5);
+  border-top: 1px solid var(--hair);
+  background: var(--fill);
+}
+
+.cbox-attach {
+  font-size: var(--t-12);
+  color: var(--ink-3);
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.cbox-rich {
+  height: 24px;
+  min-width: 26px;
+  padding: 0 6px;
+  border: 0;
+  border-radius: var(--r-sm);
+  background: transparent;
+  color: var(--ink-3);
+  cursor: pointer;
+  font: inherit;
+  font-size: var(--t-125);
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+
+.cbox-rich:hover {
+  background: var(--fill-2);
+  color: var(--ink);
+}
+
+.cbox-rich[aria-pressed="true"] {
+  background: var(--fill-2);
+  color: var(--ink);
+}
+
+.cbox-rich:focus-visible {
+  outline: 2px solid var(--acc);
+  outline-offset: -1px;
+}
+
+.cbox-intent {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  padding: 2px;
+  border: 1px solid var(--hair);
+  border-radius: var(--r-sm);
+}
+
+.cbox-intent-chip {
+  height: 20px;
+  padding: 0 8px;
+  border: 0;
+  border-radius: calc(var(--r-sm) - 2px);
+  background: transparent;
+  color: var(--ink-3);
+  cursor: pointer;
+  font: inherit;
+  font-size: var(--t-12);
+}
+
+.cbox-intent-chip:hover {
+  background: var(--fill-2);
+  color: var(--ink);
+}
+
+.cbox-intent-chip[aria-checked="true"] {
+  background: var(--fill-2);
+  color: var(--ink);
+  font-weight: 600;
+}
+
+.cbox-intent-chip:focus-visible {
+  outline: 2px solid var(--acc);
+  outline-offset: -1px;
+}
+
+.cbox-actions {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+}
+
+.btn-outline {
+  background: var(--fill-2);
+  border: 1px solid var(--hair);
+  color: var(--ink);
+}
+
+.btn-outline:hover:not(:disabled) {
+  border-color: var(--ink-3);
+  color: var(--ink);
+}
+
+.btn-outline svg {
+  color: var(--ink-3);
+}
+
+.btn-kbd {
+  font-family: var(--mono);
+  font-size: 10.5px;
+  opacity: 0.6;
+  margin-left: 1px;
+}
+
+.thread-composer {
+  max-width: var(--conv);
+}
+
+.thread-input {
+  flex: 1;
+  width: 100%;
+  min-height: 2.2em;
+  padding: 0.35rem 0.5rem;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg);
+  color: var(--fg);
+  font: inherit;
+  font-size: 13px;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  resize: vertical;
+}
+
+.thread-input:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+
+/* ---------- buttons: one base, four intents ---------- */
+
+.btn {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s-2);
+  height: 30px;
+  padding: 0 13px;
+  border: 0;
+  border-radius: var(--r-pill);
+  background: var(--fill);
+  color: var(--ink);
+  cursor: pointer;
+  font: inherit;
+  font-size: var(--t-13);
+  font-weight: 500;
+  letter-spacing: -0.008em;
+  white-space: nowrap;
+  transition:
+    background 0.15s,
+    opacity 0.15s;
+}
+
+.btn:hover:not(:disabled) {
+  background: var(--fill-2);
+}
+
+.btn:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.btn:focus-visible {
+  outline: 2px solid var(--acc);
+  outline-offset: 2px;
+}
+
+.btn-primary {
+  background: var(--acc);
+  color: var(--acc-fg);
+  font-weight: 600;
+}
+
+.btn-primary:hover:not(:disabled) {
+  background: var(--acc);
+  opacity: 0.85;
+}
+
+.btn-danger {
+  background: var(--danger);
+  color: var(--acc-fg);
+  font-weight: 600;
+}
+
+.btn-danger:hover:not(:disabled) {
+  background: var(--danger);
+  opacity: 0.85;
+}
+
+.btn-ghost {
+  background: transparent;
+  color: var(--ink-2);
+  padding: 0 var(--s-3);
+}
+
+.btn-ghost:hover:not(:disabled) {
+  background: var(--fill);
+  color: var(--ink);
+}
+
+.btn-ghost-danger:hover:not(:disabled) {
+  background: var(--danger-wash);
+  color: var(--danger);
+}
+
+.btn-attn {
+  background: transparent;
+  color: var(--attn);
+  border: 1px solid var(--attn-line);
+  font-weight: 600;
+}
+
+.btn-attn:hover:not(:disabled) {
+  background: var(--attn-wash);
+}
+
+.btn-sm {
+  height: 26px;
+  padding: 0 11px;
+  font-size: var(--t-125);
+}
+
+.btn-icon {
+  width: 30px;
+  padding: 0;
+  justify-content: center;
+}
+
+.btn-icon.btn-sm {
+  width: 26px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .btn {
+    transition: none;
+  }
+}
+
+/* ---------- overflow menu ---------- */
+
+.menu {
+  position: relative;
+  flex-shrink: 0;
+}
+
+.menu-panel {
+  position: absolute;
+  right: 0;
+  top: calc(100% + var(--s-2));
+  z-index: 20;
+  min-width: 218px;
+  display: flex;
+  flex-direction: column;
+  padding: 5px;
+  border: 1px solid var(--hair);
+  border-radius: var(--r);
+  background: var(--paper);
+  box-shadow: var(--lift-lg);
+  text-align: left;
+}
+
+.menu-panel-left {
+  right: auto;
+  left: 0;
+}
+
+.menu-item {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  border: none;
+  background: transparent;
+  color: var(--ink-2);
+  text-align: left;
+  padding: 7px 9px;
+  border-radius: 7px;
+  cursor: pointer;
+  font: inherit;
+  font-size: var(--t-13);
+}
+
+.menu-item:hover {
+  background: var(--fill);
+  color: var(--ink);
+}
+
+.menu-item svg {
+  color: var(--ink-3);
+}
+
+.menu-item-label {
+  flex: 1;
+  min-width: 0;
+}
+
+.menu-item[aria-checked="true"] {
+  color: var(--ink);
+}
+
+.menu-item svg.menu-item-check {
+  color: var(--acc);
+}
+
+.menu-item-danger {
+  color: var(--danger);
+}
+
+.menu-item-danger:hover {
+  background: var(--danger-wash);
+  color: var(--danger);
+}
+
+.menu-sep {
+  height: 1px;
+  border: 0;
+  background: var(--hair);
+  margin: 5px 7px;
+}
+
+.menu-label {
+  padding: 5px 9px 2px;
+  font-size: var(--t-11);
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+}
+
+/* ---------- agent banner ---------- */
+
+/* The in-app notification: one strip pinned under the header, in the chrome's
+   attention colour, wide enough to be caught from a second monitor. An overlay,
+   not layout — it must never shift the diff under a mid-read reviewer. */
+.agent-banner {
+  position: fixed;
+  top: 53px; /* .top's height — the banner hangs off the header's underside */
+  left: 0;
+  right: 0;
+  z-index: 30;
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+  padding: var(--s-3) var(--s-6);
+  background: var(--attn-wash);
+  border-bottom: 1px solid var(--attn-line);
+  animation: banner-in var(--dur-move) var(--ease-out);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .agent-banner {
+    animation: none;
+  }
+}
+
+@keyframes banner-in {
+  from {
+    opacity: 0;
+    transform: translateY(-6px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+/* Baseline, not centre: the label, the mono anchor and the preview are three
+   different faces and sizes, and box-centring leaves the anchor floating a
+   pixel off the line. The icon has no baseline worth speaking of — it centres
+   itself against the row. */
+.agent-banner-body {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: baseline;
+  justify-content: center;
+  gap: var(--s-3);
+  border: none;
+  background: transparent;
+  padding: 0;
+  font: inherit;
+  cursor: pointer;
+}
+
+.agent-banner-body .icon {
+  color: var(--attn);
+  flex-shrink: 0;
+  align-self: center;
+}
+
+.agent-banner-label {
+  font-size: var(--t-13);
+  font-weight: 600;
+  color: var(--ink);
+  white-space: nowrap;
+}
+
+.agent-banner-anchor {
+  font-family: var(--mono);
+  font-size: var(--t-12);
+  color: var(--attn);
+  white-space: nowrap;
+}
+
+.agent-banner-preview {
+  font-size: var(--t-13);
+  color: var(--ink-2);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.agent-banner-body:hover .agent-banner-preview {
+  color: var(--ink);
+}
+
+.agent-banner-x {
+  flex-shrink: 0;
+}
+
+/* ---------- collapsed resolved threads ---------- */
+
+.thread-collapsed {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.2rem 0.6rem;
+}
+
+.thread-collapsed-summary {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex: 1;
+  min-width: 0;
+  border: none;
+  background: transparent;
+  color: var(--fg-muted);
+  cursor: pointer;
+  text-align: left;
+  padding: 0.15rem 0;
+  font-size: 12px;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+}
+
+.thread-collapsed-text {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.thread-collapsed-count {
+  flex-shrink: 0;
+  font-size: 11px;
+  opacity: 0.75;
+}
+
+.thread-collapsed-hint {
+  flex-shrink: 0;
+  color: var(--ink-3);
+  display: flex;
+  align-items: center;
+}
+
+/* ---------- collapsed reply affordance ---------- */
+
+/* A field, not a line of text: the reply is the card's primary invitation, and a
+ * bare placeholder on the band read as a caption rather than something to click. */
+.thread-reply-stub {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  width: 100%;
+  text-align: left;
+  padding: 7px var(--s-4);
+  border: 1px solid var(--hair);
+  border-radius: var(--r-sm);
+  background: var(--paper);
+  color: var(--ink-3);
+  cursor: text;
+  font: inherit;
+  font-size: var(--t-13);
+}
+
+.thread-reply-stub:hover {
+  border-color: var(--ink-3);
+  color: var(--ink-2);
+}
+
+/* ---------- the thread's footer: reply bar left, close-out right ---------- */
+.thread-foot {
+  display: flex;
+  /* Ends, not centres: typing swaps the stub for a textarea that grows downward,
+   * and the buttons stay on its last line instead of drifting to its middle. */
+  align-items: flex-end;
+  gap: var(--s-3);
+  padding: var(--s-3) var(--s-4);
+  border-top: 1px solid var(--hair);
+  background: var(--hair-2);
+}
+
+.thread-foot-bare {
+  justify-content: flex-end;
+}
+
+.thread-foot .thread-reply-stub,
+.thread-foot .thread-input {
+  flex: 1;
+  width: auto;
+  min-width: 0;
+}
+
+/* The open composer keeps the stub's height and edges — the row must not jump when
+ * the field it replaces starts taking text. */
+.thread-foot .thread-input {
+  min-height: 30px;
+  max-height: 40vh;
+  padding: 6px var(--s-4);
+  border-radius: var(--r-sm);
+  border-color: var(--hair);
+  background: var(--paper);
+  line-height: 1.45;
+  /* Grows with the text where the browser supports it; `rows={1}` plus the
+   * min-height keeps it a one-line field everywhere else. */
+  field-sizing: content;
+}
+
+.thread-foot .thread-input:focus {
+  border-color: var(--ink-3);
+}
+
+.thread-context-wrap {
+  border-bottom: 1px solid var(--border);
+  background: var(--bg-subtle);
+}
+
+.thread-context-wrap .thread-context-toggle {
+  border-bottom: none;
+}
+
+/* The notes header is a <button> (collapsed by default), and a button breaks colour
+ * inheritance — without `color: inherit` it falls back to the UA's `buttontext`,
+ * i.e. black on a near-black background. */
+.notes-header {
+  width: 100%;
+  border: none;
+  font: inherit;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.file-threads {
+  padding: 0.5rem 0.8rem;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg-subtle);
+}
+
+/* ---------- the changeset strip: conversations on the whole changeset ----------
+   Its own register — quieter than a file card (hairline-2, no fill), so the
+   thread cards inside stay the loudest thing in it. */
+
+.changeset-strip {
+  margin-bottom: var(--s-6);
+  border: 1px solid var(--hair-2);
+  border-radius: var(--r);
+  scroll-margin-top: var(--s-3);
+}
+
+.strip-head {
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+  width: 100%;
+  border: none;
+  background: none;
+  padding: var(--s-4) var(--s-4);
+  color: var(--ink-3);
+  font-family: var(--sans);
+  font-size: var(--t-11);
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  text-align: left;
+  cursor: pointer;
+  user-select: none;
+}
+
+.strip-head:hover {
+  color: var(--ink-2);
+}
+
+.strip-n {
+  color: var(--ink-2);
+}
+
+.strip-body {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--s-4);
+  padding: 0 var(--s-4) var(--s-4);
+}
+
+.strip-body .thread-list,
+.strip-body .thread-composer {
+  align-self: stretch;
+}
+
+/* Changeset conversations own the whole band — no diff column competes for the
+ * space, and agent diagrams/code need the width. The --conv cap stays on inline
+ * threads, where it is a prose-readability limit. */
+.strip-body .thread,
+.strip-body .thread-composer,
+.strip-body .cbox {
+  max-width: none;
+}
+
+.strip-add {
+  border: none;
+  background: none;
+  padding: 0;
+  font-family: var(--sans);
+  font-size: var(--t-125);
+  color: var(--ink-3);
+  cursor: pointer;
+}
+
+.strip-add:hover {
+  color: var(--ink);
+}
+
+/* Struck the same way the rail and the thread head strike it. */
+.fin-row-anchor-gone {
+  text-decoration: line-through;
+}
+
+/* Said once, above the cards, so each thread inside stays an ordinary thread. */
+.past-hint {
+  padding: 0 0.2rem var(--s-3);
+  color: var(--fg-muted);
+  font-size: 12px;
+  font-style: italic;
+  line-height: 1.5;
+}
+
+/* ---------- modals ---------- */
+
+.modal-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.55);
+  backdrop-filter: blur(2px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--s-8);
+  z-index: 40;
+  animation: fade-in 0.16s ease both;
+}
+
+@keyframes fade-in {
+  from {
+    opacity: 0;
+  }
+}
+
+.modal {
+  background: var(--paper);
+  color: var(--ink);
+  border-radius: var(--r-lg);
+  box-shadow: var(--lift-lg);
+  width: min(452px, 100%);
+  max-height: 100%;
+  display: flex;
+  flex-direction: column;
+  font-size: var(--t-13);
+  overflow: hidden;
+  animation: modal-in var(--dur-move) var(--ease-out) both;
+}
+
+@keyframes modal-in {
+  from {
+    opacity: 0;
+    transform: translateY(10px) scale(0.98);
+  }
+}
+
+.modal:focus {
+  outline: none;
+}
+
+.modal-wide {
+  width: min(640px, 100%);
+}
+
+/* The markdown preview is a document to read, not a dialog: near-full height so a
+ * README doesn't peek out of a letterbox, capped at a comfortable reading width. */
+.md-preview {
+  width: min(860px, 100%);
+  height: 100%;
+}
+
+.md-preview .modal-head h3 {
+  font-family: var(--mono);
+  font-size: var(--t-13);
+  color: var(--ink-2);
+  font-weight: 500;
+}
+
+.md-preview .modal-body {
+  padding-bottom: var(--s-8);
+}
+
+.modal-head {
+  display: flex;
+  align-items: center;
+  gap: var(--s-4);
+  padding: 15px var(--s-5) 15px var(--s-7);
+  flex-shrink: 0;
+}
+
+.modal-head h3 {
+  margin: 0;
+  flex: 1;
+  font-size: var(--t-17);
+  letter-spacing: -0.018em;
+}
+
+.modal-body {
+  padding: var(--s-1) var(--s-7) var(--s-7);
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-6);
+  overflow-y: auto;
+  min-height: 0;
+}
+
+.modal-foot {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 9px;
+  padding: 15px var(--s-7);
+  border-top: 1px solid var(--hair);
+  flex-shrink: 0;
+}
+
+.input {
+  height: 30px;
+  padding: 0 var(--s-4);
+  font: inherit;
+  font-size: var(--t-13);
+  color: var(--ink);
+  background: var(--fill);
+  border: 0;
+  border-radius: var(--s-3);
+  width: 100%;
+}
+
+.input:focus {
+  outline: 2px solid var(--acc);
+  outline-offset: -1px;
+}
+
+select.input {
+  cursor: pointer;
+}
+
+/* ---------- finish review: the gate ---------- */
+
+.fin-sect {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-3);
+}
+
+.fin-sect-h {
+  display: flex;
+  align-items: baseline;
+  gap: var(--s-2);
+  min-width: 0;
+}
+
+.fin-sect-label {
+  font-size: var(--t-11);
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+  white-space: nowrap;
+}
+
+.fin-sect-n {
+  padding: 0 6px;
+  border: 1px solid var(--hair);
+  border-radius: var(--r-pill);
+  font-family: var(--mono);
+  font-size: var(--t-11);
+  color: var(--ink-2);
+}
+
+.fin-sect-why {
+  font-size: var(--t-12);
+  color: var(--ink-3);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.fin-dest {
+  display: flex;
+  align-items: center;
+  gap: var(--s-3);
+  padding: 9px 12px;
+  border-radius: var(--r);
+  background: var(--attn-wash);
+  font-size: var(--t-125);
+  color: var(--ink-2);
+}
+
+.fin-dest-pip {
+  flex-shrink: 0;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--attn);
+}
+
+.fin-dest-text {
+  flex: 1;
+  min-width: 0;
+}
+
+.fin-dest b {
+  color: var(--ink);
+  font-weight: 600;
+}
+
+.fin-rows {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  border: 1px solid var(--hair);
+  border-radius: var(--r);
+  overflow: hidden;
+  display: grid;
+  grid-template-columns: max-content fit-content(180px) 1fr max-content;
+}
+
+.fin-row {
+  grid-column: 1 / -1;
+  display: grid;
+  grid-template-columns: subgrid;
+  align-items: start;
+  column-gap: var(--s-3);
+  padding: 9px 11px;
+}
+
+.fin-rows-span {
+  grid-column: 1 / -1;
+}
+
+.fin-row + .fin-row,
+.fin-rows li + li {
+  border-top: 1px solid var(--hair);
+}
+
+.fin-chip {
+  width: 46px;
+  padding: 1px 0;
+  border-radius: var(--r-pill);
+  font-size: var(--t-11);
+  height: fit-content;
+  line-height: 1.5;
+  text-align: center;
+}
+
+.fin-chip-fresh {
+  background: var(--acc-wash);
+  color: var(--acc);
+}
+
+.fin-chip-resent {
+  background: var(--fill);
+  color: var(--ink-3);
+}
+
+.fin-checkoff .fin-chip {
+  width: 92px;
+}
+
+.fin-chip-fixed {
+  background: var(--add-tint);
+  color: var(--add);
+}
+
+.fin-chip-answered,
+.fin-chip-changed {
+  background: var(--fill);
+  color: var(--ink-2);
+}
+
+.fin-chip-no-answer {
+  background: var(--fill);
+  color: var(--ink-3);
+  font-style: italic;
+}
+
+.fin-row-checkoff {
+  align-items: center;
+}
+
+.fin-row-acts {
+  display: flex;
+  gap: var(--s-2);
+  flex-shrink: 0;
+  opacity: 0;
+  transition: opacity 0.12s var(--ease-out);
+}
+
+.fin-row-checkoff:hover .fin-row-acts,
+.fin-row-acts:focus-within {
+  opacity: 1;
+}
+
+@media (hover: none) {
+  .fin-row-acts {
+    opacity: 1;
+  }
+}
+
+/* The text cell is the hit target for expanding, so a long comment can be read
+ * without leaving the dialog. `display: contents` hands the button's children to the
+ * row's shared grid — the button itself must not become a fifth column. */
+.fin-row-open {
+  display: contents;
+  padding: 0;
+  background: none;
+  border: 0;
+  font: inherit;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.fin-row-open > svg {
+  margin-top: 4px;
+  color: var(--ink-3);
+  transition: transform var(--dur) ease;
+  cursor: pointer;
+}
+
+.fin-row-open[aria-expanded="true"] > svg {
+  transform: rotate(180deg);
+}
+
+.fin-row-open:hover .fin-row-text {
+  color: var(--ink);
+}
+
+.fin-row-open .fin-row-text {
+  cursor: pointer;
+}
+
+.fin-row-anchor {
+  display: block;
+  font-family: var(--mono);
+  font-size: var(--t-12);
+  color: var(--ink-3);
+  padding-top: 2px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.fin-row-text {
+  display: block;
+  font-size: var(--t-125);
+  color: var(--ink);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.fin-row-text-full {
+  white-space: pre-wrap;
+  overflow: visible;
+  word-break: break-word;
+  line-height: 1.55;
+}
+
+.fin-more {
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+  width: 100%;
+  padding: 8px 11px;
+  background: none;
+  border: 0;
+  font: inherit;
+  font-size: var(--t-125);
+  color: var(--ink-3);
+  text-align: left;
+  cursor: pointer;
+}
+
+.fin-more:hover {
+  color: var(--ink);
+}
+
+.fin-foot-peek {
+  margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s-1);
+}
+
+.fin-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 0;
+  background: none;
+  border: 0;
+  font: inherit;
+  font-size: var(--t-125);
+  color: var(--ink-3);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  cursor: pointer;
+}
+
+.fin-link:hover {
+  color: var(--ink);
+}
+
+.fin-note {
+  width: 100%;
+  box-sizing: border-box;
+  resize: vertical;
+  min-height: 48px;
+  padding: var(--s-2) var(--s-3);
+  font: inherit;
+  font-size: var(--t-125);
+  color: var(--ink);
+  background: var(--paper);
+  border: 1px solid var(--hair);
+  border-radius: var(--r);
+}
+
+.fin-note:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+
+/* ---------- your word: three real radios, side by side ---------- */
+.fin-verdicts {
+  display: flex;
+  gap: var(--s-2);
+}
+
+.fin-verdict {
+  flex: 1;
+  display: flex;
+  align-items: flex-start;
+  gap: var(--s-2);
+  padding: var(--s-3) var(--s-3);
+  border: 1px solid var(--hair);
+  border-radius: var(--r);
+  cursor: pointer;
+  min-width: 0;
+}
+
+.fin-verdict:hover {
+  background: var(--fill);
+}
+
+.fin-verdict input {
+  accent-color: var(--acc);
+  cursor: pointer;
+  margin-top: 2px;
+  flex-shrink: 0;
+}
+
+.fin-verdict-on {
+  background: var(--fill);
+  border-color: var(--ink-3);
+}
+
+.fin-verdict-on.fin-verdict-request-changes {
+  border-color: var(--del);
+}
+
+.fin-verdict-on.fin-verdict-request-changes .fin-verdict-text b {
+  color: var(--del);
+}
+
+.fin-verdict-on.fin-verdict-request-changes input {
+  accent-color: var(--del);
+}
+
+.fin-verdict-on.fin-verdict-approve {
+  border-color: var(--add);
+}
+
+.fin-verdict-on.fin-verdict-approve .fin-verdict-text b {
+  color: var(--add-fg);
+}
+
+.fin-verdict-on.fin-verdict-approve input {
+  accent-color: var(--add);
+}
+
+.fin-verdict-text {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  font-size: var(--t-125);
+  min-width: 0;
+}
+
+.fin-verdict-text b {
+  font-weight: 600;
+  color: var(--ink);
+  white-space: nowrap;
+}
+
+.fin-verdict-text span {
+  color: var(--ink-3);
+  font-size: var(--t-11);
+  line-height: 1.35;
+}
+
+.fin-verdict-consequence {
+  font-size: var(--t-12);
+  color: var(--ink-3);
+}
+
+.btn-primary-rc {
+  background: var(--del);
+  color: #fff;
+}
+
+.btn-primary-rc:hover:not(:disabled) {
+  background: var(--del);
+  filter: brightness(1.1);
+}
+
+.btn-primary-approve {
+  background: var(--add);
+  color: var(--paper);
+}
+
+.btn-primary-approve:hover:not(:disabled) {
+  background: var(--add);
+  filter: brightness(1.1);
+}
+
+/* ---------- coverage: one bar, one status line ---------- */
+.fin-cov-bar {
+  height: 6px;
+  border-radius: 3px;
+  background: var(--fill);
+  overflow: hidden;
+  display: flex;
+}
+
+.fin-cov-bar i {
+  display: block;
+  height: 100%;
+}
+
+.fin-cov-read {
+  background: var(--add);
+}
+
+.fin-cov-moved {
+  background: var(--attn);
+}
+
+.fin-cov-status {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s-2) var(--s-5);
+  font-size: var(--t-125);
+  color: var(--ink-2);
+}
+
+.fin-cov-status > span {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.fin-cov-sw {
+  width: 8px;
+  height: 8px;
+  border-radius: 2px;
+  flex-shrink: 0;
+}
+
+.fin-cov-sw-read {
+  background: var(--add);
+}
+
+.fin-cov-sw-moved {
+  background: var(--attn);
+}
+
+.fin-cov-sw-unread {
+  background: var(--hair);
+}
+
+.fin-cov-ok {
+  color: var(--add-fg);
+}
+
+.fin-cov-attn {
+  color: var(--attn);
+}
+
+.cov-note {
+  font-size: 13.5px;
+  margin: 0;
+  color: var(--ink-2);
+}
+
+.cov-note strong {
+  color: var(--ink);
+}
+
+.warn {
+  display: flex;
+  gap: 9px;
+  padding: 13px 15px;
+  border-radius: var(--r);
+  background: var(--attn-wash);
+  font-size: 13.5px;
+  color: var(--ink-2);
+}
+
+.warn svg {
+  color: var(--attn);
+  margin-top: 2px;
+}
+
+.warn b {
+  color: var(--ink);
+  font-weight: 600;
+}
+
+/* ---------- shortcuts sheet ---------- */
+
+.keys {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0 var(--s-8);
+}
+
+.keys-name {
+  font-size: 11.5px;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+  padding: 0 0 var(--s-2);
+}
+
+.keys-row {
+  display: flex;
+  align-items: center;
+  gap: var(--s-4);
+  padding: 7px 0;
+  border-bottom: 1px solid var(--hair-2);
+  font-size: 13.5px;
+  color: var(--ink-2);
+}
+
+.keys-row:last-child {
+  border-bottom: 0;
+}
+
+.thread-hint {
+  padding: 0.3rem 0.6rem;
+  border-bottom: 1px solid var(--border);
+  color: var(--fg-muted);
+  font-size: 12px;
+  font-style: italic;
+}
+
+/* ---------- presence: the agent on the pull loop ---------- */
+
+.presence {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s-2);
+  padding: 4px var(--s-4);
+  border: 1px solid var(--hair);
+  border-radius: var(--r-pill);
+  background: var(--fill);
+  font-family: var(--sans);
+  font-size: var(--t-12);
+  color: var(--ink-2);
+  white-space: nowrap;
+  transition:
+    background-color var(--dur-move) var(--ease-out),
+    border-color var(--dur-move) var(--ease-out),
+    color var(--dur-move) var(--ease-out);
+}
+
+/* A lamp, for the invite modal's one-line statements. The chip in the header uses
+   the meter below instead — it has three states to tell apart, not two. */
+.presence-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--ink-3);
+  flex: none;
+}
+
+.presence-live {
+  display: inline-flex;
+  align-items: center;
+  gap: 2.5px;
+  height: 12px;
+  flex: none;
+}
+
+/* Short–tall–short, so the glyph is legibly a meter even frozen at its lowest —
+   and low-and-grey is what an unattached agent looks like, before any colour. */
+.presence-live i {
+  width: 2px;
+  height: 8px;
+  border-radius: 1px;
+  background: var(--ink-3);
+  transform: scaleY(0.34);
+  transform-origin: center;
+}
+
+.presence-live i:nth-child(2) {
+  height: 12px;
+}
+
+@keyframes live-breathe {
+  0%,
+  100% {
+    transform: scaleY(0.34);
+    box-shadow: none;
+  }
+  50% {
+    transform: scaleY(0.92);
+    box-shadow: 0 0 6px -1px var(--glow);
+  }
+}
+
+@keyframes live-work {
+  0%,
+  100% {
+    transform: scaleY(0.34);
+    box-shadow: none;
+  }
+  45% {
+    transform: scaleY(1);
+    box-shadow: 0 0 7px -1px var(--glow);
+  }
+}
+
+.presence-invite {
+  font: inherit;
+  cursor: pointer;
+}
+
+.presence-invite:hover,
+.presence-invite:focus-visible {
+  color: var(--ink);
+  border-color: var(--ink-3);
+}
+
+.presence-invite:focus-visible,
+.presence-batch:focus-visible {
+  outline: 2px solid var(--acc);
+  outline-offset: 2px;
+}
+
+.presence-cta {
+  font-weight: 600;
+  color: var(--acc);
+}
+
+/* Listening and working are one hue at two strengths — the palette's amber, held
+   back. Attached is amber at a little over half, on the glyph only: no wash, no
+   amber text, a warmed hairline. Working then reads as the same light turned all
+   the way up, which is the difference a reviewer actually needs to feel. */
+.presence-listening {
+  color: var(--ink);
+  border-color: var(--attn-line);
+}
+
+.presence-listening .presence-live i {
+  --glow: var(--attn);
+  background: var(--attn);
+  opacity: 0.55;
+  animation: live-breathe 2.6s var(--ease-out) infinite;
+}
+
+/* The centre carries it, so three bars read as one glyph with a core. */
+.presence-listening .presence-live i:nth-child(2) {
+  opacity: 0.82;
+  animation-delay: 0.22s;
+}
+
+.presence-listening .presence-live i:nth-child(3) {
+  animation-delay: 0.44s;
+}
+
+.presence-working {
+  color: var(--attn);
+  border-color: var(--attn-line);
+  background: var(--attn-wash);
+}
+
+/* Working travels: same three bars, faster and fuller, the stagger tight enough
+   to read as a wave crossing the glyph rather than three separate blinks. */
+.presence-working .presence-live i {
+  --glow: var(--attn);
+  background: var(--attn);
+  animation: live-work 0.85s var(--ease-out) infinite;
+}
+
+.presence-working .presence-live i:nth-child(2) {
+  animation-delay: 0.11s;
+}
+
+.presence-working .presence-live i:nth-child(3) {
+  animation-delay: 0.22s;
+}
+
+.presence-batch {
+  font: inherit;
+  cursor: pointer;
+}
+
+.presence-batch:hover .presence-label,
+.presence-batch:focus-visible .presence-label {
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.presence-qbar,
+.monitor-qbar {
+  display: flex;
+  gap: 2px;
+}
+
+.presence-qbar {
+  width: 44px;
+  height: 5px;
+}
+
+.presence-qbar i,
+.monitor-qbar i {
+  flex: 1;
+  border-radius: 2px;
+  background: var(--hair);
+}
+
+i.q-done {
+  background: var(--add);
+}
+
+i.q-now {
+  background: var(--attn);
+}
+
+.presence-batch-n {
+  font-size: var(--t-11);
+  font-weight: 650;
+  color: var(--ink-3);
+}
+
+/* ---------- the monitor: your review, in the agent's hands ---------- */
+.monitor-anchor {
+  position: relative;
+}
+
+.monitor {
+  position: absolute;
+  right: 0;
+  top: calc(100% + var(--s-2));
+  z-index: 20;
+  width: min(480px, calc(100vw - 32px));
+  max-height: min(72vh, 640px);
+  overflow-y: auto;
+  border: 1px solid var(--hair);
+  border-radius: var(--r-lg);
+  background: var(--paper);
+  box-shadow: var(--lift-lg);
+  text-align: left;
+  white-space: normal;
+  animation: fade-in var(--dur-move) var(--ease-out) both;
+}
+
+.monitor-inner {
+  padding: var(--s-5) var(--s-5) var(--s-6);
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-3);
+}
+
+.monitor-qbar {
+  height: 8px;
+}
+
+.monitor-qbar i {
+  border-radius: 2px;
+}
+
+.monitor-counts {
+  color: var(--ink-2);
+  font-size: var(--t-125);
+}
+
+.monitor-counts-done {
+  color: var(--add-fg);
+}
+
+.monitor-group {
+  margin-top: var(--s-4);
+  font-size: var(--t-11);
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+}
+
+.monitor-rows {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-2);
+}
+
+.monitor-rows-done {
+  opacity: 0.75;
+}
+
+.monitor-row {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  width: 100%;
+  padding: var(--s-3) var(--s-4);
+  background: var(--fill);
+  border: 1px solid var(--hair);
+  border-radius: var(--r);
+  font: inherit;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.monitor-row:hover {
+  border-color: var(--ink-3);
+}
+
+.monitor-row-top {
+  display: flex;
+  align-items: center;
+  gap: var(--s-3);
+}
+
+.monitor-st {
+  font-family: var(--mono);
+  font-size: 10.5px;
+  font-weight: 600;
+  padding: 2px 7px;
+  border-radius: 5px;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.monitor-st-done {
+  color: var(--add-fg);
+  background: var(--add-tint);
+}
+
+.monitor-st-now {
+  color: var(--attn);
+  background: var(--attn-wash);
+}
+
+.monitor-st-wait {
+  color: var(--ink-3);
+  background: var(--paper);
+}
+
+.monitor-st-silent {
+  color: var(--ink-3);
+  background: var(--paper);
+  font-style: italic;
+}
+
+.monitor-pulse {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--attn);
+  animation: presence-pulse 1.3s ease-in-out infinite;
+}
+
+.monitor-took {
+  font-family: var(--mono);
+  font-size: var(--t-11);
+  color: var(--ink-3);
+}
+
+.monitor-q {
+  font-size: var(--t-125);
+  color: var(--ink);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.monitor-anchor {
+  font-family: var(--mono);
+  font-size: var(--t-12);
+  color: var(--ink-3);
+  margin-right: var(--s-3);
+}
+
+.monitor-a {
+  border-left: 2px solid var(--hair);
+  padding-left: var(--s-3);
+  font-size: var(--t-12);
+  color: var(--ink-2);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .monitor-pulse {
+    animation: none;
+  }
+}
+
+.invite-prompt {
+  margin: var(--s-3) 0 var(--s-4);
+  padding: var(--s-3) var(--s-4);
+  max-height: 320px;
+  overflow: auto;
+  background: var(--fill);
+  border: 1px solid var(--hair);
+  border-radius: var(--r);
+  font-family: var(--mono);
+  font-size: var(--t-12);
+  line-height: 1.65;
+  color: var(--ink-2);
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.invite-cmd {
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+  width: 100%;
+  margin-top: var(--s-2);
+  padding: var(--s-2) var(--s-3);
+  background: var(--fill);
+  border: 1px solid var(--hair);
+  border-radius: var(--r-sm);
+  color: var(--ink-2);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.invite-cmd:hover {
+  color: var(--ink);
+  border-color: var(--hair-2);
+}
+
+.invite-cmd code {
+  flex: 1;
+  font-family: var(--mono);
+  font-size: var(--t-12);
+}
+
+.invite-scope {
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+  margin-top: var(--s-2);
+  color: var(--ink-2);
+  font-size: var(--t-12);
+  cursor: pointer;
+}
+
+.invite-scope input {
+  margin: 0;
+  cursor: pointer;
+}
+
+.invite-join {
+  margin-top: var(--s-4);
+  padding-top: var(--s-4);
+  border-top: 1px solid var(--hair);
+}
+
+.invite-live {
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+  margin-top: var(--s-2);
+  padding: var(--s-2) var(--s-3);
+  background: var(--acc-wash);
+  border-radius: var(--r-sm);
+  color: var(--ink-2);
+  font-size: var(--t-12);
+}
+
+.invite-live .presence-dot {
+  animation: presence-pulse 1.6s var(--ease-out) infinite;
+}
+
+.invite-connected {
+  display: flex;
+  align-items: center;
+  gap: var(--s-3);
+  padding: var(--s-2) 0;
+}
+
+.invite-connected .presence-dot {
+  background: var(--add);
+}
+
+.invite-connected .cov-note {
+  margin: 0;
+}
+
+@keyframes presence-pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.25;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .invite-live .presence-dot,
+  .presence-live i {
+    animation: none;
+  }
+
+  /* Without motion the states still differ: a listening channel stands taller. */
+  .presence-listening .presence-live i,
+  .presence-working .presence-live i {
+    transform: scaleY(0.8);
+  }
+}
+
+.file-section > :not(.file-header) {
+  animation: body-in 0.2s var(--ease-out) both;
+}
+
+@keyframes body-in {
+  from {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+}
+
+/* ---------- micro-interactions ---------- */
+
+.btn,
+.ghb,
+.row-act,
+.sec-act,
+.sb-clear,
+.row-pick,
+.pin-row,
+.sec-head-fold,
+.file-viewed-toggle,
+.thread-collapsed-summary {
+  transition-property: background, color, border-color, opacity, transform, box-shadow;
+  transition-duration: var(--dur);
+  transition-timing-function: ease;
+}
+
+.btn:active,
+.ghb:active,
+.row-act:active,
+.sec-act:active,
+.sb-clear:active,
+.file-viewed-toggle:active {
+  transform: scale(0.95);
+}
+
+.row-pick:active,
+.pin-row:active,
+.thread-collapsed-summary:active {
+  transform: translateX(1px);
+}
+
+@keyframes pop {
+  0% {
+    transform: scale(0.5);
+  }
+  60% {
+    transform: scale(1.18);
+  }
+  100% {
+    transform: scale(1);
+  }
+}
+
+.markbox[data-state="on"] svg {
+  animation: pop 0.28s var(--ease-out);
+}
+
+/* Motion is a preference. One move kills every transition and one-shot
+ * animation; the iteration cap catches the looping indicators too. */
+@media (prefers-reduced-motion: reduce) {
+  /* biome-ignore-start lint/complexity/noImportantStyles: overriding every animation is the point */
+  *,
+  *::before,
+  *::after {
+    transition-duration: 0.01ms !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+  }
+  /* biome-ignore-end lint/complexity/noImportantStyles: overriding every animation is the point */
+}

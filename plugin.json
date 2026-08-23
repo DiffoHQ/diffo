@@ -1,0 +1,14 @@
+{
+  "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
+  "name": "diffo",
+  "version": "0.0.1",
+  "description": "Local, live code review for the AI age — read what the agent wrote and send feedback straight back",
+  "author": {
+    "name": "DiffoHQ",
+    "url": "https://github.com/DiffoHQ"
+  },
+  "homepage": "https://github.com/DiffoHQ/diffo",
+  "repository": "https://github.com/DiffoHQ/diffo",
+  "license": "Apache-2.0",
+  "keywords": ["git", "diff", "code-review", "cli", "ai"]
+}
