@@ -119,7 +119,11 @@ describe('plugin.json (Agent Plugins manifest)', () => {
   >
 
   it('never disagrees with package.json', () => {
-    expect(plugin.name).toBe(pkg.name)
+    // The npm package is scoped (`@diffohq/diffo`) because the bare name is
+    // taken; the plugin is not. A plugin name is an invocable identity that has
+    // to match the skill's frontmatter `name` and the `bin`, so it stays the
+    // unscoped segment rather than following the package name verbatim.
+    expect(plugin.name).toBe(pkg.name.split('/').pop())
     expect(plugin.version).toBe(pkg.version)
     expect(plugin.description).toBe(pkg.description)
     expect(plugin.license).toBe(pkg.license)
