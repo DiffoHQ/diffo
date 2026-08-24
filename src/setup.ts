@@ -123,7 +123,7 @@ function registerAgentsDir(ctx: SetupContext): SetupOutcome {
 const DEV_SKILL_MARKER = 'This is a DEV build'
 
 /**
- * Freshen the file-copy skill installs. `npx -y diffo` resolves a current CLI
+ * Freshen the file-copy skill installs. `npx -y @diffohq/diffo` resolves a current CLI
  * on every review, which makes the CLI the one component that is always fresh —
  * so it carries the installed skill forward, instead of every release waiting
  * on users to re-run `diffo setup`. Refresh only: it never installs anew, never

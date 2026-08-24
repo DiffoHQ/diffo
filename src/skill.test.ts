@@ -72,10 +72,10 @@ describe('skills/diffo/SKILL.md (Agent Skills format)', () => {
 
   it('teaches the loop with the real commands, and the wake-path rules', () => {
     const { body } = readSkill()
-    expect(body).toContain('npx -y diffo poll')
-    expect(body).toContain('npx -y diffo reply <threadId>')
-    expect(body).toContain('npx -y diffo comment [<file>]')
-    expect(body).toContain('npx -y diffo end')
+    expect(body).toContain('npx -y @diffohq/diffo poll')
+    expect(body).toContain('npx -y @diffohq/diffo reply <threadId>')
+    expect(body).toContain('npx -y @diffohq/diffo comment [<file>]')
+    expect(body).toContain('npx -y @diffohq/diffo end')
     expect(body).toContain('nohup')
     expect(body).toMatch(/Nothing\s+the\s+reviewer sent is lost/)
     expect(body).toMatch(/held in the review itself/)
@@ -93,7 +93,7 @@ describe('skills/diffo/SKILL.md (Agent Skills format)', () => {
     expect(body).toContain(GUIDE.update)
     // One comment on the changeset, short, and the real command.
     expect(body).toMatch(/ONE comment on the whole changeset/)
-    expect(body).toContain('npx -y diffo comment --message')
+    expect(body).toContain('npx -y @diffohq/diffo comment --message')
     expect(body).toMatch(/Keep it short/)
   })
 
@@ -119,7 +119,11 @@ describe('plugin.json (Agent Plugins manifest)', () => {
   >
 
   it('never disagrees with package.json', () => {
-    expect(plugin.name).toBe(pkg.name)
+    // The npm package is scoped (`@diffohq/diffo`) because the bare name is
+    // taken; the plugin is not. A plugin name is an invocable identity that has
+    // to match the skill's frontmatter `name` and the `bin`, so it stays the
+    // unscoped segment rather than following the package name verbatim.
+    expect(plugin.name).toBe(pkg.name.split('/').pop())
     expect(plugin.version).toBe(pkg.version)
     expect(plugin.description).toBe(pkg.description)
     expect(plugin.license).toBe(pkg.license)

@@ -11,7 +11,7 @@ diffo <command> [...]     # manage the server, or talk to the review
 diffo help [command]      # help for one command
 ```
 
-Nothing needs installing: `npx -y diffo` resolves a fresh CLI on every run. The
+Nothing needs installing: `npx -y @diffohq/diffo` resolves a fresh CLI on every run. The
 examples below write `diffo` for brevity.
 
 Every command runs from inside a git repository and is safe to re-run. Feedback

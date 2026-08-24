@@ -184,7 +184,7 @@ closing note, the intent contract, and the reply protocol.
 skill can't drift from what the server actually says. `src/skill.test.ts` fails if the
 committed file differs from the generator, which is why the skill is never hand-edited.
 Both handle a dev checkout (`ENV=development` → an absolute `tsx` invocation) versus the
-published package (`npx -y diffo`), since the path an agent must type differs.
+published package (`npx -y @diffohq/diffo`), since the path an agent must type differs.
 
 ## Client
 

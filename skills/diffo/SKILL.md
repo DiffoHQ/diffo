@@ -15,16 +15,16 @@ agent that wrote the change — stay attached through the `diffo` CLI: the
 reviewer's questions and fix requests return into THIS conversation, you act on
 them with all your context, and your replies land inline in their review.
 
-You do not need diffo installed — invoke it with `npx -y diffo`.
+You do not need diffo installed — invoke it with `npx -y @diffohq/diffo`.
 If diffo output shows a follow-up command starting with `diffo`, run it
-as `npx -y diffo …` instead.
+as `npx -y @diffohq/diffo …` instead.
 In restricted subprocess sandboxes or agent harnesses where `npx -y` exits
 opaquely, use an already-installed copy directly:
-`node "$(npm root)/diffo/dist/cli.mjs" …` for a local install,
-`node "$(npm root -g)/diffo/dist/cli.mjs" …` for a global one.
+`node "$(npm root)/@diffohq/diffo/dist/cli.mjs" …` for a local install,
+`node "$(npm root -g)/@diffohq/diffo/dist/cli.mjs" …` for a global one.
 
 If the protocol goes missing mid-review — a compacted context, a fresh
-session — `npx -y diffo help agent` reprints the whole loop on one page.
+session — `npx -y @diffohq/diffo help agent` reprints the whole loop on one page.
 
 ## Request
 
@@ -32,7 +32,7 @@ $ARGUMENTS
 
 If the request above is non-empty, the user invoked `/diffo` explicitly —
 open the review now, following the loop below (a branch name means review
-against that base: `npx -y diffo --base <branch>`).
+against that base: `npx -y @diffohq/diffo --base <branch>`).
 If it is empty, review the changeset this conversation just produced.
 
 ## When to use
@@ -43,7 +43,7 @@ If it is empty, review the changeset this conversation just produced.
 
 ## The loop
 
-1. **Open the review**: run `npx -y diffo --no-open` from inside the
+1. **Open the review**: run `npx -y @diffohq/diffo --no-open` from inside the
    repo. It starts a local server and keeps watching the working tree (your
    later edits appear live). `--no-open` matters: an agent never opens a
    browser at the reviewer — **hand them the printed URL instead: end your
@@ -62,7 +62,7 @@ If it is empty, review the changeset this conversation just produced.
    file, so it anchors there:
 
    ```
-   npx -y diffo comment --message "<what the change does>"
+   npx -y @diffohq/diffo comment --message "<what the change does>"
    ```
 
    Its content: one sentence on what the change does, plus a small ```mermaid diagram if a picture explains the shape better than words (roughly ten nodes).
@@ -71,7 +71,7 @@ If it is empty, review the changeset this conversation just produced.
    independent judgment is the point. If your later edits reshape the
    changeset, reply to your own guide thread with a short update (it is a
    thread like any other, so the update lands under it).
-3. **Poll for feedback**: run `npx -y diffo poll`.
+3. **Poll for feedback**: run `npx -y @diffohq/diffo poll`.
    It waits silently (heartbeats only) until the reviewer acts, then prints one
    JSON payload: a prompt carrying the review threads to act on, with thread
    ids. Leave it running — never kill it.
@@ -104,7 +104,7 @@ If it is empty, review the changeset this conversation just produced.
    to each thread, concise and addressed to the reviewer, no preamble:
 
    ```
-   npx -y diffo reply <threadId> --message "<your reply>"
+   npx -y @diffohq/diffo reply <threadId> --message "<your reply>"
    ```
 
    (pipe a long reply on stdin instead of --message). Reply as soon as a
@@ -121,14 +121,14 @@ If it is empty, review the changeset this conversation just produced.
    (--line), a file, or the whole changeset (no file):
 
    ```
-   npx -y diffo comment [<file>] [--line <line>] --message "<comment>"
+   npx -y @diffohq/diffo comment [<file>] [--line <line>] --message "<comment>"
    ```
 
    It is labeled as yours and never counts as the reviewer's feedback until
    they reply into it — then it is theirs to send. Spend these deliberately:
    an agent that annotates everything gets skimmed.
 6. **Poll again — and only once you're actually done**: after handling
-   everything the last payload gave you, run `npx -y diffo poll` again to
+   everything the last payload gave you, run `npx -y @diffohq/diffo poll` again to
    keep listening. When the reviewer clicks Finish review, the poll returns
    their whole batch — queued comments plus honest coverage stats — as one
    payload; apply it the same way.
@@ -141,7 +141,7 @@ If it is empty, review the changeset this conversation just produced.
    deliberately decided not to act on a thread, say so in the thread; a reason
    is an answer, silence is not.
 7. **End politely**: when the user moves on or the review is done, run
-   `npx -y diffo end` to detach. Do not reopen or re-poll a review the
+   `npx -y @diffohq/diffo end` to detach. Do not reopen or re-poll a review the
    reviewer ended unless asked.
 
 ## Rules
@@ -155,7 +155,7 @@ If it is empty, review the changeset this conversation just produced.
 - One attached agent at a time: the newest poll carries the review. Don't run
   two polls at once, and don't re-poll to win it back from another session —
   tell the user which agent is attached and let them decide.
-- `npx -y diffo end` ends YOUR attachment only. If another session is the
+- `npx -y @diffohq/diffo end` ends YOUR attachment only. If another session is the
   attached agent it does nothing, and says so.
 - Never edit code the reviewer didn't ask about while a review is open —
   the diff moves under their reading position.

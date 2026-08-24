@@ -1,7 +1,8 @@
 > [!IMPORTANT]
 > **Diffo is pre-release.** The loop works end to end and this repo is reviewed with it
-> daily, but the npm package isn't published yet, so the install below runs the skill
-> straight from this repository. See [Status](#status) for what works today.
+> daily. The skill installs from this repository; the CLI it runs comes from npm as
+> **`@diffohq/diffo`** — scoped because the bare `diffo` name belongs to an unrelated
+> package. See [Status](#status) for what works today.
 
 <div align="center">
 
@@ -70,7 +71,7 @@ while you read. That is the clip above, with no URL to ask for.
 
 <br>
 
-Until the npm package ships, you can run the CLI straight out of a checkout:
+You can also run the CLI straight out of a checkout, which is what contributors do:
 
 ```bash
 git clone https://github.com/DiffoHQ/diffo.git && cd diffo
