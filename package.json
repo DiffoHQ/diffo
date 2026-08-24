@@ -1,5 +1,5 @@
 {
-  "name": "diffo",
+  "name": "@diffohq/diffo",
   "version": "0.0.1",
   "description": "Local, live code review for the AI age — read what the agent wrote and send feedback straight back",
   "type": "module",
@@ -22,6 +22,9 @@
   ],
   "bin": {
     "diffo": "./dist/cli.mjs"
+  },
+  "publishConfig": {
+    "access": "public"
   },
   "files": [
     "dist",

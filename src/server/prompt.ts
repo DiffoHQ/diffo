@@ -19,7 +19,11 @@ export function snapshotHunk(changeset: Changeset, hunkId: string): string | nul
   return null
 }
 
-export const NPX = 'npx -y diffo'
+/** Scoped, because the bare `diffo` name on npm belongs to an unrelated package.
+ * The bin it exposes is still `diffo`, so only the install specifier is scoped. */
+export const PACKAGE_NAME = '@diffohq/diffo'
+
+export const NPX = `npx -y ${PACKAGE_NAME}`
 
 /** This checkout's root — `src/server/prompt.ts` → up two. */
 export const CHECKOUT_ROOT = fileURLToPath(new URL('../..', import.meta.url)).replace(/\/$/, '')

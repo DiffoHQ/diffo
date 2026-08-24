@@ -216,7 +216,7 @@ describe('review API', () => {
     }
     expect(sentBody.thread.state).toBe('sent')
     expect(sentBody.prompt).toContain('general note')
-    expect(sentBody.prompt).toContain('npx -y diffo reply')
+    expect(sentBody.prompt).toContain('npx -y @diffohq/diffo reply')
     expect(sentBody.delivered).toBe(false)
     expect(sentBody.presence).toBe('waiting')
 
@@ -491,7 +491,7 @@ describe('the pull loop', () => {
     expect(payload.kind).toBe('threads')
     expect(payload.threadIds).toEqual([thread.id])
     expect(payload.prompt).toContain('explain the design')
-    expect(payload.prompt).toContain('npx -y diffo reply')
+    expect(payload.prompt).toContain('npx -y @diffohq/diffo reply')
     expect(payload.next_step).toContain('diffo poll')
 
     expect(queue.take()).toBeNull()

@@ -72,10 +72,10 @@ describe('skills/diffo/SKILL.md (Agent Skills format)', () => {
 
   it('teaches the loop with the real commands, and the wake-path rules', () => {
     const { body } = readSkill()
-    expect(body).toContain('npx -y diffo poll')
-    expect(body).toContain('npx -y diffo reply <threadId>')
-    expect(body).toContain('npx -y diffo comment [<file>]')
-    expect(body).toContain('npx -y diffo end')
+    expect(body).toContain('npx -y @diffohq/diffo poll')
+    expect(body).toContain('npx -y @diffohq/diffo reply <threadId>')
+    expect(body).toContain('npx -y @diffohq/diffo comment [<file>]')
+    expect(body).toContain('npx -y @diffohq/diffo end')
     expect(body).toContain('nohup')
     expect(body).toMatch(/Nothing\s+the\s+reviewer sent is lost/)
     expect(body).toMatch(/held in the review itself/)
@@ -93,7 +93,7 @@ describe('skills/diffo/SKILL.md (Agent Skills format)', () => {
     expect(body).toContain(GUIDE.update)
     // One comment on the changeset, short, and the real command.
     expect(body).toMatch(/ONE comment on the whole changeset/)
-    expect(body).toContain('npx -y diffo comment --message')
+    expect(body).toContain('npx -y @diffohq/diffo comment --message')
     expect(body).toMatch(/Keep it short/)
   })
 

@@ -23,7 +23,7 @@ cp .env.example .env
 ```
 
 The `.env` step matters: `ENV=development` is what makes a review opened while
-you're hacking use *this checkout's* CLI instead of the published `npx -y diffo`.
+you're hacking use *this checkout's* CLI instead of the published `npx -y @diffohq/diffo`.
 Without it the dev servers still run, but the skill they install and the commands
 they print point at the released package rather than your changes.
 

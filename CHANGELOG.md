@@ -59,7 +59,8 @@ today, written as a starting point rather than a history.
 
 ### Known gaps
 
-- **Not on npm.** Until it is, Diffo runs from a clone — see the README's quick start.
+- **Published as `@diffohq/diffo`**, not `diffo` — the bare name on npm belongs to an
+  unrelated package. The binary it installs is still `diffo`.
 - **Pull requests are not a changeset source yet.** Working tree and `--base` only.
 - **Guided reading** — splitting a large change into an ordered sequence of small,
   reviewable sections — is designed but not built.

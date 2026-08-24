@@ -48,7 +48,7 @@ The agent opens a live review of its own work and hands you the URL. Your
 comments arrive in its context, its replies land inline in your threads, and
 its fixes update the diff live while you read.
 
-And the plain diff viewer needs no install at all: `npx -y diffo` inside
+And the plain diff viewer needs no install at all: `npx -y @diffohq/diffo` inside
 any repo opens the browser on your working tree vs HEAD.
 
 ::: warning Not yet on npm
@@ -77,7 +77,7 @@ anything that isn't Diffo's, and is safe to re-run any time:
 | **VS Code** (Copilot Chat) | plugin registered in `chat.pluginLocations` |
 | **Copilot CLI** | `copilot plugin install` |
 
-And it stays set up: `npx -y diffo` resolves a fresh CLI on every review, and
+And it stays set up: `npx -y @diffohq/diffo` resolves a fresh CLI on every review, and
 the CLI carries the installed skill forward, so there is no re-running
 `setup` after upgrades.
 

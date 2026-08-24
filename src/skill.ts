@@ -1,4 +1,4 @@
-import { buildCliCommands, GUIDE, NPX } from './server/prompt.js'
+import { buildCliCommands, GUIDE, NPX, PACKAGE_NAME } from './server/prompt.js'
 
 // The shipped Agent Skill is GENERATED from the same command strings the server
 // puts in poll payloads and reply protocols. Regenerate with `pnpm build:skill`;
@@ -23,12 +23,12 @@ If diffo output shows a follow-up command starting with \`diffo\`, run it
 as \`${NPX} …\` instead.
 In restricted subprocess sandboxes or agent harnesses where \`npx -y\` exits
 opaquely, use an already-installed copy directly:
-\`node "$(npm root)/diffo/dist/cli.mjs" …\` for a local install,
-\`node "$(npm root -g)/diffo/dist/cli.mjs" …\` for a global one.`
+\`node "$(npm root)/${PACKAGE_NAME}/dist/cli.mjs" …\` for a local install,
+\`node "$(npm root -g)/${PACKAGE_NAME}/dist/cli.mjs" …\` for a global one.`
       : `This is a DEV build, run straight from a source checkout:
 \`${cli}\`.
 Use exactly that — there is no installed \`diffo\` on this machine and
-\`npx -y diffo\` will fail. The path is absolute, so run it from inside
+\`${NPX}\` will fail. The path is absolute, so run it from inside
 whichever repo is under review. If diffo output shows a follow-up command
 starting with \`diffo\`, run it as \`${cli} …\` instead.`
   return `---

@@ -16,7 +16,7 @@ export default defineConfig({
   test: {
     include: ['src/**/*.test.ts', 'src/**/*.test.tsx'],
     environment: 'node',
-    // Tests assert the published `npx -y diffo` spelling, so a developer running
+    // Tests assert the published `npx -y @diffohq/diffo` spelling, so a developer running
     // with ENV=development would otherwise watch the suite go red.
     env: { ENV: '' },
     /* Well above vitest's 5s default: a good part of this suite builds real git

@@ -29,7 +29,7 @@ tree (the default) or everything since a fork point (`--base main`).
 
 The server keeps its state in the runtime's built-in `node:sqlite`, which lands in 24. That
 buys you no native module to compile, no `better-sqlite3` install step, and no database to
-run. It's the reason `npx -y diffo` can be the entire setup.
+run. It's the reason `npx -y @diffohq/diffo` can be the entire setup.
 
 ### Does it work with agents other than Claude Code?
 
