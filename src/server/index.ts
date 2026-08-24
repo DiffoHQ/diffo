@@ -385,6 +385,40 @@ export function createApp(
     )
   }
 
+  /**
+   * A closing note only becomes a thread while the changeset still has files to
+   * anchor it to — an empty diff would file it straight into the past, where the
+   * reviewer can't see it and the agent is never given it. In that case the note
+   * stays prose in the prompt (`buildFinishPrompt` quotes it when no thread carries
+   * it), which is all it ever was.
+   */
+  const notable = (coverage: Coverage): boolean =>
+    coverage.note !== undefined && (store?.get().files.length ?? 0) > 0
+
+  /** The preview must show the note the same way Finish will send it — a thread in
+   * the batch — without writing one for a review the reviewer may still walk away
+   * from. */
+  const projectClosingNote = (threads: ReviewThread[], coverage: Coverage): ReviewThread[] => {
+    if (!notable(coverage)) return threads
+    const at = new Date().toISOString()
+    return [
+      ...threads,
+      {
+        id: 'closing-note-preview',
+        anchor: { kind: 'changeset' },
+        state: 'sent',
+        closingNote: true,
+        codeContext: null,
+        codeChanged: false,
+        messages: [
+          { id: 'closing-note-preview-message', author: 'reviewer', text: coverage.note!, at },
+        ],
+        createdAt: at,
+        updatedAt: at,
+      },
+    ]
+  }
+
   const outgoing = (projected: ReviewThread[], before: ReviewThread[]): OutgoingThread[] =>
     projected
       .filter((t) => t.state === 'sent')
@@ -392,7 +426,9 @@ export function createApp(
         id: t.id,
         anchor: t.anchor,
         text: t.messages[0]?.text ?? '',
-        fresh: before.find((b) => b.id === t.id)?.state === 'open',
+        // Absent from `before` ⇒ this Finish is creating it (the closing note), which
+        // is as fresh as a thread that was merely open.
+        fresh: (before.find((b) => b.id === t.id)?.state ?? 'open') === 'open',
       }))
 
   app.post('/api/review/finish/preview', async (c) => {
@@ -400,7 +436,7 @@ export function createApp(
     const body = await c.req.json().catch(() => null)
     const coverage = parseCoverage(body?.coverage)
     const before = review.get().threads
-    const batch = activeThreads(projectFinish(before))
+    const batch = projectClosingNote(activeThreads(projectFinish(before)), coverage)
     return c.json({
       outgoing: outgoing(batch, before),
       prompt: buildFinishPrompt(
@@ -416,8 +452,9 @@ export function createApp(
     const body = await c.req.json().catch(() => null)
     const coverage = parseCoverage(body?.coverage)
     const deliver = body?.deliver !== false
-    const before = review.get().threads
-    const threads = review.finish(flushableIds(before))
+    // Before the flush, so the note rides the batch it closes rather than the next one.
+    if (notable(coverage)) review.closingNote(coverage.note!)
+    const threads = review.finish(flushableIds(review.get().threads))
     const batch = activeThreads(threads)
     review.recordFinish(
       (store?.get().files ?? []).flatMap((f) => f.hunks.map((h) => h.id)),

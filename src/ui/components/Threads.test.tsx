@@ -306,6 +306,27 @@ describe('ThreadCard', () => {
     expect(screen.queryByText(/couldn't reach the clipboard/)).toBeNull()
   })
 
+  it('a closing note is badged as one, and waits on the agent like any thread', () => {
+    render(
+      <ThreadCard
+        thread={thread({
+          anchor: { kind: 'changeset' },
+          state: 'sent',
+          closingNote: true,
+          codeContext: null,
+          messages: [
+            { id: 'm1', author: 'reviewer', text: 'solid overall', at: '2026-08-03T00:00:00Z' },
+          ],
+        })}
+        actions={actions()}
+      />,
+    )
+    expect(screen.getByText('closing note')).toBeTruthy()
+    expect(screen.getByText('solid overall')).toBeTruthy()
+    // Sent, so it is the agent's move — no Send button left on it.
+    expect(screen.queryByText('Send')).toBeNull()
+  })
+
   it('a resolved thread collapses to one line, and expands on click', () => {
     render(
       <ThreadCard thread={thread({ state: 'resolved', codeChanged: true })} actions={actions()} />,

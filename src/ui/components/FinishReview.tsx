@@ -306,7 +306,7 @@ export function FinishReview({
           <div className="fin-verdict-consequence">{CONSEQUENCE[verdict]}</div>
           <textarea
             className="fin-note"
-            placeholder="Add a closing note (optional) — quoted verbatim at the top of the agent's prompt"
+            placeholder="Add a closing note (optional) — sent as a thread on the changeset, so the agent can reply to it"
             value={note}
             rows={2}
             onChange={(e) => setNote(e.target.value)}

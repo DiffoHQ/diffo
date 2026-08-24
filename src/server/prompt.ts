@@ -157,10 +157,16 @@ const INTENT_CONTRACT: Record<ThreadIntent, string> = {
 const UNLABELED_CONTRACT =
   '- Unlabeled threads: judge from the text — a question wants an answer, not an edit.'
 
+/** The closing note is the reviewer summing up, so it earns an answer even when it
+ * asks nothing — a note with no reply is the review's one dead end. */
+const CLOSING_CONTRACT =
+  '- The closing note speaks for the whole review: read it first, and reply to it — briefly if it only sums up, in full if it asks something.'
+
 export function intentContract(threads: readonly ReviewThread[]): string[] {
-  const present = new Set(threads.map((t) => t.intent))
+  const present = new Set(threads.filter((t) => !t.closingNote).map((t) => t.intent))
   const lines = THREAD_INTENTS.filter((i) => present.has(i)).map((i) => INTENT_CONTRACT[i])
   if (present.has(undefined)) lines.push(UNLABELED_CONTRACT)
+  if (threads.some((t) => t.closingNote)) lines.push(CLOSING_CONTRACT)
   return lines
 }
 
@@ -277,9 +283,11 @@ function threadBlock(thread: ReviewThread, index: number): string {
   // responding to something the agent said, not filing new feedback.
   const label = startedByAgent(thread)
     ? ' [your comment — the reviewer replied]'
-    : thread.intent
-      ? ` [${INTENT_LABEL[thread.intent]}]`
-      : ''
+    : thread.closingNote
+      ? ' [their closing note on the whole review]'
+      : thread.intent
+        ? ` [${INTENT_LABEL[thread.intent]}]`
+        : ''
   const again = thread.unanswered ? ' — YOU NEVER ANSWERED THIS' : ''
   const parts = [
     `### Thread ${index + 1}${label} — ${describeAnchor(thread.anchor)}${again}`,
@@ -335,7 +343,11 @@ export function buildFinishPrompt(
   coverage: Coverage,
 ): string {
   const repo = ctx.repo
-  const actionable = threads.filter((t) => t.state === 'sent')
+  const sent = threads.filter((t) => t.state === 'sent')
+  // The closing note leads the batch: it is what the reviewer would say first if
+  // they were in the room, and it frames every thread under it.
+  const closing = sent.find((t) => t.closingNote)
+  const actionable = closing ? [closing, ...sent.filter((t) => t !== closing)] : sent
   const changed = coverage.changedFiles ?? []
   const commented = coverage.commentedUnread ?? []
   const filtered = coverage.filteredOut ?? []
@@ -361,10 +373,16 @@ export function buildFinishPrompt(
       : coverage.verdict === 'request-changes'
         ? 'Verdict: **changes requested** — do not treat this review as done until the threads below are addressed.'
         : null
+  // The note is a thread now, quoted once in its own block — pointed at from up
+  // here rather than repeated. Quoted in full only when no thread carries it: a
+  // finish recorded before closing notes were threads, or one taken over an empty
+  // changeset that had nowhere to anchor it.
   const noteLines =
-    coverage.note !== undefined
-      ? ['Their closing note:', ...coverage.note.split('\n').map((l) => `> ${l}`)]
-      : []
+    coverage.note === undefined
+      ? []
+      : closing
+        ? ['Their closing note is Thread 1 below — answer it there, like any other thread.']
+        : ['Their closing note:', ...coverage.note.split('\n').map((l) => `> ${l}`)]
   const owed = actionable.filter((t) => t.unanswered)
   const owedLines =
     owed.length > 0

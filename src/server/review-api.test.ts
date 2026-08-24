@@ -3,7 +3,7 @@ import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
-import { type ReviewThread, undeliveredThreadIds } from '../shared/review.js'
+import { type OutgoingThread, type ReviewThread, undeliveredThreadIds } from '../shared/review.js'
 import { DiffoDb } from './db.js'
 import { DeliveryQueue } from './delivery.js'
 import { createApp } from './index.js'
@@ -249,9 +249,20 @@ describe('review API', () => {
         note: '  merge it please  ',
       },
     })
-    const body = (await res.json()) as { prompt: string }
+    const body = (await res.json()) as { threads: ReviewThread[]; prompt: string }
     expect(body.prompt).toContain('**approved**')
-    expect(body.prompt).toContain('> merge it please')
+    expect(body.prompt).toContain('merge it please')
+
+    // The note is a thread of the reviewer's, sent with the batch it closes — so the
+    // agent has an id to reply to, and the queue counts it as an answer still owed.
+    const note = body.threads.find((t) => t.closingNote)!
+    expect(note.anchor).toEqual({ kind: 'changeset' })
+    expect(note.messages).toEqual([
+      expect.objectContaining({ author: 'reviewer', text: 'merge it please' }),
+    ])
+    expect(note.state).toBe('sent')
+    expect(undeliveredThreadIds(body.threads)).toContain(note.id)
+    expect(body.prompt).toContain(`id: ${note.id}`)
 
     const junk = (await (
       await post(app, '/api/review/finish', {
@@ -263,8 +274,72 @@ describe('review API', () => {
           note: '  ',
         },
       })
-    ).json()) as { prompt: string }
+    ).json()) as { threads: ReviewThread[]; prompt: string }
     expect(junk.prompt).not.toContain('Verdict:')
+    // A blank note adds no second thread — only the first finish's note is there.
+    expect(junk.threads.filter((t) => t.closingNote)).toHaveLength(1)
+  })
+
+  it('the closing note leads the batch, and the agent can reply to it', async () => {
+    const { app } = setup()
+    await post(app, '/api/review/threads', {
+      anchor: { kind: 'changeset' },
+      text: 'why 42?',
+      intent: 'question',
+    })
+    const finished = (await (
+      await post(app, '/api/review/finish', {
+        coverage: {
+          viewedHunks: 1,
+          totalHunks: 1,
+          skippedFiles: [],
+          note: 'ship it after the nit',
+        },
+      })
+    ).json()) as { threads: ReviewThread[]; prompt: string }
+
+    // Thread 1 of the prompt, quoted once — not repeated as a preamble block.
+    expect(finished.prompt).toContain('Thread 1 [their closing note on the whole review]')
+    expect(finished.prompt.match(/ship it after the nit/g)).toHaveLength(1)
+    expect(finished.prompt).toContain('Their closing note is Thread 1 below')
+
+    const note = finished.threads.find((t) => t.closingNote)!
+    const replied = (await post(app, `/api/review/threads/${note.id}/messages`, {
+      author: 'agent',
+      text: 'will do',
+    })) as Response
+    expect(replied.status).toBe(200)
+    const { thread } = (await replied.json()) as { thread: ReviewThread }
+    expect(thread.messages.at(-1)).toMatchObject({ author: 'agent', text: 'will do' })
+    expect(undeliveredThreadIds([thread])).toEqual([])
+  })
+
+  it('the finish preview shows the closing note as one of the outgoing threads', async () => {
+    const { app, review } = setup()
+    const res = await post(app, '/api/review/finish/preview', {
+      coverage: { viewedHunks: 1, totalHunks: 1, skippedFiles: [], note: 'one nit, then ship' },
+    })
+    const body = (await res.json()) as { outgoing: OutgoingThread[]; prompt: string }
+    expect(body.outgoing).toEqual([
+      expect.objectContaining({
+        anchor: { kind: 'changeset' },
+        text: 'one nit, then ship',
+        fresh: true,
+      }),
+    ])
+    expect(body.prompt).toContain('their closing note on the whole review')
+    // A preview writes nothing — the reviewer can still walk away.
+    expect(review.get().threads).toEqual([])
+  })
+
+  it('a closing note survives a restart as a thread', async () => {
+    const { app, root } = setup()
+    await post(app, '/api/review/finish', {
+      coverage: { viewedHunks: 1, totalHunks: 1, skippedFiles: [], note: 'read it all, one nit' },
+    })
+    const reopened = new ReviewStore(root, makeDb(root), { kind: 'working-tree' })
+    const note = reopened.get().threads.find((t) => t.closingNote)
+    expect(note?.messages[0]?.text).toBe('read it all, one nit')
   })
 
   it('finish leaves behind the threads whose changeset is behind you', async () => {
@@ -570,6 +645,26 @@ describe('the pull loop', () => {
     expect(payload.prompt).toContain('note a')
     expect(payload.prompt).toContain('note b')
     expect((payload.threadIds as string[]).length).toBe(2)
+  })
+
+  it('the poll rebuilds the finish payload with the closing note as a thread id', async () => {
+    const { app } = setup()
+    const finished = (await (
+      await post(app, '/api/review/finish', {
+        coverage: { viewedHunks: 1, totalHunks: 1, skippedFiles: [], note: 'nothing blocking' },
+      })
+    ).json()) as { threads: ReviewThread[] }
+    const note = finished.threads.find((t) => t.closingNote)!
+
+    // Rebuilt from the stored coverage, so this is the path a poll that arrives after a
+    // restart takes — the note must come back as an answerable thread, not as prose.
+    const payload = await pollResult(
+      await app.request('/api/agent/poll', { headers: { 'x-diffo-agent': 'cli' } }),
+    )
+    expect(payload.kind).toBe('finish')
+    expect(payload.threadIds).toEqual([note.id])
+    expect(payload.prompt).toContain('their closing note on the whole review')
+    expect(payload.prompt).not.toContain('Nothing to act on')
   })
 
   it('a reply to a sent thread flows through the poll; replies to open threads stay local', async () => {

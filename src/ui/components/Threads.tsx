@@ -233,6 +233,7 @@ export function ThreadCard({
   // own: on a two-line thread that band was taller than the comment it labelled.
   const marks = (
     <span className="thread-marks">
+      {thread.closingNote && <span className="thread-badge">closing note</span>}
       {thread.codeChanged && (
         <span className="thread-badge">
           <Icon name="alert" size="sm" /> code changed since this comment

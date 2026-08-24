@@ -71,8 +71,8 @@ its reply comes back into the same thread.
 When you're done reading, hit **Finish review** in the header.
 
 A preview shows exactly what will be sent: every thread, plus your coverage
-(`38/42 hunks read, 2 files skipped`). Add a closing note if you want; it appears at the
-top of what the agent receives.
+(`38/42 hunks read, 2 files skipped`). Add a closing note if you want — it goes out as a
+thread on the whole changeset, leading the batch, and the agent replies to it there.
 
 After you send:
 
