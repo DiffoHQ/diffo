@@ -2,7 +2,7 @@ import { readFileSync } from 'node:fs'
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
-import { GUIDE } from './server/prompt.js'
+import { devCliFor, GUIDE, NPX } from './server/prompt.js'
 import { createSkillMarkdown } from './skill.js'
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..')
@@ -102,6 +102,44 @@ describe('skills/diffo/SKILL.md (Agent Skills format)', () => {
       files: string[]
     }
     expect(pkg.files).toContain('skills')
+  })
+})
+
+describe('the dev skill (diffo-dev)', () => {
+  const devCli = devCliFor('/checkout')
+  const dev = createSkillMarkdown(devCli)
+  const frontmatter = /^---\n([\s\S]*?)\n---/.exec(dev)?.[1] ?? ''
+
+  it('is a separate skill, so it installs alongside the shipped one', () => {
+    expect(frontmatter).toMatch(/^name: diffo-dev$/m)
+    expect(createSkillMarkdown()).toMatch(/^name: diffo$/m)
+  })
+
+  it('is never model-invoked — a plain "open a review" must reach the shipped skill', () => {
+    expect(frontmatter).toMatch(/^disable-model-invocation: true$/m)
+    const description = /^description: (.*)$/m.exec(frontmatter)?.[1] ?? ''
+    expect(description).toMatch(/ONLY for an explicit `\/diffo-dev` invocation/)
+    expect(description).toMatch(/belongs to the `diffo` skill/)
+    // The shipped skill must NOT carry the flag, or nothing auto-opens a review.
+    expect(createSkillMarkdown()).not.toContain('disable-model-invocation')
+  })
+
+  it('teaches the checkout CLI everywhere, and warns off npx', () => {
+    expect(dev).toContain(`${devCli} poll`)
+    expect(dev).toContain(`${devCli} end`)
+    // No command in the dev skill may be the released CLI — that is the whole point.
+    expect(dev).not.toContain(`${NPX} poll`)
+    expect(dev).not.toContain(`${NPX} end`)
+    expect(dev).toMatch(/never `npx -y @diffohq\/diffo`, which would/)
+  })
+
+  it('tells the agent the UI marks itself, so the two reviews stay distinguishable', () => {
+    expect(dev).toMatch(/browser tab and header say \*\*diffo-dev\*\*/)
+  })
+
+  it('points its explicit-invocation line at its own command', () => {
+    expect(dev).toContain('the user invoked `/diffo-dev` explicitly')
+    expect(createSkillMarkdown()).toContain('the user invoked `/diffo` explicitly')
   })
 })
 

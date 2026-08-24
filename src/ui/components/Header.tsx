@@ -1,6 +1,7 @@
 import { type ReactNode, useEffect, useRef, useState } from 'react'
 import type { Changeset } from '../../shared/types.js'
 import type { Presence } from '../api.js'
+import { isDevServer } from '../devMode.js'
 import type { Theme } from '../theme.js'
 import { Icon } from './Icon.js'
 import { Menu, MenuItem, MenuLabel, MenuSep } from './Menu.js'
@@ -213,6 +214,14 @@ export function Header({
       <span className="mark">
         <Icon name="logo" size="lg" />
         Diffo
+        {isDevServer() && (
+          <span
+            className="dev-badge"
+            title="this review is served by a diffo running from a source checkout, not the released CLI"
+          >
+            dev
+          </span>
+        )}
       </span>
       <Where repo={changeset.repo} />
       <Comparison changeset={changeset} />

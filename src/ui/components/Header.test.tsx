@@ -17,6 +17,33 @@ function changeset(over: Partial<Changeset> = {}): Changeset {
   }
 }
 
+describe('Header dev badge', () => {
+  afterEach(() => {
+    document.head.querySelector('meta[name="diffo-env"]')?.remove()
+  })
+
+  const markDev = () => {
+    const meta = document.createElement('meta')
+    meta.setAttribute('name', 'diffo-env')
+    meta.setAttribute('content', 'development')
+    document.head.append(meta)
+  }
+
+  it('says nothing when the review came from the released CLI', () => {
+    const { container } = render(<Header changeset={changeset()} />)
+    expect(container.querySelector('.dev-badge')).toBeNull()
+  })
+
+  it('marks a checkout-served review, next to the wordmark', () => {
+    markDev()
+    const { container } = render(<Header changeset={changeset()} />)
+    const badge = container.querySelector('.dev-badge')
+    expect(badge?.textContent).toBe('dev')
+    expect(container.querySelector('.mark')?.contains(badge!)).toBe(true)
+    expect(badge?.getAttribute('title')).toMatch(/source checkout, not the released CLI/)
+  })
+})
+
 describe('Header', () => {
   it('states the comparison outright, with thousands separators', () => {
     const { container } = render(<Header changeset={changeset()} />)

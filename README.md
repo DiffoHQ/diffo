@@ -31,13 +31,14 @@ come back as fixes.
 </div>
 
 <!-- Every clip here is a real recording: a real Claude Code session, a real server, and a
-     real clone of this repo under review. -->
+     real changeset under review. The hero reviews a small demo app, so the diff reads at a
+     glance; the clips further down and in the tutorial review this repo's own changesets. -->
 
-<!-- Light-theme only: the dark take needs the agent to own the server, which the
-     recording harness does not do yet. -->
-<img alt="Typing /diffo in a real Claude Code session: the skill loads, a live review of the current changeset opens beside it, the header shows the agent attached and listening, and the reviewer starts moving through hunks and marking files read." src="docs/assets/t0-slash.gif" width="100%">
+<!-- Light-theme only. Waiting on the agent is fast-forwarded — the badge in the session's
+     corner says so while it runs — and nothing else is cut. -->
+<img alt="One take of the whole loop. A Claude Code session adds natural-language due dates to a todo app; the reviewer types “open a review”, and the session prints a localhost URL that opens the review beside it. The reviewer leaves a question on the weekday line — a bare weekday always lands next week, should it mean today? — and the agent's answer appears in the thread while they watch." src="docs/assets/loop.gif" width="100%">
 
-<p align="center"><sub>The whole setup: type <code>/diffo</code> and read. Left is a real Claude Code session, right is the real review of this repo's own changeset. The agent attaches itself, and the header turns to <b>listening</b> with nothing else asked of you.</sub></p>
+<p align="center"><sub>The whole loop in one take: say <b>open a review</b>, read the diff, ask on the line — and the answer comes back in the thread. Left is a real Claude Code session, right is the real review it opened. Nothing here is a mock-up; the only edit is that waiting on the agent runs fast.</sub></p>
 
 ---
 
@@ -269,7 +270,9 @@ pnpm typecheck && pnpm test && pnpm build && pnpm lint && pnpm docs:build
 
 Local development is `pnpm dev` (server and client together). One hard rule:
 **`skills/diffo/SKILL.md` is generated.** Edit [`src/skill.ts`](src/skill.ts) and run
-`pnpm build:skill`; a test fails if the committed file drifts.
+`pnpm build:skill`; a test fails if the committed file drifts. That rewrites the repo
+file, not the skill your own agent runs — `pnpm dev:skill --global` installs a separate
+`/diffo-dev` that drives your checkout, alongside the shipped `/diffo`.
 
 Details in [CONTRIBUTING.md](CONTRIBUTING.md), plus a [Code of Conduct](CODE_OF_CONDUCT.md)
 and the [CHANGELOG](CHANGELOG.md). First-time contributors sign a [CLA](CLA.md): a bot asks

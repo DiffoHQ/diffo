@@ -183,8 +183,17 @@ closing note, the intent contract, and the reply protocol.
 `src/skill.ts` generates `skills/diffo/SKILL.md` from **the same command strings**, so the
 skill can't drift from what the server actually says. `src/skill.test.ts` fails if the
 committed file differs from the generator, which is why the skill is never hand-edited.
-Both handle a dev checkout (`ENV=development` → an absolute `tsx` invocation) versus the
-published package (`npx -y @diffohq/diffo`), since the path an agent must type differs.
+
+One generator, two skills, because the command an agent must type differs: the shipped
+`diffo` runs `npx -y @diffohq/diffo`, while a contributor's `diffo-dev` runs an absolute
+`tsx` invocation against their checkout. They install side by side under different names,
+so testing one never uninstalls the other. Only `diffo-dev` sets
+`disable-model-invocation`, which keeps an ordinary "open a code review" on the released
+CLI rather than making it a coin flip between the two.
+
+A server started with `ENV=development` marks the page it serves — `markDevIndex` rewrites
+`index.html` on the way out, giving the tab the title `diffo-dev` and the header a badge.
+Nothing else distinguishes the two: same UI, same repo, same diff.
 
 ## Client
 

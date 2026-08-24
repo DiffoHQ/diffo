@@ -16,6 +16,8 @@ naming drift back to PR-only.
   most lint.
 - `skills/diffo/SKILL.md` is **generated** — edit `src/skill.ts` and run
   `pnpm build:skill`; never hand-edit the output. A hand edit is silently
-  overwritten on the next build.
+  overwritten on the next build. That regenerates the repo file only: the skill
+  your own session is running is a separate installed copy, and CONTRIBUTING.md
+  covers switching it between this checkout and the shipped CLI.
 - Keep team/org-shaped features behind clean module seams: their own
   directories, with core never importing from them.
