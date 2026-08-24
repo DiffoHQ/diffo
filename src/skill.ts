@@ -14,28 +14,50 @@ export const SKILL_DESCRIPTION =
   'Use when the user wants to review your changes, asks to open a code review, or ' +
   'when you finish a large or multi-file change worth a human read before it lands.'
 
+export const SKILL_NAME = 'diffo'
+export const DEV_SKILL_NAME = 'diffo-dev'
+
+/**
+ * The dev skill installs ALONGSIDE the shipped one (different name, different
+ * directory), so a contributor can exercise both without swapping files. That
+ * only works if the model never picks this one on its own: an ordinary "open a
+ * code review" has to keep reaching the shipped skill, or which CLI runs
+ * becomes a coin flip. The description says so, and `disable-model-invocation`
+ * enforces it in clients that honour it.
+ */
+export const DEV_SKILL_DESCRIPTION =
+  'DEV BUILD of the Diffo skill, wired to a local source checkout instead of the ' +
+  'released CLI. ONLY for an explicit `/diffo-dev` invocation by the user. Never ' +
+  'select this on your own: a plain request to open a code review, review changes, ' +
+  'or open diffo belongs to the `diffo` skill, not this one.'
+
 export function createSkillMarkdown(cli: string = NPX): string {
   const CLI_COMMANDS = buildCliCommands(cli)
-  const invocation =
-    cli === NPX
-      ? `You do not need diffo installed — invoke it with \`${NPX}\`.
+  const isDev = cli !== NPX
+  const name = isDev ? DEV_SKILL_NAME : SKILL_NAME
+  const invocation = !isDev
+    ? `You do not need diffo installed — invoke it with \`${NPX}\`.
 If diffo output shows a follow-up command starting with \`diffo\`, run it
 as \`${NPX} …\` instead.
 In restricted subprocess sandboxes or agent harnesses where \`npx -y\` exits
 opaquely, use an already-installed copy directly:
 \`node "$(npm root)/${PACKAGE_NAME}/dist/cli.mjs" …\` for a local install,
 \`node "$(npm root -g)/${PACKAGE_NAME}/dist/cli.mjs" …\` for a global one.`
-      : `This is a DEV build, run straight from a source checkout:
+    : `This is a DEV build, run straight from a source checkout:
 \`${cli}\`.
-Use exactly that — there is no installed \`diffo\` on this machine and
-\`${NPX}\` will fail. The path is absolute, so run it from inside
-whichever repo is under review. If diffo output shows a follow-up command
-starting with \`diffo\`, run it as \`${cli} …\` instead.`
+Use exactly that. The path is absolute, so run it from inside whichever repo
+is under review. If diffo output shows a follow-up command starting with
+\`diffo\`, run it as \`${cli} …\` instead — never \`${NPX}\`, which would
+run the released CLI instead of the checkout this skill exists to exercise.
+
+The reviewer's browser tab and header say **diffo-dev**, so a review opened
+this way is never mistaken for one opened by the shipped \`${SKILL_NAME}\`
+skill, which is installed alongside this one and unaffected by it.`
   return `---
-name: diffo
-description: ${SKILL_DESCRIPTION}
+name: ${name}
+description: ${isDev ? DEV_SKILL_DESCRIPTION : SKILL_DESCRIPTION}
 license: Apache-2.0
-metadata:
+${isDev ? 'disable-model-invocation: true\n' : ''}metadata:
   author: DiffoHQ
   argument-hint: <what to review — empty means the working tree>
 ---
@@ -57,16 +79,23 @@ session — \`${cli} help agent\` reprints the whole loop on one page.
 
 $ARGUMENTS
 
-If the request above is non-empty, the user invoked \`/diffo\` explicitly —
+If the request above is non-empty, the user invoked \`/${name}\` explicitly —
 open the review now, following the loop below (a branch name means review
 against that base: \`${cli} --base <branch>\`).
 If it is empty, review the changeset this conversation just produced.
 
 ## When to use
 
-- The user asks to review your changes, or to "open diffo"
+${
+  isDev
+    ? `Only when the user explicitly invokes \`/${DEV_SKILL_NAME}\`, or asks in so
+many words for the dev build. Nothing else — an ordinary "review my changes",
+"open a code review", or "open diffo" is the shipped \`${SKILL_NAME}\` skill's
+job, and answering it here would silently review with unreleased code.`
+    : `- The user asks to review your changes, or to "open diffo"
 - You finished a multi-file or subtle change that deserves a human read
-- The user wants to ask questions about a diff while reading it
+- The user wants to ask questions about a diff while reading it`
+}
 
 ## The loop
 

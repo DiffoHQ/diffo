@@ -1,7 +1,7 @@
 import { readFile } from 'node:fs/promises'
 import { extname, resolve, sep } from 'node:path'
 import { serve } from '@hono/node-server'
-import { Hono } from 'hono'
+import { type Context, Hono } from 'hono'
 import { stream, streamSSE } from 'hono/streaming'
 import {
   type Anchor,
@@ -36,6 +36,7 @@ import {
   buildFinishPrompt,
   buildThreadPrompt,
   INSTALL_SKILL,
+  IS_DEV,
   JOIN_PROMPT,
   nextStepFor,
   type PromptContext,
@@ -723,6 +724,15 @@ export function createApp(
     }),
   )
 
+  const serveIndex = async (c: Context) => {
+    try {
+      const index = await readFile(resolve(ctx.clientDir, 'index.html'))
+      return c.html(markDevIndex(index.toString(), IS_DEV))
+    } catch {
+      return c.text('Client not built — run `pnpm build`', 404)
+    }
+  }
+
   // Static client; anything that isn't a file falls back to index.html (SPA).
   app.get('/*', async (c) => {
     const requested = c.req.path === '/' ? 'index.html' : c.req.path.slice(1)
@@ -730,21 +740,33 @@ export function createApp(
     if (!fullPath.startsWith(resolve(ctx.clientDir) + sep)) {
       return c.text('Forbidden', 403)
     }
+    // index.html is the one static file the server rewrites, so it goes through
+    // the same path as the SPA fallback rather than being streamed as a blob.
+    if (resolve(fullPath) === resolve(ctx.clientDir, 'index.html')) return serveIndex(c)
     try {
       const content = await readFile(fullPath)
       const mime = MIME[extname(fullPath)] ?? 'application/octet-stream'
       return c.body(new Uint8Array(content), 200, { 'Content-Type': mime })
     } catch {
-      try {
-        const index = await readFile(resolve(ctx.clientDir, 'index.html'))
-        return c.html(index.toString())
-      } catch {
-        return c.text('Client not built — run `pnpm build`', 404)
-      }
+      return serveIndex(c)
     }
   })
 
   return app
+}
+
+/**
+ * A review served from a source checkout has to LOOK like one. The reviewer may
+ * have the shipped `/diffo` open in another tab, and nothing else on the page
+ * distinguishes them — same UI, same repo, same diff. The title carries it into
+ * the tab strip; the meta tag lets the header render a badge without an extra
+ * round trip, so there is no flash of a review that looks released.
+ */
+export function markDevIndex(html: string, isDev: boolean): string {
+  if (!isDev || html.includes('name="diffo-env"')) return html
+  return html
+    .replace(/<title>[^<]*<\/title>/, '<title>diffo-dev</title>')
+    .replace(/<\/head>/, '    <meta name="diffo-env" content="development" />\n  </head>')
 }
 
 export function rehydrateQueue(review: ReviewStore, queue: DeliveryQueue): void {

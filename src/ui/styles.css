@@ -303,6 +303,22 @@ body {
   height: 19px;
 }
 
+/* A source-checkout build says so, permanently and quietly. Amber because it is
+   the one attention colour, and this never changes once the page loads — it does
+   not compete with the in-flight signals that also use it. */
+.dev-badge {
+  font-family: var(--mono);
+  font-size: var(--t-11);
+  font-weight: 600;
+  letter-spacing: 0;
+  line-height: 1;
+  padding: 3px 6px;
+  border-radius: var(--r-pill);
+  color: var(--attn);
+  background: var(--attn-wash);
+  border: 1px solid var(--attn-line);
+}
+
 .repo {
   font-family: var(--mono);
   font-size: var(--t-13);
