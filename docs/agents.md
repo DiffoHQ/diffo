@@ -73,9 +73,10 @@ protocol. Because it is assembled per payload, an agent with no skill installed
 and no memory of this page still receives complete instructions.
 
 A `kind: "finish"` payload is the reviewer pressing **Finish review**: the whole
-batch at once, with coverage attached (`38/42 hunks read, 2 files skipped`) and any
-closing note quoted verbatim. It re-ships every thread that was sent, including
-ones already answered, and the prompt tells the agent not to answer those twice.
+batch at once, with coverage attached (`38/42 hunks read, 2 files skipped`). Any
+closing note leads that batch as its own thread on the whole changeset, with an id
+to reply to. It re-ships every thread that was sent, including ones already
+answered, and the prompt tells the agent not to answer those twice.
 
 ## Change or Question: the intent contract
 

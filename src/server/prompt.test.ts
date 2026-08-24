@@ -167,6 +167,8 @@ describe('prompt context (A1)', () => {
   })
 
   it('the finish verdict leads: approve is stated before coverage, note quoted verbatim', () => {
+    // No thread carries the note — a finish recorded before closing notes were
+    // threads, or one over a changeset with nothing left to anchor to.
     const prompt = buildFinishPrompt(
       [],
       { repo, changeset: null },
@@ -182,6 +184,35 @@ describe('prompt context (A1)', () => {
     expect(prompt).toContain('> all good')
     expect(prompt).toContain('> merge it please')
     expect(prompt.indexOf('**approved**')).toBeLessThan(prompt.indexOf('Coverage:'))
+  })
+
+  it('the closing-note thread leads the batch, quoted once, with a reply id', () => {
+    const note = thread({
+      id: 't-note',
+      anchor: { kind: 'changeset' },
+      closingNote: true,
+      codeContext: null,
+      messages: [
+        { id: 'm-note', author: 'reviewer', text: 'solid overall', at: '2026-08-03T00:00:00Z' },
+      ],
+    })
+    const prompt = buildFinishPrompt(
+      [thread(), note],
+      { repo, changeset: null },
+      {
+        viewedHunks: 1,
+        totalHunks: 1,
+        skippedFiles: [],
+        note: 'solid overall',
+      },
+    )
+    expect(prompt).toContain('Thread 1 [their closing note on the whole review]')
+    expect(prompt).toContain('id: t-note')
+    // Pointed at from the top rather than quoted twice.
+    expect(prompt).toContain('Their closing note is Thread 1 below')
+    expect(prompt.match(/solid overall/g)).toHaveLength(1)
+    expect(prompt).toContain('The closing note speaks for the whole review')
+    expect(prompt.indexOf('id: t-note')).toBeLessThan(prompt.indexOf('id: t-1'))
   })
 
   it('request-changes says the review is not done; a plain comment adds no verdict line', () => {

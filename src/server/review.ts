@@ -80,7 +80,7 @@ export class ReviewStore {
     author: Author = 'reviewer',
   ): ReviewThread {
     const now = new Date().toISOString()
-    const thread: ReviewThread = {
+    return this.insert({
       id: randomUUID(),
       anchor,
       state: 'open',
@@ -90,7 +90,32 @@ export class ReviewStore {
       messages: [{ id: randomUUID(), author, text, at: now }],
       createdAt: now,
       updatedAt: now,
-    }
+    })
+  }
+
+  /**
+   * The closing note of a Finish round, as a thread. Anchored to the changeset
+   * and opened in the reviewer's voice, so it travels the ordinary path: the
+   * agent replies to it with `diffo reply`, the queue counts it as feedback
+   * still owed an answer, and the reviewer sees their own summing-up in the rail
+   * beside everything else they said.
+   */
+  closingNote(text: string): ReviewThread {
+    const now = new Date().toISOString()
+    return this.insert({
+      id: randomUUID(),
+      anchor: { kind: 'changeset' },
+      state: 'open',
+      closingNote: true,
+      codeContext: null,
+      codeChanged: false,
+      messages: [{ id: randomUUID(), author: 'reviewer', text, at: now }],
+      createdAt: now,
+      updatedAt: now,
+    })
+  }
+
+  private insert(thread: ReviewThread): ReviewThread {
     this.state = { ...this.state, threads: [...this.state.threads, thread] }
     this.commit()
     return thread
@@ -507,6 +532,7 @@ function normalizeThread(value: unknown, now: string): ReviewThread | null {
     codeContext: typeof t.codeContext === 'string' ? t.codeContext : null,
     codeChanged: t.codeChanged === true,
     ...(t.unanswered === true ? { unanswered: true } : {}),
+    ...(t.closingNote === true ? { closingNote: true as const } : {}),
     ...(typeof t.sentAt === 'string' ? { sentAt: t.sentAt } : {}),
     messages,
     createdAt: typeof t.createdAt === 'string' ? t.createdAt : now,

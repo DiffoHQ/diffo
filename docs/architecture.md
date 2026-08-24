@@ -121,8 +121,9 @@ open ──send──▶ sent ──agent replies──▶ addressed ──▶ r
 with a few honest extra bits: `codeChanged` (the anchored hunk's id rotated), `withheld`
 (a reviewer reply deliberately not handed over yet, stored rather than inferred, because
 "the last message is the reviewer's" is also true of a reply that *was* delivered),
-`unanswered` (the agent closed the batch without replying), and `sentAt`, which has to
-survive a restart because the queue's FIFO order is a promise.
+`unanswered` (the agent closed the batch without replying), `closingNote` (Finish's own
+thread, below), and `sentAt`, which has to survive a restart because the queue's FIFO order
+is a promise.
 
 `reconcile()` runs against the current hunk id set on every changeset change. Threads whose
 code is gone are **hidden, never deleted**: a stash or a branch switch empties the diff
@@ -130,6 +131,13 @@ for a minute and must not destroy a comment.
 
 `lastFinish` is one record, overwritten each time, never a history: the hunk ids that
 existed when you last pressed Finish. That's what "since last review" is computed from.
+
+A **closing note** typed into Finish becomes a real thread anchored to the changeset,
+flagged `closingNote` and flushed with the batch it closes. It was prose in the prompt
+once, which made it the one piece of a review with no way back: no thread, no id, nothing
+to reply to. As a thread it leads the batch, the agent answers it with `diffo reply`, and
+`undeliveredThreadIds` counts it as an answer still owed. A note typed over an emptied
+changeset has nowhere to anchor, so that one stays quoted prose.
 
 ## The delivery queue
 

@@ -40,7 +40,9 @@ today, written as a starting point rather than a history.
 - **Presence** — *waiting* / *listening* / *working*, with a 5-minute stall threshold, so
   you always know whether a Send reaches a live agent or waits in a queue.
 - **Finish review**, which hands the whole batch over with coverage attached (*38/42 hunks
-  read, 2 files skipped*) and an optional closing note quoted verbatim to the agent.
+  read, 2 files skipped*) and an optional closing note. The note travels as a thread on the
+  whole changeset — it leads the agent's batch, and the agent replies to it like any other
+  thread.
 - **`diffo setup`**, which registers Diffo with Claude Code, Cursor, VS Code and Copilot
   CLI, writes a shared copy into the cross-tool `~/.agents/skills` directory that Codex,
   Gemini CLI, Amp, Goose and OpenCode read, and installs the generated
