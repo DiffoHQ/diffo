@@ -34,11 +34,12 @@ come back as fixes.
      real changeset under review. The hero reviews a small demo app, so the diff reads at a
      glance; the clips further down and in the tutorial review this repo's own changesets. -->
 
-<!-- Light-theme only. Waiting on the agent is fast-forwarded — the badge in the session's
-     corner says so while it runs — and nothing else is cut. -->
-<img alt="One take of the whole loop. A Claude Code session adds natural-language due dates to a todo app; the reviewer types “open a review”, and the session prints a localhost URL that opens the review beside it. The reviewer leaves a question on the weekday line — a bare weekday always lands next week, should it mean today? — and the agent's answer appears in the thread while they watch." src="docs/assets/loop.gif" width="100%">
+<!-- Light-theme only. The clip opens once the session has finished writing the change:
+     waiting on the agent is fast-forwarded — the badge in the session's corner says so
+     while it runs — and nothing else is cut. -->
+<img alt="One take of the whole loop. A Claude Code session has just written natural-language due dates into a todo app; the reviewer types /diffo, and the session opens a live review and hands over its localhost URL, which opens beside the session. The reviewer leaves a question on the weekday line — a bare weekday always lands next week, should it mean today? — and the agent's answer appears in the thread while they watch." src="docs/assets/loop.gif" width="100%">
 
-<p align="center"><sub>The whole loop in one take: say <b>open a review</b>, read the diff, ask on the line — and the answer comes back in the thread. Left is a real Claude Code session, right is the real review it opened. Nothing here is a mock-up; the only edit is that waiting on the agent runs fast.</sub></p>
+<p align="center"><sub>The whole loop in one take: type <code>/diffo</code>, read the diff, ask on the line — and the answer comes back in the thread. Left is a real Claude Code session, right is the real review it opened. Nothing here is a mock-up; the only edit is that waiting on the agent runs fast.</sub></p>
 
 ---
 
