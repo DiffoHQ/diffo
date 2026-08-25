@@ -1,9 +1,3 @@
-> [!IMPORTANT]
-> **Diffo is pre-release.** The loop works end to end and this repo is reviewed with it
-> daily. The skill installs from this repository; the CLI it runs comes from npm as
-> **`@diffohq/diffo`** — scoped because the bare `diffo` name belongs to an unrelated
-> package. See [Status](#status) for what works today.
-
 <div align="center">
 
 <a href="https://diffohq.github.io/diffo/">
@@ -23,6 +17,7 @@ come back as fixes.
 [Quick start](#quick-start) · [Why Diffo](#why-diffo) · [Docs](#docs) · [Status](#status) · [Contributing](#contributing)
 
 [![CI](https://img.shields.io/github/actions/workflow/status/DiffoHQ/diffo/ci.yml?branch=main&label=CI)](https://github.com/DiffoHQ/diffo/actions/workflows/ci.yml)
+[![npm](https://img.shields.io/npm/v/%40diffohq%2Fdiffo?label=npm&color=cb3837)](https://www.npmjs.com/package/@diffohq/diffo)
 [![License](https://img.shields.io/badge/license-Apache--2.0-blue)](LICENSE)
 [![Node](https://img.shields.io/badge/node-%E2%89%A5%2024-brightgreen)](#quick-start)
 [![Docs](https://img.shields.io/badge/docs-diffo-8b5cf6)](https://diffohq.github.io/diffo/)
@@ -254,7 +249,8 @@ we commit to: **anything that runs on your machine for one reviewer is core.**
 
 ## Status
 
-What works today:
+Diffo is pre-1.0: the loop below works end to end — this repo is reviewed with it
+daily — and the edges are still moving. What works today:
 
 - [x] [Live review of any changeset](https://diffohq.github.io/diffo/guide/how-it-works): the working tree, or anything since `--base`.
 - [x] [The comment loop](https://diffohq.github.io/diffo/guide/the-loop): threads that reach the session that wrote the code.
