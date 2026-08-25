@@ -45,8 +45,8 @@ features:
 
 ## One round trip
 
-<video class="clip home-clip" src="./assets/demo.mp4" muted loop playsinline width="1080" height="632" poster="./assets/demo-poster.jpg" preload="none"
-  aria-label="The full Diffo loop: ask Claude Code to open a code review, read the changeset in the browser, comment on a line, and watch the agent's answer land inline in the thread"></video>
+<video class="clip home-clip" src="./assets/loop.mp4" muted loop playsinline width="1560" height="806" poster="./assets/loop-poster.jpg" preload="none"
+  aria-label="One take of the whole loop: a Claude Code session has just written natural-language due dates into a todo app, the reviewer types /diffo, the session opens a live review and hands over its localhost URL, the review opens beside the session, and a question left on the weekday line is answered in the thread while they watch"></video>
 
 Diffo doesn't grade your diff or leave generated nitpicks. It isn't an AI reviewer.
 It's a reading tool for the human, wired to the one process that still holds the full
