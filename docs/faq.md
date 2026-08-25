@@ -22,8 +22,9 @@ first, and the PR is still there to open when you're done.
 
 ### Can I review a pull request with it?
 
-Not yet, but it's on the [roadmap](https://github.com/DiffoHQ/diffo#roadmap). Today the changeset is your working
-tree (the default) or everything since a fork point (`--base main`).
+Not yet, but it's planned — the [Status section](https://github.com/DiffoHQ/diffo#status)
+tracks what works today. For now the changeset is your working tree (the default) or
+everything since a fork point (`--base main`).
 
 ### Why Node 24?
 

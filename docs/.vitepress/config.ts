@@ -62,7 +62,10 @@ export default defineConfig({
         ],
       },
     ],
-    socialLinks: [{ icon: 'github', link: 'https://github.com/DiffoHQ/diffo' }],
+    socialLinks: [
+      { icon: 'github', link: 'https://github.com/DiffoHQ/diffo' },
+      { icon: 'npm', link: 'https://www.npmjs.com/package/@diffohq/diffo' },
+    ],
     search: { provider: 'local' },
     editLink: {
       pattern: 'https://github.com/DiffoHQ/diffo/edit/main/docs/:path',

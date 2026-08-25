@@ -51,8 +51,8 @@ its fixes update the diff live while you read.
 And the plain diff viewer needs no install at all: `npx -y @diffohq/diffo` inside
 any repo opens the browser on your working tree vs HEAD.
 
-::: warning Not yet on npm
-Until `diffo` is published, run from a clone:
+::: details Running from a clone instead
+Contributors (or anyone avoiding `npx`) can run the CLI straight out of a checkout:
 
 ```bash
 git clone https://github.com/DiffoHQ/diffo.git && cd diffo
