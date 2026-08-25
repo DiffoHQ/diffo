@@ -9,10 +9,10 @@ Until 1.0, minor versions may break things. When they do, the entry says how to 
 
 Nothing yet.
 
-## [0.0.1] — unreleased
+## [0.0.1] — 2026-08-25
 
-The first version, not yet published to npm. Everything below is what exists on `main`
-today, written as a starting point rather than a history.
+The first release, published to npm as `@diffohq/diffo`. Everything below is what
+shipped in it, written as a starting point rather than a history.
 
 ### Added
 
