@@ -83,7 +83,7 @@ node dist/cli.mjs setup   # or `node dist/cli.mjs` from any repo to review it
 
 </details>
 
-New here? [**Your first review, end to end**](docs/tutorial.md) takes about five minutes.
+New here? [**Your first review, end to end**](https://diffohq.github.io/diffo/tutorial) takes about five minutes.
 
 ## Why Diffo
 
@@ -205,14 +205,14 @@ cheapest to change.
 
 | | |
 | --- | --- |
-| [**Your first review**](docs/tutorial.md) | The whole loop end to end, about five minutes |
-| [**Getting started**](docs/guide/getting-started.md) | Install, and where each agent gets wired |
-| [**The review loop**](docs/guide/the-loop.md) | Reading, commenting, and what the agent receives |
-| [**How it works**](docs/guide/how-it-works.md) | The components and the server lifecycle |
-| [**The agent side**](docs/agents.md) | The agent protocol: every command, every payload |
-| [**Architecture**](docs/architecture.md) | Diff pipeline, delivery queue, SQLite state |
-| [**CLI**](docs/reference/cli.md) and [**Keyboard shortcuts**](docs/reference/keyboard-shortcuts.md) | Reference |
-| [**FAQ**](docs/faq.md) | The short answers |
+| [**Your first review**](https://diffohq.github.io/diffo/tutorial) | The whole loop end to end, about five minutes |
+| [**Getting started**](https://diffohq.github.io/diffo/guide/getting-started) | Install, and where each agent gets wired |
+| [**The review loop**](https://diffohq.github.io/diffo/guide/the-loop) | Reading, commenting, and what the agent receives |
+| [**How it works**](https://diffohq.github.io/diffo/guide/how-it-works) | The components and the server lifecycle |
+| [**The agent side**](https://diffohq.github.io/diffo/agents) | The agent protocol: every command, every payload |
+| [**Architecture**](https://diffohq.github.io/diffo/architecture) | Diff pipeline, delivery queue, SQLite state |
+| [**CLI**](https://diffohq.github.io/diffo/reference/cli) and [**Keyboard shortcuts**](https://diffohq.github.io/diffo/reference/keyboard-shortcuts) | Reference |
+| [**FAQ**](https://diffohq.github.io/diffo/faq) | The short answers |
 
 ## Under the hood
 
@@ -223,7 +223,7 @@ there is no database to install. **Zero network calls.** 859 tests across 54 fil
 
 Reviews are scoped per repo **and branch**, and the server is loopback-only, rejecting
 non-loopback `Host` and `Origin` headers so a web page can't reach into your repo through
-it. The full walkthrough is in [**Architecture**](docs/architecture.md).
+it. The full walkthrough is in [**Architecture**](https://diffohq.github.io/diffo/architecture).
 
 <details>
 <summary><b>Why read marks survive a live diff</b></summary>
@@ -256,10 +256,10 @@ we commit to: **anything that runs on your machine for one reviewer is core.**
 
 What works today:
 
-- [x] [Live review of any changeset](docs/guide/how-it-works.md): the working tree, or anything since `--base`.
-- [x] [The comment loop](docs/guide/the-loop.md): threads that reach the session that wrote the code.
-- [x] [One setup, every agent](docs/guide/getting-started.md): Claude Code, Codex, Cursor, VS Code, Copilot CLI, Gemini CLI, Amp, Goose, OpenCode.
-- [x] [Reading tools](docs/reference/keyboard-shortcuts.md): unified and split diffs, word-level marks, coverage tracking.
+- [x] [Live review of any changeset](https://diffohq.github.io/diffo/guide/how-it-works): the working tree, or anything since `--base`.
+- [x] [The comment loop](https://diffohq.github.io/diffo/guide/the-loop): threads that reach the session that wrote the code.
+- [x] [One setup, every agent](https://diffohq.github.io/diffo/guide/getting-started): Claude Code, Codex, Cursor, VS Code, Copilot CLI, Gemini CLI, Amp, Goose, OpenCode.
+- [x] [Reading tools](https://diffohq.github.io/diffo/reference/keyboard-shortcuts): unified and split diffs, word-level marks, coverage tracking.
 
 ## Contributing
 
