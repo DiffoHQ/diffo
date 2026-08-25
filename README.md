@@ -282,11 +282,9 @@ on your first pull request, and signing is one reply.
 Found a security problem? Please don't open a public issue. The
 [Security Policy](SECURITY.md) says where to send it and what's in scope.
 
-<!-- Contributors grid: contrib.rocks 404s until DiffoHQ/diffo is public. Uncomment at launch.
 <a href="https://github.com/DiffoHQ/diffo/graphs/contributors">
   <img src="https://contrib.rocks/image?repo=DiffoHQ/diffo" alt="Contributors">
 </a>
--->
 
 ## License & trademark
 
