@@ -19,7 +19,7 @@ export const VERSION: string = (() => {
         name?: string
         version?: string
       }
-      if (pkg.name === 'diffo' && typeof pkg.version === 'string') return pkg.version
+      if (pkg.name === '@diffohq/diffo' && typeof pkg.version === 'string') return pkg.version
     } catch {
       // keep climbing
     }
