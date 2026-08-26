@@ -37,6 +37,18 @@ Knowing what Diffo assumes makes it easier to judge what's a vulnerability:
   delivered verbatim to the coding agent. Diffo does not try to protect an
   agent from its own reviewer.
 
+A longer operational writeup — egress, data at rest, what the CLI touches —
+is on the docs site: [Security model](https://diffohq.github.io/diffo/security).
+
+## Supply chain
+
+Since 0.0.2, releases are built and published by GitHub Actions
+([`publish.yml`](.github/workflows/publish.yml)) using npm trusted publishing:
+no npm token exists to steal, and every tarball carries a signed
+[provenance attestation](https://docs.npmjs.com/generating-provenance-statements)
+binding it to the public commit and workflow run that built it. Verify an
+install with `npm audit signatures`. The package has no install scripts.
+
 ### In scope
 
 - Reaching or driving the server from outside the machine or from a web page
