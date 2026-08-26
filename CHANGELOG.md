@@ -7,6 +7,10 @@ Until 1.0, minor versions may break things. When they do, the entry says how to 
 
 ## [Unreleased]
 
+Nothing yet.
+
+## [0.0.2] — 2026-08-26
+
 ### Changed
 
 - Releases are now published to npm from GitHub Actions with
@@ -73,5 +77,6 @@ shipped in it, written as a starting point rather than a history.
 - **Guided reading** — splitting a large change into an ordered sequence of small,
   reviewable sections — is designed but not built.
 
-[Unreleased]: https://github.com/DiffoHQ/diffo/compare/main...HEAD
+[Unreleased]: https://github.com/DiffoHQ/diffo/compare/v0.0.2...HEAD
+[0.0.2]: https://github.com/DiffoHQ/diffo/compare/v0.0.1...v0.0.2
 [0.0.1]: https://github.com/DiffoHQ/diffo
