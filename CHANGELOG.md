@@ -7,7 +7,12 @@ Until 1.0, minor versions may break things. When they do, the entry says how to 
 
 ## [Unreleased]
 
-Nothing yet.
+### Fixed
+
+- The CLI knows its own version again. Since the rename to `@diffohq/diffo`,
+  every published build reported `0.0.0` (`diffo --version`, the server
+  handshake), so a newer CLI would reuse a running server from an older build
+  instead of replacing it.
 
 ## [0.0.2] — 2026-08-26
 
