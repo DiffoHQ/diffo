@@ -1,4 +1,4 @@
-import { execFileSync } from 'node:child_process'
+import { execFileSync, spawnSync } from 'node:child_process'
 import { mkdtempSync, rmSync, statSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -145,9 +145,15 @@ describe('server registry', () => {
     cleanups.push(() => rmSync(dir, { recursive: true, force: true }))
     const path = join(dir, 'diffo.db')
 
+    // A made-up pid can collide with a real process on a busy machine, and a
+    // live pid legitimately blocks the prune. Spawn-and-reap one instead: this
+    // pid existed moments ago and is certainly dead now.
+    const deadPid = spawnSync(process.execPath, ['-e', '']).pid
+    expect(deadPid).toBeGreaterThan(0)
+
     const first = new DiffoDb(path)
     first.claimServer(dir, 4001, 111)
-    first.claimServer(join(dir, 'deleted-worktree'), 4002, 222)
+    first.claimServer(join(dir, 'deleted-worktree'), 4002, deadPid)
     first.close()
 
     const second = new DiffoDb(path)
