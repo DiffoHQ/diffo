@@ -7,7 +7,13 @@ Until 1.0, minor versions may break things. When they do, the entry says how to 
 
 ## [Unreleased]
 
-Nothing yet.
+### Changed
+
+- Releases are now published to npm from GitHub Actions with
+  [provenance](https://docs.npmjs.com/generating-provenance-statements): every
+  tarball carries a signed attestation binding it to the exact commit and
+  workflow run that built it, verifiable on the npm package page. Nothing
+  changes for users — same package, now with a checkable paper trail.
 
 ## [0.0.1] — 2026-08-25
 

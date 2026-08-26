@@ -1,0 +1,53 @@
+name: Publish
+
+# Publishing runs here, not on a laptop, so every release carries npm provenance:
+# a signed attestation binding the tarball to the exact commit and workflow that
+# built it. Auth is npm "trusted publishing" (OIDC) — there is no NPM_TOKEN to
+# store, leak, or rotate. One-time pairing lives in the package's settings on
+# npmjs.com: Trusted Publisher → GitHub Actions → DiffoHQ/diffo, publish.yml.
+on:
+  push:
+    tags: ['v*']
+
+# id-token lets npm verify the workflow's OIDC identity; nothing here may write
+# to the repo.
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: pnpm/action-setup@v6
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: pnpm
+
+      # Trusted publishing needs npm ≥ 11.5.1; the npm bundled with the runner's
+      # Node has lagged that before. Pinning latest keeps the OIDC exchange from
+      # silently degrading into "no token found".
+      - run: npm install -g npm@latest
+
+      - run: pnpm install --frozen-lockfile
+
+      # A tag that disagrees with package.json would publish a version whose
+      # source no one can find again. Refuse before npm gets involved.
+      - name: Verify tag matches package.json
+        run: |
+          tag="${GITHUB_REF_NAME#v}"
+          pkg="$(node -p "require('./package.json').version")"
+          if [ "$tag" != "$pkg" ]; then
+            echo "tag v$tag does not match package.json version $pkg" >&2
+            exit 1
+          fi
+
+      # prepublishOnly runs the full `pnpm check` (typecheck, test, build, lint,
+      # docs), so the published dist is built by this same job. --provenance is
+      # implied by trusted publishing but stated so a misconfigured setup fails
+      # loudly instead of publishing unattested.
+      - run: npm publish --provenance
