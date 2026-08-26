@@ -58,6 +58,7 @@ export default defineConfig({
         text: 'Under the hood',
         items: [
           { text: 'Architecture', link: '/architecture' },
+          { text: 'Security model', link: '/security' },
           { text: 'FAQ', link: '/faq' },
         ],
       },
