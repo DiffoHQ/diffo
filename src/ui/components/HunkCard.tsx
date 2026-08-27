@@ -313,6 +313,15 @@ function SplitLines({
   const rows = toSplitRows(lines)
   return (
     <table className="hunk-lines hunk-lines-split">
+      {/* table-layout: fixed sizes columns from the first row, and that row is the
+       * boundary's colSpan cell — which says nothing, leaving four equal quarters.
+       * cols are consulted first, so they carry the real widths. */}
+      <colgroup>
+        <col className="split-col-no" />
+        <col />
+        <col className="split-col-no" />
+        <col />
+      </colgroup>
       <tbody>
         {boundary}
         {rows.map((row, i) => {

@@ -2601,9 +2601,14 @@ body {
   table-layout: fixed;
 }
 
-.hunk-lines-split .line-no {
+/* Widths live on the cols: fixed layout reads the first row otherwise, and the
+ * first row is the boundary's colSpan cell, which pins nothing. The unset code
+ * cols split the leftover evenly — the two equal halves. */
+.hunk-lines-split .split-col-no {
   width: 3.2em;
-  min-width: 3.2em;
+}
+
+.hunk-lines-split .line-no {
   padding: 0 0.6em;
 }
 
