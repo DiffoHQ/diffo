@@ -58,3 +58,21 @@ describe('the file-list toggle', () => {
     )
   })
 })
+
+describe('the typed-filter chip', () => {
+  it('echoes the rail’s word, and the whole chip is its own clear', () => {
+    const onClearQuery = vi.fn()
+    render(bar({ query: 'auth', onClearQuery }))
+    const chip = screen.getByLabelText('Clear the file filter “auth”')
+    expect(chip.textContent).toContain('auth')
+    fireEvent.click(chip)
+    expect(onClearQuery).toHaveBeenCalled()
+  })
+
+  it('is not there with nothing typed — whitespace included', () => {
+    const { container, rerender } = render(bar({ query: '', onClearQuery: () => {} }))
+    expect(container.querySelector('.pane-q')).toBeNull()
+    rerender(bar({ query: '   ', onClearQuery: () => {} }))
+    expect(container.querySelector('.pane-q')).toBeNull()
+  })
+})

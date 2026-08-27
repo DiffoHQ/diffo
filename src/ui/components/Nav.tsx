@@ -1,4 +1,4 @@
-import { type ReactElement, useCallback, useMemo, useRef, useState } from 'react'
+import { type ReactElement, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { ReviewThread } from '../../shared/review.js'
 import type { FileChange, FileStatus } from '../../shared/types.js'
 import { isFileViewed } from '../fileMarks.js'
@@ -213,6 +213,9 @@ export function Nav({
   threads,
   attention,
   changed,
+  query: sharedQuery,
+  onQuery,
+  focusTick = 0,
   hideReviewed = false,
   onHideReviewed,
   hideTests = false,
@@ -231,6 +234,14 @@ export function Nav({
   threads?: Map<string, ReviewThread[]>
   attention?: Map<string, ThreadItem[]>
   changed?: ReadonlySet<string>
+  /** The typed filter is review-wide state, not the rail's: the pane narrows by the
+   * same word (`useReviewFilter`), so the tree stays a map of what the pane shows. */
+  query?: string
+  onQuery?: (q: string) => void
+  /** Bumped by the app when `/` is pressed. Focusing is Nav's own job: the press may
+   * also be what reveals the rail, and only an effect here runs after that commit —
+   * a display:none input swallows focus(). */
+  focusTick?: number
   hideReviewed?: boolean
   onHideReviewed?: (on: boolean) => void
   hideTests?: boolean
@@ -238,9 +249,16 @@ export function Nav({
   onlyChanged?: boolean
   onOnlyChanged?: (on: boolean) => void
 }) {
-  const [query, setQuery] = useState('')
+  // Uncontrolled fallback so the rail still filters when no owner drives it.
+  const [localQuery, setLocalQuery] = useState('')
+  const query = sharedQuery ?? localQuery
+  const setQuery = onQuery ?? setLocalQuery
   const [shut, setShut] = useState<ReadonlySet<string>>(new Set())
   const searchRef = useRef<HTMLInputElement>(null)
+
+  useEffect(() => {
+    if (focusTick > 0) searchRef.current?.focus()
+  }, [focusTick])
 
   const isDone = useCallback((file: FileChange) => isFileViewed(file, viewed), [viewed])
 

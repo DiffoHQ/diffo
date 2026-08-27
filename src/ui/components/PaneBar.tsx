@@ -6,6 +6,8 @@ export function PaneBar({
   onToggleNav,
   left,
   total,
+  query = '',
+  onClearQuery,
   hideReviewed,
   onHideReviewed,
   hideTests,
@@ -24,6 +26,10 @@ export function PaneBar({
   onToggleNav?: () => void
   left: number
   total: number
+  /** The rail's typed filter. The pane obeys it, so the bar must say so — with the
+   * rail collapsed this chip is the only trace of why files are missing. */
+  query?: string
+  onClearQuery?: () => void
   hideReviewed: boolean
   onHideReviewed: (on: boolean) => void
   hideTests: boolean
@@ -41,6 +47,7 @@ export function PaneBar({
   const done = total - left
   const showTests = testCount > 0 || hideTests
   const showChanged = changedCount > 0 || onlyChanged
+  const trimmedQuery = query.trim()
   return (
     <div className="pane-bar">
       {onToggleNav && (
@@ -75,6 +82,19 @@ export function PaneBar({
           </button>
           <span className="pane-sep" />
         </>
+      )}
+      {trimmedQuery !== '' && onClearQuery && (
+        <button
+          type="button"
+          className="pane-q"
+          title={`Showing only files matching “${trimmedQuery}” — click to clear`}
+          aria-label={`Clear the file filter “${trimmedQuery}”`}
+          onClick={onClearQuery}
+        >
+          <Icon name="search" size="sm" />
+          <span className="pane-q-word">{trimmedQuery}</span>
+          <Icon name="x" size="sm" />
+        </button>
       )}
       {showChanged && (
         <Switch

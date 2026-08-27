@@ -103,6 +103,20 @@ describe('Nav', () => {
     expect(screen.queryByLabelText('Clear filter')).toBeNull()
   })
 
+  it('when the app drives the filter, keystrokes report up and the value is obeyed', () => {
+    const onQuery = vi.fn()
+    const { rerender } = render(<Nav files={FILES} query="git" onQuery={onQuery} />)
+    expect(names()).toEqual(['src/server', 'git.ts'])
+    fireEvent.change(screen.getByLabelText('Filter files'), { target: { value: 'app' } })
+    expect(onQuery).toHaveBeenCalledWith('app')
+    // The box did not move on its own — the app owns the value.
+    expect((screen.getByLabelText('Filter files') as HTMLInputElement).value).toBe('git')
+    rerender(<Nav files={FILES} query="app" onQuery={onQuery} />)
+    expect(names()).toEqual(['src/ui', 'App.tsx'])
+    fireEvent.click(screen.getByLabelText('Clear filter'))
+    expect(onQuery).toHaveBeenCalledWith('')
+  })
+
   it('a file click hands the pick to the app, which expands the file first', () => {
     const onPickFile = vi.fn()
     render(<Nav files={FILES} onPickFile={onPickFile} />)

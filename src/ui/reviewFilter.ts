@@ -25,6 +25,7 @@ export interface FilterSplit {
   hiddenTests: number
   hiddenReviewed: number
   hiddenUnchanged: number
+  hiddenQuery: number
 }
 
 /**
@@ -33,7 +34,8 @@ export interface FilterSplit {
  * Completion is measured against **scope** — what you asked to see — because
  * `Hide tests` hides files rather than reading them. The excluded files are named
  * instead of quietly counted as done. `Hide reviewed` is not a scope: those files
- * are read, which is why they left.
+ * are read, which is why they left. The typed query is not a scope either — a word
+ * in a search box is a look-around, and must never make a review count as finished.
  */
 export interface ReviewScope {
   left: number
@@ -83,18 +85,21 @@ export function reviewScope(
 }
 
 /**
- * Apply all three filters, counting what each one took.
+ * Apply all the filters, counting what each one took.
  *
  * `pinned` wins over all of them, and that is the escape hatch: a rail click, a `J`
  * or a thread jump names a path here and it renders regardless of what is switched
  * on. A tick never pins — the filter keeps its word, and the file goes.
  *
- * Tests are counted before reviewed so a reviewed test file reports as one hidden
- * test rather than being claimed twice.
+ * The query is answered first: a typed word is the most deliberate narrowing on the
+ * bar, so a file it drops is reported as "doesn't match", whatever else would also
+ * have hidden it. Tests are counted before reviewed so a reviewed test file reports
+ * as one hidden test rather than being claimed twice.
  */
 export function splitFiles(
   files: readonly FileChange[],
   opts: {
+    query: string
     hideReviewed: boolean
     hideTests: boolean
     onlyChanged: boolean
@@ -104,16 +109,23 @@ export function splitFiles(
   },
 ): FilterSplit {
   const visible: FileChange[] = []
+  const q = opts.query.trim().toLowerCase()
   let hiddenTests = 0
   let hiddenReviewed = 0
   let hiddenUnchanged = 0
+  let hiddenQuery = 0
   for (const file of files) {
     if (opts.pinned.has(file.path)) {
       visible.push(file)
       continue
     }
-    // The narrowing is answered first, and wins: "only what came back" is a scope
-    // rather than a hide, so everything outside it is out for that reason.
+    if (q !== '' && !file.path.toLowerCase().includes(q)) {
+      hiddenQuery++
+      continue
+    }
+    // The narrowing is answered next, and wins over the hides: "only what came
+    // back" is a scope rather than a hide, so everything outside it is out for
+    // that reason.
     if (opts.onlyChanged && !opts.changed.has(file.path)) {
       hiddenUnchanged++
       continue
@@ -128,10 +140,12 @@ export function splitFiles(
     }
     visible.push(file)
   }
-  return { visible, hiddenTests, hiddenReviewed, hiddenUnchanged }
+  return { visible, hiddenTests, hiddenReviewed, hiddenUnchanged, hiddenQuery }
 }
 
 export interface ReviewFilter {
+  query: string
+  setQuery: (q: string) => void
   hideReviewed: boolean
   hideTests: boolean
   setHideReviewed: (on: boolean) => void
@@ -142,6 +156,7 @@ export interface ReviewFilter {
   hiddenTests: number
   hiddenReviewed: number
   hiddenUnchanged: number
+  hiddenQuery: number
   testCount: number
   changedCount: number
   scope: ReviewScope
@@ -163,6 +178,17 @@ export function useReviewFilter(
   )
   const [testsChoice, setTestsChoice] = useState<boolean | null>(() => storedChoice(KEY_TESTS))
   const [pinned, setPinned] = useState<ReadonlySet<string>>(new Set())
+  // The typed filter is one shared narrowing: the rail's box edits it and the pane
+  // obeys it, so the tree is always a map of what the pane renders. Deliberately
+  // transient — a word you typed for this look-around must not survive a reload
+  // the way the switches do.
+  const [query, setQueryState] = useState('')
+
+  const setQuery = useCallback((q: string) => {
+    setQueryState(q)
+    // Stale pins would defeat a fresh narrowing — same reset the switches do.
+    setPinned((prev) => (prev.size === 0 ? prev : new Set()))
+  }, [])
 
   const hideReviewed = reviewedChoice ?? files.length > AUTO_HIDE_ABOVE
   const hideTests = testsChoice ?? false
@@ -198,12 +224,14 @@ export function useReviewFilter(
     setReviewedChoice(false)
     setTestsChoice(false)
     setPinned(new Set())
+    setQueryState('')
     setSince(false)
   }, [setSince])
 
   const split = useMemo(
     () =>
       splitFiles(files, {
+        query,
         hideReviewed,
         hideTests,
         onlyChanged: since.on,
@@ -211,7 +239,7 @@ export function useReviewFilter(
         pinned,
         isDone,
       }),
-    [files, hideReviewed, hideTests, since.on, since.changed, pinned, isDone],
+    [files, query, hideReviewed, hideTests, since.on, since.changed, pinned, isDone],
   )
 
   const testCount = useMemo(() => files.filter((f) => isTestFile(f.path)).length, [files])
@@ -229,6 +257,8 @@ export function useReviewFilter(
   )
 
   return {
+    query,
+    setQuery,
     hideReviewed,
     hideTests,
     setHideReviewed,
@@ -239,6 +269,7 @@ export function useReviewFilter(
     hiddenTests: split.hiddenTests,
     hiddenReviewed: split.hiddenReviewed,
     hiddenUnchanged: split.hiddenUnchanged,
+    hiddenQuery: split.hiddenQuery,
     testCount,
     changedCount: since.changed.size,
     scope,
