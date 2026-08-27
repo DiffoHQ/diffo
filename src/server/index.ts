@@ -32,6 +32,7 @@ import {
 import { IdleMonitor, resolveIdleTimeoutMs } from './idle.js'
 import { maintainLanded } from './landed.js'
 import {
+  buildClearedPrompt,
   buildCoalescedPrompt,
   buildFinishPrompt,
   buildThreadPrompt,
@@ -296,8 +297,13 @@ export function createApp(
   // Declared before the `:id` route so the bare path isn't swallowed by it.
   app.delete('/api/review/threads', (c) => {
     if (!review) return c.json({ error: 'review unavailable' }, 503)
+    const before = review.get()
+    const hadRound = before.threads.length > 0 || before.lastFinish !== undefined
     const removed = review.reset()
     for (const id of removed) queue?.drop(id)
+    // The fresh round may already be on screen, guideless — wake the polling
+    // agent with the heads-up so it can orient the reviewer with a new guide.
+    if (hadRound && (store?.get().files.length ?? 0) > 0) queue?.enqueueCleared()
     return c.json({ removed: removed.length })
   })
 
@@ -483,6 +489,14 @@ export function createApp(
 
   const pollPayload = (snapshot: Snapshot) => {
     const threads = review?.get().threads ?? []
+    if (snapshot.kind === 'cleared') {
+      return {
+        status: 'feedback' as const,
+        kind: 'cleared' as const,
+        threadIds: [] as string[],
+        prompt: buildClearedPrompt({ repo: repoInfo(), changeset: store?.get() ?? null }),
+      }
+    }
     if (snapshot.kind === 'finish') {
       const batch = activeThreads(threads)
       const actionable = batch.filter((t) => t.state === 'sent').map((t) => t.id)
@@ -855,8 +869,8 @@ export function startServer(options: ServerContext & { port: number }) {
       isAncestor(options.root, ancestor, descendant),
     subject: (sha: string) => getCommitSubject(options.root, sha),
   }
-  const checkLanded = (hasFiles: boolean) => {
-    if (maintainLanded(review, hasFiles, landedGit) === 'stamped') {
+  const checkLanded = (hasFiles: boolean, hunkIds: ReadonlySet<string>) => {
+    if (maintainLanded(review, hasFiles, hunkIds, landedGit) === 'stamped') {
       const landed = review.get().landed
       if (landed) log(`changeset landed in ${landed.sha.slice(0, 7)} — offering a fresh review`)
     }
@@ -870,13 +884,15 @@ export function startServer(options: ServerContext & { port: number }) {
     queue.rescope(changeset.repo.branch)
     if (review.scope.branch !== before)
       log(`branch ${before || 'detached'} → ${changeset.repo.branch || 'detached'}`)
-    review.reconcile(new Set(changeset.files.flatMap((f) => f.hunks.map((h) => h.id))))
-    checkLanded(changeset.files.length > 0)
+    const hunkIds = new Set(changeset.files.flatMap((f) => f.hunks.map((h) => h.id)))
+    review.reconcile(hunkIds)
+    checkLanded(changeset.files.length > 0, hunkIds)
   })
-  review.reconcile(new Set(store.get().files.flatMap((f) => f.hunks.map((h) => h.id))))
+  const startupHunkIds = new Set(store.get().files.flatMap((f) => f.hunks.map((h) => h.id)))
+  review.reconcile(startupHunkIds)
   // Startup runs the same check: the commit that landed this review may have
   // happened while no server was watching (the idle reap makes that ordinary).
-  checkLanded(store.get().files.length > 0)
+  checkLanded(store.get().files.length > 0, startupHunkIds)
   const idleTimeoutMs = resolveIdleTimeoutMs(process.env)
   let idle: IdleMonitor | undefined
   // The queue's presence is deliberately not consulted: a delivered-but-unanswered

@@ -55,10 +55,15 @@ export type AttachOutcome = 'data' | 'superseded' | 'ended' | 'gone'
 export type Snapshot =
   | { kind: 'threads'; threadIds: string[] }
   | { kind: 'finish'; coverage: Coverage; absorbedThreadIds: string[] }
+  | { kind: 'cleared' }
 
 interface ScopePending {
   threads: Set<string>
   finish: Coverage | null
+  /** The reviewer started the review over — the agent is owed a heads-up (and
+   * a chance to post a fresh guide). Rides behind real feedback: take() only
+   * surfaces it once nothing else is pending. */
+  cleared: boolean
 }
 
 export class DeliveryQueue {
@@ -182,7 +187,7 @@ export class DeliveryQueue {
   private bucket(): ScopePending {
     let bucket = this.buckets.get(this.scope)
     if (!bucket) {
-      bucket = { threads: new Set(), finish: null }
+      bucket = { threads: new Set(), finish: null, cleared: false }
       this.buckets.set(this.scope, bucket)
     }
     return bucket
@@ -328,6 +333,15 @@ export class DeliveryQueue {
     this.wake()
   }
 
+  /** The reviewer cleared the review. A boolean, not a queue: clearing twice
+   * before a poll still owes exactly one heads-up. */
+  enqueueCleared(): void {
+    this.bucket().cleared = true
+    const queued = this.waiter === null
+    this.wake()
+    if (queued) this.notify()
+  }
+
   drop(threadId: string): void {
     for (const bucket of this.buckets.values()) bucket.threads.delete(threadId)
     this.deliveredAt.delete(threadId)
@@ -394,7 +408,9 @@ export class DeliveryQueue {
 
   private hasPending(): boolean {
     const bucket = this.buckets.get(this.scope)
-    return bucket !== undefined && (bucket.threads.size > 0 || bucket.finish !== null)
+    return (
+      bucket !== undefined && (bucket.threads.size > 0 || bucket.finish !== null || bucket.cleared)
+    )
   }
 
   private wake(): void {
@@ -417,12 +433,24 @@ export class DeliveryQueue {
       }
     }
     if (bucket.threads.size > 0) return { kind: 'threads', threadIds: [...bucket.threads] }
+    // Real feedback outranks the heads-up: a cleared notice only surfaces once
+    // nothing else is owed, and survives in the bucket until then.
+    if (bucket.cleared) return { kind: 'cleared' }
     return null
   }
 
   /** The poll response for this snapshot was fully written — NOW it counts as
    * delivered. Clears exactly what the snapshot covered. */
   confirm(snapshot: Snapshot, deliveredThreadIds: string[]): void {
+    if (snapshot.kind === 'cleared') {
+      // No batch, no reply owed: the agent may post a guide and re-poll, which
+      // is what the grace window already models.
+      const bucket = this.buckets.get(this.scope)
+      if (bucket) bucket.cleared = false
+      this.armGrace()
+      this.notify()
+      return
+    }
     for (const bucket of this.buckets.values()) {
       if (snapshot.kind === 'finish') {
         if (bucket.finish === snapshot.coverage) bucket.finish = null

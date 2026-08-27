@@ -1,3 +1,4 @@
+import type { ReviewState } from '../shared/review.js'
 import type { ReviewStore } from './review.js'
 
 /** The git questions landed-detection asks, injectable so the logic is testable
@@ -17,6 +18,15 @@ export interface LandedGit {
  *   committed. Stamp `landed` — the UI's cue to offer a fresh start. A stash
  *   empties the diff without moving HEAD, so it never stamps; a branch switch
  *   is rescoped to its own review before this runs.
+ * - The commit can also go unwitnessed: it lands and the next round starts
+ *   while no server watches, so no recompute ever sees the empty diff. The
+ *   evidence survives anyway — HEAD advanced past `seenHead` AND every hunk
+ *   the review pointed at (thread anchors, the last finish) is gone from the
+ *   current changeset. Both together stamp even over a non-empty diff; either
+ *   alone does not (an unrelated commit leaves the reviewed hunks in place, an
+ *   agent rewriting every hunk between recomputes leaves HEAD at `seenHead`).
+ *   A review that never anchored to a hunk has no such evidence and waits for
+ *   the witnessed path.
  * - A landed commit that left HEAD's history (reset, or an amend rewriting it)
  *   drops the marker — and an amend re-stamps in the same pass, because
  *   `seenHead` is still the pre-landing base and IS an ancestor of the
@@ -32,6 +42,7 @@ export interface LandedGit {
 export function maintainLanded(
   review: ReviewStore,
   hasFiles: boolean,
+  currentHunkIds: ReadonlySet<string>,
   git: LandedGit,
 ): 'stamped' | 'cleared' | null {
   const head = git.head()
@@ -50,7 +61,7 @@ export function maintainLanded(
 
   if (
     !review.get().landed &&
-    !hasFiles &&
+    (!hasFiles || reviewedHunksAllLanded(state, currentHunkIds)) &&
     !reviewEmpty &&
     state.seenHead !== undefined &&
     state.seenHead !== head &&
@@ -63,4 +74,19 @@ export function maintainLanded(
 
   if (hasFiles || reviewEmpty) review.noteHead(head)
   return outcome
+}
+
+/** The unwitnessed-landing evidence: the review pointed at hunks, and none of
+ * them survive in the current changeset. Vacuous truth deliberately fails —
+ * a review of only file- and changeset-anchored threads names no hunks, so it
+ * cannot testify that they landed. */
+function reviewedHunksAllLanded(state: ReviewState, currentHunkIds: ReadonlySet<string>): boolean {
+  const referenced = new Set<string>()
+  for (const thread of state.threads) {
+    if (thread.anchor.kind === 'hunk') referenced.add(thread.anchor.hunkId)
+  }
+  for (const id of state.lastFinish?.hunkIds ?? []) referenced.add(id)
+  if (referenced.size === 0) return false
+  for (const id of referenced) if (currentHunkIds.has(id)) return false
+  return true
 }
