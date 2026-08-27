@@ -345,6 +345,9 @@ describe('ReadingPane — the pane bar', () => {
       onlyChanged: false,
       onOnlyChanged: () => {},
       changedCount: 0,
+      query: '',
+      onClearQuery: () => {},
+      hiddenQuery: 0,
       hiddenTests: 0,
       hiddenReviewed: 0,
       hiddenUnchanged: 0,
@@ -453,6 +456,35 @@ describe('ReadingPane — the pane bar', () => {
   it('singularises one hidden test', () => {
     render(<ReadingPane files={[FILES[0]!]} controls={controls({ hiddenTests: 1 })} />)
     expect(screen.getByText(/1 test /)).toBeTruthy()
+  })
+
+  it('names the typed word first among the reasons files are missing', () => {
+    render(
+      <ReadingPane
+        files={[FILES[0]!]}
+        controls={controls({ query: 'auth', hiddenQuery: 3, hiddenTests: 4 })}
+      />,
+    )
+    expect(screen.getByText(/3 not matching “auth”, 4 tests hidden/)).toBeTruthy()
+  })
+
+  it('blames the word, not the switches, when the word alone emptied the pane', () => {
+    render(
+      <ReadingPane files={[]} controls={controls({ left: 12, query: 'zzz', hiddenQuery: 30 })} />,
+    )
+    expect(screen.getByText('None of them match “zzz”.')).toBeTruthy()
+  })
+
+  it('blames both when the word and the switches each hid something', () => {
+    render(
+      <ReadingPane
+        files={[]}
+        controls={controls({ left: 12, query: 'zzz', hiddenQuery: 20, hiddenReviewed: 10 })}
+      />,
+    )
+    expect(
+      screen.getByText("They're hidden by “zzz” and the switches on the bar above."),
+    ).toBeTruthy()
   })
 
   it('ends on the payoff, not on the clean-tree empty state', () => {

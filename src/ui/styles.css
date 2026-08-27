@@ -1394,6 +1394,49 @@ body {
   white-space: nowrap;
 }
 
+/* The rail's typed filter, echoed on the bar: with the rail collapsed this chip is
+   the only trace of why files are missing, and the whole chip is its own clear. */
+.pane-q {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s-2);
+  flex-shrink: 1;
+  min-width: 0;
+  padding: 3px var(--s-3);
+  border: none;
+  border-radius: var(--r-pill);
+  background: var(--fill);
+  font: inherit;
+  font-size: var(--t-12);
+  color: var(--ink);
+  cursor: pointer;
+  transition:
+    color var(--dur) var(--ease-out),
+    background var(--dur) var(--ease-out);
+}
+
+.pane-q:hover {
+  background: var(--fill-2);
+}
+
+.pane-q:focus-visible {
+  outline: 2px solid var(--acc);
+  outline-offset: 1px;
+}
+
+.pane-q .icon {
+  flex: none;
+  color: var(--ink-3);
+}
+
+.pane-q-word {
+  overflow: hidden;
+  max-width: 14ch;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: var(--mono);
+}
+
 .pane-sw {
   display: inline-flex;
   align-items: center;

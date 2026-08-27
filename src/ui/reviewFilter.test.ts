@@ -30,6 +30,7 @@ describe('splitFiles', () => {
   const files = [file('src/a.ts'), file('src/a.test.ts'), file('src/b.ts')]
   const done = (paths: string[]) => (f: FileChange) => paths.includes(f.path)
   const opts = (over: Partial<Parameters<typeof splitFiles>[1]> = {}) => ({
+    query: '',
     hideReviewed: false,
     hideTests: false,
     onlyChanged: false,
@@ -146,6 +147,35 @@ describe('splitFiles', () => {
       opts({ onlyChanged: true, changed: NONE, pinned: new Set(['src/a.ts']) }),
     )
     expect(paths(split.visible)).toEqual(['src/a.ts'])
+  })
+
+  it('the typed word narrows by path, case-insensitively, and counts what it drops', () => {
+    const split = splitFiles(files, opts({ query: 'B.TS' }))
+    expect(paths(split.visible)).toEqual(['src/b.ts'])
+    expect(split.hiddenQuery).toBe(2)
+  })
+
+  it('an all-space query filters nothing', () => {
+    const split = splitFiles(files, opts({ query: '   ' }))
+    expect(paths(split.visible)).toEqual(['src/a.ts', 'src/a.test.ts', 'src/b.ts'])
+    expect(split.hiddenQuery).toBe(0)
+  })
+
+  it('a file the word drops is claimed by the word, whatever else would hide it', () => {
+    const split = splitFiles(
+      files,
+      opts({ query: 'b.ts', hideTests: true, hideReviewed: true, isDone: done(['src/a.ts']) }),
+    )
+    expect(paths(split.visible)).toEqual(['src/b.ts'])
+    expect(split.hiddenQuery).toBe(2)
+    expect(split.hiddenTests).toBe(0)
+    expect(split.hiddenReviewed).toBe(0)
+  })
+
+  it('a pin outranks the typed word — a jump must land even mid-search', () => {
+    const split = splitFiles(files, opts({ query: 'zzz', pinned: new Set(['src/a.ts']) }))
+    expect(paths(split.visible)).toEqual(['src/a.ts'])
+    expect(split.hiddenQuery).toBe(2)
   })
 })
 

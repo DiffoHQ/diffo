@@ -35,6 +35,9 @@ export interface PaneControls {
   onToggleNav?: () => void
   left: number
   total: number
+  query: string
+  onClearQuery: () => void
+  hiddenQuery: number
   hideReviewed: boolean
   onHideReviewed: (on: boolean) => void
   hideTests: boolean
@@ -819,7 +822,8 @@ export function ReadingPane({
   const hiddenCount =
     (controls?.hiddenTests ?? 0) +
     (controls?.hiddenReviewed ?? 0) +
-    (controls?.hiddenUnchanged ?? 0)
+    (controls?.hiddenUnchanged ?? 0) +
+    (controls?.hiddenQuery ?? 0)
 
   const done = controls && (
     <ReviewDone
@@ -857,7 +861,13 @@ export function ReadingPane({
       <h2>
         {controls.left} {controls.left === 1 ? 'file' : 'files'} still to review
       </h2>
-      <p>They're hidden by the switches on the bar above.</p>
+      <p>
+        {controls.hiddenQuery === 0
+          ? "They're hidden by the switches on the bar above."
+          : controls.hiddenTests + controls.hiddenReviewed + controls.hiddenUnchanged === 0
+            ? `None of them match “${controls.query.trim()}”.`
+            : `They're hidden by “${controls.query.trim()}” and the switches on the bar above.`}
+      </p>
       <div className="empty-acts">
         <button type="button" className="btn btn-ghost" onClick={controls.onShowAll}>
           Show all files
@@ -935,6 +945,9 @@ export function ReadingPane({
           <span className="pane-hidden-said">
             <Icon name="eye-off" size="sm" />
             {[
+              controls.hiddenQuery > 0
+                ? `${controls.hiddenQuery} not matching “${controls.query.trim()}”`
+                : null,
               controls.hiddenUnchanged > 0 ? `${controls.hiddenUnchanged} unchanged` : null,
               controls.hiddenTests > 0
                 ? `${controls.hiddenTests} test${controls.hiddenTests === 1 ? '' : 's'}`
@@ -961,6 +974,8 @@ export function ReadingPane({
           onToggleNav={controls.onToggleNav}
           left={controls.left}
           total={controls.total}
+          query={controls.query}
+          onClearQuery={controls.onClearQuery}
           hideReviewed={controls.hideReviewed}
           onHideReviewed={controls.onHideReviewed}
           hideTests={controls.hideTests}

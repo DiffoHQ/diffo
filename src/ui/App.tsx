@@ -241,6 +241,7 @@ function Review() {
   const [inviteOpen, setInviteOpen] = useState(false)
   const [theme, setTheme] = useTheme()
   const [panel, setPanel] = useState<PanelTab>('files')
+  const [searchFocusTick, setSearchFocusTick] = useState(0)
 
   const agentAttached = presence !== 'waiting'
 
@@ -795,7 +796,13 @@ function Review() {
       } else if (action === 'toggle-nav') {
         toggleNav()
       } else if (action === 'focus-search') {
-        document.querySelector<HTMLInputElement>('.nav-search')?.focus()
+        // The box lives on the rail's Files tab — summon both, so `/` works with
+        // the rail collapsed or the Threads tab up. The tick lets Nav focus its
+        // own input after the same commit that reveals it; a display:none input
+        // swallows focus(), so focusing from here would be a race.
+        setPanel('files')
+        setNavHidden(false)
+        setSearchFocusTick((t) => t + 1)
       } else if (action === 'next-unreviewed') {
         nextUnreviewed()
       } else if (action === 'shortcuts') {
@@ -909,6 +916,9 @@ function Review() {
               threads={fileThreads}
               attention={fileAttention}
               changed={sinceLastReview.changed}
+              query={filter.query}
+              onQuery={filter.setQuery}
+              focusTick={searchFocusTick}
               hideReviewed={filter.hideReviewed}
               onHideReviewed={filter.setHideReviewed}
               hideTests={filter.hideTests}
@@ -975,6 +985,9 @@ function Review() {
             onToggleNav: toggleNav,
             left: fileProgress.total - fileProgress.viewed,
             total: fileProgress.total,
+            query: filter.query,
+            onClearQuery: () => filter.setQuery(''),
+            hiddenQuery: filter.hiddenQuery,
             hideReviewed: filter.hideReviewed,
             onHideReviewed: filter.setHideReviewed,
             hideTests: filter.hideTests,
