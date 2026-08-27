@@ -1,8 +1,18 @@
 import { useCallback, useMemo, useState } from 'react'
 import type { FileChange } from '../shared/types.js'
 
+/** Case-sensitive on purpose: lowercased, these also hide `Latest.cs`. `spec/`
+ * is no directory rule — it holds API specs as often as tests. */
+const TEST_PATTERNS: readonly RegExp[] = [
+  /[._-](test|spec)s?\.[^/]+$/, // a.test.ts, foo_test.go, user_spec.rb, my-test.js
+  /(^|\/)test_[^/]+$/, // test_parser.py
+  /(^|\/)(__tests__|[Tt]ests?)\//, // src/__tests__/a.ts, tests/OrderTest.cs, Assets/Tests/
+  /(^|[/.a-z0-9])Tests?\.[^/]+$/, // UserServiceTests.cs, FooTest.java, MyApp.Tests.csproj
+  /\.Tests?\//, // MyApp.Tests/Order.cs — a .NET test project
+]
+
 export function isTestFile(path: string): boolean {
-  return /\.(test|spec)\.[^/]+$/.test(path) || /(^|\/)__tests__\//.test(path)
+  return TEST_PATTERNS.some((pattern) => pattern.test(path))
 }
 
 /** Above this many files, Hide reviewed starts on — a review this size needs it

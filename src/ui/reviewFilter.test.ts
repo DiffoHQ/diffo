@@ -24,6 +24,57 @@ describe('isTestFile', () => {
     expect(isTestFile('src/a.ts')).toBe(false)
     expect(isTestFile('src/testing/a.ts')).toBe(false)
   })
+
+  it('catches the PascalCase suffix .NET and Java name their tests with', () => {
+    expect(isTestFile('MyApp.Tests/UserServiceTests.cs')).toBe(true)
+    expect(isTestFile('src/MyApp.Tests/OrderTests.cs')).toBe(true)
+    expect(isTestFile('src/UserServiceTest.cs')).toBe(true)
+    expect(isTestFile('src/test/java/com/x/FooTest.java')).toBe(true)
+    expect(isTestFile('Tests.cs')).toBe(true)
+    expect(isTestFile('src/UserService.cs')).toBe(false)
+  })
+
+  it('catches a .NET test project by its directory and its csproj', () => {
+    expect(isTestFile('MyApp.Tests/MyApp.Tests.csproj')).toBe(true)
+    expect(isTestFile('MyApp.Tests.csproj')).toBe(true)
+    expect(isTestFile('src/MyApp.Test/Helpers.cs')).toBe(true)
+    expect(isTestFile('src/MyApp/MyApp.csproj')).toBe(false)
+  })
+
+  it('catches the test, tests and spec directories other stacks use', () => {
+    expect(isTestFile('tests/OrderTest.cs')).toBe(true)
+    expect(isTestFile('test/Foo.cs')).toBe(true)
+    expect(isTestFile('spec/models/user_spec.rb')).toBe(true)
+    expect(isTestFile('src/main/java/com/x/Foo.java')).toBe(false)
+  })
+
+  it('catches a capitalised Tests directory, which is how Unity and .NET spell it', () => {
+    expect(isTestFile('Assets/Tests/EditMode/PlayerMovement.cs')).toBe(true)
+    expect(isTestFile('Assets/Tests/EditMode/Tests.asmdef')).toBe(true)
+    expect(isTestFile('src/MyApp/Test/Helper.cs')).toBe(true)
+    // Odin Inspector is the reason the directory rule stays anchored: "Inspector"
+    // contains "spec", and a real Unity project is full of it.
+    expect(isTestFile('Assets/ThirdParty/Sirenix/Odin Inspector/Scripts/Foo.cs')).toBe(false)
+    expect(isTestFile('Assets/Sirenix.OdinInspector.Editor.dll')).toBe(false)
+  })
+
+  it('catches the snake and prefix spellings Go, Python and Ruby use', () => {
+    expect(isTestFile('internal/foo_test.go')).toBe(true)
+    expect(isTestFile('tests/test_parser.py')).toBe(true)
+    expect(isTestFile('app/models/user_spec.rb')).toBe(true)
+    expect(isTestFile('internal/foo.go')).toBe(false)
+    expect(isTestFile('app/parser.py')).toBe(false)
+  })
+
+  it('leaves source alone when a word merely ends in test', () => {
+    expect(isTestFile('src/Latest.cs')).toBe(false)
+    expect(isTestFile('src/Contest.cs')).toBe(false)
+    expect(isTestFile('src/Protest/Protester.cs')).toBe(false)
+    expect(isTestFile('src/latest.ts')).toBe(false)
+    expect(isTestFile('src/manifest.json')).toBe(false)
+    expect(isTestFile('src/fixtures/TestData.json')).toBe(false)
+    expect(isTestFile('src/attestation.go')).toBe(false)
+  })
 })
 
 describe('splitFiles', () => {
