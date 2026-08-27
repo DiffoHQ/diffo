@@ -51,6 +51,49 @@ describe('DeliveryQueue', () => {
     expect(q.take()).toBeNull()
   })
 
+  it('a cleared notice wakes a waiting attach and is consumed by its confirm', async () => {
+    const q = new DeliveryQueue()
+    const attached = q.attach()
+    q.enqueueCleared()
+    expect(await attached).toBe('data')
+    const snapshot = q.take()!
+    expect(snapshot).toEqual({ kind: 'cleared' })
+    q.confirm(snapshot, [])
+    expect(q.take()).toBeNull()
+    // No reply is owed for a heads-up: the agent parks in the re-poll grace,
+    // never in an awaiting-reply batch that would read as stalled.
+    expect(q.presence()).toBe('working')
+    expect(q.currentBatch()).toBeNull()
+  })
+
+  it('real feedback outranks the heads-up, which survives until its own turn', () => {
+    const q = new DeliveryQueue()
+    q.enqueueCleared()
+    q.enqueueThreads(['t1'])
+    const first = q.take()!
+    expect(first).toMatchObject({ kind: 'threads', threadIds: ['t1'] })
+    q.confirm(first, ['t1'])
+    expect(q.take()).toEqual({ kind: 'cleared' })
+  })
+
+  it('clearing twice before a poll still owes exactly one heads-up', () => {
+    const q = new DeliveryQueue()
+    q.enqueueCleared()
+    q.enqueueCleared()
+    const snapshot = q.take()!
+    q.confirm(snapshot, [])
+    expect(q.take()).toBeNull()
+  })
+
+  it('a cleared notice is scoped — a branch switch parks it like any feedback', () => {
+    const q = new DeliveryQueue()
+    q.enqueueCleared()
+    q.rescope('other')
+    expect(q.take()).toBeNull()
+    q.rescope('')
+    expect(q.take()).toEqual({ kind: 'cleared' })
+  })
+
   it('a newer attach supersedes the old one', async () => {
     const q = new DeliveryQueue()
     const first = q.attach()

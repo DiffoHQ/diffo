@@ -28,6 +28,10 @@ function makeStore(root: string): ReviewStore {
 
 const anchor: Anchor = { kind: 'hunk', hunkId: 'h1', path: 'src/a.ts', side: 'new', line: 3 }
 
+/** The reviewed diff, still carrying the commented hunk. */
+const withHunks = new Set(['h1'])
+const noHunks = new Set<string>()
+
 /** A repo whose history the test scripts by hand: ancestry is a lookup, and a
  * sha that isn't listed answers null — "git couldn't say". */
 function fakeGit(head: string | null, ancestry: Record<string, boolean | null> = {}): LandedGit {
@@ -41,10 +45,15 @@ function fakeGit(head: string | null, ancestry: Record<string, boolean | null> =
 describe('maintainLanded', () => {
   it('stamps when the diff empties because HEAD advanced past the base', () => {
     const store = makeStore(tempRoot())
-    maintainLanded(store, true, fakeGit('base')) // work in flight: base recorded
+    maintainLanded(store, true, withHunks, fakeGit('base')) // work in flight: base recorded
     store.createThread(anchor, 'rename this', null)
 
-    const outcome = maintainLanded(store, false, fakeGit('landing', { 'base..landing': true }))
+    const outcome = maintainLanded(
+      store,
+      false,
+      noHunks,
+      fakeGit('landing', { 'base..landing': true }),
+    )
 
     expect(outcome).toBe('stamped')
     expect(store.get().landed).toMatchObject({ sha: 'landing', subject: 'subject of landing' })
@@ -55,31 +64,34 @@ describe('maintainLanded', () => {
 
   it('a stash empties the diff without moving HEAD — never stamps', () => {
     const store = makeStore(tempRoot())
-    maintainLanded(store, true, fakeGit('base'))
+    maintainLanded(store, true, withHunks, fakeGit('base'))
     store.createThread(anchor, 'about stashed work', null)
 
-    expect(maintainLanded(store, false, fakeGit('base'))).toBeNull()
+    expect(maintainLanded(store, false, noHunks, fakeGit('base'))).toBeNull()
     expect(store.get().landed).toBeUndefined()
   })
 
   it('an empty review has nothing to offer clearing — tracks the head instead', () => {
     const store = makeStore(tempRoot())
-    maintainLanded(store, true, fakeGit('base'))
+    maintainLanded(store, true, withHunks, fakeGit('base'))
 
-    expect(maintainLanded(store, false, fakeGit('landing', { 'base..landing': true }))).toBeNull()
+    expect(
+      maintainLanded(store, false, noHunks, fakeGit('landing', { 'base..landing': true })),
+    ).toBeNull()
     expect(store.get().landed).toBeUndefined()
     expect(store.get().seenHead).toBe('landing')
   })
 
   it('an amend rewrites the landing commit — the marker follows it in one pass', () => {
     const store = makeStore(tempRoot())
-    maintainLanded(store, true, fakeGit('base'))
+    maintainLanded(store, true, withHunks, fakeGit('base'))
     store.createThread(anchor, 'still relevant', null)
-    maintainLanded(store, false, fakeGit('landing', { 'base..landing': true }))
+    maintainLanded(store, false, noHunks, fakeGit('landing', { 'base..landing': true }))
 
     const outcome = maintainLanded(
       store,
       false,
+      noHunks,
       fakeGit('amended', { 'landing..amended': false, 'base..amended': true }),
     )
 
@@ -89,11 +101,16 @@ describe('maintainLanded', () => {
 
   it('a reset back to the base takes the work back — the marker goes, threads reattach', () => {
     const store = makeStore(tempRoot())
-    maintainLanded(store, true, fakeGit('base'))
+    maintainLanded(store, true, withHunks, fakeGit('base'))
     store.createThread(anchor, 'coming back', null)
-    maintainLanded(store, false, fakeGit('landing', { 'base..landing': true }))
+    maintainLanded(store, false, noHunks, fakeGit('landing', { 'base..landing': true }))
 
-    const outcome = maintainLanded(store, true, fakeGit('base', { 'landing..base': false }))
+    const outcome = maintainLanded(
+      store,
+      true,
+      withHunks,
+      fakeGit('base', { 'landing..base': false }),
+    )
 
     expect(outcome).toBe('cleared')
     expect(store.get().landed).toBeUndefined()
@@ -102,46 +119,131 @@ describe('maintainLanded', () => {
 
   it('ambiguity neither stamps nor clears: git that cannot answer changes nothing', () => {
     const store = makeStore(tempRoot())
-    maintainLanded(store, true, fakeGit('base'))
+    maintainLanded(store, true, withHunks, fakeGit('base'))
     store.createThread(anchor, 'thread', null)
 
     // isAncestor answers null (sha unknown, transient failure) — no stamp.
-    expect(maintainLanded(store, false, fakeGit('landing'))).toBeNull()
+    expect(maintainLanded(store, false, noHunks, fakeGit('landing'))).toBeNull()
     expect(store.get().landed).toBeUndefined()
 
     // And a marker already stamped survives the same ambiguity.
-    maintainLanded(store, false, fakeGit('landing', { 'base..landing': true }))
+    maintainLanded(store, false, noHunks, fakeGit('landing', { 'base..landing': true }))
     expect(store.get().landed?.sha).toBe('landing')
-    expect(maintainLanded(store, false, fakeGit('elsewhere'))).toBeNull()
+    expect(maintainLanded(store, false, noHunks, fakeGit('elsewhere'))).toBeNull()
     expect(store.get().landed?.sha).toBe('landing')
   })
 
   it('no HEAD (a repo with no commits) does nothing at all', () => {
     const store = makeStore(tempRoot())
     store.createThread(anchor, 'thread', null)
-    expect(maintainLanded(store, false, fakeGit(null))).toBeNull()
+    expect(maintainLanded(store, false, noHunks, fakeGit(null))).toBeNull()
     expect(store.get().seenHead).toBeUndefined()
   })
 
   it('new work over an unanswered offer keeps the marker and re-bases seenHead', () => {
     const store = makeStore(tempRoot())
-    maintainLanded(store, true, fakeGit('base'))
+    maintainLanded(store, true, withHunks, fakeGit('base'))
     store.createThread(anchor, 'old round', null)
-    maintainLanded(store, false, fakeGit('landing', { 'base..landing': true }))
+    maintainLanded(store, false, noHunks, fakeGit('landing', { 'base..landing': true }))
 
     // The agent starts the next round before the reviewer clears.
-    expect(maintainLanded(store, true, fakeGit('landing', {}))).toBeNull()
+    expect(maintainLanded(store, true, new Set(['h2']), fakeGit('landing', {}))).toBeNull()
     expect(store.get().landed?.sha).toBe('landing')
     expect(store.get().seenHead).toBe('landing')
   })
 
   it('a lastFinish alone (all threads resolved away) still deserves the offer', () => {
     const store = makeStore(tempRoot())
-    maintainLanded(store, true, fakeGit('base'))
+    maintainLanded(store, true, withHunks, fakeGit('base'))
     store.recordFinish(['h1'], { viewedHunks: 1, totalHunks: 1, skippedFiles: [] })
 
-    const outcome = maintainLanded(store, false, fakeGit('landing', { 'base..landing': true }))
+    const outcome = maintainLanded(
+      store,
+      false,
+      noHunks,
+      fakeGit('landing', { 'base..landing': true }),
+    )
     expect(outcome).toBe('stamped')
+  })
+
+  it('a commit and a new round both made while no server ran — stamps over the new diff', () => {
+    const store = makeStore(tempRoot())
+    maintainLanded(store, true, withHunks, fakeGit('base'))
+    store.createThread(anchor, 'old round', null)
+
+    // Startup: the diff already carries the next feature, but every hunk the
+    // review pointed at is gone and HEAD advanced past the recorded base.
+    const outcome = maintainLanded(
+      store,
+      true,
+      new Set(['h2']),
+      fakeGit('landing', { 'base..landing': true }),
+    )
+
+    expect(outcome).toBe('stamped')
+    expect(store.get().landed?.sha).toBe('landing')
+    // The diff has files, so the base moves on with it — the offer is stamped,
+    // there is nothing left to freeze for.
+    expect(store.get().seenHead).toBe('landing')
+  })
+
+  it('an unrelated commit leaves the reviewed hunks in the diff — no stamp', () => {
+    const store = makeStore(tempRoot())
+    maintainLanded(store, true, withHunks, fakeGit('base'))
+    store.createThread(anchor, 'still under review', null)
+
+    const outcome = maintainLanded(
+      store,
+      true,
+      new Set(['h1', 'h2']),
+      fakeGit('lockfile', { 'base..lockfile': true }),
+    )
+
+    expect(outcome).toBeNull()
+    expect(store.get().landed).toBeUndefined()
+  })
+
+  it('a partial commit leaves some reviewed hunks outstanding — no stamp', () => {
+    const store = makeStore(tempRoot())
+    maintainLanded(store, true, new Set(['h1', 'h2']), fakeGit('base'))
+    store.createThread(anchor, 'one of two', null)
+    store.recordFinish(['h1', 'h2'], { viewedHunks: 2, totalHunks: 2, skippedFiles: [] })
+
+    const outcome = maintainLanded(
+      store,
+      true,
+      new Set(['h2']),
+      fakeGit('half', { 'base..half': true }),
+    )
+
+    expect(outcome).toBeNull()
+    expect(store.get().landed).toBeUndefined()
+  })
+
+  it('a review that never anchored to a hunk cannot testify over a non-empty diff', () => {
+    const store = makeStore(tempRoot())
+    maintainLanded(store, true, withHunks, fakeGit('base'))
+    store.createThread({ kind: 'changeset' }, 'the guide', null, undefined, 'agent')
+
+    const outcome = maintainLanded(
+      store,
+      true,
+      new Set(['h2']),
+      fakeGit('landing', { 'base..landing': true }),
+    )
+
+    expect(outcome).toBeNull()
+    expect(store.get().landed).toBeUndefined()
+  })
+
+  it("the unwitnessed path still refuses git's silence", () => {
+    const store = makeStore(tempRoot())
+    maintainLanded(store, true, withHunks, fakeGit('base'))
+    store.createThread(anchor, 'old round', null)
+
+    // Hunks vanished and HEAD moved, but ancestry answers null — no stamp.
+    expect(maintainLanded(store, true, new Set(['h2']), fakeGit('landing'))).toBeNull()
+    expect(store.get().landed).toBeUndefined()
   })
 
   it('against a real repo: commit stamps, and the subject rides along', () => {
@@ -164,18 +266,18 @@ describe('maintainLanded', () => {
     }
 
     writeFileSync(join(root, 'app.ts'), 'const a = 2\n')
-    maintainLanded(store, true, realGit)
+    maintainLanded(store, true, withHunks, realGit)
     store.createThread(anchor, 'why 2?', null)
 
     git('add', '-A')
     git('commit', '-m', 'the work lands')
-    expect(maintainLanded(store, false, realGit)).toBe('stamped')
+    expect(maintainLanded(store, false, noHunks, realGit)).toBe('stamped')
     expect(store.get().landed?.subject).toBe('the work lands')
     expect(store.get().landed?.sha).toBe(getHeadSha(root))
 
     // git reset --soft brings the exact hunks back: marker drops, threads intact.
     git('reset', '--soft', 'HEAD~1')
-    expect(maintainLanded(store, true, realGit)).toBe('cleared')
+    expect(maintainLanded(store, true, withHunks, realGit)).toBe('cleared')
     expect(store.get().landed).toBeUndefined()
     expect(store.get().threads).toHaveLength(1)
   })

@@ -83,7 +83,10 @@ export const JOIN_PROMPT =
   `join the diffo review: run \`${CLI_COMMANDS.poll}\` (${POLL_STANCE}) ` +
   'and follow the JSON payload it prints — each payload carries its own instructions'
 
-export function nextStepFor(kind: 'threads' | 'finish', actionable: number): string {
+export function nextStepFor(kind: 'threads' | 'finish' | 'cleared', actionable: number): string {
+  if (kind === 'cleared') {
+    return `Post the guide if this changeset warrants one, then run \`${CLI_COMMANDS.poll}\` again to keep listening (${POLL_STANCE}).`
+  }
   if (kind === 'finish' && actionable === 0) {
     return `Nothing to act on — run \`${CLI_COMMANDS.poll}\` again to keep listening (${POLL_STANCE}); the reviewer may follow up.`
   }
@@ -333,6 +336,24 @@ export function buildCoalescedPrompt(threads: ReviewThread[], ctx: PromptContext
     ...threads.map((t, i) => `${threadBlock(t, i)}\n`),
     ...(siblings ? [siblings, ''] : []),
     replyProtocol(threads),
+    '',
+  ].join('\n')
+}
+
+/**
+ * The reviewer started the review over — the previous round landed, and its
+ * threads and guide were cleared. Nothing to act on; the one thing owed is
+ * orientation for the fresh round, so this restates the guide doctrine the way
+ * the open-time nudge does (payloads must stand alone — see POLL_STANCE).
+ */
+export function buildClearedPrompt(ctx: PromptContext): string {
+  return [
+    `The reviewer cleared the review in \`${ctx.repo.name}\` (branch \`${ctx.repo.branch}\`): the previous round landed, and its threads and guide are gone. What the reviewer sees now is a fresh round.`,
+    '',
+    ...(ctx.changeset ? [specLine(ctx.changeset), ''] : []),
+    `There is no feedback to act on. But the fresh round has no guide — if this changeset needs one (${GUIDE.when}): post it — one comment on the whole changeset: ${GUIDE.what}: \`${CLI_COMMANDS.guide}\` (no file, so it anchors to the changeset). ${GUIDE.stance}.`,
+    '',
+    `Then run \`${CLI_COMMANDS.poll}\` again to keep listening (${POLL_STANCE}).`,
     '',
   ].join('\n')
 }

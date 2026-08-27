@@ -496,13 +496,17 @@ describe('review API', () => {
     const res = await app.request('/api/review/threads', { method: 'DELETE' })
     expect(res.status).toBe(200)
     expect(await res.json()).toEqual({ removed: 2 })
-    expect(queue.take()).toBeNull()
+    // The pending thread deliveries are gone; what remains is the one heads-up
+    // that the slate was cleared (the changeset on screen still has files).
+    expect(queue.take()).toEqual({ kind: 'cleared' })
 
     const list = (await (await app.request('/api/review')).json()) as { threads: ReviewThread[] }
     expect(list.threads).toEqual([])
+    // A reset of an already-empty review owes nothing — no second heads-up.
     const again = await app.request('/api/review/threads', { method: 'DELETE' })
     expect(again.status).toBe(200)
     expect(await again.json()).toEqual({ removed: 0 })
+    expect(queue.take()).toEqual({ kind: 'cleared' })
   })
 
   it('DELETE on the collection is a full reset: lastFinish and the landed marker go too', async () => {
@@ -571,6 +575,34 @@ describe('the pull loop', () => {
 
     expect(queue.take()).toBeNull()
     expect(queue.presence()).toBe('working')
+  })
+
+  it('a reset wakes a waiting poll with the cleared heads-up — a fresh guide is owed', async () => {
+    const { app, queue } = setup()
+    const created = await post(app, '/api/review/threads', {
+      anchor: { kind: 'changeset' },
+      text: 'the old guide',
+    })
+    await post(app, `/api/review/threads/${((await created.json()) as ReviewThread).id}/send`)
+    // Drain the send: the agent is mid-round when the reviewer starts over.
+    await pollResult(await app.request('/api/agent/poll', { headers: { 'x-diffo-agent': 'cli' } }))
+
+    const poll = Promise.resolve(
+      app.request('/api/agent/poll', { headers: { 'x-diffo-agent': 'cli' } }),
+    ).then(pollResult)
+    await tick()
+    await app.request('/api/review/threads', { method: 'DELETE' })
+
+    const payload = await poll
+    expect(payload.status).toBe('feedback')
+    expect(payload.kind).toBe('cleared')
+    expect(payload.threadIds).toEqual([])
+    expect(payload.prompt).toContain('cleared the review')
+    expect(payload.prompt).toContain('post it — one comment on the whole changeset')
+    expect(payload.prompt).toContain('npx -y @diffohq/diffo comment')
+    expect(payload.next_step).toContain('diffo poll')
+    // Consumed: the next poll owes nothing.
+    expect(queue.take()).toBeNull()
   })
 
   it('a send resolves a WAITING poll immediately and reports delivered', async () => {

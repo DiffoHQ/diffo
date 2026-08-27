@@ -6,6 +6,7 @@ import type { ReviewThread } from '../shared/review.js'
 import type { Changeset } from '../shared/types.js'
 import {
   ACK_NEXT_STEP,
+  buildClearedPrompt,
   buildCoalescedPrompt,
   buildFinishPrompt,
   buildInstallSkill,
@@ -419,6 +420,13 @@ describe('the poll envelope (next_step per payload kind)', () => {
     expect(empty).not.toMatch(/act on each thread/i)
   })
 
+  it('a cleared payload points at the guide, then back to the poll', () => {
+    const step = nextStepFor('cleared', 0)
+    expect(step).toMatch(/guide/i)
+    expect(step).toMatch(/keep listening/i)
+    expect(step).not.toMatch(/act on each thread/i)
+  })
+
   it('every ack teaches the next step; end pairs the prohibition with its alternative', () => {
     expect(ACK_NEXT_STEP.reply).toContain('poll')
     expect(ACK_NEXT_STEP.comment).toMatch(/replies to take it up, or resolves it/i)
@@ -481,6 +489,28 @@ describe('the open-time guide nudge', () => {
     expect(guideNudge(false)).toContain(CLI_COMMANDS.guide)
     // The guide anchors to the changeset, so the command must not offer a file.
     expect(guideNudge(false)).not.toContain('[<file>]')
+  })
+})
+
+describe('the cleared payload (reviewer started the review over)', () => {
+  it('says what happened, owes nothing, and restates the guide doctrine', () => {
+    const prompt = buildClearedPrompt({ repo, changeset: changeset() })
+    expect(prompt).toContain('cleared the review')
+    expect(prompt).toContain('no feedback to act on')
+    // The same doctrine as the open-time nudge: agent judgment, no pre-review.
+    expect(prompt).toContain('skip when the diff explains itself')
+    expect(prompt).toContain('never pre-review')
+    expect(prompt).toContain(CLI_COMMANDS.guide)
+    expect(prompt).not.toContain('[<file>]')
+    // It frames the fresh round the reviewer is now looking at.
+    expect(prompt).toContain('The changeset under review')
+  })
+
+  it('stands alone without a changeset, and always routes back to the poll', () => {
+    const prompt = buildClearedPrompt({ repo, changeset: null })
+    expect(prompt).toContain('cleared the review')
+    expect(prompt).toContain(CLI_COMMANDS.poll)
+    expect(prompt).not.toContain('The changeset under review')
   })
 })
 
