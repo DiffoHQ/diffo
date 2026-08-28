@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto'
 import { resolve } from 'node:path'
 import {
   type Anchor,
+  type AnchoredLines,
   type Author,
   type Coverage,
   EMPTY_REVIEW,
@@ -13,6 +14,7 @@ import {
   type ReviewThread,
   type ReviewVerdict,
   THREAD_INTENTS,
+  type ThreadCapture,
   type ThreadIntent,
   type ThreadState,
 } from '../shared/review.js'
@@ -75,7 +77,7 @@ export class ReviewStore {
   createThread(
     anchor: Anchor,
     text: string,
-    codeContext: string | null,
+    capture: ThreadCapture | null,
     intent?: ThreadIntent,
     author: Author = 'reviewer',
   ): ReviewThread {
@@ -85,7 +87,8 @@ export class ReviewStore {
       anchor,
       state: 'open',
       ...(intent ? { intent } : {}),
-      codeContext,
+      codeContext: capture?.codeContext ?? null,
+      ...(capture?.anchored ? { anchored: capture.anchored } : {}),
       codeChanged: false,
       messages: [{ id: randomUUID(), author, text, at: now }],
       createdAt: now,
@@ -213,7 +216,9 @@ export class ReviewStore {
       ...(state === 'sent' && !thread.sentAt ? { sentAt: new Date().toISOString() } : {}),
       // A settled thread drops its frozen diff: the snapshot keeps the thread legible
       // while the code moves underneath it, and it is the heaviest thing in the store
-      // (66% of the review row). The messages stay. Reopening does not bring it back.
+      // (66% of the review row). The messages stay, and so does `anchored` — it is
+      // small, and a follow-up on this thread has nothing else to point at the code.
+      // Reopening does not bring the snapshot back.
       ...(state === 'resolved' ? { codeContext: null } : {}),
     }))
   }
@@ -510,12 +515,26 @@ export function parseAnchor(value: unknown): Anchor | null {
   return anchor.kind === 'changeset' ? { kind: 'changeset' } : null
 }
 
+/** Dropped when malformed — the thread is still fine without it. */
+function normalizeAnchored(value: unknown): AnchoredLines | null {
+  if (typeof value !== 'object' || value === null) return null
+  const a = value as Record<string, unknown>
+  if (typeof a.start !== 'number' || typeof a.end !== 'number' || typeof a.text !== 'string') {
+    return null
+  }
+  if (!Number.isInteger(a.start) || !Number.isInteger(a.end) || a.start < 0 || a.end < a.start) {
+    return null
+  }
+  return { start: a.start, end: a.end, text: a.text }
+}
+
 function normalizeThread(value: unknown, now: string): ReviewThread | null {
   if (typeof value !== 'object' || value === null) return null
   const t = value as Record<string, unknown>
   if (typeof t.id !== 'string' || !STATES.includes(t.state as ThreadState)) return null
   const anchor = parseAnchor(t.anchor)
   if (!anchor) return null
+  const anchored = normalizeAnchored(t.anchored)
   if (!Array.isArray(t.messages)) return null
   const messages: ReviewMessage[] = []
   for (const m of t.messages) {
@@ -539,6 +558,7 @@ function normalizeThread(value: unknown, now: string): ReviewThread | null {
       ? { intent: t.intent as ThreadIntent }
       : {}),
     codeContext: typeof t.codeContext === 'string' ? t.codeContext : null,
+    ...(anchored ? { anchored } : {}),
     codeChanged: t.codeChanged === true,
     ...(t.unanswered === true ? { unanswered: true } : {}),
     ...(t.closingNote === true ? { closingNote: true as const } : {}),

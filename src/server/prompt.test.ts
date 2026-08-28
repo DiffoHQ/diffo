@@ -2,7 +2,7 @@ import { readFileSync } from 'node:fs'
 import { dirname, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
-import type { ReviewThread } from '../shared/review.js'
+import type { Anchor, ReviewThread } from '../shared/review.js'
 import type { Changeset } from '../shared/types.js'
 import {
   ACK_NEXT_STEP,
@@ -13,6 +13,7 @@ import {
   buildThreadPrompt,
   CLI,
   CLI_COMMANDS,
+  captureAnchor,
   guideInherit,
   guideNudge,
   INSTALL_SKILL,
@@ -407,6 +408,212 @@ describe('reviewer intent', () => {
     const prompt = buildThreadPrompt(thread(), ctx)
     expect(prompt).toContain('### Thread 1 — src/a.ts:12 (new side)')
     expect(prompt).toContain('Unlabeled threads: judge from the text')
+  })
+})
+
+describe('captureAnchor (what a new thread freezes)', () => {
+  const hunk = {
+    id: 'h1',
+    path: 'src/a.ts',
+    oldStart: 10,
+    newStart: 10,
+    lines: [
+      { kind: 'context' as const, oldNo: 10, newNo: 10, text: 'function total() {' },
+      { kind: 'del' as const, oldNo: 11, newNo: null, text: '  return sum' },
+      { kind: 'add' as const, oldNo: null, newNo: 11, text: '  const t = round(sum)' },
+      { kind: 'add' as const, oldNo: null, newNo: 12, text: '  return t' },
+      { kind: 'context' as const, oldNo: 12, newNo: 13, text: '}' },
+    ],
+  }
+  const withHunk = changeset({
+    files: [
+      {
+        path: 'src/a.ts',
+        oldPath: null,
+        status: 'modified',
+        kind: 'text',
+        staged: false,
+        hunks: [hunk],
+      },
+    ],
+  })
+  const anchor = (over: Partial<Extract<Anchor, { kind: 'hunk' }>> = {}): Anchor => ({
+    kind: 'hunk',
+    hunkId: 'h1',
+    path: 'src/a.ts',
+    side: 'new',
+    line: 11,
+    ...over,
+  })
+
+  it('freezes the whole hunk plus where the anchored line sits in it', () => {
+    const capture = captureAnchor(withHunk, anchor())
+    expect(capture?.codeContext).toBe(
+      ' function total() {\n-  return sum\n+  const t = round(sum)\n+  return t\n }',
+    )
+    expect(capture?.anchored).toEqual({ start: 2, end: 2, text: '+  const t = round(sum)' })
+  })
+
+  it('a range covers every row between its lines', () => {
+    const capture = captureAnchor(withHunk, anchor({ endLine: 12 }))
+    expect(capture?.anchored).toEqual({
+      start: 2,
+      end: 3,
+      text: '+  const t = round(sum)\n+  return t',
+    })
+  })
+
+  it('old-side anchors resolve against the old numbering — deleted lines included', () => {
+    const capture = captureAnchor(withHunk, anchor({ side: 'old' }))
+    expect(capture?.anchored).toEqual({ start: 1, end: 1, text: '-  return sum' })
+  })
+
+  it('a line the hunk does not carry still freezes the snapshot, just unmarked', () => {
+    const capture = captureAnchor(withHunk, anchor({ line: 99 }))
+    expect(capture?.codeContext).toContain('round(sum)')
+    expect(capture?.anchored).toBeUndefined()
+  })
+
+  it('non-hunk anchors and vanished hunks capture nothing', () => {
+    expect(captureAnchor(withHunk, { kind: 'file', path: 'src/a.ts' })).toBeNull()
+    expect(captureAnchor(withHunk, anchor({ hunkId: 'gone' }))).toBeNull()
+  })
+
+  it('caps the frozen text of a huge range, keeping its head', () => {
+    const lines = Array.from({ length: 30 }, (_, i) => ({
+      kind: 'add' as const,
+      oldNo: null,
+      newNo: i + 1,
+      text: `line ${i + 1}`,
+    }))
+    const big = changeset({
+      files: [
+        {
+          path: 'src/a.ts',
+          oldPath: null,
+          status: 'modified',
+          kind: 'text',
+          staged: false,
+          hunks: [{ id: 'h1', path: 'src/a.ts', oldStart: 1, newStart: 1, lines }],
+        },
+      ],
+    })
+    const capture = captureAnchor(big, anchor({ line: 1, endLine: 30 }))
+    expect(capture?.anchored?.start).toBe(0)
+    expect(capture?.anchored?.end).toBe(29)
+    expect(capture?.anchored?.text.split('\n')).toHaveLength(10)
+  })
+})
+
+describe('anchored threads in the prompt (the agent must find the commented code)', () => {
+  const anchored = { start: 0, end: 0, text: '+const x = 1' }
+
+  it('quotes the anchored line in the heading — the identifier that survives code movement', () => {
+    const prompt = buildThreadPrompt(thread({ anchored }), ctx)
+    expect(prompt).toContain('### Thread 1 — src/a.ts:12 (new side) — "const x = 1"')
+  })
+
+  it('a range heading quotes its first line as a start marker', () => {
+    const prompt = buildThreadPrompt(
+      thread({
+        anchor: {
+          kind: 'hunk',
+          hunkId: 'h1',
+          path: 'src/a.ts',
+          side: 'new',
+          line: 12,
+          endLine: 14,
+        },
+        anchored,
+      }),
+      ctx,
+    )
+    expect(prompt).toContain('src/a.ts:12-14 (new side) — starts at: "const x = 1"')
+  })
+
+  it('a range opening on a blank line quotes its first line with content', () => {
+    const prompt = buildThreadPrompt(
+      thread({
+        anchor: {
+          kind: 'hunk',
+          hunkId: 'h1',
+          path: 'src/a.ts',
+          side: 'new',
+          line: 12,
+          endLine: 14,
+        },
+        anchored: { start: 0, end: 2, text: '+\n+  \n+const y = 2' },
+      }),
+      ctx,
+    )
+    expect(prompt).toContain('src/a.ts:12-14 (new side) — starts at: "const y = 2"')
+  })
+
+  it('an all-blank anchored range keeps the plain heading', () => {
+    const prompt = buildThreadPrompt(thread({ anchored: { start: 0, end: 0, text: '+  ' } }), ctx)
+    expect(prompt).toContain('### Thread 1 — src/a.ts:12 (new side)\n')
+  })
+
+  it('marks the commented lines inside the snapshot', () => {
+    const prompt = buildThreadPrompt(
+      thread({
+        codeContext: ' before\n+const x = 1\n after',
+        anchored: { start: 1, end: 1, text: '+const x = 1' },
+      }),
+      ctx,
+    )
+    expect(prompt).toContain('The commented change (`>` marks the commented lines):')
+    expect(prompt).toContain('\n>+const x = 1\n')
+    expect(prompt).toContain('\n before\n')
+  })
+
+  it('windows a long snapshot around the commented line, not the hunk head', () => {
+    const long = Array.from({ length: 40 }, (_, i) => `+line ${i}`).join('\n')
+    const prompt = buildThreadPrompt(
+      thread({ codeContext: long, anchored: { start: 30, end: 30, text: '+line 30' } }),
+      ctx,
+    )
+    expect(prompt).toContain('>+line 30')
+    expect(prompt).not.toContain('+line 10\n')
+    expect(prompt).toContain(
+      '(windowed to the commented lines — 15 more snapshot lines around them; read the current `src/a.ts` for the full change)',
+    )
+  })
+
+  it('warns when the code moved under the comment', () => {
+    const prompt = buildThreadPrompt(thread({ anchored, codeChanged: true }), ctx)
+    expect(prompt).toContain('its line numbers are stale')
+  })
+
+  it('a fresh new-side thread carries no warning', () => {
+    const prompt = buildThreadPrompt(thread({ anchored }), ctx)
+    expect(prompt).not.toContain('line numbers are stale')
+    expect(prompt).not.toContain('removed code')
+  })
+
+  it('old-side anchors say the code is the old version, not the current file', () => {
+    const prompt = buildThreadPrompt(
+      thread({
+        anchor: { kind: 'hunk', hunkId: 'h1', path: 'src/a.ts', side: 'old', line: 12 },
+        codeContext: '-const x = 1',
+        anchored: { start: 0, end: 0, text: '-const x = 1' },
+      }),
+      ctx,
+    )
+    expect(prompt).toContain('This comments on removed code')
+  })
+
+  it('a follow-up after resolve still shows the commented lines — the snapshot is gone', () => {
+    const prompt = buildThreadPrompt(thread({ codeContext: null, anchored }), ctx)
+    expect(prompt).toContain('The commented lines, as they were when the comment was written:')
+    expect(prompt).toContain('+const x = 1')
+  })
+
+  it('threads from before anchoring existed render exactly as they used to', () => {
+    const prompt = buildThreadPrompt(thread(), ctx)
+    expect(prompt).toContain('The commented change:')
+    expect(prompt).not.toContain('marks the commented lines')
+    expect(prompt).not.toContain(' — "')
   })
 })
 

@@ -136,6 +136,31 @@ export function threadItems(
   })
 }
 
+/** An anchor at chip length: the basename keeps the line number, the directory
+ * goes — the full path is one click away in the monitor. */
+export function shortAnchor(anchor: string | null): string {
+  if (anchor === null) return 'the changeset'
+  return anchor.slice(anchor.lastIndexOf('/') + 1)
+}
+
+/**
+ * The chip's one-line account of what the agent is doing right now, composed
+ * from the batch the client already tracks. Null when there is nothing more
+ * specific to say than "working".
+ */
+export function agentActivity(
+  stillTo: readonly ThreadItem[],
+  lastAnswered: string | null,
+): string | null {
+  const working = stillTo.find((i) => i.working === true)
+  if (working) return `working on ${shortAnchor(working.anchor)}`
+  if (lastAnswered !== null) return `answered ${lastAnswered}`
+  if (stillTo.length > 0) {
+    return `picked up ${stillTo.length} comment${stillTo.length === 1 ? '' : 's'}`
+  }
+  return null
+}
+
 export function byTurn(items: readonly ThreadItem[]): Map<Turn, ThreadItem[]> {
   const out = new Map<Turn, ThreadItem[]>()
   for (const turn of TURN_ORDER) {

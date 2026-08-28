@@ -1,10 +1,12 @@
 import { describe, expect, it } from 'vitest'
 import type { Anchor, ReviewMessage, ReviewThread } from '../shared/review.js'
 import {
+  agentActivity,
   byFile,
   byTurn,
   holdsAttention,
   isUnsent,
+  shortAnchor,
   threadItems,
   threadOutcome,
   threadTurn,
@@ -343,5 +345,65 @@ describe('agent-voice threads', () => {
     expect(threadTurn(answered)).toBe('yours')
 
     expect(threadTurn(agentThread({ state: 'resolved' }))).toBe('resolved')
+  })
+})
+
+describe('shortAnchor', () => {
+  it('keeps the basename and the line, drops the directory', () => {
+    expect(shortAnchor('src/server/db.ts:42')).toBe('db.ts:42')
+    expect(shortAnchor('src/server/db.ts:42-45')).toBe('db.ts:42-45')
+  })
+
+  it('a file-level anchor is just the basename', () => {
+    expect(shortAnchor('src/ui/App.tsx')).toBe('App.tsx')
+  })
+
+  it('a changeset thread has no path to shorten', () => {
+    expect(shortAnchor(null)).toBe('the changeset')
+  })
+})
+
+describe('agentActivity', () => {
+  const sent = (id: string, path: string | null, working = false) =>
+    threadItems(
+      [
+        thread({
+          id,
+          state: 'sent',
+          anchor: path
+            ? ({ kind: 'hunk', hunkId: 'h', path, side: 'new', line: 42 } as Anchor)
+            : ({ kind: 'changeset' } as Anchor),
+        }),
+      ],
+      working ? new Set([id]) : new Set(),
+    )[0]!
+
+  it('names the thread the agent holds, at chip length', () => {
+    const items = [sent('t-1', 'src/server/db.ts', true), sent('t-2', 'src/ui/api.ts')]
+    expect(agentActivity(items, null)).toBe('working on db.ts:42')
+  })
+
+  it('a held changeset thread still reads as work', () => {
+    expect(agentActivity([sent('t-1', null, true)], null)).toBe('working on the changeset')
+  })
+
+  it('between replies, the last answer carries the label', () => {
+    expect(agentActivity([sent('t-2', 'src/ui/api.ts')], 'db.ts:42')).toBe('answered db.ts:42')
+  })
+
+  it('freshly delivered, before any work signal, it counts the batch', () => {
+    const items = [sent('t-1', 'src/a.ts'), sent('t-2', 'src/b.ts')]
+    expect(agentActivity(items, null)).toBe('picked up 2 comments')
+    expect(agentActivity([sent('t-1', 'src/a.ts')], null)).toBe('picked up 1 comment')
+  })
+
+  it('nothing specific to say → null, and the static label stands', () => {
+    expect(agentActivity([], null)).toBeNull()
+  })
+
+  it('current work outranks the last answer', () => {
+    expect(agentActivity([sent('t-1', 'src/ui/api.ts', true)], 'db.ts:42')).toBe(
+      'working on api.ts:42',
+    )
   })
 })

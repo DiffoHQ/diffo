@@ -1,22 +1,48 @@
 import { fileURLToPath } from 'node:url'
 import {
+  type Anchor,
   type Coverage,
   describeAnchor,
   type ReviewThread,
   startedByAgent,
   THREAD_INTENTS,
+  type ThreadCapture,
   type ThreadIntent,
 } from '../shared/review.js'
-import type { Changeset, FileChange } from '../shared/types.js'
+import type { Changeset, FileChange, Hunk } from '../shared/types.js'
 
-export function snapshotHunk(changeset: Changeset, hunkId: string): string | null {
+/** A comment can anchor to a long range; the frozen text keeps its head. */
+const ANCHORED_TEXT_CAP = 10
+
+function findHunk(changeset: Changeset, hunkId: string): Hunk | null {
   for (const file of changeset.files) {
     const hunk = file.hunks.find((h) => h.id === hunkId)
-    if (!hunk) continue
-    const marker = { add: '+', del: '-', context: ' ' } as const
-    return hunk.lines.map((l) => marker[l.kind] + l.text).join('\n')
+    if (hunk) return hunk
   }
   return null
+}
+
+/**
+ * Freeze what a new thread anchors to: the whole hunk as a diff snapshot, plus
+ * — for the anchored line range — where those rows sit in it and their text.
+ * Null for non-hunk anchors and for a hunk the changeset no longer has.
+ */
+export function captureAnchor(changeset: Changeset, anchor: Anchor): ThreadCapture | null {
+  if (anchor.kind !== 'hunk') return null
+  const hunk = findHunk(changeset, anchor.hunkId)
+  if (!hunk) return null
+  const marker = { add: '+', del: '-', context: ' ' } as const
+  const rows = hunk.lines.map((l) => marker[l.kind] + l.text)
+  const codeContext = rows.join('\n')
+  const last = anchor.endLine ?? anchor.line
+  const covered = hunk.lines
+    .map((l, row) => ({ no: anchor.side === 'old' ? l.oldNo : l.newNo, row }))
+    .filter((r) => r.no !== null && r.no >= anchor.line && r.no <= last)
+  if (covered.length === 0) return { codeContext }
+  const start = covered[0]!.row
+  const end = covered.at(-1)!.row
+  const text = rows.slice(start, Math.min(end + 1, start + ANCHORED_TEXT_CAP)).join('\n')
+  return { codeContext, anchored: { start, end, text } }
 }
 
 /** Scoped, because the bare `diffo` name on npm belongs to an unrelated package.
@@ -281,6 +307,104 @@ export function siblingLines(siblings: ReviewThread[]): string | null {
 
 const SNAPSHOT_LINE_CAP = 25
 
+/** The heading's movement-proof identifier: the first anchored line's text,
+ * stripped of its diff marker. The line numbers in `describeAnchor` go stale
+ * the moment the code moves; this text is what the agent can still search for. */
+function anchorQuote(thread: ReviewThread): string {
+  // The first line with content — a range can open on a blank line.
+  const first = thread.anchored?.text
+    .split('\n')
+    .map((line) => line.slice(1).trim())
+    .find((line) => line !== '')
+    ?.slice(0, 80)
+  if (!first) return ''
+  const range = thread.anchor.kind === 'hunk' && thread.anchor.endLine !== undefined
+  return range ? ` — starts at: "${first}"` : ` — "${first}"`
+}
+
+/** When `path:line` must not be trusted against the working tree: an old-side
+ * anchor never matches it, and a rotated hunk means the code moved under the
+ * numbers. At most one note — removed code can't also have "moved". */
+function anchorNote(thread: ReviewThread): string[] {
+  if (thread.anchor.kind !== 'hunk') return []
+  if (thread.anchor.side === 'old') {
+    return [
+      'This comments on removed code — the anchored lines are the old version, not the current file.',
+    ]
+  }
+  if (thread.codeChanged) {
+    return [
+      'The code under this comment changed after the comment was written — its line numbers are stale. Find the code by its anchored lines, not by number.',
+    ]
+  }
+  return []
+}
+
+/** The `[from, to)` slice of the snapshot to show: the anchored rows centered
+ * inside the cap. A range longer than the cap keeps its head. */
+function snapshotWindow(
+  total: number,
+  anchored: { start: number; end: number },
+): { from: number; to: number } {
+  const size = Math.min(total, SNAPSHOT_LINE_CAP)
+  const span = anchored.end - anchored.start + 1
+  const pad = Math.floor(Math.max(0, size - span) / 2)
+  const from = Math.min(Math.max(0, anchored.start - pad), total - size)
+  return { from, to: from + size }
+}
+
+/** The snapshot as the agent sees it: windowed on the anchored rows, each of
+ * them marked with `>`. Threads from before `anchored` existed keep the old
+ * head-of-hunk window. */
+function snapshotBlock(thread: ReviewThread): string[] {
+  const { codeContext, anchored } = thread
+  if (!codeContext) {
+    // The snapshot is gone (dropped on resolve) but the anchored text survives —
+    // without this block a follow-up ships nothing but a stale line number.
+    if (!anchored) return []
+    const shown = anchored.text.split('\n')
+    const cut = anchored.end - anchored.start + 1 - shown.length
+    return [
+      'The commented lines, as they were when the comment was written:',
+      '```diff',
+      ...shown,
+      '```',
+      ...(cut > 0 ? [`(… and ${cut} more commented lines)`] : []),
+    ]
+  }
+  const lines = codeContext.split('\n')
+  const where = thread.anchor.kind === 'changeset' ? 'the file' : `\`${thread.anchor.path}\``
+  if (!anchored) {
+    return [
+      'The commented change:',
+      '```diff',
+      ...lines.slice(0, SNAPSHOT_LINE_CAP),
+      '```',
+      ...(lines.length > SNAPSHOT_LINE_CAP
+        ? [
+            `(… and ${lines.length - SNAPSHOT_LINE_CAP} more snapshot lines — read the current ${where} instead)`,
+          ]
+        : []),
+    ]
+  }
+  const { from, to } = snapshotWindow(lines.length, anchored)
+  const shown = lines
+    .slice(from, to)
+    .map((line, i) => (from + i >= anchored.start && from + i <= anchored.end ? `>${line}` : line))
+  const cut = lines.length - (to - from)
+  return [
+    'The commented change (`>` marks the commented lines):',
+    '```diff',
+    ...shown,
+    '```',
+    ...(cut > 0
+      ? [
+          `(windowed to the commented lines — ${cut} more snapshot lines around them; read the current ${where} for the full change)`,
+        ]
+      : []),
+  ]
+}
+
 function threadBlock(thread: ReviewThread, index: number): string {
   // A thread the agent itself started reads differently: the reviewer is
   // responding to something the agent said, not filing new feedback.
@@ -292,25 +416,14 @@ function threadBlock(thread: ReviewThread, index: number): string {
         ? ` [${INTENT_LABEL[thread.intent]}]`
         : ''
   const again = thread.unanswered ? ' — YOU NEVER ANSWERED THIS' : ''
-  const parts = [
-    `### Thread ${index + 1}${label} — ${describeAnchor(thread.anchor)}${again}`,
+  return [
+    `### Thread ${index + 1}${label} — ${describeAnchor(thread.anchor)}${anchorQuote(thread)}${again}`,
     `id: ${thread.id}`,
-  ]
-  if (thread.codeContext) {
-    const lines = thread.codeContext.split('\n')
-    parts.push('The commented change:', '```diff', ...lines.slice(0, SNAPSHOT_LINE_CAP), '```')
-    if (lines.length > SNAPSHOT_LINE_CAP) {
-      const where = thread.anchor.kind === 'changeset' ? 'the file' : `\`${thread.anchor.path}\``
-      parts.push(
-        `(… and ${lines.length - SNAPSHOT_LINE_CAP} more snapshot lines — read the current ${where} instead)`,
-      )
-    }
-  }
-  parts.push(
+    ...anchorNote(thread),
+    ...snapshotBlock(thread),
     'Messages:',
     ...thread.messages.map((m) => `- ${m.author}: ${m.text.replace(/\n/g, '\n  ')}`),
-  )
-  return parts.join('\n')
+  ].join('\n')
 }
 
 export function buildThreadPrompt(thread: ReviewThread, ctx: PromptContext): string {

@@ -36,12 +36,12 @@ import {
   buildCoalescedPrompt,
   buildFinishPrompt,
   buildThreadPrompt,
+  captureAnchor,
   INSTALL_SKILL,
   IS_DEV,
   JOIN_PROMPT,
   nextStepFor,
   type PromptContext,
-  snapshotHunk,
 } from './prompt.js'
 import { parseAnchor, ReviewStore } from './review.js'
 import { ChangesetStore } from './store.js'
@@ -229,16 +229,14 @@ export function createApp(
           ? body.line
           : null
       const anchor = agentAnchor(file, line)
-      const codeContext =
-        anchor.kind === 'hunk' && store ? snapshotHunk(store.get(), anchor.hunkId) : null
-      return c.json(review.createThread(anchor, text, codeContext, undefined, 'agent'))
+      const capture = store ? captureAnchor(store.get(), anchor) : null
+      return c.json(review.createThread(anchor, text, capture, undefined, 'agent'))
     }
     const anchor = parseAnchor(body?.anchor)
     if (!anchor) return c.json({ error: 'need {anchor, text}' }, 400)
     const intent = THREAD_INTENTS.includes(body?.intent) ? (body.intent as ThreadIntent) : undefined
-    const codeContext =
-      anchor.kind === 'hunk' && store ? snapshotHunk(store.get(), anchor.hunkId) : null
-    return c.json(review.createThread(anchor, text, codeContext, intent))
+    const capture = store ? captureAnchor(store.get(), anchor) : null
+    return c.json(review.createThread(anchor, text, capture, intent))
   })
 
   app.post('/api/review/threads/:id/messages', async (c) => {
@@ -499,7 +497,13 @@ export function createApp(
     }
     if (snapshot.kind === 'finish') {
       const batch = activeThreads(threads)
-      const actionable = batch.filter((t) => t.state === 'sent').map((t) => t.id)
+      // Owed a reply = the reviewer spoke last. A thread already ending with the
+      // agent's answer still rides the prompt as context, but putting it back on
+      // the reply clock brands the agent "no answer" for obeying the prompt's own
+      // "don't reply again" instruction.
+      const actionable = batch
+        .filter((t) => t.state === 'sent' && t.messages.at(-1)?.author === 'reviewer')
+        .map((t) => t.id)
       return {
         status: 'feedback' as const,
         kind: 'finish' as const,

@@ -5161,6 +5161,14 @@ select.input {
     color var(--dur-move) var(--ease-out);
 }
 
+/* The label carries live activity ("working on db.ts:42"), and a path can be any
+   length — the chip clips it rather than squeezing the header. */
+.presence-label {
+  max-width: 34ch;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
 /* A lamp, for the invite modal's one-line statements. The chip in the header uses
    the meter below instead — it has three states to tell apart, not two. */
 .presence-dot {

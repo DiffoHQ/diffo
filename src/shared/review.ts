@@ -22,6 +22,25 @@ export type Anchor =
 
 export type Author = 'reviewer' | 'agent'
 
+/** The exact lines a hunk anchor covers, frozen at creation: where they sit
+ * inside `codeContext` (0-based row indices, inclusive) and their text
+ * (`+`/`-`/` `-prefixed like the snapshot, capped). The text outlives the
+ * snapshot — `codeContext` is dropped on resolve, and once the code moves the
+ * anchor's line numbers go stale, so this text is how a later follow-up still
+ * identifies what the comment was about. */
+export interface AnchoredLines {
+  start: number
+  end: number
+  text: string
+}
+
+/** What a new thread freezes about the code it anchors to. `anchored` is absent
+ * for pre-range snapshots and for anchors whose lines fell outside the hunk. */
+export interface ThreadCapture {
+  codeContext: string
+  anchored?: AnchoredLines
+}
+
 export interface ReviewMessage {
   id: string
   author: Author
@@ -36,6 +55,8 @@ export interface ReviewThread {
   state: ThreadState
   intent?: ThreadIntent
   codeContext: string | null
+  /** See {@link AnchoredLines}. Absent on threads created before it existed. */
+  anchored?: AnchoredLines
   /** The anchored hunk no longer exists in the current changeset (its
    * content-addressed ID rotated). `sent` threads become `addressed` instead. */
   codeChanged: boolean
