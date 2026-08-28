@@ -40,9 +40,11 @@ import { partitionThreads, threadsByFile } from './reviewPlacement.js'
 import { computeSinceLastReview } from './sinceLastReview.js'
 import { useTheme } from './theme.js'
 import {
+  agentActivity,
   byFile,
   isUnsent,
   type PanelTab,
+  shortAnchor,
   type ThreadItem,
   threadItems,
   unsettledCount,
@@ -159,6 +161,34 @@ function useLiveUpdates(): {
     return () => source.close()
   }, [client])
   return { presence, reason, since, workingOn, queuedOn, answeredOn }
+}
+
+/**
+ * The most recent answer's anchor, at chip length. Kept between replies so the
+ * chip has something truthful to say in the gap after one comment settles and
+ * before the agent picks up the next; gone when the batch resets or the agent
+ * stops working.
+ */
+function useLastAnswered(
+  items: readonly ThreadItem[],
+  answeredOn: ReadonlySet<string>,
+  presence: Presence,
+): string | null {
+  const [label, setLabel] = useState<string | null>(null)
+  const seen = useRef<ReadonlySet<string>>(NO_THREADS)
+  useEffect(() => {
+    const prev = seen.current
+    seen.current = answeredOn
+    if (presence !== 'working' || answeredOn.size === 0) {
+      setLabel(null)
+      return
+    }
+    const fresh = [...answeredOn].filter((id) => !prev.has(id))
+    if (fresh.length === 0) return
+    const item = items.find((i) => i.thread.id === fresh[fresh.length - 1])
+    if (item) setLabel(shortAnchor(item.anchor))
+  }, [items, answeredOn, presence])
+  return label
 }
 
 function useReviewActions(): ReviewActions {
@@ -313,6 +343,8 @@ function Review() {
     }),
     [batch],
   )
+  const lastAnswered = useLastAnswered(items, answeredOn, presence)
+  const activity = presence === 'working' ? agentActivity(batch.stillTo, lastAnswered) : null
   const [monitorOpen, setMonitorOpen] = useState(false)
   useEffect(() => {
     if (monitorOpen && batch.stillTo.length === 0 && batch.back.length === 0) setMonitorOpen(false)
@@ -860,6 +892,7 @@ function Review() {
         agent={{
           presence,
           since: presenceSince,
+          activity,
           onInvite: () => setInviteOpen(true),
           batch: batchForBadge,
           monitorOpen,

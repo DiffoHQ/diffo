@@ -81,6 +81,7 @@ export interface AgentBatch {
 function PresenceChip({
   presence,
   since,
+  activity,
   onInvite,
   batch,
   monitorOpen = false,
@@ -89,6 +90,7 @@ function PresenceChip({
 }: {
   presence: Presence
   since?: number | null
+  activity?: string | null
   onInvite?: () => void
   batch?: AgentBatch
   monitorOpen?: boolean
@@ -123,7 +125,7 @@ function PresenceChip({
         <i />
       </span>
       <span className="presence-label">
-        {PRESENCE_LABEL[presence]}
+        {(presence === 'working' && activity) || PRESENCE_LABEL[presence]}
         {showAgo && <span className="presence-ago"> · {formatAgo(Date.now() - since)}</span>}
       </span>
     </>
@@ -178,6 +180,8 @@ function PresenceChip({
 export interface HeaderAgent {
   presence?: Presence
   since?: number | null
+  /** What the agent is doing right now — replaces the static working label. */
+  activity?: string | null
   onInvite?: () => void
   batch?: AgentBatch
   monitorOpen?: boolean
@@ -230,6 +234,7 @@ export function Header({
         <PresenceChip
           presence={agent.presence}
           since={agent.since}
+          activity={agent.activity}
           onInvite={agent.onInvite}
           batch={agent.batch}
           monitorOpen={agent.monitorOpen}

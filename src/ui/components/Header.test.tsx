@@ -195,6 +195,31 @@ describe('Header', () => {
     expect(container.querySelector('.presence')!.textContent).toContain('agent · listening')
   })
 
+  it('a working chip narrates the activity in place of the static label', () => {
+    const { rerender, container } = render(
+      <Header
+        changeset={changeset()}
+        agent={{ presence: 'working', activity: 'working on db.ts:42' }}
+      />,
+    )
+    const label = () => container.querySelector('.presence-label')!.textContent
+    expect(label()).toContain('working on db.ts:42')
+    expect(label()).not.toContain('agent · working')
+
+    // No activity to report → the label falls back to what it says today.
+    rerender(<Header changeset={changeset()} agent={{ presence: 'working', activity: null }} />)
+    expect(label()).toContain('agent · working')
+
+    // Activity is the working state's voice alone — listening never borrows it.
+    rerender(
+      <Header
+        changeset={changeset()}
+        agent={{ presence: 'listening', activity: 'working on db.ts:42' }}
+      />,
+    )
+    expect(label()).toContain('agent · listening')
+  })
+
   it('without an invite handler the waiting chip stays a plain statement', () => {
     const { container } = render(<Header changeset={changeset()} agent={{ presence: 'waiting' }} />)
     expect(container.querySelector('button.presence')).toBeNull()
