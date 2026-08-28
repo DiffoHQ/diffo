@@ -443,6 +443,33 @@ describe('review API', () => {
     expect(queue.take()).toBeNull()
   })
 
+  it('finish never re-opens the reply clock on a thread the agent already answered', async () => {
+    const { app } = setup()
+    const ids: string[] = []
+    for (const text of ['answered before finish', 'still waiting']) {
+      const res = await post(app, '/api/review/threads', { anchor: { kind: 'changeset' }, text })
+      ids.push(((await res.json()) as ReviewThread).id)
+      await post(app, `/api/review/threads/${ids.at(-1)}/send`)
+    }
+    // The agent picks both up and answers the first — its reply is the last word there.
+    await pollResult(await app.request('/api/agent/poll', { headers: { 'x-diffo-agent': 'cli' } }))
+    await post(app, `/api/review/threads/${ids[0]}/messages`, {
+      author: 'agent',
+      text: 'done — see the thread',
+    })
+
+    await post(app, '/api/review/finish', {
+      coverage: { viewedHunks: 1, totalHunks: 1, skippedFiles: [] },
+    })
+    const payload = await pollResult(
+      await app.request('/api/agent/poll', { headers: { 'x-diffo-agent': 'cli' } }),
+    )
+    expect(payload.kind).toBe('finish')
+    // Both threads ride the prompt for context, but only the unanswered one is owed.
+    expect(payload.threadIds).toEqual([ids[1]])
+    expect(payload.prompt).toContain('answered before finish')
+  })
+
   it('review endpoints 503 without a review store', async () => {
     const app = createApp({ root: '/x', spec: { kind: 'working-tree' }, clientDir: '/nope' })
     expect((await app.request('/api/review')).status).toBe(503)

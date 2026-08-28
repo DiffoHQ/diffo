@@ -497,7 +497,13 @@ export function createApp(
     }
     if (snapshot.kind === 'finish') {
       const batch = activeThreads(threads)
-      const actionable = batch.filter((t) => t.state === 'sent').map((t) => t.id)
+      // Owed a reply = the reviewer spoke last. A thread already ending with the
+      // agent's answer still rides the prompt as context, but putting it back on
+      // the reply clock brands the agent "no answer" for obeying the prompt's own
+      // "don't reply again" instruction.
+      const actionable = batch
+        .filter((t) => t.state === 'sent' && t.messages.at(-1)?.author === 'reviewer')
+        .map((t) => t.id)
       return {
         status: 'feedback' as const,
         kind: 'finish' as const,
