@@ -81,6 +81,14 @@ function applyToolbar(
 export interface CommentBoxScope {
   label: string
   canWiden: boolean
+  /** Range steppers on the chip: one dial, not two jobs. The line the composer
+   * was opened on is the range's fixed anchor; each press walks the OTHER edge
+   * one line up or down — through the anchor and out the far side, so ▼▼▼ from a
+   * single line reads "this line as top, three lines down". Every press has an
+   * exact inverse, so no selection is ever lost. Also how a single-line comment
+   * quietly teaches that ranges exist at all. Absent ⇒ that direction is at the
+   * rendered window's limit. */
+  adjust?: { up?: () => void; down?: () => void }
 }
 
 export function CommentBox({
@@ -92,6 +100,10 @@ export function CommentBox({
   onCancel,
   agentConnected = false,
   autoFocus = true,
+  draft,
+  onDraft,
+  draftIntent,
+  onDraftIntent,
 }: {
   title: string
   placeholder: string
@@ -101,15 +113,26 @@ export function CommentBox({
   onCancel: () => void
   agentConnected?: boolean
   autoFocus?: boolean
+  /** Controlled draft. A range composer's row moves with the range's last line,
+   * which re-mounts this component — the owner holds the words (and the intent)
+   * so growing the range can never eat a half-typed comment. */
+  draft?: string
+  onDraft?: (text: string) => void
+  draftIntent?: ThreadIntent
+  onDraftIntent?: (intent: ThreadIntent | undefined) => void
 }) {
-  const [text, setText] = useState('')
+  const [ownText, setOwnText] = useState('')
   const [tab, setTab] = useState<'write' | 'preview'>('write')
   const [wide, setWide] = useState(false)
   // Unset by default: most comments say what they want on their own, and the agent
   // is told to judge unlabeled threads from the text. The chips force a reading
   // only when the words alone could be taken either way.
-  const [intent, setIntent] = useState<ThreadIntent | undefined>(undefined)
+  const [ownIntent, setOwnIntent] = useState<ThreadIntent | undefined>(undefined)
   const [rich, setRich] = useState(false)
+  const text = onDraft ? (draft ?? '') : ownText
+  const setText = onDraft ?? setOwnText
+  const intent = onDraftIntent ? draftIntent : ownIntent
+  const setIntent = onDraftIntent ?? setOwnIntent
   const box = useRef<HTMLTextAreaElement>(null)
   const ready = text.trim().length > 0
 
@@ -135,6 +158,30 @@ export function CommentBox({
             <span className="scope-chip">
               <Icon name={wide ? 'cmp' : 'unified'} size="sm" />
               {wide ? 'the whole changeset' : scope.label}
+              {!wide && scope.adjust && (
+                <span className="scope-chip-steppers">
+                  <button
+                    type="button"
+                    className="scope-chip-step"
+                    disabled={!scope.adjust.up}
+                    title="walk the range's edge one line up — the line you started on stays put"
+                    aria-label="range edge one line up"
+                    onClick={scope.adjust.up}
+                  >
+                    <Icon name="up" size="sm" />
+                  </button>
+                  <button
+                    type="button"
+                    className="scope-chip-step"
+                    disabled={!scope.adjust.down}
+                    title="walk the range's edge one line down — the line you started on stays put"
+                    aria-label="range edge one line down"
+                    onClick={scope.adjust.down}
+                  >
+                    <Icon name="down" size="sm" />
+                  </button>
+                </span>
+              )}
               {wide && scope.canWiden && (
                 <button
                   type="button"

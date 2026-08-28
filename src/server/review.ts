@@ -487,12 +487,21 @@ export function parseAnchor(value: unknown): Anchor | null {
     if (typeof anchor.hunkId !== 'string' || typeof anchor.path !== 'string') return null
     if (anchor.side !== 'old' && anchor.side !== 'new') return null
     if (typeof anchor.line !== 'number') return null
+    // A range's end must extend past its start — anything else collapses back to a
+    // single line rather than persisting a degenerate span.
+    const endLine =
+      typeof anchor.endLine === 'number' &&
+      Number.isInteger(anchor.endLine) &&
+      anchor.endLine > anchor.line
+        ? anchor.endLine
+        : undefined
     return {
       kind: 'hunk',
       hunkId: anchor.hunkId,
       path: anchor.path,
       side: anchor.side,
       line: anchor.line,
+      ...(endLine !== undefined ? { endLine } : {}),
     }
   }
   if (anchor.kind === 'file') {

@@ -374,6 +374,33 @@ describe('parseReview', () => {
     expect(parsed!.threads.map((t) => t.id)).toEqual(['ok'])
   })
 
+  it('a range anchor survives the round trip — endLine must not vanish on reload', () => {
+    const stored = (endLine: unknown) =>
+      JSON.stringify({
+        threads: [
+          {
+            id: 't',
+            state: 'open',
+            anchor: { kind: 'hunk', hunkId: 'h', path: 'a.ts', side: 'new', line: 4, endLine },
+            messages: [{ author: 'reviewer', text: 'hi' }],
+          },
+        ],
+      })
+    expect(parseReview(stored(9))!.threads[0]!.anchor).toEqual({
+      kind: 'hunk',
+      hunkId: 'h',
+      path: 'a.ts',
+      side: 'new',
+      line: 4,
+      endLine: 9,
+    })
+    // A span that doesn't extend past its start collapses back to a single line.
+    for (const bad of [4, 3, 4.5, '9', null]) {
+      const anchor = parseReview(stored(bad))!.threads[0]!.anchor
+      expect(anchor).toEqual({ kind: 'hunk', hunkId: 'h', path: 'a.ts', side: 'new', line: 4 })
+    }
+  })
+
   it('returns null for non-review JSON', () => {
     expect(parseReview('[]')).toBeNull()
     expect(parseReview('{"threads": 5}')).toBeNull()

@@ -1,5 +1,6 @@
 import { Fragment, useEffect, useRef, useState } from 'react'
 import {
+  anchorSpan,
   type ReviewThread,
   startedByAgent,
   type ThreadState,
@@ -538,8 +539,10 @@ function anchorLabel(thread: ReviewThread, gone = false): string {
   if (anchor.kind === 'changeset') {
     return startedByAgent(thread) ? `${word} on the changeset` : 'Note on the changeset'
   }
-  if (gone) return anchor.kind === 'hunk' ? `${anchor.path}:${anchor.line}` : anchor.path
-  if (anchor.kind === 'hunk') return `${word} on line ${anchor.line}`
+  if (gone) return anchor.kind === 'hunk' ? `${anchor.path}:${anchorSpan(anchor)}` : anchor.path
+  if (anchor.kind === 'hunk') {
+    return `${word} on ${anchor.endLine === undefined ? 'line' : 'lines'} ${anchorSpan(anchor)}`
+  }
   return `${word} on this file`
 }
 
