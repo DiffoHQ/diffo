@@ -47,7 +47,7 @@ describe('ReviewStore', () => {
     const root = tempRoot()
     const store = makeStore(root)
 
-    const thread = store.createThread(hunkAnchor(), 'rename this', '+const x = 1')
+    const thread = store.createThread(hunkAnchor(), 'rename this', { codeContext: '+const x = 1' })
     expect(thread.state).toBe('open')
     expect(thread.messages).toHaveLength(1)
     expect(thread.messages[0]!.author).toBe('reviewer')
@@ -303,13 +303,19 @@ describe('ReviewStore', () => {
     expect('unanswered' in store.get().threads[0]!).toBe(false)
   })
 
-  it('resolving sheds the frozen diff — the heaviest thing in the store', () => {
+  it('resolving sheds the frozen diff but keeps the anchored lines — a follow-up needs them', () => {
     const store = makeStore(tempRoot())
-    const thread = store.createThread(hunkAnchor('h1'), 'why this?', '+ const a = 1\n- const a = 2')
+    const anchored = { start: 0, end: 0, text: '+ const a = 1' }
+    const thread = store.createThread(hunkAnchor('h1'), 'why this?', {
+      codeContext: '+ const a = 1\n- const a = 2',
+      anchored,
+    })
     expect(store.get().threads[0]!.codeContext).not.toBeNull()
+    expect(store.get().threads[0]!.anchored).toEqual(anchored)
 
     store.setState(thread.id, 'resolved')
     expect(store.get().threads[0]!.codeContext).toBeNull()
+    expect(store.get().threads[0]!.anchored).toEqual(anchored)
     expect(store.get().threads[0]!.messages).toHaveLength(1)
   })
 
@@ -398,6 +404,34 @@ describe('parseReview', () => {
     for (const bad of [4, 3, 4.5, '9', null]) {
       const anchor = parseReview(stored(bad))!.threads[0]!.anchor
       expect(anchor).toEqual({ kind: 'hunk', hunkId: 'h', path: 'a.ts', side: 'new', line: 4 })
+    }
+  })
+
+  it('anchored lines survive the round trip; a malformed record is dropped, not fatal', () => {
+    const stored = (anchored: unknown) =>
+      JSON.stringify({
+        threads: [
+          {
+            id: 't',
+            state: 'open',
+            anchor: { kind: 'hunk', hunkId: 'h', path: 'a.ts', side: 'new', line: 4 },
+            messages: [{ author: 'reviewer', text: 'hi' }],
+            anchored,
+          },
+        ],
+      })
+    const good = { start: 1, end: 2, text: '+a\n+b' }
+    expect(parseReview(stored(good))!.threads[0]!.anchored).toEqual(good)
+    for (const bad of [
+      { start: -1, end: 2, text: 'x' },
+      { start: 3, end: 2, text: 'x' },
+      { start: 0.5, end: 2, text: 'x' },
+      { start: 0, end: 1 },
+      'nope',
+    ]) {
+      const thread = parseReview(stored(bad))!.threads[0]!
+      expect(thread.id).toBe('t')
+      expect(thread.anchored).toBeUndefined()
     }
   })
 
