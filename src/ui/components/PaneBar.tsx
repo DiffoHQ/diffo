@@ -55,7 +55,7 @@ export function PaneBar({
           type="button"
           className="pane-icon pane-nav"
           onClick={onToggleNav}
-          title={`${navHidden ? 'Show' : 'Hide'} the file list (b)`}
+          data-tip={`${navHidden ? 'Show' : 'Hide'} the file list (b)`}
           aria-label={`${navHidden ? 'Show' : 'Hide'} the file list`}
           aria-pressed={!navHidden}
         >
@@ -115,7 +115,7 @@ export function PaneBar({
           type="button"
           className="pane-icon"
           aria-pressed={viewMode === 'unified'}
-          title="Unified diff (u)"
+          data-tip="Unified diff (u)"
           aria-label="Unified diff"
           onClick={() => onSetViewMode('unified')}
         >
@@ -125,7 +125,7 @@ export function PaneBar({
           type="button"
           className="pane-icon"
           aria-pressed={viewMode === 'split'}
-          title="Split diff (u)"
+          data-tip="Split diff (u)"
           aria-label="Split diff"
           onClick={() => onSetViewMode('split')}
         >
@@ -136,7 +136,7 @@ export function PaneBar({
         type="button"
         className="pane-icon"
         aria-pressed={allCollapsed}
-        title={`${allCollapsed ? 'Expand' : 'Collapse'} all files`}
+        data-tip={`${allCollapsed ? 'Expand' : 'Collapse'} all files`}
         aria-label={`${allCollapsed ? 'Expand' : 'Collapse'} all files`}
         onClick={onToggleCollapseAll}
       >

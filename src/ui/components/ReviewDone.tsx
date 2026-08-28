@@ -126,7 +126,7 @@ export function ReviewDone({
             <button
               type="button"
               className="done-close"
-              title="Dismiss"
+              data-tip="Dismiss"
               aria-label="Dismiss"
               onClick={onDismiss}
             >

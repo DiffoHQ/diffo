@@ -64,7 +64,7 @@ export function GapExpanders({ gap }: { gap: GapControls }) {
         <button
           type="button"
           className="gap-btn"
-          title={`expand all (${gap.remaining} hidden ${gap.remaining === 1 ? 'line' : 'lines'})`}
+          data-tip={`expand all (${gap.remaining} hidden ${gap.remaining === 1 ? 'line' : 'lines'})`}
           aria-label={`expand all ${gap.remaining} hidden lines`}
           onClick={(e) => act(e, gap.onAll)}
         >
@@ -80,7 +80,7 @@ export function GapExpanders({ gap }: { gap: GapControls }) {
         <button
           type="button"
           className="gap-btn"
-          title={`expand down (${EXPAND_STEP} lines)`}
+          data-tip={`expand down (${EXPAND_STEP} lines)`}
           aria-label="expand down"
           onClick={(e) => act(e, gap.onDown)}
         >
@@ -91,7 +91,7 @@ export function GapExpanders({ gap }: { gap: GapControls }) {
         <button
           type="button"
           className="gap-btn"
-          title={`expand up (${EXPAND_STEP} lines)`}
+          data-tip={`expand up (${EXPAND_STEP} lines)`}
           aria-label="expand up"
           onClick={(e) => act(e, gap.onUp)}
         >
@@ -107,7 +107,7 @@ function FoldButton({ onCollapse }: { onCollapse: () => void }) {
     <button
       type="button"
       className="gap-fold"
-      title="hide expanded lines"
+      data-tip="hide expanded lines"
       aria-label="hide expanded lines"
       onClick={(e) => {
         e.stopPropagation()
@@ -316,7 +316,7 @@ function CommentButton({ onClick }: { onClick: () => void }) {
     <button
       type="button"
       className="line-comment-btn"
-      title="comment on this line — drag down to take more lines"
+      data-tip="comment on this line — drag down to take more lines"
       aria-label="comment on this line, or drag down to comment on a range"
       onClick={(e) => {
         e.stopPropagation()

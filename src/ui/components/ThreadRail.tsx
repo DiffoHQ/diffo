@@ -41,7 +41,7 @@ function Row({
         type="button"
         className="crow-mark"
         aria-pressed={resolved}
-        title={resolved ? 'Reopen — moves back to its turn' : 'Resolve — moves to Settled'}
+        data-tip={resolved ? 'Reopen — moves back to its turn' : 'Resolve — moves to Settled'}
         aria-label={resolved ? 'Reopen thread' : 'Resolve thread'}
         disabled={!toggle}
         onClick={() => toggle && void toggle(item.thread.id)}
@@ -68,7 +68,7 @@ function Row({
         <button
           type="button"
           className="row-act row-act-danger crow-del"
-          title="Delete thread"
+          data-tip="Delete thread"
           aria-label="Delete thread"
           onClick={() => void onDelete(item.thread.id)}
         >
@@ -203,7 +203,7 @@ export function ThreadRail({
                 <button
                   type="button"
                   className={`row-act sec-act${batch.danger ? ' row-act-danger' : ''}`}
-                  title={batch.label}
+                  data-tip={batch.label}
                   aria-label={batch.label}
                   onClick={batch.run}
                 >

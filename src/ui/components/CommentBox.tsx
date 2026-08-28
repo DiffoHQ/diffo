@@ -164,7 +164,7 @@ export function CommentBox({
                     type="button"
                     className="scope-chip-step"
                     disabled={!scope.adjust.up}
-                    title="walk the range's edge one line up — the line you started on stays put"
+                    data-tip="walk the range's edge one line up — the line you started on stays put"
                     aria-label="range edge one line up"
                     onClick={scope.adjust.up}
                   >
@@ -174,7 +174,7 @@ export function CommentBox({
                     type="button"
                     className="scope-chip-step"
                     disabled={!scope.adjust.down}
-                    title="walk the range's edge one line down — the line you started on stays put"
+                    data-tip="walk the range's edge one line down — the line you started on stays put"
                     aria-label="range edge one line down"
                     onClick={scope.adjust.down}
                   >
@@ -186,6 +186,7 @@ export function CommentBox({
                 <button
                   type="button"
                   className="scope-chip-x"
+                  data-tip="Narrow the scope back"
                   aria-label="Narrow the scope back"
                   onClick={() => setWide(false)}
                 >
@@ -203,7 +204,7 @@ export function CommentBox({
         <button
           type="button"
           className="cbox-close"
-          title="Close (Esc)"
+          data-tip="Close (Esc)"
           aria-label="Close"
           onClick={onCancel}
         >
@@ -240,7 +241,7 @@ export function CommentBox({
                 key={i}
                 type="button"
                 className="cbox-mdb"
-                title={action.label}
+                data-tip={action.label}
                 aria-label={action.label}
                 onClick={() => box.current && applyToolbar(box.current, action, setText)}
               >
@@ -301,7 +302,7 @@ export function CommentBox({
           type="button"
           className="cbox-rich"
           aria-pressed={rich}
-          title="Formatting and preview"
+          data-tip="Formatting and preview"
           aria-label="Formatting and preview"
           onClick={toggleRich}
         >

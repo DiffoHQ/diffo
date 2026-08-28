@@ -163,11 +163,12 @@ function FileHeader({
   return (
     // biome-ignore lint/a11y/noStaticElementInteractions: folding is also the chevron button inside
     // biome-ignore lint/a11y/useKeyWithClickEvents: folding is also the chevron button inside
-    <div className="file-header" onClick={onToggle} title="click to collapse/expand">
+    <div className="file-header" onClick={onToggle}>
       <button
         type="button"
         className={`file-chevron chevron${collapsed ? ' chevron-shut' : ''}`}
         aria-expanded={!collapsed}
+        data-tip={`${collapsed ? 'Expand' : 'Collapse'} this file`}
         aria-label={`${collapsed ? 'Expand' : 'Collapse'} ${file.path}`}
       >
         <Icon name="chev" />
@@ -194,7 +195,7 @@ function FileHeader({
       <button
         type="button"
         className="ghb file-copy"
-        title={copied ? 'Copied' : 'Copy path'}
+        data-tip={copied ? 'Copied' : 'Copy path'}
         aria-label="Copy path"
         onClick={(e) => {
           stop(e)

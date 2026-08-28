@@ -64,6 +64,7 @@ export function AgentBanner({
       <button
         type="button"
         className="btn btn-ghost btn-icon btn-sm agent-banner-x"
+        data-tip="Dismiss"
         aria-label="dismiss"
         onClick={onClear}
       >

@@ -123,7 +123,7 @@ function FileRow({
         role="checkbox"
         aria-checked={done}
         aria-label={`${done ? 'Mark not reviewed' : 'Mark reviewed'}: ${file.path}`}
-        title={done ? 'Mark not reviewed' : 'Mark reviewed'}
+        data-tip={done ? 'Mark not reviewed' : 'Mark reviewed'}
         disabled={!onToggleViewed}
         onClick={onToggleViewed}
       >
@@ -188,7 +188,7 @@ function FileRow({
             <button
               type="button"
               className="row-act"
-              title="Comment on this file"
+              data-tip="Comment on this file"
               aria-label="Comment on this file"
               onClick={onAsk}
             >
@@ -323,7 +323,7 @@ export function Nav({
               ? `Mark ${dir.name} not reviewed`
               : `Mark ${markable.length} file${markable.length === 1 ? '' : 's'} in ${dir.name} reviewed`
           }
-          title={
+          data-tip={
             allDone
               ? `Mark ${inside.length} file${inside.length === 1 ? '' : 's'} not reviewed`
               : `Mark ${markable.length} file${markable.length === 1 ? '' : 's'} reviewed`
@@ -389,7 +389,7 @@ export function Nav({
             <button
               type="button"
               className="sb-clear"
-              title="Clear filter"
+              data-tip="Clear filter"
               aria-label="Clear filter"
               onClick={() => {
                 setQuery('')

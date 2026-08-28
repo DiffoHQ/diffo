@@ -5678,6 +5678,32 @@ i.q-now {
   animation: pop 0.28s var(--ease-out);
 }
 
+/* ---------- tooltip: the one floating label every data-tip control shares ---------- */
+
+.tip {
+  position: fixed;
+  z-index: 60; /* above modals (40) — icon buttons live inside them too */
+  max-width: 300px;
+  padding: 4px 9px;
+  border-radius: var(--r-sm);
+  background: var(--ink);
+  color: var(--paper);
+  font-family: var(--sans);
+  font-size: var(--t-11);
+  font-weight: 500;
+  line-height: 1.45;
+  letter-spacing: 0.01em;
+  overflow-wrap: break-word;
+  box-shadow: var(--lift);
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity var(--dur) var(--ease-out);
+}
+
+.tip-on {
+  opacity: 1;
+}
+
 /* Motion is a preference. One move kills every transition and one-shot
  * animation; the iteration cap catches the looping indicators too. */
 @media (prefers-reduced-motion: reduce) {

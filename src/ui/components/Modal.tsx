@@ -96,7 +96,13 @@ export function Modal({
         <div className="modal-head">
           <h3>{title}</h3>
           {badge}
-          <button type="button" className="ghb" aria-label="Close" title="Close" onClick={onClose}>
+          <button
+            type="button"
+            className="ghb"
+            aria-label="Close"
+            data-tip="Close"
+            onClick={onClose}
+          >
             <Icon name="x" size="sm" />
           </button>
         </div>
