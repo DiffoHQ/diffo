@@ -91,17 +91,66 @@ export function anchorForHunk(hunk: Hunk): Anchor | null {
   return line ? anchorForLine(hunk.id, hunk.path, line) : null
 }
 
+/**
+ * Anchor for a comment on a dragged run of rendered lines. The *first* line in the
+ * run that carries a number picks the side — so a drag that starts on a deletion is
+ * an old-side range, and everything else is new-side. Lines with no number on that
+ * side (the other half of the diff, interleaved) don't break the range; they just
+ * can't be its endpoints, so the range clamps inward to the nearest line that counts.
+ * A range that clamps down to one line is a plain single-line anchor.
+ */
+export function anchorForRange(
+  hunkId: string,
+  path: string,
+  lines: DiffLine[],
+  from: number,
+  to: number,
+): Extract<Anchor, { kind: 'hunk' }> | null {
+  const lo = Math.max(0, Math.min(from, to))
+  const hi = Math.min(lines.length - 1, Math.max(from, to))
+  let start: Extract<Anchor, { kind: 'hunk' }> | null = null
+  for (let i = lo; i <= hi && !start; i++) start = anchorForLine(hunkId, path, lines[i]!)
+  if (!start) return null
+  const numberOn = (l: DiffLine) =>
+    start!.side === 'old' ? (l.kind !== 'add' ? l.oldNo : null) : l.kind !== 'del' ? l.newNo : null
+  let end = start.line
+  for (let i = hi; i > lo; i--) {
+    const n = numberOn(lines[i]!)
+    if (n !== null) {
+      end = n
+      break
+    }
+  }
+  return end > start.line ? { ...start, endLine: end } : start
+}
+
+function indexOfSideLine(lines: DiffLine[], side: 'old' | 'new', line: number): number {
+  return lines.findIndex((l) =>
+    side === 'old' ? l.kind !== 'add' && l.oldNo === line : l.kind !== 'del' && l.newNo === line,
+  )
+}
+
 /** Index in `lines` after which a hunk-anchored thread renders; -1 when the anchored
  * line isn't in the rendered window (thread renders at hunk end). */
 export function lineIndexForAnchor(
   lines: DiffLine[],
   anchor: Extract<Anchor, { kind: 'hunk' }>,
 ): number {
-  return lines.findIndex((l) =>
-    anchor.side === 'old'
-      ? l.kind !== 'add' && l.oldNo === anchor.line
-      : l.kind !== 'del' && l.newNo === anchor.line,
-  )
+  return indexOfSideLine(lines, anchor.side, anchor.line)
+}
+
+/** Where the thread's card actually sits: under the *last* line of a range (so the
+ * conversation reads below the code it is about), falling back to the start line
+ * when the end has been edited away, then to -1 like a single-line anchor. */
+export function placementIndexForAnchor(
+  lines: DiffLine[],
+  anchor: Extract<Anchor, { kind: 'hunk' }>,
+): number {
+  if (anchor.endLine !== undefined) {
+    const end = indexOfSideLine(lines, anchor.side, anchor.endLine)
+    if (end !== -1) return end
+  }
+  return lineIndexForAnchor(lines, anchor)
 }
 
 export function threadsByLine(
@@ -111,10 +160,42 @@ export function threadsByLine(
   const map = new Map<number, ReviewThread[]>()
   for (const thread of threads) {
     if (thread.anchor.kind !== 'hunk') continue
-    const index = lineIndexForAnchor(lines, thread.anchor)
+    const index = placementIndexForAnchor(lines, thread.anchor)
     const list = map.get(index)
     if (list) list.push(thread)
     else map.set(index, [thread])
   }
   return map
+}
+
+/** Rendered rows covered by some range-anchored thread — the quiet gutter bar that
+ * says "this conversation is about more than one line". Single-line anchors don't
+ * mark rows: their card already sits directly under the line. */
+export function rangedRows(lines: DiffLine[], threads: ReviewThread[]): Set<number> {
+  const rows = new Set<number>()
+  for (const thread of threads) {
+    const anchor = thread.anchor
+    if (anchor.kind !== 'hunk' || anchor.endLine === undefined) continue
+    const start = lineIndexForAnchor(lines, anchor)
+    const end = placementIndexForAnchor(lines, anchor)
+    if (start === -1 || end === -1) continue
+    for (let i = Math.min(start, end); i <= Math.max(start, end); i++) rows.add(i)
+  }
+  return rows
+}
+
+/** The first rendered row of each range-anchored thread — where the gutter glyph
+ * sits, the IDE-style "a conversation starts here" shape that survives every row
+ * tint. Single-line anchors don't get one; their card is already adjacent. */
+export function rangeStartRows(lines: DiffLine[], threads: ReviewThread[]): Set<number> {
+  const rows = new Set<number>()
+  for (const thread of threads) {
+    const anchor = thread.anchor
+    if (anchor.kind !== 'hunk' || anchor.endLine === undefined) continue
+    const start = lineIndexForAnchor(lines, anchor)
+    const end = placementIndexForAnchor(lines, anchor)
+    if (start === -1 || end === -1) continue
+    rows.add(Math.min(start, end))
+  }
+  return rows
 }

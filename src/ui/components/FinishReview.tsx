@@ -1,5 +1,11 @@
 import { useEffect, useState } from 'react'
-import type { Anchor, Coverage, OutgoingThread, ReviewVerdict } from '../../shared/review.js'
+import {
+  type Anchor,
+  anchorSpan,
+  type Coverage,
+  type OutgoingThread,
+  type ReviewVerdict,
+} from '../../shared/review.js'
 import { type Presence, useFinishPreview } from '../api.js'
 import { copyText } from '../clipboard.js'
 import type { ThreadItem } from '../threads.js'
@@ -29,7 +35,7 @@ const ROWS = 4
 function rowAnchor(anchor: Anchor): string {
   if (anchor.kind === 'changeset') return 'the whole changeset'
   if (anchor.kind === 'file') return anchor.path
-  return `${anchor.path}:${anchor.line}${anchor.side === 'old' ? ' (old side)' : ''}`
+  return `${anchor.path}:${anchorSpan(anchor)}${anchor.side === 'old' ? ' (old side)' : ''}`
 }
 
 export function FinishReview({

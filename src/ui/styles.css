@@ -2990,6 +2990,71 @@ tr:hover .line-comment-btn {
   opacity: 1;
 }
 
+/*
+ * Rows an existing range-thread spans: an ink spine that also runs through the
+ * thread card's own row (`.thread-row-ranged`), so lines and card read as one
+ * bracket — without it, a sent multi-line comment looks single-line. A grey, not
+ * a tint: the gutter's left edge already speaks two tint languages (add/del row
+ * washes and marker insets), and a pale lavender drowned in them — value contrast
+ * is what reads over every row color in both themes. `--ink-3` specifically: full
+ * ink shouted, but the line numbers' own grey sits back like the rest of the
+ * gutter chrome. 2px so it rhymes with the add/del marker insets. The spine turns
+ * blue when the reviewer engages (hovering the card adds `.line-sel` to the
+ * spanned rows and `.thread-row-lit` to the card's row).
+ */
+.hunk-lines tr.line-ranged > td:first-child {
+  box-shadow: inset 2px 0 0 var(--ink-3);
+}
+
+.hunk-lines tr.thread-row-ranged > td {
+  box-shadow: inset 2px 0 0 var(--ink-3);
+}
+
+/*
+ * The at-rest shape: a small chat glyph on the range's first line — the IDE-gutter
+ * convention for "a conversation starts here", and per the palette's own rule the
+ * mark is a shape, never hue alone. Sits where the hover comment button lands, so
+ * it yields (fades) the moment the row is hovered.
+ */
+.line-range-glyph {
+  position: absolute;
+  left: 4px;
+  top: 50%;
+  transform: translateY(-50%);
+  display: flex;
+  align-items: center;
+  color: var(--ink-2);
+  pointer-events: none;
+}
+
+.line-range-glyph svg {
+  width: 10px;
+  height: 10px;
+}
+
+tr:hover .line-range-glyph {
+  opacity: 0;
+}
+
+/*
+ * Range selection rides the cells, not the row: the add/del tints live on the tr,
+ * so a td background wins the cascade without !important and the drag reads the
+ * same over green, red and plain lines. Blue on purpose — the same borrowed GitHub
+ * hue as the gap expanders, and the one color that stays legible over both tints.
+ * After the resting-spine rules so that lit beats muted on the shared bar.
+ */
+.hunk-lines tr.line-sel > td {
+  background: var(--exp-wash);
+}
+
+.hunk-lines tr.line-sel > td:first-child {
+  box-shadow: inset 2px 0 0 var(--exp-ink);
+}
+
+.hunk-lines tr.thread-row-ranged.thread-row-lit > td {
+  box-shadow: inset 2px 0 0 var(--exp-ink);
+}
+
 .thread-row > td {
   padding: 0.35rem 0.8rem;
   background: var(--bg-subtle);
@@ -3680,6 +3745,40 @@ tr:hover .line-comment-btn {
   display: flex;
   align-items: center;
   justify-content: center;
+}
+
+.scope-chip-steppers {
+  display: inline-flex;
+  gap: 1px;
+}
+
+.scope-chip-step {
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  border: 0;
+  padding: 0;
+  background: transparent;
+  color: var(--ink-3);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.scope-chip-step svg {
+  width: 9px;
+  height: 9px;
+}
+
+.scope-chip-step:hover:not(:disabled) {
+  background: var(--fill-2);
+  color: var(--ink);
+}
+
+.scope-chip-step:disabled {
+  opacity: 0.35;
+  cursor: default;
 }
 
 .scope-chip-x svg {

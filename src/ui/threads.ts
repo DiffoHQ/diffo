@@ -1,4 +1,4 @@
-import { type ReviewThread, untouchedAgentVoice } from '../shared/review.js'
+import { anchorSpan, type ReviewThread, untouchedAgentVoice } from '../shared/review.js'
 
 export type Turn = 'yours' | 'unanswered' | 'proposed' | 'agent' | 'note' | 'resolved'
 
@@ -107,7 +107,7 @@ function describe(thread: ReviewThread): { anchor: string | null; path: string |
   const a = thread.anchor
   if (a.kind === 'changeset') return { anchor: null, path: null }
   if (a.kind === 'file') return { anchor: a.path, path: a.path }
-  return { anchor: `${a.path}:${a.line}`, path: a.path }
+  return { anchor: `${a.path}:${anchorSpan(a)}`, path: a.path }
 }
 
 export function threadItems(

@@ -7,7 +7,16 @@ export type ThreadIntent = 'question' | 'fix'
 export const THREAD_INTENTS: readonly ThreadIntent[] = ['fix', 'question']
 
 export type Anchor =
-  | { kind: 'hunk'; hunkId: string; path: string; side: 'old' | 'new'; line: number }
+  /** `line` is the first (or only) anchored line; `endLine` widens it to a range.
+   * Absent `endLine` ⇒ a single line, so every pre-range anchor is already valid. */
+  | {
+      kind: 'hunk'
+      hunkId: string
+      path: string
+      side: 'old' | 'new'
+      line: number
+      endLine?: number
+    }
   | { kind: 'file'; path: string }
   | { kind: 'changeset' }
 
@@ -198,8 +207,13 @@ export function threadsInChangeset(
   return { active, past }
 }
 
+/** The line part of a hunk anchor's label: `12`, or `12-20` for a range. */
+export function anchorSpan(anchor: Extract<Anchor, { kind: 'hunk' }>): string {
+  return anchor.endLine === undefined ? `${anchor.line}` : `${anchor.line}-${anchor.endLine}`
+}
+
 export function describeAnchor(anchor: Anchor): string {
   if (anchor.kind === 'changeset') return 'the whole changeset'
   if (anchor.kind === 'file') return anchor.path
-  return `${anchor.path}:${anchor.line} (${anchor.side} side)`
+  return `${anchor.path}:${anchorSpan(anchor)} (${anchor.side} side)`
 }

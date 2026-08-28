@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest'
-import { type ReviewThread, threadsInChangeset, undeliveredThreadIds } from './review.js'
+import {
+  anchorSpan,
+  describeAnchor,
+  type ReviewThread,
+  threadsInChangeset,
+  undeliveredThreadIds,
+} from './review.js'
 import type { DiffLine, FileChange, Hunk } from './types.js'
 
 const add = (newNo: number): DiffLine => ({ kind: 'add', oldNo: null, newNo, text: 'added' })
@@ -106,5 +112,21 @@ describe('undeliveredThreadIds — what a restart still owes the agent', () => {
   it('still re-queues the others alongside it, in send order', () => {
     const ids = undeliveredThreadIds([sent('3'), sent('1', { withheld: true }), sent('2')])
     expect(ids).toEqual(['2', '3'])
+  })
+})
+
+describe('anchorSpan / describeAnchor — the one label the agent ever sees', () => {
+  const single = { kind: 'hunk', hunkId: 'h', path: 'a.ts', side: 'new', line: 12 } as const
+
+  it('a single line stays a bare number; a range reads start-end', () => {
+    expect(anchorSpan(single)).toBe('12')
+    expect(anchorSpan({ ...single, endLine: 20 })).toBe('12-20')
+  })
+
+  it('describeAnchor carries the range through to the prompt', () => {
+    expect(describeAnchor(single)).toBe('a.ts:12 (new side)')
+    expect(describeAnchor({ ...single, endLine: 20 })).toBe('a.ts:12-20 (new side)')
+    expect(describeAnchor({ kind: 'file', path: 'a.ts' })).toBe('a.ts')
+    expect(describeAnchor({ kind: 'changeset' })).toBe('the whole changeset')
   })
 })

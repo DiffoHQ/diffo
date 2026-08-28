@@ -4,8 +4,12 @@ import type { DiffLine, FileChange, Hunk } from '../shared/types.js'
 import {
   anchorForHunk,
   anchorForLine,
+  anchorForRange,
   lineIndexForAnchor,
   partitionThreads,
+  placementIndexForAnchor,
+  rangedRows,
+  rangeStartRows,
   threadsByLine,
 } from './reviewPlacement.js'
 
@@ -122,6 +126,46 @@ describe('anchorForLine / anchorForHunk', () => {
   })
 })
 
+describe('anchorForRange', () => {
+  const lines = [ctx(1, 1), del(2), add(2), add(3), ctx(3, 4)]
+
+  it('the first line in the run picks the side; the last line on that side ends it', () => {
+    expect(anchorForRange('h', 'a.ts', lines, 0, 4)).toEqual({
+      kind: 'hunk',
+      hunkId: 'h',
+      path: 'a.ts',
+      side: 'new',
+      line: 1,
+      endLine: 4,
+    })
+    // Starting on the deletion makes it old-side — and the adds inside the run
+    // can't be its endpoint, so it clamps inward to the last old-numbered line.
+    expect(anchorForRange('h', 'a.ts', lines, 1, 3)).toEqual({
+      kind: 'hunk',
+      hunkId: 'h',
+      path: 'a.ts',
+      side: 'old',
+      line: 2,
+    })
+    expect(anchorForRange('h', 'a.ts', lines, 1, 4)).toMatchObject({
+      side: 'old',
+      line: 2,
+      endLine: 3,
+    })
+  })
+
+  it('a one-line run is a plain single-line anchor, endpoints in either order', () => {
+    expect(anchorForRange('h', 'a.ts', lines, 2, 2)).toEqual(anchorForLine('h', 'a.ts', add(2)))
+    expect(anchorForRange('h', 'a.ts', lines, 3, 0)).toEqual(
+      anchorForRange('h', 'a.ts', lines, 0, 3),
+    )
+  })
+
+  it('endpoints outside the window clamp instead of bailing', () => {
+    expect(anchorForRange('h', 'a.ts', lines, -3, 99)).toMatchObject({ line: 1, endLine: 4 })
+  })
+})
+
 describe('lineIndexForAnchor / threadsByLine', () => {
   const lines = [ctx(1, 1), del(2), add(2), add(3)]
 
@@ -152,5 +196,53 @@ describe('lineIndexForAnchor / threadsByLine', () => {
     ])
     expect(map.get(2)!.map((t) => t.id)).toEqual(['a', 'b'])
     expect(map.get(-1)!.map((t) => t.id)).toEqual(['c'])
+  })
+
+  it('a range thread renders under its last line, not its first', () => {
+    const map = threadsByLine(lines, [
+      thread('r', { kind: 'hunk', hunkId: 'h', path: 'p', side: 'new', line: 2, endLine: 3 }),
+    ])
+    expect(map.get(3)!.map((t) => t.id)).toEqual(['r'])
+  })
+
+  it('a range whose end was edited away falls back to its start line', () => {
+    const anchor = {
+      kind: 'hunk',
+      hunkId: 'h',
+      path: 'p',
+      side: 'new',
+      line: 2,
+      endLine: 99,
+    } as const
+    expect(placementIndexForAnchor(lines, anchor)).toBe(2)
+    const map = threadsByLine(lines, [thread('r', anchor)])
+    expect(map.get(2)!.map((t) => t.id)).toEqual(['r'])
+  })
+})
+
+describe('rangedRows', () => {
+  const lines = [ctx(1, 1), del(2), add(2), add(3), ctx(3, 4)]
+
+  it('marks every rendered row a range spans, and nothing for single lines', () => {
+    const rows = rangedRows(lines, [
+      thread('r', { kind: 'hunk', hunkId: 'h', path: 'p', side: 'new', line: 1, endLine: 3 }),
+      thread('s', { kind: 'hunk', hunkId: 'h', path: 'p', side: 'new', line: 4 }),
+    ])
+    expect([...rows].sort()).toEqual([0, 1, 2, 3])
+  })
+
+  it('says nothing when either endpoint left the window', () => {
+    const rows = rangedRows(lines, [
+      thread('r', { kind: 'hunk', hunkId: 'h', path: 'p', side: 'new', line: 90, endLine: 99 }),
+    ])
+    expect(rows.size).toBe(0)
+  })
+
+  it('rangeStartRows marks only each range’s first row — the glyph’s seat', () => {
+    const rows = rangeStartRows(lines, [
+      thread('r', { kind: 'hunk', hunkId: 'h', path: 'p', side: 'new', line: 1, endLine: 3 }),
+      thread('s', { kind: 'hunk', hunkId: 'h', path: 'p', side: 'new', line: 4 }),
+    ])
+    expect([...rows]).toEqual([0])
   })
 })
