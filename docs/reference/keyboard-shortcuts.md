@@ -37,3 +37,9 @@ two different claims, and Finish review sends both.
 `⌘↵` **adds** the comment and leaves it in your review; it does not send it to
 the agent. Sending is **Send to agent** on a single thread, or **Finish review**
 for the batch.
+
+Multi-line comments are mouse grammar rather than keys: **drag** down the line
+numbers to select a range, **shift-click** a line number to move the open
+composer's free edge there, and the **▲/▼** on the composer's chip walk that
+edge one line at a time — through the starting line and out the other side, so
+a run of ▼ reads "this line as top, N lines down". Every press is reversible.

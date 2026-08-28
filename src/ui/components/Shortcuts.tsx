@@ -26,6 +26,8 @@ const GROUPS: { name: string; keys: [string, string][] }[] = [
     name: 'Comment',
     keys: [
       ['c', 'Comment on this hunk'],
+      ['drag ↓', 'Comment on a range of lines'],
+      ['⇧ click', 'Move the range’s edge to a line'],
       ['⌘↵', 'Add the comment'],
       ['esc', 'Close / cancel'],
       ['?', 'This sheet'],

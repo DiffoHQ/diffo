@@ -22,6 +22,8 @@ describe('Shortcuts', () => {
       'o',
       'b',
       'c',
+      'drag ↓',
+      '⇧ click',
       '⌘↵',
       'esc',
       '?',

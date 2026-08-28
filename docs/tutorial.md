@@ -41,6 +41,9 @@ The bar above the diff counts down as you mark files reviewed: `12 left`, then
 `all reviewed`.
 
 To comment, press `c` on a hunk, or hover any line and click the button in the gutter.
+For several lines at once, drag down the line numbers and release — the composer opens
+on the range, and the ▲/▼ on its chip (or a shift-click) adjust the edge one line at a
+time without losing what you've typed.
 
 <video class="clip clip-light" src="./assets/t3-comment.mp4" muted loop playsinline width="1440" height="1102" poster="./assets/t3-comment-poster.jpg" preload="none"
   aria-label="A comment composer opens on a line of the diff, the Question chip is selected, and a real question is typed before Add comment."></video>
