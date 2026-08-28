@@ -32,10 +32,23 @@ The agent keeps writing; new files appear, stats tick, fresh hunks pulse. If
 something you already marked viewed changes, the mark comes off and the hunk
 says *changed since you read it*.
 
-## You comment: on a line, a file, or the whole changeset
+## You comment: on a line, a range of lines, a file, or the whole changeset
 
 Every comment is a thread, marked **Change** (edit the code) or **Question**
 (answer it, touch nothing).
+
+For more than one line, drag down the line numbers and release — the composer
+opens on the range. The line you started on is the range's **anchor**; the
+▲/▼ on the composer's chip walk the other edge one line at a time, up past the
+anchor or down through it and out the other side, and every press has an exact
+inverse — no selection is ever lost to a stray click. Shift-click puts that
+edge on any line directly. Your draft is held outside the composer, so
+reshaping the range mid-sentence never eats what you typed.
+
+A sent range comment stays legible in the diff: a small glyph on its first
+line, a thin spine down to its card, and the whole range lights up when you
+hover the card. The agent receives the range too —
+`src/db.ts:214-231 (new side)`, not just one line.
 
 - **Send to agent** delivers it now.
 - **Add comment** queues it.

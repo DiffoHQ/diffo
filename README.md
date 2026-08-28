@@ -109,9 +109,9 @@ The judgement stays yours. You just stop reading alone.
 
 **A thread is a decision**
 
-Each comment is one small call: change this, explain that, leave it alone. Mark it a Change
-or a Question and the agent is told which. The review is the sum of those decisions, not a
-verdict at the end.
+Each comment is one small call: change this, explain that, leave it alone. Drop it on a
+line or drag down the gutter for a range of them. Mark it a Change or a Question and the
+agent is told which. The review is the sum of those decisions, not a verdict at the end.
 
 </td>
 <td width="50%">
