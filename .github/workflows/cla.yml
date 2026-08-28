@@ -17,7 +17,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: CLA Assistant
-        if: (github.event.comment.body == 'recheck' || github.event.comment.body == 'I have read the CLA Document and I hereby sign the CLA') || github.event_name == 'pull_request_target'
+        # contains(), not ==: quoted comments like "> recheck" must still trigger.
+        if: contains(github.event.comment.body, 'recheck') || contains(github.event.comment.body, 'I have read the CLA Document and I hereby sign the CLA') || github.event_name == 'pull_request_target'
         # Pinned to a SHA, not a tag: this job runs on `pull_request_target` with a
         # writable token, so a retagged upstream release must not silently change
         # what executes here. ca4a40a is tag v2.6.1.
@@ -33,4 +34,9 @@ jobs:
           #   git push origin main:cla-signatures
           # Keep it unprotected.
           branch: 'cla-signatures'
+          # First line of the bot comment; the action appends the sign sentence itself.
+          custom-notsigned-prcomment: >-
+            Thanks for the contribution! Before it can be merged, $you need to sign the
+            [CLA](https://github.com/DiffoHQ/diffo/blob/main/CLA.md) (one-time).
+            **To sign, post a new comment on this PR containing exactly this sentence:**
           allowlist: aviranhuga,dependabot[bot],renovate[bot]
