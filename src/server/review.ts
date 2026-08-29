@@ -8,11 +8,9 @@ import {
   EMPTY_REVIEW,
   type Landed,
   type LastFinish,
-  REVIEW_VERDICTS,
   type ReviewMessage,
   type ReviewState,
   type ReviewThread,
-  type ReviewVerdict,
   THREAD_INTENTS,
   type ThreadCapture,
   type ThreadIntent,
@@ -461,9 +459,6 @@ function normalizeCoverage(value: unknown): Coverage {
     skippedFiles: fileList(c.skippedFiles) ?? [],
     ...(changedFiles !== undefined ? { changedFiles } : {}),
     ...(commentedUnread !== undefined ? { commentedUnread } : {}),
-    ...(REVIEW_VERDICTS.includes(c.verdict as ReviewVerdict)
-      ? { verdict: c.verdict as ReviewVerdict }
-      : {}),
     ...(typeof c.note === 'string' ? { note: c.note } : {}),
   }
 }

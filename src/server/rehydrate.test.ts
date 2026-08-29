@@ -28,7 +28,6 @@ const coverage = (): Coverage => ({
   viewedHunks: 1,
   totalHunks: 2,
   skippedFiles: [],
-  verdict: 'request-changes',
 })
 
 function makeReview() {
@@ -117,7 +116,7 @@ describe('rehydrateQueue — feedback outlives the process that queued it', () =
 
     const snapshot = afterRestart(restart).take()
     expect(snapshot?.kind).toBe('finish')
-    expect(snapshot).toMatchObject({ coverage: { verdict: 'request-changes', totalHunks: 2 } })
+    expect(snapshot).toMatchObject({ coverage: { viewedHunks: 1, totalHunks: 2 } })
   })
 
   it('leaves a Finish the agent already collected alone', () => {

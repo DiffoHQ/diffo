@@ -142,7 +142,7 @@ describe('FinishReview — the outgoing batch', () => {
       vi.fn(async () => new Response(JSON.stringify({ outgoing: [], prompt: PROMPT }))),
     )
     show()
-    expect(await screen.findByRole('button', { name: /Comment & send/ })).toBeTruthy()
+    expect(await screen.findByRole('button', { name: /Finish & send/ })).toBeTruthy()
     await waitFor(() => expect(screen.queryByText('Going out')).toBeNull())
   })
 
@@ -153,7 +153,7 @@ describe('FinishReview — the outgoing batch', () => {
     )
     show()
     expect(await screen.findByText(/isn't previewed/)).toBeTruthy()
-    expect(screen.getByRole('button', { name: /Comment & send/ })).toBeTruthy()
+    expect(screen.getByRole('button', { name: /Finish & send/ })).toBeTruthy()
   })
 })
 
@@ -194,8 +194,8 @@ describe('FinishReview — coverage', () => {
     const onFinish = vi.fn(async () => ({ delivered: true, prompt: PROMPT }))
     const onClose = vi.fn()
     show({ onFinish, onClose })
-    fireEvent.click(await screen.findByRole('button', { name: /Comment & send/ }))
-    expect(onFinish).toHaveBeenCalledWith(true, { verdict: 'comment', note: '' })
+    fireEvent.click(await screen.findByRole('button', { name: /Finish & send/ }))
+    expect(onFinish).toHaveBeenCalledWith(true, { note: '' })
     await waitFor(() => expect(onClose).toHaveBeenCalled())
   })
 
@@ -261,58 +261,33 @@ describe('FinishReview — still on you (check-off first: it mutates the batch)'
   })
 })
 
-describe('FinishReview — your word (the verdict names the button)', () => {
-  it('carries the chosen verdict and the note into the finish', async () => {
+describe('FinishReview — your word (a note, in your own words)', () => {
+  it('carries the note into the finish', async () => {
     const onFinish = vi.fn(async () => ({ delivered: true, prompt: PROMPT }))
     show({ onFinish })
-    fireEvent.click(await screen.findByRole('radio', { name: /Approve/ }))
-    fireEvent.change(screen.getByPlaceholderText(/closing note/i), {
+    fireEvent.change(await screen.findByPlaceholderText(/LGTM, ship it/), {
       target: { value: 'all good, merge it please' },
     })
-    fireEvent.click(screen.getByRole('button', { name: /Approve & finish/ }))
-    expect(onFinish).toHaveBeenCalledWith(true, {
-      verdict: 'approve',
-      note: 'all good, merge it please',
-    })
+    fireEvent.click(screen.getByRole('button', { name: /Finish & send/ }))
+    expect(onFinish).toHaveBeenCalledWith(true, { note: 'all good, merge it please' })
   })
 
-  it('defaults to a plain comment — approving must be a deliberate act', async () => {
+  it('offers no verdict to pick — the note is the verdict, and the placeholder teaches it', async () => {
     show()
-    const comment = (await screen.findByRole('radio', { name: /Comment/ })) as HTMLInputElement
-    const approve = screen.getByRole('radio', { name: /Approve/ }) as HTMLInputElement
-    expect(comment.checked).toBe(true)
-    expect(approve.checked).toBe(false)
+    await screen.findByText('Going out')
+    expect(screen.queryByRole('radio')).toBeNull()
+    expect(screen.getByPlaceholderText(/fix these, then show me again/)).toBeTruthy()
   })
 
-  it('the primary button says what the click does, verdict by verdict', async () => {
-    show()
-    expect(await screen.findByRole('button', { name: /Comment & send/ })).toBeTruthy()
-    fireEvent.click(screen.getByRole('radio', { name: /Request changes/ }))
-    expect(screen.getByRole('button', { name: /Request changes & send/ })).toBeTruthy()
-    fireEvent.click(screen.getByRole('radio', { name: /Approve/ }))
-    expect(screen.getByRole('button', { name: /Approve & finish/ })).toBeTruthy()
-  })
-
-  it('all clear — everything read, nothing owed, nothing outgoing — preselects Approve', async () => {
+  it('all clear — everything read, nothing owed, nothing outgoing — says so plainly', async () => {
     vi.stubGlobal(
       'fetch',
       vi.fn(async () => new Response(JSON.stringify({ outgoing: [], prompt: PROMPT }))),
     )
     show({ coverage: FULL })
-    await waitFor(() => {
-      expect((screen.getByRole('radio', { name: /Approve/ }) as HTMLInputElement).checked).toBe(
-        true,
-      )
-    })
-    expect(screen.getByText('✓ every thread settled')).toBeTruthy()
+    expect(await screen.findByText('✓ every thread settled')).toBeTruthy()
     expect(screen.getByText('nothing going out')).toBeTruthy()
-    expect(screen.getByRole('button', { name: /Approve & finish/ })).toBeTruthy()
-  })
-
-  it('anything owed or outgoing blocks the preselect — Approve stays deliberate', async () => {
-    show({ coverage: FULL })
-    await screen.findByText('Going out')
-    expect((screen.getByRole('radio', { name: /Comment/ }) as HTMLInputElement).checked).toBe(true)
+    expect(screen.getByRole('button', { name: /Finish & send/ })).toBeTruthy()
   })
 })
 
@@ -321,7 +296,7 @@ describe('FinishReview — send vs copy', () => {
     const onFinish = vi.fn(async () => ({ delivered: false, prompt: PROMPT }))
     show({ onFinish })
     fireEvent.click(await screen.findByRole('button', { name: /Copy prompt instead/ }))
-    expect(onFinish).toHaveBeenCalledWith(false, { verdict: 'comment', note: '' })
+    expect(onFinish).toHaveBeenCalledWith(false, { note: '' })
     await waitFor(() => expect(copied).toEqual([PROMPT]))
     expect(await screen.findByText(/Review finished and the prompt copied/)).toBeTruthy()
     expect(document.querySelector('.modal-foot')).toBeNull()
@@ -338,7 +313,7 @@ describe('FinishReview — send vs copy', () => {
     expect(onInvite).toHaveBeenCalled()
 
     fireEvent.click(screen.getByRole('button', { name: /Finish & copy prompt/ }))
-    expect(onFinish).toHaveBeenCalledWith(false, { verdict: 'comment', note: '' })
+    expect(onFinish).toHaveBeenCalledWith(false, { note: '' })
     await waitFor(() => expect(copied).toEqual([PROMPT]))
   })
 
@@ -354,7 +329,7 @@ describe('FinishReview — send vs copy', () => {
 
   it('reports a failed finish instead of pretending it sent', async () => {
     show({ onFinish: async () => Promise.reject(new Error('down')) })
-    fireEvent.click(await screen.findByRole('button', { name: /Comment & send/ }))
+    fireEvent.click(await screen.findByRole('button', { name: /Finish & send/ }))
     expect(await screen.findByText(/Nothing was sent/)).toBeTruthy()
   })
 

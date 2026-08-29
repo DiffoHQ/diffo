@@ -168,7 +168,7 @@ describe('prompt context (A1)', () => {
     expect(prompt).toContain('- src/other.ts — "drop this helper"')
   })
 
-  it('the finish verdict leads: approve is stated before coverage, note quoted verbatim', () => {
+  it('the closing note leads: quoted verbatim before coverage when no thread carries it', () => {
     // No thread carries the note — a finish recorded before closing notes were
     // threads, or one over a changeset with nothing left to anchor to.
     const prompt = buildFinishPrompt(
@@ -178,14 +178,12 @@ describe('prompt context (A1)', () => {
         viewedHunks: 1,
         totalHunks: 1,
         skippedFiles: [],
-        verdict: 'approve',
         note: 'all good\nmerge it please',
       },
     )
-    expect(prompt).toContain('**approved**')
     expect(prompt).toContain('> all good')
     expect(prompt).toContain('> merge it please')
-    expect(prompt.indexOf('**approved**')).toBeLessThan(prompt.indexOf('Coverage:'))
+    expect(prompt.indexOf('> all good')).toBeLessThan(prompt.indexOf('Coverage:'))
   })
 
   it('the closing-note thread leads the batch, quoted once, with a reply id', () => {
@@ -217,26 +215,36 @@ describe('prompt context (A1)', () => {
     expect(prompt.indexOf('id: t-note')).toBeLessThan(prompt.indexOf('id: t-1'))
   })
 
-  it('request-changes says the review is not done; a plain comment adds no verdict line', () => {
-    const changesRequested = buildFinishPrompt(
-      [thread()],
+  it('an empty finish over a fully-read changeset is a green light — and only that one', () => {
+    const clean = buildFinishPrompt(
+      [],
       { repo, changeset: null },
-      { viewedHunks: 1, totalHunks: 1, skippedFiles: [], verdict: 'request-changes' },
+      { viewedHunks: 2, totalHunks: 2, skippedFiles: [] },
     )
-    expect(changesRequested).toContain('**changes requested**')
+    expect(clean).toContain('green light')
 
-    const plain = buildFinishPrompt(
+    // Anything unread, outgoing, or said in a note means the silence isn't approval.
+    const partial = buildFinishPrompt(
+      [],
+      { repo, changeset: null },
+      { viewedHunks: 1, totalHunks: 2, skippedFiles: ['a.ts'] },
+    )
+    expect(partial).not.toContain('green light')
+    expect(partial).toContain('No open review threads')
+
+    const withThreads = buildFinishPrompt(
       [thread()],
       { repo, changeset: null },
-      { viewedHunks: 1, totalHunks: 1, skippedFiles: [], verdict: 'comment' },
+      { viewedHunks: 2, totalHunks: 2, skippedFiles: [] },
     )
-    expect(plain).not.toContain('Verdict:')
-    const none = buildFinishPrompt(
-      [thread()],
+    expect(withThreads).not.toContain('green light')
+
+    const noted = buildFinishPrompt(
+      [],
       { repo, changeset: null },
-      { viewedHunks: 1, totalHunks: 1, skippedFiles: [] },
+      { viewedHunks: 2, totalHunks: 2, skippedFiles: [], note: 'hold on, thinking' },
     )
-    expect(none).not.toContain('Verdict:')
+    expect(noted).not.toContain('green light')
   })
 
   it('the finish prompt carries the full frame — coverage needs the file list', () => {
@@ -356,13 +364,13 @@ describe('reply protocol rules', () => {
     expect(prompt).not.toMatch(/NEVER ANSWERED/)
   })
 
-  it('the empty finish is not a dead end — it says to keep listening', () => {
+  it('the empty finish is not a dead end — a green light, and it says to keep listening', () => {
     const prompt = buildFinishPrompt([thread({ state: 'resolved' })], ctx, {
       viewedHunks: 1,
       totalHunks: 1,
       skippedFiles: [],
     })
-    expect(prompt).toContain('nothing to act on')
+    expect(prompt).toContain('green light')
     expect(prompt).toMatch(/keep listening/i)
     expect(prompt).toContain('poll')
   })

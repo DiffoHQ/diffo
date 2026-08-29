@@ -238,19 +238,17 @@ describe('review API', () => {
     expect(body.prompt).toContain('b.ts')
   })
 
-  it('the closing verdict and note ride the coverage into the prompt; junk is dropped', async () => {
+  it('the closing note rides the coverage into the prompt; junk is dropped', async () => {
     const { app } = setup()
     const res = await post(app, '/api/review/finish', {
       coverage: {
         viewedHunks: 1,
         totalHunks: 1,
         skippedFiles: [],
-        verdict: 'approve',
         note: '  merge it please  ',
       },
     })
     const body = (await res.json()) as { threads: ReviewThread[]; prompt: string }
-    expect(body.prompt).toContain('**approved**')
     expect(body.prompt).toContain('merge it please')
 
     // The note is a thread of the reviewer's, sent with the batch it closes — so the
@@ -264,13 +262,14 @@ describe('review API', () => {
     expect(undeliveredThreadIds(body.threads)).toContain(note.id)
     expect(body.prompt).toContain(`id: ${note.id}`)
 
+    // A pre-removal client still sending a verdict must not break anything.
     const junk = (await (
       await post(app, '/api/review/finish', {
         coverage: {
           viewedHunks: 1,
           totalHunks: 1,
           skippedFiles: [],
-          verdict: 'ship-it',
+          verdict: 'approve',
           note: '  ',
         },
       })
@@ -385,7 +384,8 @@ describe('review API', () => {
       prompt: string
     }
     expect(finished.prompt).not.toContain('ghost note')
-    expect(finished.prompt).toContain('No open review threads')
+    // With the ghost out of the batch, a fully-read finish reads as the clean one.
+    expect(finished.prompt).toContain('green light')
   })
 
   it('previews the batch without sending or flushing anything', async () => {
