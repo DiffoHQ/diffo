@@ -64,6 +64,23 @@ describe('assessRunningServer', () => {
   it('treats a non-diffo squatter as foreign even when it echoes ok', () => {
     expect(assessRunningServer({ ok: true }, REPO, V)).toBe('foreign')
   })
+
+  it('reuses a same-build server whose source stamp matches', () => {
+    expect(assessRunningServer(ours({ srcStamp: 'aaa' }), REPO, V, 'aaa')).toBe('reuse')
+  })
+
+  it('replaces a same-build server started from other source', () => {
+    expect(assessRunningServer(ours({ srcStamp: 'aaa' }), REPO, V, 'bbb')).toBe('replace')
+  })
+
+  it('replaces a same-build server that reports no stamp when one is expected', () => {
+    expect(assessRunningServer(ours(), REPO, V, 'aaa')).toBe('replace')
+  })
+
+  it('ignores the stamp entirely when none is expected — polls must not churn', () => {
+    expect(assessRunningServer(ours({ srcStamp: 'aaa' }), REPO, V)).toBe('reuse')
+    expect(assessRunningServer(ours({ srcStamp: 'aaa' }), REPO, V, null)).toBe('reuse')
+  })
 })
 
 describe('serverSpawnArgs', () => {

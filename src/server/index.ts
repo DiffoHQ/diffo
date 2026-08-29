@@ -3,6 +3,7 @@ import { extname, resolve, sep } from 'node:path'
 import { serve } from '@hono/node-server'
 import { type Context, Hono } from 'hono'
 import { stream, streamSSE } from 'hono/streaming'
+import { SRC_STAMP } from '../devStamp.js'
 import {
   type Anchor,
   type Coverage,
@@ -160,6 +161,9 @@ export function createApp(
       app: 'diffo',
       version: VERSION,
       pid: process.pid,
+      // Captured at startup, so it names the source this server LOADED — the
+      // CLI compares it to the checkout on disk and retires a stale dev server.
+      ...(SRC_STAMP === null ? {} : { srcStamp: SRC_STAMP }),
     }),
   )
 

@@ -1,16 +1,17 @@
 #!/usr/bin/env node
-import { spawn } from 'node:child_process'
-import { existsSync } from 'node:fs'
+import { spawn, spawnSync } from 'node:child_process'
+import { existsSync, readFileSync, writeFileSync } from 'node:fs'
 import { createServer } from 'node:net'
 import { homedir } from 'node:os'
-import { dirname, resolve } from 'node:path'
+import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { detectSessionPid } from './agentSession.js'
 import { helpFor, parseCliArgs } from './cliArgs.js'
+import { SRC_STAMP } from './devStamp.js'
 import { DiffoDb } from './server/db.js'
 import { findRepoRoot, MissingBaseError, suggestedBase } from './server/git.js'
 import { RepoAlreadyServedError, startServer } from './server/index.js'
-import { ACK_NEXT_STEP, guideInherit, guideNudge } from './server/prompt.js'
+import { ACK_NEXT_STEP, CHECKOUT_ROOT, guideInherit, guideNudge } from './server/prompt.js'
 import {
   assessRunningServer,
   defaultLogPath,
@@ -124,11 +125,20 @@ const root = findRepoRoot(process.cwd())
 if (!root) fail('not inside a git repository')
 const repoPath = resolve(root)
 
+/**
+ * Only the open path settles with the source stamp: opening a review is the
+ * moment "run the current source" is the promise, while poll/reply/comment must
+ * never restart the server under a review in progress.
+ */
 async function discoverServer(): Promise<{ port: number; pid: number | null } | null> {
   const db = new DiffoDb()
   try {
-    return await settleExistingServer(db, repoPath, VERSION, (line) =>
-      process.stderr.write(`diffo: ${line}\n`),
+    return await settleExistingServer(
+      db,
+      repoPath,
+      VERSION,
+      (line) => process.stderr.write(`diffo: ${line}\n`),
+      SRC_STAMP,
     )
   } catch (err) {
     fail((err as Error).message)
@@ -148,7 +158,11 @@ function sessionHeaders(): Record<string, string> {
   }
 }
 
-async function requireServer(port?: number, base?: string): Promise<number> {
+async function requireServer(
+  port?: number,
+  base?: string,
+  srcStamp: string | null = null,
+): Promise<number> {
   try {
     return await ensureServer({
       repoPath,
@@ -158,6 +172,7 @@ async function requireServer(port?: number, base?: string): Promise<number> {
       execArgv: process.execArgv,
       port,
       base,
+      srcStamp,
       logPath: process.env.DIFFO_SERVER_LOG || defaultLogPath(repoPath),
       onStatus: (line) => process.stderr.write(`diffo: ${line}\n`),
     })
@@ -303,7 +318,7 @@ if (command.kind === 'status') {
     db.close()
   }
   const health = record ? await fetchHealth(record.port) : null
-  const verdict = record ? assessRunningServer(health, repoPath, VERSION) : 'foreign'
+  const verdict = record ? assessRunningServer(health, repoPath, VERSION, SRC_STAMP) : 'foreign'
   if (!record || verdict === 'foreign') {
     if (command.json) {
       console.log(JSON.stringify({ running: false }))
@@ -333,7 +348,11 @@ if (command.kind === 'status') {
   await printChangesetSummary(record.port)
   console.log(
     `server: port ${record.port}${pid ? ` · pid ${pid}` : ''} · v${health?.version ?? 'pre-handshake'}` +
-      (verdict === 'replace' ? ` (this CLI is v${VERSION} — the next \`diffo\` replaces it)` : ''),
+      (verdict === 'replace'
+        ? health?.version === VERSION
+          ? ` (the checkout's source changed — the next \`diffo\` replaces it)`
+          : ` (this CLI is v${VERSION} — the next \`diffo\` replaces it)`
+        : ''),
   )
   console.log(`→ ${url}`)
   process.exit(0)
@@ -492,6 +511,41 @@ async function printAgentNextStep(port: number): Promise<void> {
   )
 }
 
+/**
+ * Dev builds serve the client from the checkout's `dist/client`, which nothing
+ * rebuilds on its own — so opening a review after a source edit showed last
+ * build's UI over this build's server. Rebuild it here, before the server is
+ * settled: the server reads client files from disk per request, so even a
+ * reused server serves the fresh bundle. `.dev-stamp` (written after a
+ * successful build, into a directory vite has just emptied) makes the no-change
+ * open free. The foreground path is exempt — that is `pnpm dev:server`'s tsx
+ * watch loop, where the client is vite's dev server, not this bundle.
+ */
+function rebuildDevClient(foreground: boolean): void {
+  if (SRC_STAMP === null || foreground) return
+  const stampFile = join(CHECKOUT_ROOT, 'dist', 'client', '.dev-stamp')
+  try {
+    if (readFileSync(stampFile, 'utf-8').trim() === SRC_STAMP) return
+  } catch {
+    // no stamp yet — build below
+  }
+  process.stderr.write(`diffo: dev checkout changed — rebuilding the client bundle\n`)
+  const vite = join(
+    CHECKOUT_ROOT,
+    'node_modules',
+    '.bin',
+    process.platform === 'win32' ? 'vite.cmd' : 'vite',
+  )
+  const built = spawnSync(vite, ['build'], { cwd: CHECKOUT_ROOT, encoding: 'utf-8' })
+  if (built.status !== 0) {
+    const said = (built.stderr || built.stdout || String(built.error ?? '')).trim()
+    fail(`the client rebuild failed — fix the build, then re-run\n${said.slice(-2000)}`)
+  }
+  writeFileSync(stampFile, `${SRC_STAMP}\n`)
+}
+
+rebuildDevClient(command.foreground)
+
 const existing = await discoverServer()
 
 const takeOverPort =
@@ -538,6 +592,7 @@ if (!command.foreground) {
   const daemonPort = await requireServer(
     command.port,
     command.spec.kind === 'branch' ? command.spec.base : undefined,
+    SRC_STAMP,
   )
   const url = reviewUrl(daemonPort)
   await printChangesetSummary(daemonPort)

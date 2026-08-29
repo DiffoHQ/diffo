@@ -52,7 +52,13 @@ run the released CLI instead of the checkout this skill exists to exercise.
 
 The reviewer's browser tab and header say **diffo-dev**, so a review opened
 this way is never mistaken for one opened by the shipped \`${SKILL_NAME}\`
-skill, which is installed alongside this one and unaffected by it.`
+skill, which is installed alongside this one and unaffected by it.
+
+Opening a review keeps itself current on its own: if the checkout's source
+changed since the last open, the CLI rebuilds the client bundle and replaces a
+running stale server before answering — expect a few extra seconds and a
+"rebuilding the client bundle" / "replacing the dev server" line then, and
+never rebuild or restart anything yourself.`
   return `---
 name: ${name}
 description: ${isDev ? DEV_SKILL_DESCRIPTION : SKILL_DESCRIPTION}
