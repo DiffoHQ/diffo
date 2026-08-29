@@ -81,7 +81,7 @@ export function ReviewLanded({
         <button
           type="button"
           className="done-close"
-          title="Keep them"
+          data-tip="Keep them"
           aria-label="Keep the previous review's threads"
           onClick={onDismiss}
         >

@@ -316,7 +316,7 @@ export function ThreadCard({
       type="button"
       className="btn btn-ghost btn-icon btn-sm btn-ghost-danger"
       aria-label="delete this thread"
-      title="delete this thread"
+      data-tip="delete this thread"
       onClick={() => void actions.remove!(thread.id)}
     >
       <Icon name="trash" size="sm" />
@@ -369,7 +369,7 @@ export function ThreadCard({
           type="button"
           className={`thread-shut chevron${shut ? ' chevron-shut' : ''}`}
           aria-expanded={!shut}
-          title={shut ? 'expand this thread' : 'collapse this thread'}
+          data-tip={shut ? 'expand this thread' : 'collapse this thread'}
           aria-label={shut ? 'expand this thread' : 'collapse this thread'}
           onClick={() => setShut(!shut)}
         >

@@ -188,7 +188,7 @@ describe('ThreadRail', () => {
     const { unmount } = render(
       <ThreadRail items={threadItems([thread({ id: 'a' })])} onResolve={vi.fn()} />,
     )
-    expect(screen.getByLabelText('Resolve thread').getAttribute('title')).toBe(
+    expect(screen.getByLabelText('Resolve thread').getAttribute('data-tip')).toBe(
       'Resolve — moves to Settled',
     )
     unmount()
@@ -199,7 +199,7 @@ describe('ThreadRail', () => {
       />,
     )
     fireEvent.click(screen.getByText(/Settled/))
-    expect(screen.getByLabelText('Reopen thread').getAttribute('title')).toBe(
+    expect(screen.getByLabelText('Reopen thread').getAttribute('data-tip')).toBe(
       'Reopen — moves back to its turn',
     )
   })

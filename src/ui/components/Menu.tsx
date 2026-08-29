@@ -49,6 +49,7 @@ export function Menu({
         type="button"
         className={triggerClassName}
         aria-label={label}
+        data-tip={open ? undefined : label}
         aria-haspopup="menu"
         aria-expanded={open}
         onClick={(e) => {

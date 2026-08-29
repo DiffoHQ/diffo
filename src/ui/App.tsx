@@ -990,7 +990,7 @@ function Review() {
           aria-valuemax={RAIL_MAX}
           aria-valuenow={railWidth}
           tabIndex={0}
-          title="Drag to resize · double-click (or Home) to reset"
+          data-tip="Drag to resize · double-click (or Home) to reset"
           onPointerDown={beginRailResize}
           onDoubleClick={resetRailWidth}
           onKeyDown={(e) => {

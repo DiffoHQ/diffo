@@ -282,7 +282,7 @@ describe('ThreadCard', () => {
 
     // And the same when it is the chevron doing the folding, not the resolved state.
     fireEvent.click(screen.getByTitle('expand this resolved thread'))
-    fireEvent.click(screen.getByTitle('collapse this thread'))
+    fireEvent.click(screen.getByLabelText('collapse this thread'))
     expect(document.querySelector('.thread-head')!.textContent).toContain('Reopen')
   })
 

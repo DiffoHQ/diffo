@@ -155,7 +155,7 @@ export function FinishReview({
           <button
             type="button"
             className="ghb"
-            title="copy the prompt without finishing"
+            data-tip="copy the prompt without finishing"
             aria-label="Copy the prompt without finishing"
             onClick={() => void copyText(preview.data!.prompt)}
           >
