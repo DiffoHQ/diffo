@@ -7,12 +7,57 @@ Until 1.0, minor versions may break things. When they do, the entry says how to 
 
 ## [Unreleased]
 
+Nothing yet.
+
+## [0.1.0] — 2026-08-29
+
+### Added
+
+- **Comment on multiple lines.** Drag down the line-number gutter (or
+  shift-click) to select a range and comment on it. The scope chip's steppers
+  walk the free edge one line at a time, a sent range comment marks its lines
+  with a glyph and a spine, and the range travels to the agent as
+  `path:12-20 (new side)`. Existing single-line comments need no migration.
+- **Styled tooltips on every icon-only control**, replacing the native
+  `title` tooltips that were slow enough to read as absent — shown on
+  keyboard focus too, and live-updating labels like *Copy path* → *Copied*
+  mid-hover.
+- **Agent activity in the header presence chip** — it narrates what the
+  agent is doing, not just whether it's alive.
+- **A security model page** in the docs: the operational properties (no
+  egress, loopback-only with rebinding/CSRF guards, read-only git, data at
+  rest, provenance, no install scripts) stated in a form a security reviewer
+  can check against the source.
+
+### Changed
+
+- **Finish review now speaks in your words, not a verdict.** The
+  Comment / Request changes / Approve radios are gone; finish sends the
+  outgoing comments plus the optional closing note, which *is* the verdict.
+  One signal is derived instead of declared: an empty finish over a
+  fully-read changeset is a green light to proceed. Nothing to adapt — a
+  client or stored review still carrying a verdict is silently ignored.
+- **Comment threads freeze their anchored lines**, so a thread keeps
+  pointing at the code it was written about even after the code moves.
+
 ### Fixed
 
 - The CLI knows its own version again. Since the rename to `@diffohq/diffo`,
   every published build reported `0.0.0` (`diffo --version`, the server
   handshake), so a newer CLI would reuse a running server from an older build
   instead of replacing it.
+- **Hide tests** now recognizes test files in any stack — PascalCase
+  `Test`/`Tests` suffixes, `.Tests` project directories, `test_` prefixes,
+  `_test`/`_spec` suffixes and `test`/`Tests` directories — not just the
+  JavaScript `.test.`/`.spec.`/`__tests__` conventions. Ambiguous cases
+  resolve toward showing the file.
+- Split view no longer collapses into four equal columns on some diffs.
+- The typed file filter narrows the reading pane, not just the file rail,
+  and a chip in the pane bar names the active filter.
+- A commit made while no server was watching is now caught: the review
+  offers a fresh start instead of leaving the previous round's threads under
+  the new changeset, and the reset tells the polling agent it happened.
+- Finish no longer brands answered threads as unanswered.
 
 ## [0.0.2] — 2026-08-26
 
@@ -82,6 +127,7 @@ shipped in it, written as a starting point rather than a history.
 - **Guided reading** — splitting a large change into an ordered sequence of small,
   reviewable sections — is designed but not built.
 
-[Unreleased]: https://github.com/DiffoHQ/diffo/compare/v0.0.2...HEAD
+[Unreleased]: https://github.com/DiffoHQ/diffo/compare/v0.1.0...HEAD
+[0.1.0]: https://github.com/DiffoHQ/diffo/compare/v0.0.2...v0.1.0
 [0.0.2]: https://github.com/DiffoHQ/diffo/compare/v0.0.1...v0.0.2
 [0.0.1]: https://github.com/DiffoHQ/diffo
