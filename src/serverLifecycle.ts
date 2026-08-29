@@ -14,17 +14,28 @@ export interface ServerHealth {
   app?: string
   version?: string
   pid?: number
+  /** Dev builds only: the source fingerprint the server was started from. */
+  srcStamp?: string
 }
 
 export type ServerAssessment = 'reuse' | 'replace' | 'foreign'
 
+/**
+ * `srcStamp` is the dev-build refinement of the version check: a dev server's
+ * version never changes across source edits, so an expected stamp (non-null)
+ * makes a server started from other source a 'replace' too. Callers that must
+ * not churn a running review (poll, reply) simply pass none.
+ */
 export function assessRunningServer(
   health: ServerHealth | null,
   repoPath: string,
   version: string,
+  srcStamp: string | null = null,
 ): ServerAssessment {
   if (health?.ok !== true || health.repo !== repoPath) return 'foreign'
-  return health.app === 'diffo' && health.version === version ? 'reuse' : 'replace'
+  if (health.app !== 'diffo' || health.version !== version) return 'replace'
+  if (srcStamp !== null && health.srcStamp !== srcStamp) return 'replace'
+  return 'reuse'
 }
 
 /**
@@ -132,15 +143,18 @@ export async function settleExistingServer(
   repoPath: string,
   version: string,
   onStatus: (line: string) => void = () => {},
+  srcStamp: string | null = null,
 ): Promise<DiscoveredServer | null> {
   const record = db.getServer(repoPath)
   if (!record) return null
   const health = await fetchHealth(record.port)
-  const verdict = assessRunningServer(health, repoPath, version)
+  const verdict = assessRunningServer(health, repoPath, version, srcStamp)
   if (verdict === 'reuse') return { port: record.port, pid: health?.pid ?? record.pid ?? null }
   if (verdict === 'replace') {
     onStatus(
-      `replacing the diffo server from another build (${health?.version ?? 'pre-handshake'} → ${version})`,
+      health?.version === version
+        ? `replacing the dev server — the checkout's source changed since it started`
+        : `replacing the diffo server from another build (${health?.version ?? 'pre-handshake'} → ${version})`,
     )
     if (!(await retireServer(record.port, record.pid ?? null, health?.pid ?? null))) {
       throw new Error(
@@ -167,6 +181,8 @@ export interface EnsureServerOptions {
   dbPath?: string
   spawnTimeoutMs?: number
   onStatus?: (line: string) => void
+  /** Dev builds: replace a running server started from other source. */
+  srcStamp?: string | null
 }
 
 export interface EnsureServerDeps {
@@ -240,7 +256,13 @@ export async function ensureServer(
   const status = opts.onStatus ?? (() => {})
   const db = new DiffoDb(opts.dbPath)
   try {
-    const existing = await settleExistingServer(db, opts.repoPath, opts.version, status)
+    const existing = await settleExistingServer(
+      db,
+      opts.repoPath,
+      opts.version,
+      status,
+      opts.srcStamp ?? null,
+    )
     if (existing) return existing.port
 
     status('no diffo server for this repo — starting one')
@@ -258,7 +280,10 @@ export async function ensureServer(
       const row = db.getServer(opts.repoPath)
       if (!row) return false
       const health = await fetchHealth(row.port, 500)
-      if (assessRunningServer(health, opts.repoPath, opts.version) !== 'reuse') return false
+      if (
+        assessRunningServer(health, opts.repoPath, opts.version, opts.srcStamp ?? null) !== 'reuse'
+      )
+        return false
       port = row.port
       return true
     }, opts.spawnTimeoutMs ?? 8000)
