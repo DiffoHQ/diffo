@@ -9,12 +9,7 @@ import {
   useRef,
   useState,
 } from 'react'
-import {
-  type Coverage,
-  type ReviewVerdict,
-  threadsInChangeset,
-  untouchedAgentVoice,
-} from '../shared/review.js'
+import { type Coverage, threadsInChangeset, untouchedAgentVoice } from '../shared/review.js'
 import type { Changeset, FileChange } from '../shared/types.js'
 import { type Presence, type PresenceReason, reviewApi, useChangeset, useReview } from './api.js'
 import { copyText } from './clipboard.js'
@@ -451,10 +446,9 @@ function Review() {
   )
 
   const finishReview = useCallback(
-    async (deliver: boolean, closing?: { verdict: ReviewVerdict; note: string }) => {
+    async (deliver: boolean, closing?: { note: string }) => {
       const payload: Coverage = {
         ...coverage,
-        ...(closing && closing.verdict !== 'comment' ? { verdict: closing.verdict } : {}),
         ...(closing && closing.note.trim() !== '' ? { note: closing.note.trim() } : {}),
       }
       const { prompt, delivered, presence: at } = await reviewApi.finish(payload, deliver)

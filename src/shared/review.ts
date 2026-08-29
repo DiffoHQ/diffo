@@ -154,9 +154,6 @@ export function undeliveredThreadIds(threads: readonly ReviewThread[]): string[]
   )
 }
 
-export const REVIEW_VERDICTS = ['comment', 'approve', 'request-changes'] as const
-export type ReviewVerdict = (typeof REVIEW_VERDICTS)[number]
-
 export interface Coverage {
   viewedHunks: number
   totalHunks: number
@@ -166,7 +163,6 @@ export interface Coverage {
   changedFiles?: string[]
   commentedUnread?: string[]
   filteredOut?: string[]
-  verdict?: ReviewVerdict
   note?: string
 }
 

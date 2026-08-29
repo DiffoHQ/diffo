@@ -7,9 +7,7 @@ import {
   type Anchor,
   type Coverage,
   type OutgoingThread,
-  REVIEW_VERDICTS,
   type ReviewThread,
-  type ReviewVerdict,
   THREAD_INTENTS,
   type ThreadIntent,
   threadsInChangeset,
@@ -347,9 +345,6 @@ export function createApp(
       const n = Number(value)
       return Number.isFinite(n) ? n : undefined
     }
-    const verdict = REVIEW_VERDICTS.includes(src.verdict as ReviewVerdict)
-      ? (src.verdict as ReviewVerdict)
-      : undefined
     const note =
       typeof src.note === 'string' && src.note.trim() !== ''
         ? src.note.trim().slice(0, 4000)
@@ -368,7 +363,6 @@ export function createApp(
       skippedFiles: fileList(src.skippedFiles) ?? [],
       ...(changedFiles !== undefined ? { changedFiles } : {}),
       ...(commentedUnread !== undefined ? { commentedUnread } : {}),
-      ...(verdict !== undefined ? { verdict } : {}),
       ...(note !== undefined ? { note } : {}),
     }
   }

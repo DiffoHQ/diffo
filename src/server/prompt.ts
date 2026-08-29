@@ -388,12 +388,6 @@ export function buildFinishPrompt(
     coverage.totalFiles !== undefined && coverage.totalFiles > 0
       ? `${coverage.viewedFiles ?? 0}/${coverage.totalFiles} files read, `
       : ''
-  const verdictLine =
-    coverage.verdict === 'approve'
-      ? 'Verdict: **approved** — the reviewer is happy for this changeset to proceed.'
-      : coverage.verdict === 'request-changes'
-        ? 'Verdict: **changes requested** — do not treat this review as done until the threads below are addressed.'
-        : null
   // The note is a thread now, quoted once in its own block — pointed at from up
   // here rather than repeated. Quoted in full only when no thread carries it: a
   // finish recorded before closing notes were threads, or one taken over an empty
@@ -418,7 +412,6 @@ export function buildFinishPrompt(
   const parts = [
     `A reviewer finished reading your changes in \`${repo.name}\` (branch \`${repo.branch}\`).`,
     '',
-    ...(verdictLine ? [verdictLine, ''] : []),
     ...(noteLines.length > 0 ? [...noteLines, ''] : []),
     ...(ctx.changeset ? [changesetFrame(ctx.changeset), ''] : []),
     `Coverage: ${files}${coverage.viewedHunks}/${coverage.totalHunks} hunks read.${skipped}`,
@@ -434,9 +427,20 @@ export function buildFinishPrompt(
     )
   }
   if (actionable.length === 0) {
+    // There is no verdict field: the reviewer's word is their note, and an empty
+    // finish over a fully-read changeset is the one silence that speaks — approval.
+    const fullRead =
+      coverage.totalHunks > 0 &&
+      coverage.viewedHunks >= coverage.totalHunks &&
+      changed.length === 0 &&
+      commented.length === 0 &&
+      filtered.length === 0 &&
+      coverage.skippedFiles.length === 0
     parts.push(
-      'No open review threads — nothing to act on. Run',
-      `\`${CLI_COMMANDS.poll}\` again to keep listening (${POLL_STANCE});`,
+      fullRead && coverage.note === undefined
+        ? 'They read everything and left nothing to address — take it as a green light to proceed.'
+        : 'No open review threads — nothing to act on.',
+      `Run \`${CLI_COMMANDS.poll}\` again to keep listening (${POLL_STANCE});`,
       'the reviewer may follow up.',
       '',
     )

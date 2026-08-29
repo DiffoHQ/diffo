@@ -1,34 +1,10 @@
-import { useEffect, useState } from 'react'
-import {
-  type Anchor,
-  anchorSpan,
-  type Coverage,
-  type OutgoingThread,
-  type ReviewVerdict,
-} from '../../shared/review.js'
+import { useState } from 'react'
+import { type Anchor, anchorSpan, type Coverage, type OutgoingThread } from '../../shared/review.js'
 import { type Presence, useFinishPreview } from '../api.js'
 import { copyText } from '../clipboard.js'
 import type { ThreadItem } from '../threads.js'
 import { Icon } from './Icon.js'
 import { Modal } from './Modal.js'
-
-const VERDICTS: { value: ReviewVerdict; label: string; hint: string }[] = [
-  { value: 'comment', label: 'Comment', hint: 'feedback, no verdict' },
-  { value: 'request-changes', label: 'Request changes', hint: 'not done until addressed' },
-  { value: 'approve', label: 'Approve', hint: 'good to proceed' },
-]
-
-const CONSEQUENCE: Record<ReviewVerdict, string> = {
-  comment: 'Feedback without an explicit verdict.',
-  'request-changes': 'The review is not done until these are addressed.',
-  approve: 'Tells the agent this changeset is good to proceed.',
-}
-
-const PRIMARY_LABEL: Record<ReviewVerdict, string> = {
-  comment: 'Comment & send',
-  'request-changes': 'Request changes & send',
-  approve: 'Approve & finish',
-}
 
 const ROWS = 4
 
@@ -55,7 +31,7 @@ export function FinishReview({
   onReopen?: (threadId: string) => Promise<unknown>
   onFinish: (
     deliver: boolean,
-    closing: { verdict: ReviewVerdict; note: string },
+    closing: { note: string },
   ) => Promise<{ delivered: boolean; prompt: string }>
   onInvite: () => void
   onClose: () => void
@@ -68,9 +44,6 @@ export function FinishReview({
   const [expanded, setExpanded] = useState(false)
   const [busy, setBusy] = useState(false)
   const [note, setNote] = useState('')
-  const [verdict, setVerdict] = useState<ReviewVerdict>('comment')
-  // Preselection must never override a hand that already chose.
-  const [picked, setPicked] = useState(false)
 
   const attached = presence !== 'waiting'
   const outgoing = preview.data?.outgoing ?? []
@@ -89,19 +62,11 @@ export function FinishReview({
 
   const allClear =
     full && checkOff.length === 0 && !preview.isLoading && !preview.error && outgoing.length === 0
-  useEffect(() => {
-    if (allClear && !picked) setVerdict('approve')
-  }, [allClear, picked])
-
-  const pick = (v: ReviewVerdict) => {
-    setPicked(true)
-    setVerdict(v)
-  }
 
   const finish = (deliver: boolean) => {
     setFailed(false)
     setBusy(true)
-    onFinish(deliver, { verdict, note })
+    onFinish(deliver, { note })
       .then(async ({ delivered, prompt }) => {
         if (delivered && deliver) return onClose()
         setDone('copied')
@@ -115,18 +80,12 @@ export function FinishReview({
     <>
       <button
         type="button"
-        className={`btn btn-primary${
-          attached && verdict === 'request-changes'
-            ? ' btn-primary-rc'
-            : attached && verdict === 'approve'
-              ? ' btn-primary-approve'
-              : ''
-        }`}
+        className="btn btn-primary"
         disabled={busy}
         onClick={() => finish(attached)}
       >
         <Icon name={attached ? 'send' : 'copy'} size="sm" />{' '}
-        {attached ? PRIMARY_LABEL[verdict] : 'Finish & copy prompt'}
+        {attached ? 'Finish & send' : 'Finish & copy prompt'}
       </button>
       {attached && (
         <button
@@ -286,33 +245,13 @@ export function FinishReview({
         <div className="fin-sect">
           <div className="fin-sect-h">
             <span className="fin-sect-label">Your word</span>
+            <span className="fin-sect-why">
+              — optional; sent as a thread on the changeset, so the agent can reply
+            </span>
           </div>
-          <div className="fin-verdicts" role="radiogroup" aria-label="Review verdict">
-            {VERDICTS.map((v) => (
-              <label
-                key={v.value}
-                className={`fin-verdict fin-verdict-${v.value}${
-                  verdict === v.value ? ' fin-verdict-on' : ''
-                }`}
-              >
-                <input
-                  type="radio"
-                  name="fin-verdict"
-                  value={v.value}
-                  checked={verdict === v.value}
-                  onChange={() => pick(v.value)}
-                />
-                <span className="fin-verdict-text">
-                  <b>{v.label}</b>
-                  <span>{v.hint}</span>
-                </span>
-              </label>
-            ))}
-          </div>
-          <div className="fin-verdict-consequence">{CONSEQUENCE[verdict]}</div>
           <textarea
             className="fin-note"
-            placeholder="Add a closing note (optional) — sent as a thread on the changeset, so the agent can reply to it"
+            placeholder={'e.g. "LGTM, ship it" — or "fix these, then show me again"'}
             value={note}
             rows={2}
             onChange={(e) => setNote(e.target.value)}
