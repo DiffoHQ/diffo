@@ -31,6 +31,7 @@ import {
 import { IdleMonitor, resolveIdleTimeoutMs } from './idle.js'
 import { maintainLanded } from './landed.js'
 import {
+  answeredByAgent,
   buildClearedPrompt,
   buildCoalescedPrompt,
   buildFinishPrompt,
@@ -485,6 +486,10 @@ export function createApp(
 
   const pollPayload = (snapshot: Snapshot) => {
     const threads = review?.get().threads ?? []
+    // A session that already got the full reply protocol gets the compact form:
+    // re-shipping the full text with every delivery was the loop's largest
+    // recurring token cost.
+    const protocol = queue?.needsFullProtocol() === false ? ('compact' as const) : undefined
     if (snapshot.kind === 'cleared') {
       return {
         status: 'feedback' as const,
@@ -496,11 +501,11 @@ export function createApp(
     if (snapshot.kind === 'finish') {
       const batch = activeThreads(threads)
       // Owed a reply = the reviewer spoke last. A thread already ending with the
-      // agent's answer still rides the prompt as context, but putting it back on
-      // the reply clock brands the agent "no answer" for obeying the prompt's own
-      // "don't reply again" instruction.
+      // agent's answer rides the prompt as a one-line mention (see
+      // buildFinishPrompt) and owes nothing — putting it back on the reply clock
+      // would read its (correct) silence as "never answered".
       const actionable = batch
-        .filter((t) => t.state === 'sent' && t.messages.at(-1)?.author === 'reviewer')
+        .filter((t) => t.state === 'sent' && !answeredByAgent(t))
         .map((t) => t.id)
       return {
         status: 'feedback' as const,
@@ -508,7 +513,7 @@ export function createApp(
         threadIds: actionable,
         prompt: buildFinishPrompt(
           batch,
-          { repo: repoInfo(), changeset: store?.get() ?? null },
+          { repo: repoInfo(), changeset: store?.get() ?? null, protocol },
           snapshot.coverage,
         ),
       }
@@ -516,8 +521,8 @@ export function createApp(
     const delivered = threads.filter((t) => snapshot.threadIds.includes(t.id))
     const prompt =
       delivered.length === 1
-        ? buildThreadPrompt(delivered[0]!, promptCtx(delivered[0]!.id))
-        : buildCoalescedPrompt(delivered, promptCtx(...snapshot.threadIds))
+        ? buildThreadPrompt(delivered[0]!, { ...promptCtx(delivered[0]!.id), protocol })
+        : buildCoalescedPrompt(delivered, { ...promptCtx(...snapshot.threadIds), protocol })
     return {
       status: 'feedback' as const,
       kind: 'threads' as const,
@@ -629,6 +634,8 @@ export function createApp(
           // receipt. Leaving it pending re-delivers next poll (at-least-once).
           if (aborted) return
           queue.confirm(snapshot, payload.threadIds)
+          // The payload carried a reply protocol only when threads rode with it.
+          if (payload.threadIds.length > 0) queue.markProtocolSent()
           review.markDelivered(payload.threadIds)
           review.clearUnanswered(payload.threadIds)
           if (snapshot.kind === 'finish') review.markFinishCollected()

@@ -296,8 +296,7 @@ describe('reply protocol rules', () => {
     expect(buildThreadPrompt(thread(), ctx)).not.toMatch(readFirst)
   })
 
-  it('a thread the agent answered last earns the no-re-reply note; fresh ones do not', () => {
-    const noReReply = /if nothing new was asked since, don't reply to them again/i
+  it('a thread the agent answered last collapses to one line — history and snapshot stay behind', () => {
     const answered = thread({
       id: 't-a',
       messages: [
@@ -305,14 +304,41 @@ describe('reply protocol rules', () => {
         { id: 'm2', author: 'agent', text: 'because.', at: '' },
       ],
     })
-    expect(
-      buildFinishPrompt([answered, thread({ id: 't-2' })], ctx, {
-        viewedHunks: 1,
-        totalHunks: 1,
-        skippedFiles: [],
-      }),
-    ).toMatch(noReReply)
-    expect(buildThreadPrompt(thread(), ctx)).not.toMatch(noReReply)
+    const prompt = buildFinishPrompt([answered, thread({ id: 't-2' })], ctx, {
+      viewedHunks: 1,
+      totalHunks: 1,
+      skippedFiles: [],
+    })
+    expect(prompt).toContain(
+      '1 thread you already answered, with nothing new since — no reply owed, not repeated here:',
+    )
+    expect(prompt).toContain('- t-a — src/a.ts:12 (new side)')
+    // No full block: no id line, no re-shipped history.
+    expect(prompt).not.toContain('id: t-a')
+    expect(prompt).not.toContain('because.')
+    // The fresh thread still travels whole.
+    expect(prompt).toContain('id: t-2')
+  })
+
+  it('a closing note the agent already replied to still leads the batch in full', () => {
+    const note = thread({
+      id: 't-note',
+      anchor: { kind: 'changeset' },
+      closingNote: true,
+      codeContext: null,
+      messages: [
+        { id: 'm1', author: 'reviewer', text: 'solid overall', at: '' },
+        { id: 'm2', author: 'agent', text: 'thanks — noted.', at: '' },
+      ],
+    })
+    const prompt = buildFinishPrompt([note], ctx, {
+      viewedHunks: 1,
+      totalHunks: 1,
+      skippedFiles: [],
+      note: 'solid overall',
+    })
+    expect(prompt).toContain('id: t-note')
+    expect(prompt).not.toContain('you already answered')
   })
 
   it('skipped files earn the comment-thread nudge; full coverage stays silent', () => {
@@ -387,6 +413,53 @@ describe('reply protocol rules', () => {
     const prompt = buildThreadPrompt(thread(), ctx)
     expect(prompt).toContain('+const x = 1')
     expect(prompt).not.toContain('more snapshot lines')
+  })
+
+  it('a previously delivered thread does not re-ship its snapshot', () => {
+    const prompt = buildThreadPrompt(thread({ deliveredThrough: '2026-08-03T01:00:00Z' }), ctx)
+    expect(prompt).not.toContain('+const x = 1')
+    expect(prompt).toContain(
+      '(diff snapshot delivered to you earlier — read the current `src/a.ts` instead)',
+    )
+  })
+})
+
+describe('the compact protocol (repeat deliveries to the same session)', () => {
+  it('keeps the contract essentials plus the pointer that reprints the rest', () => {
+    const prompt = buildThreadPrompt(thread({ intent: 'fix' }), { repo, protocol: 'compact' })
+    expect(prompt).toContain('help agent')
+    expect(prompt).toContain(CLI_COMMANDS.reply)
+    expect(prompt).toContain(CLI_COMMANDS.poll)
+    expect(prompt).toMatch(/change only what these threads ask about/i)
+    expect(prompt).toMatch(/`issue` threads want a code change/)
+    expect(prompt).toMatch(/the reviewer's call/i)
+  })
+
+  it('is a fraction of the full protocol, and drops the full-only teaching', () => {
+    const full = buildThreadPrompt(thread(), { repo })
+    const compact = buildThreadPrompt(thread(), { repo, protocol: 'compact' })
+    expect(compact.length).toBeLessThan(full.length / 2)
+    // Comment-thread teaching and the mermaid guidance live in the full form only.
+    expect(compact).not.toContain(CLI_COMMANDS.comment)
+    expect(compact).not.toContain('mermaid')
+  })
+
+  it('the coalesced and finish prompts honor it too', () => {
+    const coalesced = buildCoalescedPrompt([thread(), thread({ id: 't-2' })], {
+      repo,
+      protocol: 'compact',
+    })
+    expect(coalesced).toContain('Same protocol as your earlier deliveries')
+    const finish = buildFinishPrompt(
+      [thread()],
+      { repo, protocol: 'compact' },
+      {
+        viewedHunks: 1,
+        totalHunks: 1,
+        skippedFiles: [],
+      },
+    )
+    expect(finish).toContain('Same protocol as your earlier deliveries')
   })
 })
 

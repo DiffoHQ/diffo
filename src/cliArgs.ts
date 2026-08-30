@@ -86,7 +86,9 @@ Rules:
 - Change only what the threads ask about — the reviewer is mid-read, and an
   unrelated edit moves the diff under them.
 - One attached agent at a time: the newest poll carries the review; don't
-  re-poll to take it back from another session — tell the user instead.
+  re-poll to take it back from another session — tell the user instead. When
+  a poll says it took the review over, or returns status "superseded", say so
+  to the user: their feedback moved with it.
 - Resolving a thread is the reviewer's call, never yours.`,
   poll: `diffo poll — wait for the reviewer's feedback
 

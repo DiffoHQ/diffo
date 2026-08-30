@@ -87,6 +87,12 @@ export class DeliveryQueue {
 
   private owner: number | null = null
 
+  /** The session pid that last received the full reply protocol. Later
+   * deliveries to the same session carry the compact form — the full text is
+   * the loop's largest recurring token cost. A takeover (new pid) or an
+   * anonymous session (null pid) always gets the full form again. */
+  private protocolPid: number | null = null
+
   private batch: { threadIds: string[]; deliveredAt: number; sawReply: boolean } | null = null
   private batchWatch: ReturnType<typeof setInterval> | null = null
   private waiterWatch: ReturnType<typeof setInterval> | null = null
@@ -160,6 +166,14 @@ export class DeliveryQueue {
 
   ownerPid(): number | null {
     return this.ownerConnected() ? this.owner : null
+  }
+
+  needsFullProtocol(): boolean {
+    return this.owner === null || this.owner !== this.protocolPid
+  }
+
+  markProtocolSent(): void {
+    this.protocolPid = this.owner
   }
 
   /**

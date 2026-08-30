@@ -186,6 +186,11 @@ const INTENT_CONTRACT: Record<ThreadIntent, string> = {
 const UNLABELED_CONTRACT =
   '- Unlabeled threads: judge from the text — a question wants an answer, not an edit.'
 
+/** The agent spoke last: the thread is answered until the reviewer says more. */
+export function answeredByAgent(thread: ReviewThread): boolean {
+  return thread.messages.at(-1)?.author === 'agent'
+}
+
 /** The closing note is the reviewer summing up, so it earns an answer even when it
  * asks nothing — a note with no reply is the review's one dead end. */
 const CLOSING_CONTRACT =
@@ -199,7 +204,40 @@ export function intentContract(threads: readonly ReviewThread[]): string[] {
   return lines
 }
 
-export function replyProtocol(threads: readonly ReviewThread[]): string {
+/**
+ * The short form, for a session that already received the full protocol this
+ * attachment (tracked per session pid by the DeliveryQueue). The full text is
+ * ~580 tokens and re-shipping it with every delivery was the loop's largest
+ * recurring cost; the compact form keeps only the per-batch contract — intent
+ * rules, the reply command, the re-poll — plus the pointer that reprints the rest.
+ */
+function compactProtocol(threads: readonly ReviewThread[]): string {
+  return `## How to respond
+
+Same protocol as your earlier deliveries (\`${CLI} help agent\` reprints it in full):
+
+1. Act on each thread.
+${intentContract(threads)
+  .map((line) => `   ${line}`)
+  .join('\n')}
+2. Reply per thread as soon as it is handled — what changed and where (\`file:line\`), verify it the cheapest honest way first:
+
+   ${CLI_COMMANDS.reply}
+
+3. When every thread is handled, run \`${CLI_COMMANDS.poll}\` again to keep listening.
+
+Change only what these threads ask about — the reviewer is mid-read. Re-read
+the current file before editing; the code may have moved. Resolving a thread
+is the reviewer's call, never yours.`
+}
+
+export type ProtocolMode = 'full' | 'compact'
+
+export function replyProtocol(
+  threads: readonly ReviewThread[],
+  mode: ProtocolMode = 'full',
+): string {
+  if (mode === 'compact') return compactProtocol(threads)
   const batchNote =
     threads.length > 1
       ? '\nRead every thread before you start editing — threads can touch the same\ncode, and an edit for one can move what another is anchored to.\n'
@@ -261,6 +299,8 @@ export interface PromptContext {
   repo: Changeset['repo']
   changeset?: Changeset | null
   siblings?: ReviewThread[]
+  /** 'compact' when this session already received the full protocol; defaults to full. */
+  protocol?: ProtocolMode
 }
 
 const FRAME_FILE_CAP = 40
@@ -374,6 +414,12 @@ function snapshotBlock(thread: ReviewThread): string[] {
   }
   const lines = codeContext.split('\n')
   const where = thread.anchor.kind === 'changeset' ? 'the file' : `\`${thread.anchor.path}\``
+  // Already delivered once: the agent saw this snapshot, so re-shipping it only
+  // spends tokens — and it was frozen at comment time, so the current file is
+  // the better read anyway. The heading still quotes the anchored lines.
+  if (thread.deliveredThrough) {
+    return [`(diff snapshot delivered to you earlier — read the current ${where} instead)`]
+  }
   if (!anchored) {
     return [
       'The commented change:',
@@ -435,7 +481,7 @@ export function buildThreadPrompt(thread: ReviewThread, ctx: PromptContext): str
     threadBlock(thread, 0),
     '',
     ...(siblings ? [siblings, ''] : []),
-    replyProtocol([thread]),
+    replyProtocol([thread], ctx.protocol),
     '',
   ].join('\n')
 }
@@ -448,7 +494,7 @@ export function buildCoalescedPrompt(threads: ReviewThread[], ctx: PromptContext
     ...(ctx.changeset ? [specLine(ctx.changeset), ''] : []),
     ...threads.map((t, i) => `${threadBlock(t, i)}\n`),
     ...(siblings ? [siblings, ''] : []),
-    replyProtocol(threads),
+    replyProtocol(threads, ctx.protocol),
     '',
   ].join('\n')
 }
@@ -481,7 +527,12 @@ export function buildFinishPrompt(
   // The closing note leads the batch: it is what the reviewer would say first if
   // they were in the room, and it frames every thread under it.
   const closing = sent.find((t) => t.closingNote)
-  const actionable = closing ? [closing, ...sent.filter((t) => t !== closing)] : sent
+  const ordered = closing ? [closing, ...sent.filter((t) => t !== closing)] : sent
+  // A thread whose last word is the agent's is answered: Finish used to re-ship
+  // its full block (snapshot + history) with a "don't reply again" note — the
+  // loop's biggest single spike. It rides as one id line instead, owing nothing.
+  const answered = ordered.filter((t) => t !== closing && answeredByAgent(t))
+  const actionable = ordered.filter((t) => !answered.includes(t))
   const changed = coverage.changedFiles ?? []
   const commented = coverage.commentedUnread ?? []
   const filtered = coverage.filteredOut ?? []
@@ -531,6 +582,13 @@ export function buildFinishPrompt(
     '',
     ...owedLines,
   ]
+  if (answered.length > 0) {
+    parts.push(
+      `${answered.length} thread${answered.length === 1 ? '' : 's'} you already answered, with nothing new since — no reply owed, not repeated here:`,
+      ...answered.map((t) => `- ${t.id} — ${describeAnchor(t.anchor)}`),
+      '',
+    )
+  }
   if (coverage.skippedFiles.length > 0) {
     parts.push(
       'The reviewer left the not-marked-read files unread. If any of them hide',
@@ -562,7 +620,7 @@ export function buildFinishPrompt(
       `${actionable.length} review thread${actionable.length === 1 ? '' : 's'} to act on:`,
       '',
       ...actionable.map((t, i) => `${threadBlock(t, i)}\n`),
-      replyProtocol(actionable),
+      replyProtocol(actionable, ctx.protocol),
       '',
     )
   }

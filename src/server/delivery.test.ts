@@ -707,3 +707,29 @@ describe('DeliveryQueue — two sessions, one review', () => {
     expect(q.ownerPid()).toBeNull()
   })
 })
+
+describe('DeliveryQueue — the full protocol is owed once per session', () => {
+  it('starts owed, is settled by markProtocolSent, and stays settled for that pid', () => {
+    const q = new DeliveryQueue()
+    expect(q.needsFullProtocol()).toBe(true)
+    q.claimSession(111)
+    expect(q.needsFullProtocol()).toBe(true)
+    q.markProtocolSent()
+    expect(q.needsFullProtocol()).toBe(false)
+  })
+
+  it('a takeover owes the new session the full protocol again', () => {
+    const q = new DeliveryQueue()
+    q.claimSession(111)
+    q.markProtocolSent()
+    q.claimSession(222)
+    expect(q.needsFullProtocol()).toBe(true)
+  })
+
+  it('an anonymous session (no pid) is always owed the full protocol', () => {
+    const q = new DeliveryQueue()
+    q.claimSession(null)
+    q.markProtocolSent()
+    expect(q.needsFullProtocol()).toBe(true)
+  })
+})

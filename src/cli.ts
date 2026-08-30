@@ -391,9 +391,8 @@ if (command.kind === 'poll') {
   const port = await requireServer()
   process.stderr.write(
     'diffo: waiting for the reviewer — keep this process attended: a tracked\n' +
-      'background task or the foreground, never detached.\n' +
-      'If it is killed or times out, just re-run it: what the reviewer sent is\n' +
-      'held in the review, so it outlives this poll and the server both.\n',
+      'background task or the foreground, never detached. If it dies, just\n' +
+      're-run it — feedback is held in the review and survives.\n',
   )
   // The response streams whitespace heartbeats until the reviewer acts, then one
   // JSON payload. text() rides the heartbeats out; trim leaves the JSON.
