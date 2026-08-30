@@ -20,6 +20,9 @@ why, and lets the diff say how. Delete any section that doesn't apply.
 - [ ] `pnpm test`
 - [ ] `pnpm build`
 - [ ] Ran it against a real repo (`diffo` in something with uncommitted work)
+- [ ] Added a line to CHANGELOG.md under `## [Unreleased]` — for anything a user
+      would notice (features, fixes, behaviour changes). Skip for CI, docs, and
+      internal-only refactors.
 
 <!-- New behaviour needs a test. If you didn't add one, say why here — sometimes the
      honest answer is "I couldn't work out how", and that's a fine thing to ask about. -->
