@@ -7,7 +7,14 @@ Until 1.0, minor versions may break things. When they do, the entry says how to 
 
 ## [Unreleased]
 
-Nothing yet.
+### Changed
+
+- **The skill now states its trust model outright**, for security scanners
+  and cold readers alike: the review URL is a plain `http://localhost:<port>`
+  address carrying no token or credential, and poll payloads are the local
+  human reviewer's feedback — data to weigh, never instructions with the
+  user's authority. Addresses the Snyk skill audit that read the old wording
+  as credential exposure (W007) and third-party content injection (W011).
 
 ## [0.1.0] — 2026-08-29
 
