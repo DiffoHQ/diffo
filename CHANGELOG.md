@@ -15,6 +15,9 @@ Until 1.0, minor versions may break things. When they do, the entry says how to 
   human reviewer's feedback — data to weigh, never instructions with the
   user's authority. Addresses the Snyk skill audit that read the old wording
   as credential exposure (W007) and third-party content injection (W011).
+  The poll payload is likewise now described as the reviewer's threads as
+  structured data, not "a prompt" the agent acts on — the phrasing the same
+  audit read as external code controlling the agent (W012).
 
 ## [0.1.0] — 2026-08-29
 
