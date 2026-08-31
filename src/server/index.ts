@@ -259,9 +259,12 @@ export function createApp(
       // Refresh the OWNER's clock, never retarget it: a reply from a second session
       // must not point the liveness watch at its harness (delivery.ts `noteSession`).
       queue?.noteSession(parseSessionPid(c.req.header('x-diffo-session-pid')))
-      const waitedMs = queue?.agentReplied(id) ?? null
+      // An interim reply (`--more`): a follow-up is promised, so the thread
+      // stays on the delivery clock and keeps waiting on the agent.
+      const more = body?.more === true
+      const waitedMs = queue?.agentReplied(id, more) ?? null
       const seenThroughMs = waitedMs === null ? undefined : Date.now() - waitedMs
-      const thread = review.addMessage(id, 'agent', text, false, seenThroughMs)
+      const thread = review.addMessage(id, 'agent', text, false, seenThroughMs, more)
       if (!thread) return c.json({ error: 'no such thread' }, 404)
       if (waitedMs !== null) review.annotateAgentReplies([thread.id], waitedMs)
       return c.json({ thread, delivered: false })
@@ -830,6 +833,14 @@ export function markDevIndex(html: string, isDev: boolean): string {
 }
 
 export function rehydrateQueue(review: ReviewStore, queue: DeliveryQueue): void {
+  // A follow-up promised before the restart has no live batch left to conclude
+  // it — downgrade to unanswered so the UI stops waiting. Self-healing: the
+  // follow-up that does arrive clears the mark like any reply.
+  const promised = review
+    .get()
+    .threads.filter((t) => t.awaitingFollowUp === true)
+    .map((t) => t.id)
+  if (promised.length > 0) review.markUnanswered(promised)
   const state = review.get()
   queue.enqueueThreads(undeliveredThreadIds(state.threads))
   const finish = state.lastFinish

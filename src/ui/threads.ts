@@ -10,7 +10,10 @@ export function threadTurn(thread: ReviewThread): Turn {
   if (thread.state === 'open') return 'note'
   // Ahead of `withheld` deliberately: an answer you haven't read is hotter than a
   // follow-up you are sitting on, and the card shows the unsent reply either way.
-  if (thread.messages.at(-1)?.author === 'agent') return 'yours'
+  // A `--more` reply is a promise, not an answer: the agent still holds the turn.
+  if (thread.messages.at(-1)?.author === 'agent') {
+    return thread.awaitingFollowUp === true ? 'agent' : 'yours'
+  }
   if (thread.withheld) return 'note'
   if (!thread.unanswered) return 'agent'
   return thread.state === 'addressed' ? 'yours' : 'unanswered'
@@ -73,7 +76,8 @@ export type Outcome = 'fixed' | 'answered' | 'changed' | 'no-answer' | 'waiting'
 
 export function threadOutcome(thread: ReviewThread): Outcome | null {
   if (thread.state === 'open' || thread.state === 'resolved') return null
-  const replied = thread.messages.at(-1)?.author === 'agent'
+  // An interim (`--more`) reply doesn't count as replied — a follow-up is owed.
+  const replied = thread.messages.at(-1)?.author === 'agent' && thread.awaitingFollowUp !== true
   // `addressed` means reconcile saw the commented hunk's content-addressed id
   // rotate, i.e. the code under the comment was rewritten.
   const changed = thread.state === 'addressed'
