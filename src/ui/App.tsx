@@ -21,7 +21,7 @@ import { Icon, IconSprite } from './components/Icon.js'
 import { InviteAgent } from './components/InviteAgent.js'
 import { LeftPanel } from './components/LeftPanel.js'
 import { Monitor } from './components/Monitor.js'
-import { Nav } from './components/Nav.js'
+import { Nav, treeOrder } from './components/Nav.js'
 import { ReadingPane, type ReviewComments, type ViewMode } from './components/ReadingPane.js'
 import { Shortcuts } from './components/Shortcuts.js'
 import { ThreadRail } from './components/ThreadRail.js'
@@ -278,7 +278,10 @@ function Review() {
     [data, review, viewed],
   )
 
-  const allFiles = useMemo(() => data?.files ?? [], [data])
+  // One canonical order for the whole review: the rail's tree, flattened. The
+  // pane, J/K, and "next unreviewed" all walk it, so the rail always mirrors
+  // the pane instead of the raw git order.
+  const allFiles = useMemo(() => treeOrder(data?.files ?? []), [data])
   const isFileDone = useCallback((file: FileChange) => isFileViewed(file, viewed), [viewed])
   const filter = useReviewFilter(allFiles, isFileDone, {
     on: onlyChanged,
@@ -407,7 +410,7 @@ function Review() {
   }, [activeThreads])
 
   const coverage: Coverage = useMemo(() => {
-    const unread = (data?.files ?? []).filter((f) => !isFileViewed(f, viewed))
+    const unread = allFiles.filter((f) => !isFileViewed(f, viewed))
     const changedFiles = unread.filter((f) => movedPaths.has(f.path)).map((f) => f.path)
     const changedSet = new Set(changedFiles)
     const excluded = new Set(filter.scope.excludedPaths)
@@ -426,7 +429,15 @@ function Review() {
         .filter((f) => !commentedPaths.has(f.path) && !excluded.has(f.path))
         .map((f) => f.path),
     }
-  }, [data, progress, fileProgress, viewed, movedPaths, commentedPaths, filter.scope.excludedPaths])
+  }, [
+    allFiles,
+    progress,
+    fileProgress,
+    viewed,
+    movedPaths,
+    commentedPaths,
+    filter.scope.excludedPaths,
+  ])
 
   const clearThreads = useCallback(async () => {
     await reviewApi.clear()
@@ -661,7 +672,7 @@ function Review() {
   )
 
   const nextUnreviewed = useCallback(() => {
-    const file = (data?.files ?? []).find((f) => !isFileViewed(f, viewed))
+    const file = allFiles.find((f) => !isFileViewed(f, viewed))
     if (!file) return
     revealFile(file.path)
     setCollapsed((prev) => {
@@ -676,7 +687,7 @@ function Review() {
       const node = document.getElementById(fileAnchor(file.path))
       if (node) glideTo(node, flashLanding)
     })
-  }, [data, viewed, revealFile])
+  }, [allFiles, viewed, revealFile])
 
   const openThread = useCallback(
     (item: { threadId: string; path: string | null; gone?: boolean }) => {
@@ -927,7 +938,7 @@ function Review() {
           settledCount={settledThreads}
           files={
             <Nav
-              files={data.files}
+              files={allFiles}
               viewed={viewed}
               selectedPath={selectedPath}
               onPickFile={pickFile}
