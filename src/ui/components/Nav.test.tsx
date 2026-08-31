@@ -4,7 +4,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { ReviewThread } from '../../shared/review.js'
 import type { DiffLine, FileChange, Hunk, LineKind } from '../../shared/types.js'
 import { fileMark } from '../fileMarks.js'
-import { buildTree, Nav, type TreeDir, type TreeNode } from './Nav.js'
+import { buildTree, Nav, type TreeDir, type TreeNode, treeOrder } from './Nav.js'
 
 afterEach(cleanup)
 
@@ -59,6 +59,24 @@ describe('buildTree', () => {
   it('sorts folders before files, each alphabetically', () => {
     const tree = buildTree([file('z.md'), file('a/x.ts'), file('b.md'), file('c/y.ts')])
     expect(shape(tree)).toEqual([{ a: ['a/x.ts'] }, { c: ['c/y.ts'] }, 'b.md', 'z.md'])
+  })
+})
+
+describe('treeOrder', () => {
+  it('flattens files in the exact order the rail renders them', () => {
+    // Git order would put src/c.ts before src/server/a.ts; the rail does not.
+    const ordered = treeOrder([
+      file('src/c.ts'),
+      file('src/server/a.ts'),
+      file('z.md'),
+      file('docs/index.md'),
+    ])
+    expect(ordered.map((f) => f.path)).toEqual([
+      'docs/index.md',
+      'src/server/a.ts',
+      'src/c.ts',
+      'z.md',
+    ])
   })
 })
 

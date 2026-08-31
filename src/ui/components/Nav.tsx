@@ -73,6 +73,13 @@ function filesUnder(node: TreeNode): FileChange[] {
   return node.children.flatMap(filesUnder)
 }
 
+/** The rail's tree, flattened — the one file order the whole review reads in.
+ * The reading pane, J/K, and "next unreviewed" all follow it, so the rail is
+ * always a map of the pane. */
+export function treeOrder(files: FileChange[]): FileChange[] {
+  return buildTree(files).flatMap(filesUnder)
+}
+
 function FileRow({
   file,
   depth,
