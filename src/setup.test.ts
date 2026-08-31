@@ -96,7 +96,7 @@ describe('skills directory (claude-code row)', () => {
     mkdirSync(dirname(skillTarget(home)), { recursive: true })
     writeFileSync(skillTarget(home), '---\nname: diffo\ndescription: old\n---\n\nold body\n')
     expect(byClient(runSetup(ctx(home)))['claude-code']!.status).toBe('registered')
-    expect(readFileSync(skillTarget(home), 'utf-8')).toContain('## The loop')
+    expect(readFileSync(skillTarget(home), 'utf-8')).toContain('## The protocol lives in the CLI')
   })
 
   it("refuses to clobber a skill it doesn't own", () => {
@@ -128,7 +128,7 @@ describe('agents directory row (the cross-tool skills dir)', () => {
     const home = fakeHome()
     mkdirSync(join(home, '.codex'), { recursive: true })
     expect(byClient(runSetup(ctx(home)))['agents-dir']!.status).toBe('registered')
-    expect(readFileSync(agentsTarget(home), 'utf-8')).toContain('## The loop')
+    expect(readFileSync(agentsTarget(home), 'utf-8')).toContain('## The protocol lives in the CLI')
   })
 
   it("refuses to clobber a skill it doesn't own", () => {
@@ -154,7 +154,7 @@ describe('refreshInstalledSkills — the CLI keeps installed copies fresh', () =
     expect(refreshed).toHaveLength(2)
     for (const dir of ['.claude', '.agents']) {
       expect(readFileSync(join(home, dir, 'skills', 'diffo', 'SKILL.md'), 'utf-8')).toContain(
-        '## The loop',
+        '## The protocol lives in the CLI',
       )
     }
   })

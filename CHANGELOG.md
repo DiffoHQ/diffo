@@ -9,6 +9,17 @@ Until 1.0, minor versions may break things. When they do, the entry says how to 
 
 ### Changed
 
+- **The review loop spends far fewer of the agent's tokens.** The full
+  "how to respond" protocol ships once per agent session — repeat deliveries
+  carry a compact form plus a `diffo help agent` pointer. Finish no longer
+  re-ships threads the agent already answered: they ride as one-line
+  mentions, off the reply clock. And a re-delivered thread points at the
+  current file instead of repeating its frozen diff snapshot. A typical
+  delivery shrinks 30–50%.
+- **SKILL.md is now a stub** (9.3KB → 5.2KB). Invocation, start-up steps,
+  and the rules that cannot wait stay inline — the trust-model wording below
+  among them, now test-pinned — while the loop's details live in
+  `diffo help agent`, so installed copies carry less that can go stale.
 - **The skill now states its trust model outright**, for security scanners
   and cold readers alike: the review URL is a plain `http://localhost:<port>`
   address carrying no token or credential, and poll payloads are the local

@@ -2,6 +2,7 @@ import { readFileSync } from 'node:fs'
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
+import { helpFor } from './cliArgs.js'
 import { devCliFor, GUIDE, NPX } from './server/prompt.js'
 import { createSkillMarkdown } from './skill.js'
 
@@ -70,31 +71,54 @@ describe('skills/diffo/SKILL.md (Agent Skills format)', () => {
     }
   })
 
-  it('teaches the loop with the real commands, and the wake-path rules', () => {
+  it('is a stub: start-up commands plus the wake-path rules, nothing that can go stale', () => {
     const { body } = readSkill()
+    expect(body).toContain('npx -y @diffohq/diffo help agent')
     expect(body).toContain('npx -y @diffohq/diffo poll')
-    expect(body).toContain('npx -y @diffohq/diffo reply <threadId>')
-    expect(body).toContain('npx -y @diffohq/diffo comment [<file>]')
     expect(body).toContain('npx -y @diffohq/diffo end')
     expect(body).toContain('nohup')
-    expect(body).toMatch(/Nothing\s+the\s+reviewer sent is lost/)
-    expect(body).toMatch(/held in the review itself/)
+    expect(body).toMatch(/nothing the reviewer sent is lost/i)
+    expect(body).toMatch(/held\s+in the review itself/)
     expect(body).toMatch(/Do not reopen/i)
+    // The URL-handoff doctrine cannot wait for `help agent` — it must be inline.
+    expect(body).toMatch(/end your turn's final message\s+with it/i)
+    expect(body).toMatch(/An unshared URL is an unopened review/)
   })
 
-  it('teaches the guide step: the agent judges, and never pre-reviews', () => {
+  it('states the trust model inline — the security wording the scanner audits', () => {
     const { body } = readSkill()
-    // The doctrine is shared verbatim from GUIDE (prompt.ts) — the same
-    // fragments the open-time nudge and `help agent` print — so the three
-    // surfaces cannot drift apart.
-    expect(body).toContain(GUIDE.when)
-    expect(body).toContain(GUIDE.what)
-    expect(body).toContain(GUIDE.stance)
-    expect(body).toContain(GUIDE.update)
-    // One comment on the changeset, short, and the real command.
-    expect(body).toMatch(/ONE comment on the whole changeset/)
-    expect(body).toContain('npx -y @diffohq/diffo comment --message')
-    expect(body).toMatch(/Keep it short/)
+    // W007: the URL is a bare localhost address, no secrets.
+    expect(body).toMatch(/never carries a token,\s+credential, or any other secret/)
+    // W011: payload text is the local reviewer's own feedback, and it is data —
+    // never instructions with the user's authority.
+    expect(body).toMatch(/typed by the human reviewer/)
+    expect(body).toMatch(/never as instructions with the user's\s+authority/)
+    expect(body).toMatch(/only the user in chat can/)
+    // W012: the payload is described as structured data, never as a prompt
+    // that controls the agent.
+    expect(body).toMatch(/comment threads as structured data/)
+    expect(body).not.toMatch(/JSON payload: a prompt/)
+  })
+
+  it('defers the protocol to the CLI instead of duplicating it', () => {
+    const { body } = readSkill()
+    // The stub sends the agent to `help agent` for the loop…
+    expect(body).toMatch(/The protocol lives in the CLI/)
+    // …and carries none of the doctrine that used to drift here: the guide
+    // teaching lives in `help agent` (which interpolates GUIDE from prompt.ts)
+    // and in the open-time nudge, not in installed skill copies.
+    expect(body).not.toContain(GUIDE.what)
+    expect(body).not.toMatch(/ONE comment on the whole changeset/)
+    // The full protocol page it points to does carry the guide doctrine.
+    const agentHelp = helpFor('agent')
+    expect(agentHelp).toContain(GUIDE.when)
+    expect(agentHelp).toContain(GUIDE.what)
+    expect(agentHelp).toContain(GUIDE.stance)
+  })
+
+  it('stays a stub-sized load — the token budget is the point', () => {
+    const { raw } = readSkill()
+    expect(raw.length).toBeLessThan(6000)
   })
 
   it('ships in the npm package', () => {

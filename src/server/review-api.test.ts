@@ -465,9 +465,13 @@ describe('review API', () => {
       await app.request('/api/agent/poll', { headers: { 'x-diffo-agent': 'cli' } }),
     )
     expect(payload.kind).toBe('finish')
-    // Both threads ride the prompt for context, but only the unanswered one is owed.
+    // Only the unanswered thread is owed; the answered one rides the prompt as a
+    // one-line mention — id and anchor, not its re-shipped history.
     expect(payload.threadIds).toEqual([ids[1]])
-    expect(payload.prompt).toContain('answered before finish')
+    expect(payload.prompt).toContain('you already answered, with nothing new since')
+    expect(payload.prompt).toContain(`- ${ids[0]} —`)
+    expect(payload.prompt).not.toContain('answered before finish')
+    expect(payload.prompt).toContain('still waiting')
   })
 
   it('review endpoints 503 without a review store', async () => {
@@ -602,6 +606,34 @@ describe('the pull loop', () => {
 
     expect(queue.take()).toBeNull()
     expect(queue.presence()).toBe('working')
+  })
+
+  it('the second delivery to the same session carries the compact protocol', async () => {
+    const { app } = setup()
+    const headers = { 'x-diffo-agent': 'cli', 'x-diffo-session-pid': String(process.pid) }
+    const send = async (text: string) => {
+      const created = await post(app, '/api/review/threads', {
+        anchor: { kind: 'changeset' },
+        text,
+      })
+      await post(app, `/api/review/threads/${((await created.json()) as ReviewThread).id}/send`)
+    }
+
+    await send('one')
+    const first = await pollResult(await app.request('/api/agent/poll', { headers }))
+    expect(first.prompt).toContain('If you notice something worth a comment')
+
+    await send('two')
+    const second = await pollResult(await app.request('/api/agent/poll', { headers }))
+    expect(second.prompt).toContain('Same protocol as your earlier deliveries')
+    expect(second.prompt).toContain('npx -y @diffohq/diffo reply')
+
+    // An anonymous poll (no session pid) is always given the full protocol.
+    await send('three')
+    const third = await pollResult(
+      await app.request('/api/agent/poll', { headers: { 'x-diffo-agent': 'cli' } }),
+    )
+    expect(third.prompt).toContain('If you notice something worth a comment')
   })
 
   it('a reset wakes a waiting poll with the cleared heads-up — a fresh guide is owed', async () => {

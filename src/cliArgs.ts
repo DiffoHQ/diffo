@@ -61,11 +61,15 @@ The loop:
    away, leaving a background server watching the working tree. Never open a
    browser at the reviewer — end your message with the printed URL instead,
    and keep ending every message with it while you stay attached.
-2. Guide (only when the changeset needs it — ${GUIDE.when}): before sharing
-   the URL, post ONE comment on the whole changeset (\`diffo comment -m "…"\`,
-   no file): ${GUIDE.what}.
-   ${GUIDE.stance}. If the changeset later shifts under the guide,
-   ${GUIDE.update}.
+   Attached without ever seeing the URL (a takeover, a fresh session)?
+   \`diffo status\` prints it.
+2. Guide — post one only when the changeset needs orientation:
+   ${GUIDE.when}.
+   Before sharing the URL, post ONE comment on the whole changeset
+   (\`diffo comment -m "…"\`, no file), containing:
+   ${GUIDE.what}.
+   ${GUIDE.stance}.
+   If the changeset later shifts under the guide, ${GUIDE.update}.
 3. Listen: run \`diffo poll\` — it blocks until the reviewer acts, then prints
    one JSON payload naming the threads to act on. Run it attended:
    ${POLL_STANCE}.
@@ -86,7 +90,9 @@ Rules:
 - Change only what the threads ask about — the reviewer is mid-read, and an
   unrelated edit moves the diff under them.
 - One attached agent at a time: the newest poll carries the review; don't
-  re-poll to take it back from another session — tell the user instead.
+  re-poll to take it back from another session — tell the user instead. When
+  a poll says it took the review over, or returns status "superseded", say so
+  to the user: their feedback moved with it.
 - Resolving a thread is the reviewer's call, never yours.`,
   poll: `diffo poll — wait for the reviewer's feedback
 
