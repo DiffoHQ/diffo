@@ -431,7 +431,7 @@ if (command.kind === 'reply') {
   const { status, body } = await postJson(
     port,
     `/api/review/threads/${encodeURIComponent(command.threadId)}/messages`,
-    { author: 'agent', text: message },
+    { author: 'agent', text: message, ...(command.more ? { more: true } : {}) },
   )
   if (status === 404) fail(`no thread with id '${command.threadId}'`)
   if (status !== 200) fail(`reply failed (${status})`)
@@ -441,7 +441,7 @@ if (command.kind === 'reply') {
       ok: true,
       threadId: thread.id,
       state: thread.state,
-      next_step: ACK_NEXT_STEP.reply,
+      next_step: command.more ? ACK_NEXT_STEP.replyMore : ACK_NEXT_STEP.reply,
     }),
   )
   process.exit(0)

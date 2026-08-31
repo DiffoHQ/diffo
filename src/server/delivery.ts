@@ -484,10 +484,23 @@ export class DeliveryQueue {
   }
 
   /** The agent replied on a thread. Returns how long since that thread's feedback
-   * was delivered, or null when the reply wasn't an answer to a delivery. */
-  agentReplied(threadId: string): number | null {
+   * was delivered, or null when the reply wasn't an answer to a delivery.
+   * `interim` (a `--more` reply) keeps the thread on the clock: a follow-up is
+   * still owed, so the spinner stays and a batch that closes without the
+   * follow-up counts the thread unanswered. */
+  agentReplied(threadId: string, interim = false): number | null {
     const at = this.deliveredAt.get(threadId)
-    this.deliveredAt.delete(threadId)
+    if (!interim) {
+      this.deliveredAt.delete(threadId)
+    } else if (at === undefined && this.batch) {
+      // A promise made after the thread left the clock (an earlier plain reply
+      // already concluded it) re-arms it: the live batch owes the follow-up
+      // now, and closing without it must read as unanswered.
+      this.deliveredAt.set(threadId, Date.now())
+      if (!this.batch.threadIds.includes(threadId)) this.batch.threadIds.push(threadId)
+      this.awaitingReply = true
+      this.clearGrace()
+    }
     if (this.batch) this.batch.sawReply = true
     if (this.deliveredAt.size > 0) {
       if (this.awaitingReply) {

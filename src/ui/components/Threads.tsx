@@ -54,18 +54,22 @@ function PendingReply({
   working,
   place,
   unanswered,
+  followUp,
   since,
 }: {
   working: boolean
   place?: number
   unanswered?: boolean
+  followUp?: boolean
   since?: string
 }) {
   const when = unanswered
     ? 'no answer — the agent moved on'
     : working
       ? `with the agent${since ? ` · ${timeAgo(since)}` : ''}`
-      : `queued — ${formatQueuePlace(place ?? 1)}`
+      : followUp
+        ? `follow-up on the way${since ? ` · ${timeAgo(since)}` : ''}`
+        : `queued — ${formatQueuePlace(place ?? 1)}`
   return (
     <div
       className={`cmt thread-message thread-message-agent thread-message-pending${
@@ -245,21 +249,28 @@ export function ThreadCard({
     </span>
   )
 
+  // A `--more` reply promised a follow-up: keep the typing indicator going
+  // under the interim answer instead of handing the turn back.
+  const followUp = thread.awaitingFollowUp === true
   const pendingReply =
-    working || queuePosition !== undefined || thread.unanswered ? (
+    working || queuePosition !== undefined || thread.unanswered || followUp ? (
       <PendingReply
         working={working}
         place={queuePosition}
+        followUp={followUp}
         unanswered={thread.unanswered === true && queuePosition === undefined && !working}
         since={thread.updatedAt}
       />
     ) : null
   // While the agent is composing, the indicator sits where the answer will land:
-  // after the words the delivery carried, above any the reviewer raced in since.
+  // after the words the delivery carried (its own interim reply included),
+  // above any the reviewer raced in since.
   const seenThrough =
-    working && thread.deliveredThrough ? Date.parse(thread.deliveredThrough) : null
+    (working || followUp) && thread.deliveredThrough ? Date.parse(thread.deliveredThrough) : null
   const racedAt =
-    seenThrough === null ? -1 : thread.messages.findIndex((m) => Date.parse(m.at) > seenThrough)
+    seenThrough === null
+      ? -1
+      : thread.messages.findIndex((m) => m.author === 'reviewer' && Date.parse(m.at) > seenThrough)
   const pendingAt = racedAt === -1 ? thread.messages.length : racedAt
 
   const resolveButton =

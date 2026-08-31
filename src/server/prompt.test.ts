@@ -320,6 +320,24 @@ describe('reply protocol rules', () => {
     expect(prompt).toContain('id: t-2')
   })
 
+  it('a --more reply does not count as answered — Finish still ships the thread whole', () => {
+    const promised = thread({
+      id: 't-p',
+      awaitingFollowUp: true,
+      messages: [
+        { id: 'm1', author: 'reviewer', text: 'why?', at: '' },
+        { id: 'm2', author: 'agent', text: 'digging in — back soon', at: '' },
+      ],
+    })
+    const prompt = buildFinishPrompt([promised], ctx, {
+      viewedHunks: 1,
+      totalHunks: 1,
+      skippedFiles: [],
+    })
+    expect(prompt).toContain('id: t-p')
+    expect(prompt).not.toContain('you already answered')
+  })
+
   it('a closing note the agent already replied to still leads the batch in full', () => {
     const note = thread({
       id: 't-note',

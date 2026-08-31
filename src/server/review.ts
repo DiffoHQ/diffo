@@ -136,15 +136,25 @@ export class ReviewStore {
     text: string,
     withheld = false,
     seenThroughMs?: number,
+    followUp = false,
   ): ReviewThread | null {
     return this.update(threadId, ({ unanswered: _answered, ...thread }) => {
       const message = { id: randomUUID(), author, text, at: new Date().toISOString() }
+      // Raced = a reviewer message the agent has not seen. The agent's own
+      // messages are never raced past — an interim reply postdates the delivery
+      // too, and the follow-up must land after it, not above it.
       const raced =
         author === 'agent' && seenThroughMs !== undefined
-          ? thread.messages.findIndex((m) => Date.parse(m.at) > seenThroughMs)
+          ? thread.messages.findIndex(
+              (m) => m.author === 'reviewer' && Date.parse(m.at) > seenThroughMs,
+            )
           : -1
+      // An agent reply settles the promised follow-up — unless it renews the
+      // promise. A reviewer message leaves it: the agent still owes the ending.
+      const { awaitingFollowUp: _promised, ...settled } = thread
       return {
-        ...thread,
+        ...(author === 'agent' ? settled : thread),
+        ...(author === 'agent' && followUp ? { awaitingFollowUp: true as const } : {}),
         // An agent message does NOT clear this: it proves the agent had the thread, not
         // that it saw the line you are still holding. Only a real hand-over
         // (`clearWithheld`, from Send or Finish) clears it.
@@ -199,7 +209,9 @@ export class ReviewStore {
     const threads = this.state.threads.map((thread) => {
       if (!wanted.has(thread.id) || !applies(thread)) return thread
       changed = true
-      const { unanswered: _was, ...rest } = thread
+      // Marking unanswered settles the follow-up promise too — "the agent moved
+      // on" and "a follow-up is coming" cannot both be true.
+      const { unanswered: _was, awaitingFollowUp: _promised, ...rest } = thread
       return thread.unanswered ? rest : { ...rest, unanswered: true }
     })
     if (!changed) return
@@ -208,8 +220,10 @@ export class ReviewStore {
   }
 
   setState(threadId: string, state: ThreadState): ReviewThread | null {
-    return this.update(threadId, (thread) => ({
+    return this.update(threadId, ({ awaitingFollowUp: promised, ...thread }) => ({
       ...thread,
+      // Resolving settles the promised follow-up along with the thread.
+      ...(promised && state !== 'resolved' ? { awaitingFollowUp: true as const } : {}),
       state,
       ...(state === 'sent' && !thread.sentAt ? { sentAt: new Date().toISOString() } : {}),
       // A settled thread drops its frozen diff: the snapshot keeps the thread legible
@@ -556,6 +570,11 @@ function normalizeThread(value: unknown, now: string): ReviewThread | null {
     ...(anchored ? { anchored } : {}),
     codeChanged: t.codeChanged === true,
     ...(t.unanswered === true ? { unanswered: true } : {}),
+    // Mutually exclusive with `unanswered` — a hand-edited file carrying both
+    // resolves to "the agent moved on".
+    ...(t.awaitingFollowUp === true && t.unanswered !== true
+      ? { awaitingFollowUp: true as const }
+      : {}),
     ...(t.closingNote === true ? { closingNote: true as const } : {}),
     ...(typeof t.sentAt === 'string' ? { sentAt: t.sentAt } : {}),
     messages,

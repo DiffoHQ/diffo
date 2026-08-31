@@ -130,6 +130,22 @@ describe('rehydrateQueue — feedback outlives the process that queued it', () =
     expect(snapshot).toEqual({ kind: 'threads', threadIds: [thread.id] })
   })
 
+  it('downgrades a promised follow-up to unanswered — no live batch is left to conclude it', () => {
+    const { store, restart } = makeReview()
+    const thread = store.createThread(anchor(), 'why the cast here?', null)
+    store.send(thread.id)
+    store.addMessage(thread.id, 'agent', 'digging in — back soon', false, undefined, true)
+
+    const restarted = restart()
+    const queue = new DeliveryQueue()
+    rehydrateQueue(restarted, queue)
+    const after = restarted.get().threads[0]!
+    expect(after.unanswered).toBe(true)
+    expect('awaitingFollowUp' in after).toBe(false)
+    // Owed BY the agent, not by the reviewer — never re-queued for delivery.
+    expect(queue.queuedThreadIds()).toEqual([])
+  })
+
   it('holds nothing for a review with nothing outstanding', () => {
     const { store, restart } = makeReview()
     store.createThread(anchor(), 'still drafting this', null)

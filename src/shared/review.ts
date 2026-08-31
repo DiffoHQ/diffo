@@ -63,6 +63,11 @@ export interface ReviewThread {
   /** The agent concluded the batch this thread went out in without replying —
    * not "slow", so the UI must stop waiting on it. */
   unanswered?: boolean
+  /** The agent's last reply was posted with `--more`: an interim word, with a
+   * follow-up promised on this thread. The UI keeps waiting on the agent
+   * instead of handing the turn back. Cleared by the agent's next plain
+   * reply; downgraded to `unanswered` when the batch closes without one. */
+  awaitingFollowUp?: true
   /** The reviewer's closing note for one Finish round, kept as a thread rather
    * than as prose in the prompt: a note the agent cannot reply to is the one
    * piece of the review with no way back. Anchored to the changeset, created by

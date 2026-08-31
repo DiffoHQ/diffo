@@ -836,6 +836,61 @@ describe('the pull loop', () => {
     expect(String(repoll.prompt)).toMatch(/because X[\s\S]*raced follow-up/)
   })
 
+  it('a --more reply keeps the thread with the agent; the follow-up settles it', async () => {
+    const { app, review, queue } = setup()
+    const created = await post(app, '/api/review/threads', {
+      anchor: { kind: 'changeset' },
+      text: 'why?',
+    })
+    const thread = (await created.json()) as ReviewThread
+    await post(app, `/api/review/threads/${thread.id}/send`)
+    await pollResult(await app.request('/api/agent/poll', { headers: { 'x-diffo-agent': 'cli' } }))
+
+    await post(app, `/api/review/threads/${thread.id}/messages`, {
+      author: 'agent',
+      text: 'digging in — back soon',
+      more: true,
+    })
+    const interim = review.get().threads[0]!
+    expect(interim.awaitingFollowUp).toBe(true)
+    expect(interim.messages.at(-1)!.durationMs).toBeDefined()
+    // Still in the agent's hands: the spinner and presence both keep waiting.
+    expect(queue.deliveredThreadIds()).toEqual([thread.id])
+    expect(queue.presence()).toBe('working')
+    expect(queue.presenceDetail().reason).toBe('delivered')
+
+    await post(app, `/api/review/threads/${thread.id}/messages`, {
+      author: 'agent',
+      text: 'found it — fixed',
+    })
+    const settled = review.get().threads[0]!
+    expect('awaitingFollowUp' in settled).toBe(false)
+    expect(queue.deliveredThreadIds()).toEqual([])
+    expect(queue.presenceDetail().reason).toBe('replied')
+  })
+
+  it('a batch concluded on only a --more reply marks the thread unanswered', async () => {
+    const { app, review } = setup()
+    const created = await post(app, '/api/review/threads', {
+      anchor: { kind: 'changeset' },
+      text: 'why?',
+    })
+    const thread = (await created.json()) as ReviewThread
+    await post(app, `/api/review/threads/${thread.id}/send`)
+    await pollResult(await app.request('/api/agent/poll', { headers: { 'x-diffo-agent': 'cli' } }))
+    await post(app, `/api/review/threads/${thread.id}/messages`, {
+      author: 'agent',
+      text: 'digging in — back soon',
+      more: true,
+    })
+
+    // The agent detaches without the promised follow-up.
+    await post(app, '/api/agent/end', {})
+    const after = review.get().threads[0]!
+    expect(after.unanswered).toBe(true)
+    expect('awaitingFollowUp' in after).toBe(false)
+  })
+
   it('a reply with no delivery outstanding still appends at the end', async () => {
     const { app, review } = setup()
     const created = await post(app, '/api/review/threads', {

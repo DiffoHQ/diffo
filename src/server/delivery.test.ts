@@ -147,6 +147,54 @@ describe('DeliveryQueue', () => {
     expect(q.deliveredThreadIds()).toEqual([])
   })
 
+  it('an interim reply keeps the thread on the clock — still working, still delivered', () => {
+    const q = new DeliveryQueue()
+    q.enqueueThreads(['t1'])
+    q.confirm(q.take()!, ['t1'])
+    const waited = q.agentReplied('t1', true)
+    expect(typeof waited).toBe('number')
+    // The thread stays in the agent's hands: spinner stays, presence stays working.
+    expect(q.deliveredThreadIds()).toEqual(['t1'])
+    expect(q.presence()).toBe('working')
+    expect(q.presenceDetail().reason).toBe('delivered')
+    // The follow-up concludes it like any reply, timed from the original delivery.
+    expect(typeof q.agentReplied('t1')).toBe('number')
+    expect(q.deliveredThreadIds()).toEqual([])
+    expect(q.presenceDetail().reason).toBe('replied')
+  })
+
+  it('a --more after a plain reply re-arms the clock — the batch owes the follow-up again', () => {
+    const q = new DeliveryQueue()
+    q.enqueueThreads(['t1'])
+    q.confirm(q.take()!, ['t1'])
+    q.agentReplied('t1')
+    expect(q.deliveredThreadIds()).toEqual([])
+    q.agentReplied('t1', true)
+    expect(q.deliveredThreadIds()).toEqual(['t1'])
+    expect(q.presence()).toBe('working')
+    expect(q.presenceDetail().reason).toBe('delivered')
+  })
+
+  it('a --more with no live batch arms nothing — there is no clock to keep', () => {
+    const q = new DeliveryQueue()
+    expect(q.agentReplied('t1', true)).toBeNull()
+    expect(q.deliveredThreadIds()).toEqual([])
+    expect(q.presence()).toBe('waiting')
+  })
+
+  it('a batch closed after only an interim reply counts the thread unanswered', async () => {
+    const q = new DeliveryQueue(5 * 60_000, 10, {}, 0)
+    q.enqueueThreads(['t1'])
+    q.confirm(q.take()!, ['t1'])
+    q.agentReplied('t1', true)
+    let closed: { unanswered: string[] } | null = null
+    q.onBatchClosed((c) => (closed = c))
+    // The re-poll closes the batch — the promised follow-up never came.
+    void q.attach()
+    expect(closed).not.toBeNull()
+    expect(closed!.unanswered).toEqual(['t1'])
+  })
+
   it('a mid-batch reply keeps working — the agent still owes answers', () => {
     const q = new DeliveryQueue()
     q.enqueueThreads(['t1', 't2'])

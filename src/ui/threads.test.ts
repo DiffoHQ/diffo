@@ -133,6 +133,30 @@ describe('threadTurn', () => {
   })
 })
 
+describe('threadTurn — a promised follow-up', () => {
+  const promised = () =>
+    thread({
+      awaitingFollowUp: true,
+      messages: [msg('reviewer', 'why?'), msg('agent', 'digging in — back soon')],
+    })
+
+  it('an interim reply is a promise, not an answer — still waiting on the agent', () => {
+    expect(threadTurn(promised())).toBe('agent')
+    expect(threadOutcome(promised())).toBe('waiting')
+  })
+
+  it('the plain follow-up hands the turn back', () => {
+    const t = { ...promised(), messages: [...promised().messages, msg('agent', 'found it')] }
+    const { awaitingFollowUp: _settled, ...done } = t
+    expect(threadTurn(done)).toBe('yours')
+    expect(threadOutcome(done)).toBe('answered')
+  })
+
+  it('resolved outranks the promise — settled is settled', () => {
+    expect(threadTurn({ ...promised(), state: 'resolved' })).toBe('resolved')
+  })
+})
+
 describe('threads', () => {
   it('carries what a row needs to be recognised without opening the diff', () => {
     const [item] = threadItems([

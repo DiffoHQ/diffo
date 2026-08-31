@@ -122,6 +122,8 @@ export function nextStepFor(kind: 'threads' | 'finish' | 'cleared', actionable: 
 
 export const ACK_NEXT_STEP = {
   reply: `When every thread is handled, run \`${CLI_COMMANDS.poll}\` again to keep listening (${POLL_STANCE}).`,
+  replyMore:
+    'Interim reply posted — the reviewer still sees you working on this thread. Post the follow-up as a plain reply (no --more) BEFORE your next poll: re-polling closes the batch and counts the promise as never kept.',
   comment: `It's in the review as your comment, labeled as yours — the reviewer replies to take it up, or resolves it. Continue with the review threads, then run \`${CLI_COMMANDS.poll}\`.`,
   end: 'Detached. Do not reopen or re-poll this review unless the user asks — deliver anything remaining directly in the conversation.',
 } as const
@@ -186,9 +188,10 @@ const INTENT_CONTRACT: Record<ThreadIntent, string> = {
 const UNLABELED_CONTRACT =
   '- Unlabeled threads: judge from the text — a question wants an answer, not an edit.'
 
-/** The agent spoke last: the thread is answered until the reviewer says more. */
+/** The agent spoke last: the thread is answered until the reviewer says more.
+ * A reply that promised a follow-up (`--more`) is not an answer yet. */
 export function answeredByAgent(thread: ReviewThread): boolean {
-  return thread.messages.at(-1)?.author === 'agent'
+  return thread.messages.at(-1)?.author === 'agent' && thread.awaitingFollowUp !== true
 }
 
 /** The closing note is the reviewer summing up, so it earns an answer even when it
@@ -244,7 +247,7 @@ export function replyProtocol(
       : ''
   // Finish re-ships every sent thread, answered ones included; without this line
   // the agent re-answers each and the reviewer gets duplicate replies.
-  const answeredNote = threads.some((t) => t.messages.at(-1)?.author === 'agent')
+  const answeredNote = threads.some((t) => answeredByAgent(t))
     ? [
         "   - Some threads end with your own earlier reply — if nothing new was asked since, don't reply to them again.",
       ]
@@ -268,6 +271,10 @@ ${[...intentContract(threads).map((line) => `   ${line}`), ...answeredNote].join
    is fixed, verify it the cheapest honest way (run the relevant test, re-read
    the change) and mention what you checked.
    Reply as soon as a thread is handled; don't save replies for the end.
+   A reply that only promises a follow-up ("I'll investigate and report
+   back") is not an answer — post it with \`--more\` so the reviewer keeps
+   seeing you at work on that thread, then post the real answer as a plain
+   reply (no \`--more\`) before your next poll.
    Replies and comment threads render GitHub-flavored markdown, and a
    \`\`\`mermaid fence renders as a diagram — use one when a flow, sequence,
    or state picture explains the change better than prose. Keep it small

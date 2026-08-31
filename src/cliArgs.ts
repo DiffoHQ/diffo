@@ -79,7 +79,10 @@ The loop:
    answer in the reply and no edit. Your edits reach the reviewer live.
 5. Reply: \`diffo reply <threadId> --message "<text>"\` (pipe long replies on
    stdin) — concise, addressed to the reviewer. Markdown renders; a
-   \`\`\`mermaid fence draws a diagram.
+   \`\`\`mermaid fence draws a diagram. A reply that only promises a
+   follow-up ("I'll investigate and report back") goes out with \`--more\` —
+   the reviewer keeps seeing you at work — and the real answer follows as a
+   plain reply before the next poll.
 6. Comment (sparingly): \`diffo comment [<file>] [--line <n>] -m "<text>"\`
    starts a thread in your voice — a concern, or context that helps the read.
 7. Poll again only when the whole batch is handled — a new poll tells the
@@ -117,6 +120,10 @@ Usage: diffo reply <threadId> --message "<text>"
 
 Thread ids arrive in poll payloads. Each run posts one message, so don't
 re-run a reply that succeeded.
+--more marks the reply as interim: you are still working, and a follow-up
+reply on this thread is promised. The reviewer keeps seeing the thread as
+"with the agent" until your next plain reply; going quiet instead marks it
+unanswered.
 Messages render GitHub-flavored markdown; a \`\`\`mermaid fence renders as a
 diagram in the review.
 
@@ -205,7 +212,7 @@ export type CliCommand =
       foreground: boolean
     }
   | { kind: 'poll' }
-  | { kind: 'reply'; threadId: string; message: string | null }
+  | { kind: 'reply'; threadId: string; message: string | null; more: boolean }
   | { kind: 'comment'; file: string | null; line: number | null; message: string | null }
   | { kind: 'end' }
   | { kind: 'setup' }
@@ -353,6 +360,7 @@ function parseVerb(verb: string, rest: string[]): CliCommand {
       options: {
         message: { type: 'string', short: 'm' },
         line: { type: 'string' },
+        more: { type: 'boolean' },
         json: { type: 'boolean' },
         help: { type: 'boolean', short: 'h' },
       },
@@ -366,6 +374,10 @@ function parseVerb(verb: string, rest: string[]): CliCommand {
 
   if (values.json && verb !== 'status') {
     return { kind: 'error', message: `'${verb}' takes no --json` }
+  }
+
+  if (values.more && verb !== 'reply') {
+    return { kind: 'error', message: `'${verb}' takes no --more` }
   }
 
   if (
@@ -397,7 +409,7 @@ function parseVerb(verb: string, rest: string[]): CliCommand {
     if (values.line !== undefined) {
       return { kind: 'error', message: 'reply takes no --line' }
     }
-    return { kind: 'reply', threadId, message: values.message ?? null }
+    return { kind: 'reply', threadId, message: values.message ?? null, more: values.more === true }
   }
 
   const file = positionals[0] ?? null

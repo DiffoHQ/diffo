@@ -89,15 +89,26 @@ describe('parseCliArgs — agent verbs', () => {
       kind: 'reply',
       threadId: 't-1',
       message: 'done',
+      more: false,
     })
     expect(parseCliArgs(['reply', 't-1', '-m', 'done'])).toMatchObject({ message: 'done' })
     expect(parseCliArgs(['reply', 't-1'])).toEqual({
       kind: 'reply',
       threadId: 't-1',
       message: null,
+      more: false,
     })
     expect(parseCliArgs(['reply'])).toMatchObject({ kind: 'error' })
     expect(parseCliArgs(['reply', 't-1', 'oops'])).toMatchObject({ kind: 'error' })
+  })
+
+  it('reply takes --more; the other verbs refuse it', () => {
+    expect(parseCliArgs(['reply', 't-1', '--more', '-m', 'digging in'])).toMatchObject({
+      kind: 'reply',
+      more: true,
+    })
+    expect(parseCliArgs(['comment', 'a.ts', '--more', '-m', 'x'])).toMatchObject({ kind: 'error' })
+    expect(parseCliArgs(['poll', '--more'])).toMatchObject({ kind: 'error' })
   })
 
   it('comment anchors to a line, a file, or (no file) the changeset', () => {

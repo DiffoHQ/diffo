@@ -358,6 +358,76 @@ describe('ReviewStore', () => {
     store.clearUnanswered([thread.id])
     expect(pings).toBe(0)
   })
+
+  it('a --more reply promises a follow-up; the next plain reply settles it', () => {
+    const root = tempRoot()
+    const store = makeStore(root)
+    const thread = store.createThread(hunkAnchor('h1'), 'why this?', null)
+    store.send(thread.id)
+
+    store.addMessage(thread.id, 'agent', 'digging in — back soon', false, undefined, true)
+    expect(store.get().threads[0]!.awaitingFollowUp).toBe(true)
+    expect(makeStore(root).get().threads[0]!.awaitingFollowUp).toBe(true)
+
+    store.addMessage(thread.id, 'agent', 'found it — fixed')
+    expect('awaitingFollowUp' in store.get().threads[0]!).toBe(false)
+  })
+
+  it('a reviewer message leaves the promise standing — the agent still owes the ending', () => {
+    const store = makeStore(tempRoot())
+    const thread = store.createThread(hunkAnchor('h1'), 'why this?', null)
+    store.send(thread.id)
+    store.addMessage(thread.id, 'agent', 'checking', false, undefined, true)
+
+    store.addMessage(thread.id, 'reviewer', 'also look at the other branch')
+    expect(store.get().threads[0]!.awaitingFollowUp).toBe(true)
+  })
+
+  it('another --more renews the promise instead of settling it', () => {
+    const store = makeStore(tempRoot())
+    const thread = store.createThread(hunkAnchor('h1'), 'why this?', null)
+    store.send(thread.id)
+    store.addMessage(thread.id, 'agent', 'checking', false, undefined, true)
+    store.addMessage(thread.id, 'agent', 'still checking', false, undefined, true)
+    expect(store.get().threads[0]!.awaitingFollowUp).toBe(true)
+  })
+
+  it('markUnanswered settles the promise — moved on and follow-up coming cannot both be true', () => {
+    const store = makeStore(tempRoot())
+    const thread = store.createThread(hunkAnchor('h1'), 'why this?', null)
+    store.send(thread.id)
+    store.addMessage(thread.id, 'agent', 'checking', false, undefined, true)
+
+    store.markUnanswered([thread.id])
+    const after = store.get().threads[0]!
+    expect(after.unanswered).toBe(true)
+    expect('awaitingFollowUp' in after).toBe(false)
+  })
+
+  it('resolving settles the promise along with the thread', () => {
+    const store = makeStore(tempRoot())
+    const thread = store.createThread(hunkAnchor('h1'), 'why this?', null)
+    store.send(thread.id)
+    store.addMessage(thread.id, 'agent', 'checking', false, undefined, true)
+
+    store.setState(thread.id, 'resolved')
+    expect('awaitingFollowUp' in store.get().threads[0]!).toBe(false)
+  })
+
+  it('the follow-up lands after the interim reply, before raced reviewer words', async () => {
+    const tick = () => new Promise((r) => setTimeout(r, 20))
+    const store = makeStore(tempRoot())
+    const thread = store.createThread(hunkAnchor('h1'), 'why this?', null)
+    store.send(thread.id)
+    const deliveredAt = Date.now()
+    store.addMessage(thread.id, 'agent', 'interim', false, deliveredAt, true)
+    await tick()
+    store.addMessage(thread.id, 'reviewer', 'raced in meanwhile')
+
+    store.addMessage(thread.id, 'agent', 'the real answer', false, deliveredAt)
+    const texts = store.get().threads[0]!.messages.map((m) => m.text)
+    expect(texts).toEqual(['why this?', 'interim', 'the real answer', 'raced in meanwhile'])
+  })
 })
 
 describe('parseReview', () => {
@@ -457,6 +527,25 @@ describe('parseReview', () => {
     )
     expect(parsed!.threads[0]!.messages[0]!.author).toBe('agent')
     expect('role' in parsed!.threads[0]!).toBe(false)
+  })
+
+  it('round-trips awaitingFollowUp; unanswered wins when a hand-edited file carries both', () => {
+    const stored = (extra: Record<string, unknown>) =>
+      JSON.stringify({
+        threads: [
+          {
+            id: 't',
+            state: 'sent',
+            anchor: { kind: 'file', path: 'a.ts' },
+            messages: [{ author: 'agent', text: 'checking' }],
+            ...extra,
+          },
+        ],
+      })
+    expect(parseReview(stored({ awaitingFollowUp: true }))!.threads[0]!.awaitingFollowUp).toBe(true)
+    const both = parseReview(stored({ awaitingFollowUp: true, unanswered: true }))!.threads[0]!
+    expect(both.unanswered).toBe(true)
+    expect('awaitingFollowUp' in both).toBe(false)
   })
 
   it('round-trips seenHead and the landed marker, and drops a sha-less marker', () => {
