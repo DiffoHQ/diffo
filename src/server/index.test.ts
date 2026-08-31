@@ -57,3 +57,53 @@ describe('server', () => {
     expect(res.status).not.toBe(200)
   })
 })
+
+describe('ui settings', () => {
+  const put = (app: ReturnType<typeof createApp>, body: string) =>
+    app.request('/api/settings', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body,
+    })
+
+  const withStore = () => {
+    const kv = new Map<string, string>()
+    const app = createApp({
+      ...ctx,
+      uiSettings: {
+        get: (key) => kv.get(key) ?? null,
+        set: (key, value) => void kv.set(key, value),
+      },
+    })
+    return { app, kv }
+  }
+
+  it('answers null without a store, and refuses writes', async () => {
+    const app = createApp(ctx)
+    const res = await app.request('/api/settings')
+    expect(await res.json()).toEqual({ theme: null })
+    expect((await put(app, '{"theme":"dark"}')).status).toBe(503)
+  })
+
+  it('round-trips the shared theme', async () => {
+    const { app, kv } = withStore()
+    expect((await put(app, '{"theme":"dark"}')).status).toBe(200)
+    expect(kv.get('theme')).toBe('dark')
+    const res = await app.request('/api/settings')
+    expect(await res.json()).toEqual({ theme: 'dark' })
+  })
+
+  it('rejects a theme outside the three real values', async () => {
+    const { app, kv } = withStore()
+    expect((await put(app, '{"theme":"neon"}')).status).toBe(400)
+    expect((await put(app, 'not json')).status).toBe(400)
+    expect(kv.size).toBe(0)
+  })
+
+  it('reads a stored junk value as null, never as a theme', async () => {
+    const { app, kv } = withStore()
+    kv.set('theme', 'neon')
+    const res = await app.request('/api/settings')
+    expect(await res.json()).toEqual({ theme: null })
+  })
+})

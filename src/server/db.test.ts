@@ -56,7 +56,12 @@ describe('retired tables', () => {
       .prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%'")
       .all() as { name: string }[]
     inspect.close()
-    expect(tables.map((t) => t.name).sort()).toEqual(['repo_ports', 'reviews', 'servers'])
+    expect(tables.map((t) => t.name).sort()).toEqual([
+      'repo_ports',
+      'reviews',
+      'servers',
+      'ui_settings',
+    ])
     expect(second.getReview(scope)).toBe('{"kept":true}')
   })
 })
@@ -319,5 +324,24 @@ describe('remembered ports', () => {
     cleanups.push(() => second.close())
     expect(second.getPreferredPort(vanished)).toBeNull()
     expect(second.getPreferredPort(dir)).toBe(4322)
+  })
+})
+
+describe('ui settings', () => {
+  it('round-trips a setting and survives reopen — the whole point over localStorage', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'diffo-db-'))
+    cleanups.push(() => rmSync(dir, { recursive: true, force: true }))
+    const path = join(dir, 'diffo.db')
+
+    const first = new DiffoDb(path)
+    expect(first.getUiSetting('theme')).toBeNull()
+    first.setUiSetting('theme', 'dark')
+    first.setUiSetting('theme', 'light')
+    expect(first.getUiSetting('theme')).toBe('light')
+    first.close()
+
+    const second = new DiffoDb(path)
+    cleanups.push(() => second.close())
+    expect(second.getUiSetting('theme')).toBe('light')
   })
 })

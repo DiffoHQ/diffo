@@ -23,9 +23,14 @@ vi.mock('beautiful-mermaid', async (importOriginal) => {
 
 import { renderMermaidIn } from './mermaid.js'
 
-// jsdom has no matchMedia; the fallback renderer's theme pick needs one.
+// jsdom has no matchMedia; the fallback renderer's theme pick needs one, and
+// the theme watcher subscribes to its change event.
 window.matchMedia = ((query: string) =>
-  ({ matches: false, media: query }) as MediaQueryList) as typeof window.matchMedia
+  ({
+    matches: false,
+    media: query,
+    addEventListener: () => {},
+  }) as unknown as MediaQueryList) as typeof window.matchMedia
 
 fallback.parse.mockImplementation(async (source: string) => {
   if (!source.includes('parses')) throw new Error('parse error')
@@ -48,6 +53,7 @@ function fence(source: string): HTMLElement {
 
 beforeEach(() => {
   document.body.innerHTML = ''
+  document.documentElement.removeAttribute('data-theme')
   vi.clearAllMocks()
 })
 
@@ -125,5 +131,31 @@ describe('renderMermaidIn', () => {
     const first = root.innerHTML
     await renderMermaidIn(root)
     expect(root.innerHTML).toBe(first)
+  })
+
+  it('re-renders a stock-mermaid figure when the theme flips', async () => {
+    // Stock mermaid bakes its palette in; the figure must be redrawn live, not
+    // wait for a reload.
+    const root = fence('pie parses\n  "a": 1')
+    await renderMermaidIn(root)
+    const figure = root.querySelector<HTMLElement>('.mermaid-figure')!
+    const before = figure.innerHTML
+    fallback.initialize.mockClear()
+    document.documentElement.setAttribute('data-theme', 'dark')
+    await vi.waitFor(() => expect(figure.innerHTML).not.toBe(before))
+    expect(fallback.initialize).toHaveBeenCalledWith(expect.objectContaining({ theme: 'dark' }))
+    expect(figure.innerHTML).toContain('data-renderer="mermaid"')
+  })
+
+  it('leaves a beautiful-mermaid figure alone on a theme flip — CSS retheming covers it', async () => {
+    const root = fence('graph LR\n  a --> b')
+    await renderMermaidIn(root)
+    const figure = root.querySelector<HTMLElement>('.mermaid-figure')!
+    expect(figure.dataset.mermaidSource).toBeUndefined()
+    const before = figure.innerHTML
+    document.documentElement.setAttribute('data-theme', 'dark')
+    // MutationObserver delivery + any (wrong) re-render would land within a tick.
+    await new Promise((r) => setTimeout(r, 20))
+    expect(figure.innerHTML).toBe(before)
   })
 })

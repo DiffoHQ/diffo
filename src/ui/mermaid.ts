@@ -107,17 +107,7 @@ async function loadMermaid(): Promise<MermaidApi> {
   return mermaid
 }
 
-/** Render one fence's source to SVG, or null when neither renderer takes it. */
-async function renderDiagram(source: string): Promise<string | null> {
-  if (beautifulSupports(source)) {
-    try {
-      const bm = await loadBeautiful()
-      return stripFontImports(bm.renderMermaidSVG(source, BEAUTIFUL_OPTIONS))
-    } catch {
-      // Its parser covers a subset even of the types it claims — a flowchart
-      // feature it doesn't know lands here. Stock mermaid gets the next try.
-    }
-  }
+async function renderStock(source: string): Promise<string | null> {
   try {
     const mermaid = await loadMermaid()
     await mermaid.parse(source)
@@ -125,6 +115,59 @@ async function renderDiagram(source: string): Promise<string | null> {
     return svg
   } catch {
     return null
+  }
+}
+
+/** Render one fence's source to SVG, or null when neither renderer takes it.
+ * `live` says whose SVG it is: beautiful-mermaid's recolors itself through CSS
+ * variables, stock mermaid's bakes the theme in and needs a re-render to move. */
+async function renderDiagram(source: string): Promise<{ svg: string; live: boolean } | null> {
+  if (beautifulSupports(source)) {
+    try {
+      const bm = await loadBeautiful()
+      return { svg: stripFontImports(bm.renderMermaidSVG(source, BEAUTIFUL_OPTIONS)), live: true }
+    } catch {
+      // Its parser covers a subset even of the types it claims — a flowchart
+      // feature it doesn't know lands here. Stock mermaid gets the next try.
+    }
+  }
+  const svg = await renderStock(source)
+  return svg === null ? null : { svg, live: false }
+}
+
+function sanitizeSvg(svg: string): string {
+  return svgPurify.sanitize(svg, { USE_PROFILES: { svg: true, svgFilters: true } })
+}
+
+let watchingTheme = false
+
+/** Stock mermaid bakes its palette in at render time, so a figure it drew goes
+ * stale the moment the app's theme moves. Installed with the first such figure:
+ * on any theme flip — the explicit `data-theme` choice or the OS preference
+ * while following the system — every stock figure re-renders from the source
+ * kept on it. Beautiful-mermaid figures carry no source and are left alone. */
+function watchThemeForStockFigures(): void {
+  if (watchingTheme) return
+  watchingTheme = true
+  const onFlip = () => void rethemeStockFigures()
+  new MutationObserver(onFlip).observe(document.documentElement, {
+    attributes: true,
+    attributeFilter: ['data-theme'],
+  })
+  window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', onFlip)
+}
+
+async function rethemeStockFigures(): Promise<void> {
+  // Flips can land faster than renders; a pass whose theme already matches the
+  // last initialize is the earlier flip's echo, and the newer pass covers it.
+  if (wantedTheme() === loadedTheme) return
+  const figures = document.querySelectorAll<HTMLElement>('.mermaid-figure[data-mermaid-source]')
+  for (const figure of Array.from(figures)) {
+    const svg = await renderStock(figure.dataset.mermaidSource ?? '')
+    // The source parsed once already; a null now means mermaid itself moved
+    // under us — keep the stale-themed figure rather than blanking it.
+    if (svg === null || !figure.isConnected) continue
+    figure.innerHTML = sanitizeSvg(svg)
   }
 }
 
@@ -152,10 +195,10 @@ export async function renderMermaidIn(root: HTMLElement | null): Promise<void> {
     if (pre.hasAttribute('data-mermaid-done')) continue
     pre.setAttribute('data-mermaid-done', '')
     const source = pre.textContent ?? ''
-    const svg = await renderDiagram(source)
+    const rendered = await renderDiagram(source)
     // React may have re-rendered (or unmounted) while a renderer loaded.
     if (!pre.isConnected) continue
-    if (svg === null) {
+    if (rendered === null) {
       const note = document.createElement('div')
       note.className = 'mermaid-broken'
       note.textContent = "diagram didn't parse — showing its source"
@@ -164,9 +207,11 @@ export async function renderMermaidIn(root: HTMLElement | null): Promise<void> {
     }
     const figure = document.createElement('div')
     figure.className = 'mermaid-figure'
-    figure.innerHTML = svgPurify.sanitize(svg, {
-      USE_PROFILES: { svg: true, svgFilters: true },
-    })
+    figure.innerHTML = sanitizeSvg(rendered.svg)
+    if (!rendered.live) {
+      figure.dataset.mermaidSource = source
+      watchThemeForStockFigures()
+    }
     pre.replaceWith(figure)
   }
 }
