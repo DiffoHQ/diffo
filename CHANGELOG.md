@@ -7,6 +7,38 @@ Until 1.0, minor versions may break things. When they do, the entry says how to 
 
 ## [Unreleased]
 
+Nothing yet.
+
+## [0.2.0] — 2026-08-31
+
+### Added
+
+- **Diagrams in comments render beautifully.** Mermaid fences for the common
+  types (flowchart, sequence, state, class, ER, xychart) now render through
+  beautiful-mermaid, themed with Diffo's own CSS variables so they re-color
+  live when the theme flips. Stock mermaid remains the fallback for
+  everything else (pie, gantt, gitGraph, …) — and those now re-render in
+  place on a theme switch too, instead of keeping a stale palette until
+  refresh. Nothing that rendered before stops rendering, and all diagram
+  output still passes through the sanitizer.
+- **Interim agent replies: `diffo reply --more`.** An answer that only
+  promises a follow-up ("I'll investigate and report back") used to read as
+  final. `--more` marks it interim: the typing indicator keeps running
+  beneath it, the rail keeps the thread under "Waiting on the agent", and
+  the agent's next plain reply settles it. Every way the agent can go quiet
+  (detach, dead session, server restart) converts the promise into the
+  ordinary unanswered state, so the indicator can never run forever.
+- **Your theme choice follows you across repos.** It was stored per-origin,
+  and every repo serves from its own port — picking dark in one review never
+  reached the next. The durable copy now lives in the shared DB.
+
+### Fixed
+
+- **The reading pane now renders files in the rail's tree order** (folders
+  first, then files, alphabetical by basename) instead of raw git order, so
+  the pane, J/K navigation, "next unreviewed", and the finish-review
+  coverage lists all read in the order the rail shows.
+
 ### Changed
 
 - **The review loop spends far fewer of the agent's tokens.** The full
@@ -148,7 +180,8 @@ shipped in it, written as a starting point rather than a history.
 - **Guided reading** — splitting a large change into an ordered sequence of small,
   reviewable sections — is designed but not built.
 
-[Unreleased]: https://github.com/DiffoHQ/diffo/compare/v0.1.0...HEAD
+[Unreleased]: https://github.com/DiffoHQ/diffo/compare/v0.2.0...HEAD
+[0.2.0]: https://github.com/DiffoHQ/diffo/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/DiffoHQ/diffo/compare/v0.0.2...v0.1.0
 [0.0.2]: https://github.com/DiffoHQ/diffo/compare/v0.0.1...v0.0.2
 [0.0.1]: https://github.com/DiffoHQ/diffo
