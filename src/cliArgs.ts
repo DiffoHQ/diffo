@@ -61,11 +61,15 @@ The loop:
    away, leaving a background server watching the working tree. Never open a
    browser at the reviewer — end your message with the printed URL instead,
    and keep ending every message with it while you stay attached.
-2. Guide (only when the changeset needs it — ${GUIDE.when}): before sharing
-   the URL, post ONE comment on the whole changeset (\`diffo comment -m "…"\`,
-   no file): ${GUIDE.what}.
-   ${GUIDE.stance}. If the changeset later shifts under the guide,
-   ${GUIDE.update}.
+   Attached without ever seeing the URL (a takeover, a fresh session)?
+   \`diffo status\` prints it.
+2. Guide — post one only when the changeset needs orientation:
+   ${GUIDE.when}.
+   Before sharing the URL, post ONE comment on the whole changeset
+   (\`diffo comment -m "…"\`, no file), containing:
+   ${GUIDE.what}.
+   ${GUIDE.stance}.
+   If the changeset later shifts under the guide, ${GUIDE.update}.
 3. Listen: run \`diffo poll\` — it blocks until the reviewer acts, then prints
    one JSON payload naming the threads to act on. Run it attended:
    ${POLL_STANCE}.
