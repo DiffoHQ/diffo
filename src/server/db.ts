@@ -79,7 +79,7 @@ export class DiffoDb {
     // Retired tables are dropped, not kept. Guarded by version: if a *newer*
     // Diffo upgraded this file, its tables are not ours to judge.
     if (version <= SCHEMA_VERSION) {
-      const known = new Set(['reviews', 'servers', 'repo_ports'])
+      const known = new Set(['reviews', 'servers', 'repo_ports', 'ui_settings'])
       const tables = this.db
         .prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%'")
         .all() as { name: string }[]
@@ -106,6 +106,10 @@ export class DiffoDb {
       CREATE TABLE IF NOT EXISTS repo_ports (
         repo_path TEXT PRIMARY KEY,
         port      INTEGER NOT NULL
+      );
+      CREATE TABLE IF NOT EXISTS ui_settings (
+        key   TEXT PRIMARY KEY,
+        value TEXT NOT NULL
       );
       PRAGMA user_version = ${SCHEMA_VERSION};
     `)
@@ -234,6 +238,25 @@ export class DiffoDb {
          ON CONFLICT(repo_path) DO UPDATE SET port = excluded.port`,
       )
       .run(repoPath, port)
+  }
+
+  /** Reviewer preferences that must outlive one server's origin — every repo is
+   * served from its own port, so localStorage alone can't hold a choice like
+   * the theme. Keyed blobs, no scope: these are per-human, not per-repo. */
+  getUiSetting(key: string): string | null {
+    const row = this.db.prepare('SELECT value FROM ui_settings WHERE key = ?').get(key) as
+      | { value: string }
+      | undefined
+    return row?.value ?? null
+  }
+
+  setUiSetting(key: string, value: string): void {
+    this.db
+      .prepare(
+        `INSERT INTO ui_settings (key, value) VALUES (?, ?)
+         ON CONFLICT(key) DO UPDATE SET value = excluded.value`,
+      )
+      .run(key, value)
   }
 
   getServer(repoPath: string): ServerRecord | null {

@@ -82,6 +82,13 @@ const POLL_HEARTBEAT_MS = 15_000
  */
 const POLL_MAX_MS = 30 * 60_000
 
+/** Reviewer preferences shared across every repo's server — backed by the one
+ * DiffoDb, narrowed here so createApp (and its tests) never hold a database. */
+export interface UiSettings {
+  get(key: string): string | null
+  set(key: string, value: string): void
+}
+
 export interface ServerContext {
   root: string
   spec: ChangesetSpec
@@ -91,6 +98,7 @@ export interface ServerContext {
   onShutdownRequest?: () => void
   onListenError?: (err: NodeJS.ErrnoException) => void
   idle?: IdleMonitor
+  uiSettings?: UiSettings
 }
 
 export function createApp(
@@ -169,6 +177,27 @@ export function createApp(
   app.post('/api/shutdown', (c) => {
     setImmediate(() => ctx.onShutdownRequest?.())
     return c.json({ ok: true, note: 'shutting down' })
+  })
+
+  // Reviewer preferences that follow the human, not the origin: every repo is
+  // served from its own port, so a localStorage choice dies with the tab. The
+  // shared DB holds the durable copy; localStorage stays only as the
+  // before-first-paint cache.
+  const THEME_VALUES = new Set(['system', 'light', 'dark'])
+  app.get('/api/settings', (c) => {
+    const theme = ctx.uiSettings?.get('theme') ?? null
+    return c.json({ theme: theme !== null && THEME_VALUES.has(theme) ? theme : null })
+  })
+
+  app.put('/api/settings', async (c) => {
+    if (!ctx.uiSettings) return c.json({ error: 'settings unavailable' }, 503)
+    const body = await c.req.json().catch(() => null)
+    const theme: unknown = body?.theme
+    if (typeof theme !== 'string' || !THEME_VALUES.has(theme)) {
+      return c.json({ error: 'need {theme: "system" | "light" | "dark"}' }, 400)
+    }
+    ctx.uiSettings.set('theme', theme)
+    return c.json({ ok: true })
   })
 
   const repoInfo = () =>
@@ -924,6 +953,10 @@ export function startServer(options: ServerContext & { port: number }) {
       ...options,
       idle,
       onShutdownRequest: options.onShutdownRequest ?? (() => process.exit(0)),
+      uiSettings: {
+        get: (key) => db.getUiSetting(key),
+        set: (key, value) => db.setUiSetting(key, value),
+      },
     },
     store,
     review,
