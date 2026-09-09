@@ -17,7 +17,7 @@ hero:
       text: Your first review
       link: /tutorial
     - theme: alt
-      text: View on GitHub
+      text: ★ Star on GitHub
       link: https://github.com/DiffoHQ/diffo
 
 features:

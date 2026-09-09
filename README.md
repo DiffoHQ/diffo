@@ -21,7 +21,7 @@ come back as fixes.
 [![License](https://img.shields.io/badge/license-Apache--2.0-blue)](LICENSE)
 [![Node](https://img.shields.io/badge/node-%E2%89%A5%2024-brightgreen)](#quick-start)
 [![Docs](https://img.shields.io/badge/docs-diffo-8b5cf6)](https://diffohq.github.io/diffo/)
-[![Status](https://img.shields.io/badge/status-pre--release-orange)](#status)
+[![Tests](https://img.shields.io/badge/tests-1000-brightgreen)](#contributing)
 
 </div>
 
@@ -214,7 +214,7 @@ cheapest to change.
 TypeScript on Node >= 24: a [Hono](https://hono.dev) server over loopback serving a React 19
 UI, live updates over server-sent events from one recursive filesystem watch, and state in a
 single SQLite file at `~/.diffo/diffo.db` through the runtime's built-in `node:sqlite`, so
-there is no database to install. **Zero network calls.** 859 tests across 54 files.
+there is no database to install. **Zero network calls.** 1,000 tests across 57 files.
 
 Reviews are scoped per repo **and branch**, and the server is loopback-only, rejecting
 non-loopback `Host` and `Origin` headers so a web page can't reach into your repo through
