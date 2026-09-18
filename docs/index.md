@@ -71,7 +71,7 @@ nothing to push, no CI to wait for.
   <div class="home-step">
     <div class="home-step-n">1</div>
     <h3>The agent orients you</h3>
-    <p>On a multi-file or structural change it opens the review with one guide comment:
+    <p>On a multi-file or structural change it leaves one guide comment at the top of the review:
     what the change does, plus a <a href="https://mermaid.js.org">mermaid</a> diagram when
     the shape is easier to see than to read. It orients your reading and stops there, with
     no verdicts.</p>

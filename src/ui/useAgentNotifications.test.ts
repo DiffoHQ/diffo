@@ -95,6 +95,41 @@ describe('useAgentNotifications', () => {
     expect(document.title).toBe('Diffo')
   })
 
+  it('a guide reaches a focused tab — it lands while the reviewer is already reading', () => {
+    vi.spyOn(document, 'hasFocus').mockReturnValue(true)
+    const t = thread()
+    const { result, rerender } = mount([t])
+    const guide = thread({
+      state: 'open',
+      anchor: { kind: 'changeset' },
+      messages: [msg('agent', 'Moves the poll into its own handler.')],
+    })
+    rerender({ t: [t, guide] })
+    expect(result.current.notices).toHaveLength(1)
+    expect(result.current.notices[0]).toMatchObject({ kind: 'guide', threadId: guide.id })
+    // The badge is for a tab nobody is looking at; a focused one keeps its title.
+    expect(document.title).toBe('Diffo')
+  })
+
+  it('the guide outlives the linger — only a click or a dismiss takes it down', () => {
+    const t = thread()
+    const guide = thread({
+      state: 'open',
+      anchor: { kind: 'changeset' },
+      messages: [msg('agent', 'the map')],
+    })
+    const { result, rerender } = mount([t])
+    rerender({ t: [reply(t, 'answer'), guide] })
+    expect(result.current.notices).toHaveLength(2)
+    focusTab()
+    act(() => {
+      vi.advanceTimersByTime(BANNER_LINGER_MS)
+    })
+    expect(result.current.notices.map((n) => n.kind)).toEqual(['guide'])
+    act(() => result.current.open(result.current.notices[0]!))
+    expect(result.current.notices).toEqual([])
+  })
+
   it('focus clears the badge at once and the banner after the linger', () => {
     const t = thread()
     const { result, rerender } = mount([t])

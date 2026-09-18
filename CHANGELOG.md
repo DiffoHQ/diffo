@@ -7,7 +7,16 @@ Until 1.0, minor versions may break things. When they do, the entry says how to 
 
 ## [Unreleased]
 
-Nothing yet.
+### Changed
+
+- **The review URL reaches you before the guide, not after.** The agent used
+  to be told to post its guide comment first and hand over the URL last, so a
+  review with a diagram to draw opened only once the diagram was drawn. The
+  skill, `help agent`, and the open-time nudge now all say the opposite: share
+  the URL the moment it prints, then write the guide while the reviewer opens
+  the page. The guide lands live at the top of the review; if the tab is
+  focused and the reviewer has already scrolled on, the notification banner
+  points at it, and stays until clicked or dismissed.
 
 ## [0.2.0] — 2026-08-31
 

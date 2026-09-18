@@ -15,6 +15,14 @@ import { type AgentNotice, agentMessageKeys, badgeTitle, collectNotices } from '
  * clears at once, and the banner lingers briefly — long enough to click the
  * thing you came back for — then goes; the thread cards themselves take over
  * from there.
+ *
+ * The guide is the one exception to the focus gate. The agent shares the URL
+ * first and writes the guide while the reviewer is opening the page, so it
+ * lands seconds after they arrive — often once they have already scrolled
+ * into a file, where the changeset strip it sits in is off-screen. A focused
+ * tab gets the banner for it anyway, and that banner does not fade on its
+ * own: it goes when clicked or dismissed, because it is the pointer to the
+ * orientation the reviewer was meant to read first.
  */
 
 /** How long the banner survives the reviewer's return, so a click can land. */
@@ -57,9 +65,14 @@ export function useAgentNotifications({
     // Union, not replace: a transient refetch that briefly misses a thread must
     // not forget its messages and re-announce them a tick later.
     for (const k of agentMessageKeys(threads)) seen.current.add(k)
+    if (fresh.length === 0) return
     // Focus is checked at fire time: an event landing in the same tick the tab
     // regains focus belongs to the in-app thread flash, not the banner.
-    if (fresh.length === 0 || document.hasFocus()) return
+    if (document.hasFocus()) {
+      const guides = fresh.filter((n) => n.kind === 'guide')
+      if (guides.length > 0) setNotices((prev) => [...prev, ...guides])
+      return
+    }
     // Being away cancels any fade a brief visit started — what's unread stays up.
     if (linger.current) {
       clearTimeout(linger.current)
@@ -79,7 +92,8 @@ export function useAgentNotifications({
       if (linger.current) clearTimeout(linger.current)
       linger.current = setTimeout(() => {
         linger.current = null
-        setNotices([])
+        // The guide outlives the linger — it is dismissed by hand or by a click.
+        setNotices((prev) => prev.filter((n) => n.kind === 'guide'))
       }, BANNER_LINGER_MS)
     }
     window.addEventListener('focus', onFocus)

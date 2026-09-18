@@ -11,9 +11,12 @@ import { Icon } from './Icon.js'
 const LABEL: Record<AgentNotice['kind'], string> = {
   answer: 'Agent answered',
   thread: 'New thread from the agent',
+  guide: 'The agent posted a guide to this change',
 }
 
 function wording(notices: readonly AgentNotice[]): string {
+  // A guide counts as a thread here: the burst wording is a tally, and the
+  // single-notice label above is where the guide gets its own name.
   const answers = notices.filter((n) => n.kind === 'answer').length
   const threads = notices.length - answers
   const count = (n: number, word: string) => `${n} ${word}${n === 1 ? '' : 's'}`

@@ -59,16 +59,19 @@ The loop:
 
 1. Open: run \`diffo --no-open\` from inside the repo. It returns straight
    away, leaving a background server watching the working tree. Never open a
-   browser at the reviewer — end your message with the printed URL instead,
-   and keep ending every message with it while you stay attached.
+   browser at the reviewer — share the printed URL instead, the moment it
+   prints: a message line right after this command, before the guide, the
+   poll, or anything else. Then end your message with it too, and keep
+   ending every message with it while you stay attached.
    Attached without ever seeing the URL (a takeover, a fresh session)?
    \`diffo status\` prints it.
 2. Guide — post one only when the changeset needs orientation:
    ${GUIDE.when}.
-   Before sharing the URL, post ONE comment on the whole changeset
-   (\`diffo comment -m "…"\`, no file), containing:
-   ${GUIDE.what}.
+   Right after sharing the URL, while the reviewer opens the page, post ONE
+   comment on the whole changeset (\`diffo comment -m "…"\`, no file),
+   containing: ${GUIDE.what}.
    ${GUIDE.stance}.
+   It lands live at the top of their review — never hold the URL back for it.
    If the changeset later shifts under the guide, ${GUIDE.update}.
 3. Listen: run \`diffo poll\` — it blocks until the reviewer acts, then prints
    one JSON payload naming the threads to act on. Run it attended:
