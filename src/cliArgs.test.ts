@@ -196,6 +196,13 @@ describe('parseCliArgs — help is never an error', () => {
     expect(page).toContain('tracked background task')
     expect(HELP_TEXT).toContain('help agent')
   })
+
+  it('help agent hands the URL over before the guide, not after it', () => {
+    const page = helpFor('agent')
+    expect(page).toMatch(/share the printed URL instead, the moment it\s+prints/)
+    expect(page).toMatch(/Right after sharing the URL, while the reviewer opens the page/)
+    expect(page).not.toMatch(/Before sharing the URL/)
+  })
 })
 
 describe('parseCliArgs — unknown commands', () => {

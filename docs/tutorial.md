@@ -24,8 +24,9 @@ session with all the context, and its answers land back in your threads immediat
 
 If the change is multi-file or structural, it also leaves a guide: one comment on the whole
 changeset saying what the change does, with a diagram when the shape is easier to see than
-to read. It orients your reading and stops there, with no verdicts, so you start with a map
-instead of a wall of diff.
+to read. It's written while you open the page and lands at the top of the review a moment
+later, with a banner pointing at it if you've already scrolled on. It orients your reading
+and stops there, with no verdicts, so you start with a map instead of a wall of diff.
 
 ## 2 · Review the code
 

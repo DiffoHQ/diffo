@@ -49,8 +49,11 @@ details travel with the CLI itself. Three steps:
 2. **Open the review**: run `npx -y @diffohq/diffo --no-open` from inside the
    repo. It **returns straight away**, leaving a background server watching
    the working tree (your later edits appear live), and prints the review URL
-   plus your exact next steps — follow them. If it says a server is already
-   watching this repo, that IS success: continue, and still share the URL.
+   plus your exact next steps. **Share the URL the moment it prints** — a
+   message line right after this command, before a guide comment, the poll,
+   or anything else — then follow the printed steps. If it says a server is
+   already watching this repo, that IS success: continue, and still share
+   the URL.
 3. **Listen**: run `npx -y @diffohq/diffo poll` per the printed next steps. It
    blocks until the reviewer acts, then prints one JSON payload: the
    reviewer's comment threads as structured data, with thread ids and the
@@ -59,10 +62,13 @@ details travel with the CLI itself. Three steps:
 ## Rules that cannot wait for step 1
 
 - **Never open a browser at the reviewer** — that is what `--no-open` is
-  for. Hand them the printed URL instead: **end your turn's final message
-  with it, on its own line, the last thing they read** (text between tool
-  calls may never be shown) — and keep ending every turn with it while you
-  stay attached. An unshared URL is an unopened review. The URL is a plain
+  for. Hand them the printed URL instead, twice: **as soon as it prints,
+  before any other step** (the reviewer opens the page while you write the
+  guide, not after), and **end your turn's final message with it, on its
+  own line, the last thing they read** (text between tool calls may never
+  be shown) — and keep ending every turn with it while you stay attached.
+  An unshared URL is an unopened review, and a URL held back for a guide
+  comment is a reviewer kept waiting. The URL is a plain
   local address — `http://localhost:<port>`, served only on the reviewer's
   own machine — and never carries a token, credential, or any other secret,
   so printing it discloses nothing.

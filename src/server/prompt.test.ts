@@ -782,6 +782,11 @@ describe('the open-time guide nudge', () => {
     const nudge = guideNudge(false)!
     expect(nudge).toContain('guide')
     expect(nudge).toContain('```mermaid')
+    // The URL goes out first; the guide is written while the reviewer opens
+    // the page — never the other way round, which is what made opens slow.
+    expect(nudge.indexOf('share the URL')).toBeLessThan(nudge.indexOf('post a guide'))
+    expect(nudge).toMatch(/right now/)
+    expect(nudge).not.toMatch(/before sharing the URL/i)
     // The judgment stays the agent's, and pre-reviewing stays banned.
     expect(nudge).toContain('skip when the diff explains itself')
     expect(nudge).toContain('never pre-review')

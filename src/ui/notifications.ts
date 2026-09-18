@@ -11,8 +11,10 @@ export interface AgentNotice {
   /** `${threadId}:${messageId}` — one notice per agent message, ever. */
   key: string
   /** `answer` = a reply into a thread the reviewer is part of; `thread` = the
-   * agent opened this thread itself and the reviewer hasn't touched it. */
-  kind: 'answer' | 'thread'
+   * agent opened this thread itself and the reviewer hasn't touched it;
+   * `guide` = that same untouched agent thread, on the whole changeset — the
+   * orientation comment the agent posts while the reviewer is opening the page. */
+  kind: 'answer' | 'thread' | 'guide'
   threadId: string
   /** Where it sits, for the banner: `path:line`, a path, or null for a
    * changeset-level note. */
@@ -51,9 +53,10 @@ export function collectNotices(
   for (const thread of threads) {
     const last = [...thread.messages].reverse().find((m) => m.author === 'agent')
     if (!last || seen.has(key(thread.id, last.id))) continue
+    const untouched = untouchedAgentVoice(thread)
     notices.push({
       key: key(thread.id, last.id),
-      kind: untouchedAgentVoice(thread) ? 'thread' : 'answer',
+      kind: !untouched ? 'answer' : thread.anchor.kind === 'changeset' ? 'guide' : 'thread',
       threadId: thread.id,
       anchor: anchorLabel(thread),
       preview: last.text.split('\n', 1)[0]!.trim(),

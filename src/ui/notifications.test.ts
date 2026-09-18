@@ -59,6 +59,32 @@ describe('collectNotices', () => {
     expect(collectNotices([t], new Set())[0]!.kind).toBe('thread')
   })
 
+  it('an untouched agent thread on the whole changeset is the guide', () => {
+    const t = thread({
+      state: 'open',
+      anchor: { kind: 'changeset' },
+      messages: [msg('agent', 'Splits the poll into two handlers.\n```mermaid\n…')],
+    })
+    const [n] = collectNotices([t], new Set())
+    expect(n).toMatchObject({
+      kind: 'guide',
+      anchor: null,
+      preview: 'Splits the poll into two handlers.',
+    })
+  })
+
+  it('a changeset thread the reviewer wrote into is an answer, not a guide', () => {
+    const t = thread({
+      anchor: { kind: 'changeset' },
+      messages: [
+        msg('agent', 'guide'),
+        msg('reviewer', 'and the tests?'),
+        msg('agent', 'in b.test.ts'),
+      ],
+    })
+    expect(collectNotices([t], new Set())[0]!.kind).toBe('answer')
+  })
+
   it('an agent thread the reviewer replied into notifies as an answer', () => {
     const t = thread({
       messages: [msg('agent', 'consider'), msg('reviewer', 'go on'), msg('agent', 'like this')],
@@ -103,5 +129,3 @@ describe('badgeTitle', () => {
     expect(badgeTitle(0, 'Diffo')).toBe('Diffo')
   })
 })
-
-// Dummy edit — reviewer testing the live-update loop; safe to delete.

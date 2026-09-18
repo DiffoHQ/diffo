@@ -151,13 +151,21 @@ export const GUIDE = {
  * The skill teaches the same step, but this line is what an agent WITHOUT the
  * skill sees — payloads and command output must stand alone (see POLL_STANCE).
  */
+/**
+ * The URL goes out before the guide, never after: composing a guide is the
+ * slowest step of an open (a diagram takes real thought), and a reviewer who
+ * is waiting for a link should not wait on it. The guide lands live at the top
+ * of their review while they are still opening the page.
+ */
 export function guideNudge(hasGuide: boolean): string | null {
   if (hasGuide) return null
   return (
-    'orient the reviewer before sharing the URL, if this changeset needs it ' +
-    `(${GUIDE.when}): post a guide — one comment on the whole changeset: ` +
+    'share the URL above with the user right now, as a message line, before ' +
+    'anything else. Then, while they open it, orient them if this changeset ' +
+    `needs it (${GUIDE.when}): post a guide — one comment on the whole changeset: ` +
     `${GUIDE.what}: \`${CLI_COMMANDS.guide}\` ` +
-    `(no file, so it anchors to the changeset). ${GUIDE.stance}.`
+    `(no file, so it anchors to the changeset; it appears live at the top of ` +
+    `their review). ${GUIDE.stance}.`
   )
 }
 

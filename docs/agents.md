@@ -33,8 +33,8 @@ agent's behalf. Three things follow from it.
 
 | Step | What the agent runs | Why it matters |
 | --- | --- | --- |
-| 1. Open | `diffo --no-open` | Starts the review and prints the URL. `--no-open` because an agent should never throw a browser window at someone; it hands over the URL instead |
-| 2. Guide | `diffo comment -m "…"` | One orientation comment, only when the changeset needs it. See [the guide comment](#the-guide-comment) |
+| 1. Open | `diffo --no-open` | Starts the review and prints the URL. `--no-open` because an agent should never throw a browser window at someone; it hands over the URL instead — immediately, before anything else |
+| 2. Guide | `diffo comment -m "…"` | One orientation comment, only when the changeset needs it, written while the reviewer is opening the page. See [the guide comment](#the-guide-comment) |
 | 3. Attach | `diffo poll` | Blocks until the reviewer acts, then prints one payload |
 | 4. Act | (edits, and `diffo reply`) | Work the threads the payload named, and answer each one |
 | 5. Re-attach | `diffo poll` | Also a statement: see [re-polling closes the batch](#re-polling-closes-the-batch) |
@@ -118,8 +118,12 @@ a thread the agent has moved past.
 
 ## The guide comment
 
-Before handing over the URL, an agent is asked to judge whether a cold reader needs
-orientation, and if so to post exactly one comment on the whole changeset. The
+Right after handing over the URL, an agent is asked to judge whether a cold reader
+needs orientation, and if so to post exactly one comment on the whole changeset.
+The URL goes first because writing a guide is the slowest step of an open, and a
+reviewer waiting for a link should not wait on a diagram: the guide lands live at
+the top of the review, and a banner points at it if they have already scrolled
+into a file. The
 doctrine is stated once in the source and interpolated into every surface that
 teaches it, so all of them say the same thing:
 

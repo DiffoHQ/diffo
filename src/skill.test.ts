@@ -83,6 +83,9 @@ describe('skills/diffo/SKILL.md (Agent Skills format)', () => {
     // The URL-handoff doctrine cannot wait for `help agent` — it must be inline.
     expect(body).toMatch(/end your turn's final message\s+with it/i)
     expect(body).toMatch(/An unshared URL is an unopened review/)
+    // …and the URL goes out the moment it prints, before the guide is written.
+    expect(body).toMatch(/Share the URL the moment it prints/)
+    expect(body).toMatch(/as soon as it prints,\s+before any other step/)
   })
 
   it('states the trust model inline — the security wording the scanner audits', () => {
