@@ -9,6 +9,7 @@ import {
   type Coverage,
   type OutgoingThread,
   type ReviewThread,
+  startedByAgent,
   THREAD_INTENTS,
   type ThreadIntent,
   threadsInChangeset,
@@ -301,6 +302,12 @@ export function createApp(
     const deliver = body?.deliver !== false
     let thread = review.addMessage(c.req.param('id'), 'reviewer', text, !deliver)
     if (!thread) return c.json({ error: 'no such thread' }, 404)
+    // Replying to the agent's own comment takes it up: the agent already knows
+    // the thread, so the reply IS the hand-over — one click, not Reply then Send.
+    // A reviewer-started thread stays open for its Send or the finish batch.
+    if (deliver && thread.state === 'open' && startedByAgent(thread)) {
+      thread = review.send(thread.id) ?? thread
+    }
     let delivered = false
     if (deliver && (thread.state === 'sent' || thread.state === 'addressed')) {
       delivered = deliverThreads([thread.id])
@@ -369,7 +376,9 @@ export function createApp(
       thread.state === 'sent' || (thread.state === 'addressed' && thread.withheld === true)
     const delivered = handedOver ? deliverThreads([thread.id]) : false
     if (handedOver) review.clearWithheld([thread.id])
-    return c.json({ thread, prompt, delivered, presence })
+    // Answer with the thread as it now stands — the hand-over just cleared the flag.
+    const current = review.get().threads.find((t) => t.id === thread.id) ?? thread
+    return c.json({ thread: current, prompt, delivered, presence })
   })
 
   /** Coverage off the wire: a real 0 must not read as "absent" (which

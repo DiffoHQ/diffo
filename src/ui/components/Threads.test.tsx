@@ -450,6 +450,21 @@ describe('ThreadCard with an attached agent', () => {
     expect(acts.send).not.toHaveBeenCalled()
   })
 
+  it("replying to the agent's own comment is Reply & send — one click takes it up", () => {
+    const acts = actions()
+    const fromAgent = thread({
+      messages: [{ id: 'm1', author: 'agent', text: 'consider renaming this', at: '' }],
+    })
+    render(<ThreadCard thread={fromAgent} actions={acts} agentConnected />)
+    expect(screen.getByText('From the agent')).toBeTruthy()
+    expect(screen.queryByText('Send')).toBeNull()
+    const box = openReply()
+    fireEvent.change(box, { target: { value: 'good call, do it' } })
+    fireEvent.click(screen.getByText('Reply & send'))
+    expect(acts.reply).toHaveBeenCalledWith('t-1', 'good call, do it', true)
+    expect(acts.send).not.toHaveBeenCalled()
+  })
+
   it('the ghost Reply beside it still holds the follow-up back', () => {
     const acts = actions()
     render(<ThreadCard thread={thread({ state: 'sent' })} actions={acts} agentConnected />)
