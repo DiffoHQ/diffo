@@ -218,15 +218,17 @@ export function ThreadCard({
     lastAuthor === 'reviewer' &&
     (thread.state === 'sent' || thread.state === 'addressed')
   const showManualHint = thread.state === 'sent' && awaitingAgent && !agentConnected
+  const proposed = untouchedAgentVoice(thread) && thread.state === 'open'
+  // Replying to the agent's own comment hands it over too — the server sends
+  // the thread on that reply — so the composer offers the one-click primary.
   const replyDispatches =
-    agentConnected && (thread.state === 'sent' || thread.state === 'addressed')
+    agentConnected && (thread.state === 'sent' || thread.state === 'addressed' || proposed)
   const composerOpen = replyOpen || reply.trim() !== ''
   // The composer takes the stub's slot in the foot, so writing a reply adds one
   // button to the row it already had rather than a second band of its own.
   const writing = thread.state !== 'resolved' && composerOpen
   const showStub = thread.state !== 'resolved' && !composerOpen
 
-  const proposed = untouchedAgentVoice(thread) && thread.state === 'open'
   const status = proposed
     ? 'From the agent'
     : withheld

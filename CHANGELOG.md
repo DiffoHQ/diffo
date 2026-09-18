@@ -18,6 +18,15 @@ Until 1.0, minor versions may break things. When they do, the entry says how to 
   focused and the reviewer has already scrolled on, the notification banner
   points at it, and stays until clicked or dismissed.
 
+### Fixed
+
+- **Replying to an agent comment is one click again.** A thread the agent
+  started (`diffo comment`) used to take Reply, then a second Send, before
+  the reviewer's answer reached the agent. With an agent attached the
+  composer now offers **Reply & send**, and the server hands the thread over
+  on that reply. The ghost Reply beside it still writes the line in without
+  handing it over, for a later Send or the finish batch.
+
 ## [0.2.0] — 2026-08-31
 
 ### Added

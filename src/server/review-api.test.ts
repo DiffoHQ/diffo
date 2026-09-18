@@ -226,6 +226,32 @@ describe('review API', () => {
     expect(((await resolved.json()) as ReviewThread).state).toBe('resolved')
   })
 
+  it("a reply to the agent's own comment sends the thread in that one step", async () => {
+    const { app, review } = setup()
+    const created = await post(app, '/api/review/threads', { author: 'agent', text: 'rename?' })
+    const { id } = (await created.json()) as ReviewThread
+    expect(review.get().threads[0]!.state).toBe('open')
+
+    const res = await post(app, `/api/review/threads/${id}/messages`, { text: 'yes, do it' })
+    const { thread } = (await res.json()) as { thread: ReviewThread }
+    expect(thread.state).toBe('sent')
+    expect(thread.withheld).toBeUndefined()
+    expect(undeliveredThreadIds([thread])).toEqual([id])
+  })
+
+  it("a withheld reply to the agent's comment keeps it open for Send", async () => {
+    const { app, review } = setup()
+    const created = await post(app, '/api/review/threads', { author: 'agent', text: 'rename?' })
+    const { id } = (await created.json()) as ReviewThread
+    await post(app, `/api/review/threads/${id}/messages`, { text: 'thinking…', deliver: false })
+    expect(review.get().threads[0]).toMatchObject({ state: 'open', withheld: true })
+
+    const sent = await post(app, `/api/review/threads/${id}/send`)
+    const { thread } = (await sent.json()) as { thread: ReviewThread }
+    expect(thread.state).toBe('sent')
+    expect(thread.withheld).toBeUndefined()
+  })
+
   it('finish flushes open threads and reports coverage in the prompt', async () => {
     const { app } = setup()
     await post(app, '/api/review/threads', { anchor: { kind: 'changeset' }, text: 'overall' })
@@ -1136,26 +1162,41 @@ describe('agent threads (diffo comment)', () => {
     expect(changesetNote.anchor).toEqual({ kind: 'changeset' })
   })
 
-  it('a reviewer reply makes it theirs to Send — the same dance as their own threads', async () => {
+  it('a reviewer reply takes it up — replying IS the hand-over, no Send after', async () => {
     const { app, review } = setup()
     const note = (await (
       await create(app, { file: 'app.ts', text: 'why 42 is right' })
     ).json()) as ReviewThread
 
-    // Reply writes in; nothing is handed over yet.
     const res = await post(app, `/api/review/threads/${note.id}/messages`, {
       text: 'expand on that?',
     })
     expect(res.status).toBe(200)
-    let updated = review.get().threads[0]!
-    expect(updated.state).toBe('open')
+    const updated = review.get().threads[0]!
+    expect(updated.state).toBe('sent')
     expect(updated.messages.at(-1)).toMatchObject({ author: 'reviewer', text: 'expand on that?' })
+    // The redelivery contract covers it from this reply on.
+    expect(undeliveredThreadIds(review.get().threads)).toEqual([note.id])
+  })
+
+  it('a held reply keeps the old dance — it stays open until Send', async () => {
+    const { app, review } = setup()
+    const note = (await (
+      await create(app, { file: 'app.ts', text: 'why 42 is right' })
+    ).json()) as ReviewThread
+
+    await post(app, `/api/review/threads/${note.id}/messages`, {
+      text: 'expand on that?',
+      deliver: false,
+    })
+    let updated = review.get().threads[0]!
+    expect(updated).toMatchObject({ state: 'open', withheld: true })
     expect(undeliveredThreadIds(review.get().threads)).toEqual([])
 
-    // Send hands it over, and the redelivery contract now covers it.
     await post(app, `/api/review/threads/${note.id}/send`, {})
     updated = review.get().threads[0]!
     expect(updated.state).toBe('sent')
+    expect(updated.withheld).toBeUndefined()
     expect(undeliveredThreadIds(review.get().threads)).toEqual([note.id])
   })
 
@@ -1167,7 +1208,8 @@ describe('agent threads (diffo comment)', () => {
     const untouched = (await (
       await create(app, { file: 'app.ts', text: 'left alone' })
     ).json()) as ReviewThread
-    await post(app, `/api/review/threads/${touched.id}/messages`, { text: 'and?' })
+    // Held back, so it is still open when the flush comes for it.
+    await post(app, `/api/review/threads/${touched.id}/messages`, { text: 'and?', deliver: false })
 
     await post(app, '/api/review/finish', { coverage: {}, deliver: false })
     const byId = new Map(review.get().threads.map((t) => [t.id, t]))
