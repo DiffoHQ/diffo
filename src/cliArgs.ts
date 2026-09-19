@@ -1,5 +1,6 @@
 import { parseArgs } from 'node:util'
-import { GUIDE, POLL_STANCE } from './server/prompt.js'
+import { CLI_COMMANDS, GUIDE, POLL_STANCE, TAB_TITLE } from './server/prompt.js'
+import { normalizeTitle } from './shared/review.js'
 import type { ChangesetSpec } from './shared/types.js'
 
 export const HELP_TEXT = `diffo — review a changeset the way you'd read a book
@@ -19,6 +20,8 @@ For the reviewer:
 For the agent (the AI that wrote the change):
   poll               Wait for the reviewer's feedback (blocking long-poll;
                      prints one JSON payload; safe to re-run any time)
+                     (--title "<what the change is>" on the first poll names
+                     the reviewer's browser tab)
   reply <threadId>   Post a reply to a review thread
                      (--message "<text>", or pipe the text on stdin)
   comment [<file>]   Start a comment thread as the agent — on a line (--line),
@@ -73,9 +76,12 @@ The loop:
    ${GUIDE.stance}.
    It lands live at the top of their review — never hold the URL back for it.
    If the changeset later shifts under the guide, ${GUIDE.update}.
-3. Listen: run \`diffo poll\` — it blocks until the reviewer acts, then prints
-   one JSON payload naming the threads to act on. Run it attended:
-   ${POLL_STANCE}.
+3. Listen: run \`${CLI_COMMANDS.firstPoll}\` — it blocks until the reviewer
+   acts, then prints one JSON payload naming the threads to act on. Run it
+   attended: ${POLL_STANCE}.
+   The title is ${TAB_TITLE.what}: ${TAB_TITLE.why}. Write it the way it is
+   read — ${TAB_TITLE.shape} (${TAB_TITLE.examples}). Send it ${TAB_TITLE.when};
+   every other poll is a plain \`diffo poll\`.
    Killed or timed out? Re-run it; feedback is held in the review, not the
    poll.
 4. Act: \`[issue]\` threads want a code change; \`[question]\` threads want an
@@ -102,7 +108,7 @@ Rules:
 - Resolving a thread is the reviewer's call, never yours.`,
   poll: `diffo poll — wait for the reviewer's feedback
 
-Usage: diffo poll
+Usage: diffo poll [--title "<what the change is>"]
 
 Blocks (streaming whitespace heartbeats) until the reviewer acts, then prints
 one JSON payload naming the review threads to act on, and exits. Run it
@@ -111,10 +117,15 @@ payload that reaches a process nobody is listening to never reaches you.
 Safe to re-run any time: feedback is held in the review itself, so
 nothing is lost when a poll is killed or times out — the next poll gets it.
 
+--title is ${TAB_TITLE.what}: ${TAB_TITLE.why}. Write it the way it is read —
+${TAB_TITLE.shape} (${TAB_TITLE.examples}). Send it ${TAB_TITLE.when}; the
+newest title wins, and a poll without one leaves the name it finds alone.
+
 Output: one JSON object, e.g.
   {"status":"feedback","threadIds":["t-3"],"prompt":"…what to do…"}
 
-Example:
+Examples:
+  diffo poll --title "tab titles from the agent"
   diffo poll`,
   reply: `diffo reply — post a reply to a review thread
 
@@ -214,7 +225,7 @@ export type CliCommand =
       open: boolean
       foreground: boolean
     }
-  | { kind: 'poll' }
+  | { kind: 'poll'; title: string | null }
   | { kind: 'reply'; threadId: string; message: string | null; more: boolean }
   | { kind: 'comment'; file: string | null; line: number | null; message: string | null }
   | { kind: 'end' }
@@ -363,6 +374,7 @@ function parseVerb(verb: string, rest: string[]): CliCommand {
       options: {
         message: { type: 'string', short: 'm' },
         line: { type: 'string' },
+        title: { type: 'string' },
         more: { type: 'boolean' },
         json: { type: 'boolean' },
         help: { type: 'boolean', short: 'h' },
@@ -383,6 +395,10 @@ function parseVerb(verb: string, rest: string[]): CliCommand {
     return { kind: 'error', message: `'${verb}' takes no --more` }
   }
 
+  if (values.title !== undefined && verb !== 'poll') {
+    return { kind: 'error', message: `'${verb}' takes no --title` }
+  }
+
   if (
     verb === 'poll' ||
     verb === 'end' ||
@@ -397,6 +413,14 @@ function parseVerb(verb: string, rest: string[]): CliCommand {
       return { kind: 'error', message: `'${verb}' takes no options` }
     }
     if (verb === 'status') return { kind: 'status', json: values.json === true }
+    if (verb === 'poll') {
+      // An empty --title would silently poll title-less; say so instead.
+      const title = normalizeTitle(values.title)
+      if (values.title !== undefined && title === null) {
+        return { kind: 'error', message: '--title needs a few words naming the change' }
+      }
+      return { kind: 'poll', title }
+    }
     return { kind: verb }
   }
 

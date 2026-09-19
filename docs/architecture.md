@@ -78,7 +78,7 @@ the event loop. Nothing is dropped; the trailing recompute is delayed, never can
 | `POST /api/review/threads` · `/:id/messages` · `/:id/state` · `/:id/send` | Comment lifecycle |
 | `POST /api/review/finish/preview` · `/finish` | Batch hand-over, with coverage |
 | `POST /api/review/threads` (agent author) | `diffo comment`, an agent-started thread |
-| `GET /api/agent/poll` | The agent long poll |
+| `GET /api/agent/poll` | The agent long poll (`?title=` names the reviewer's tab) |
 | `POST /api/agent/end` · `GET /api/agent/invite` | Detach · onboarding strings |
 | `GET /api/events` | SSE: `changeset`, `review`, `presence`, `ping` |
 | `GET /api/health` · `POST /api/shutdown` | Lifecycle handshake |

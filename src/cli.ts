@@ -11,7 +11,14 @@ import { SRC_STAMP } from './devStamp.js'
 import { DiffoDb } from './server/db.js'
 import { findRepoRoot, MissingBaseError, suggestedBase } from './server/git.js'
 import { RepoAlreadyServedError, startServer } from './server/index.js'
-import { ACK_NEXT_STEP, CHECKOUT_ROOT, guideInherit, guideNudge } from './server/prompt.js'
+import {
+  ACK_NEXT_STEP,
+  CHECKOUT_ROOT,
+  CLI_COMMANDS,
+  guideInherit,
+  guideNudge,
+  TAB_TITLE,
+} from './server/prompt.js'
 import {
   assessRunningServer,
   defaultLogPath,
@@ -397,7 +404,13 @@ if (command.kind === 'poll') {
   // The response streams whitespace heartbeats until the reviewer acts, then one
   // JSON payload. text() rides the heartbeats out; trim leaves the JSON.
   try {
-    const res = await fetch(apiUrl(port, '/api/agent/poll'), {
+    // A query param, not a header: a title is the agent's prose and may be any
+    // language, while a header must stay latin-1.
+    const path =
+      command.title === null
+        ? '/api/agent/poll'
+        : `/api/agent/poll?title=${encodeURIComponent(command.title)}`
+    const res = await fetch(apiUrl(port, path), {
       headers: sessionHeaders(),
     })
     if (!res.ok) fail(`poll failed (${res.status})`)
@@ -506,7 +519,9 @@ async function printAgentNextStep(port: number): Promise<void> {
   const nudge = review ? guideNudge(findGuideThread(review) !== undefined) : null
   if (nudge) console.log(`first: ${nudge}`)
   console.log(
-    "next: run `diffo poll` to receive the reviewer's feedback (`diffo help agent` prints the whole loop)",
+    `next: run \`${CLI_COMMANDS.firstPoll}\` to receive the reviewer's feedback — the ` +
+      `title is ${TAB_TITLE.what} (${TAB_TITLE.examples}): ${TAB_TITLE.why} ` +
+      '(`diffo help agent` prints the whole loop)',
   )
 }
 

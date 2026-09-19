@@ -72,7 +72,7 @@ describe('parseCliArgs', () => {
 
 describe('parseCliArgs — agent verbs', () => {
   it('poll, end, setup, status, and stop take no arguments', () => {
-    expect(parseCliArgs(['poll'])).toEqual({ kind: 'poll' })
+    expect(parseCliArgs(['poll'])).toEqual({ kind: 'poll', title: null })
     expect(parseCliArgs(['end'])).toEqual({ kind: 'end' })
     expect(parseCliArgs(['setup'])).toEqual({ kind: 'setup' })
     expect(parseCliArgs(['status'])).toEqual({ kind: 'status', json: false })
@@ -82,6 +82,25 @@ describe('parseCliArgs — agent verbs', () => {
     expect(parseCliArgs(['setup', 'hooks'])).toMatchObject({ kind: 'error' })
     expect(parseCliArgs(['status', 'extra'])).toMatchObject({ kind: 'error' })
     expect(parseCliArgs(['stop', '--message', 'x'])).toMatchObject({ kind: 'error' })
+  })
+
+  it('poll takes --title; the other verbs refuse it', () => {
+    expect(parseCliArgs(['poll', '--title', 'tab titles from the agent'])).toEqual({
+      kind: 'poll',
+      title: 'tab titles from the agent',
+    })
+    // Whatever the agent sent becomes a tab name: one line, trimmed, capped.
+    expect(parseCliArgs(['poll', '--title', '  two\n lines  '])).toMatchObject({
+      title: 'two lines',
+    })
+    expect(parseCliArgs(['poll', '--title', 'x'.repeat(200)])).toMatchObject({
+      title: `${'x'.repeat(39)}…`,
+    })
+    expect(parseCliArgs(['poll', '--title', '   '])).toMatchObject({ kind: 'error' })
+    expect(parseCliArgs(['reply', 't-1', '--title', 'x', '-m', 'y'])).toMatchObject({
+      kind: 'error',
+    })
+    expect(parseCliArgs(['end', '--title', 'x'])).toMatchObject({ kind: 'error' })
   })
 
   it('reply takes a thread id and a --message (or defers to stdin)', () => {

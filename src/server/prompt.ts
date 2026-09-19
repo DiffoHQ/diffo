@@ -71,6 +71,10 @@ export function buildCliCommands(cli: string) {
   return {
     open: cli,
     poll: `${cli} poll`,
+    // The first poll of a review carries the tab title (see TAB_TITLE); later
+    // ones are plain `poll`, so the two are spelled out separately rather than
+    // teaching every re-poll to repeat a flag it doesn't need.
+    firstPoll: `${cli} poll --title "<the change, in 2-3 words>"`,
     reply: `${cli} reply <threadId> --message "<your reply>"`,
     comment: `${cli} comment [<file>] [--line <line>] --message "<comment>"`,
     // The guide is `comment` with no file — spelled out separately so the
@@ -105,13 +109,40 @@ export const INSTALL_SKILL = {
 export const POLL_STANCE =
   'a tracked background task if your harness has one, the foreground if not — never a detached process'
 
+/**
+ * The tab-title doctrine — the few words an agent hands its first poll, which
+ * become the browser tab's name. Stated once and interpolated into every
+ * surface that teaches it (the skill, `help agent`, the open-time next step),
+ * the same way GUIDE and POLL_STANCE keep their rules from drifting apart.
+ *
+ * It exists because a reviewer keeps several reviews open and every tab reads
+ * "Diffo": the agent is the only party that knows which is which at the moment
+ * it starts listening.
+ */
+export const TAB_TITLE = {
+  /** What to write — and how little room there is to write it in. */
+  what: 'two or three words naming what the change IS, not what you did to it — about 20 characters, because that is all a browser tab shows',
+  /** Why it is worth a flag at all — the reviewer's problem, stated once. */
+  why: 'it becomes the name of the reviewer\'s browser tab, and a reviewer with several reviews open sees every one of them titled "Diffo"',
+  /** How to order the words, given where they are read. */
+  shape:
+    'the tab cuts off everything past that, so the word telling this review apart from another goes first, not last',
+  /** When to send it — and when not to bother. */
+  when: 'on your first poll of a review; on a later one only if the changeset has become something the old title no longer names',
+  /** Two to copy the register from — both fit a tab whole. */
+  examples: '"tab titles", "flaky upload retries"',
+} as const
+
 export const JOIN_PROMPT =
-  `join the diffo review: run \`${CLI_COMMANDS.poll}\` (${POLL_STANCE}) ` +
+  `join the diffo review: run \`${CLI_COMMANDS.firstPoll}\` (${POLL_STANCE}; ` +
+  `the title is ${TAB_TITLE.what} — ${TAB_TITLE.why}) ` +
   'and follow the JSON payload it prints — each payload carries its own instructions'
 
 export function nextStepFor(kind: 'threads' | 'finish' | 'cleared', actionable: number): string {
   if (kind === 'cleared') {
-    return `Post the guide if this changeset warrants one, then run \`${CLI_COMMANDS.poll}\` again to keep listening (${POLL_STANCE}).`
+    // A cleared review dropped its tab title along with its threads (see
+    // ReviewStore.reset) — this round names itself again.
+    return `Post the guide if this changeset warrants one, then run \`${CLI_COMMANDS.firstPoll}\` again to keep listening (${POLL_STANCE}) — this is a fresh round, so give it a fresh title.`
   }
   if (kind === 'finish' && actionable === 0) {
     return `Nothing to act on — run \`${CLI_COMMANDS.poll}\` again to keep listening (${POLL_STANCE}); the reviewer may follow up.`

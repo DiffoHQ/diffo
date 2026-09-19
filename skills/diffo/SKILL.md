@@ -54,10 +54,13 @@ details travel with the CLI itself. Three steps:
    or anything else — then follow the printed steps. If it says a server is
    already watching this repo, that IS success: continue, and still share
    the URL.
-3. **Listen**: run `npx -y @diffohq/diffo poll` per the printed next steps. It
-   blocks until the reviewer acts, then prints one JSON payload: the
+3. **Listen**: run `npx -y @diffohq/diffo poll --title "<the change, in 2-3 words>"` per the printed next steps.
+   It blocks until the reviewer acts, then prints one JSON payload: the
    reviewer's comment threads as structured data, with thread ids and the
    step that follows — every payload and command ack names your next step.
+   The title becomes the reviewer's browser tab name, which is how they tell
+   several open reviews apart: two or three words naming what the change IS, not what you did to it — about 20 characters, because that is all a browser tab shows ("tab titles", "flaky upload retries").
+   Every later poll is a plain `npx -y @diffohq/diffo poll`.
 
 ## Rules that cannot wait for step 1
 

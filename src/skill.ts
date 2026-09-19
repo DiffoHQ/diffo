@@ -1,4 +1,4 @@
-import { buildCliCommands, NPX, PACKAGE_NAME, POLL_STANCE } from './server/prompt.js'
+import { buildCliCommands, NPX, PACKAGE_NAME, POLL_STANCE, TAB_TITLE } from './server/prompt.js'
 
 // The shipped Agent Skill is GENERATED from the same command strings the server
 // puts in poll payloads and reply protocols. Regenerate with `pnpm build:skill`;
@@ -116,10 +116,13 @@ details travel with the CLI itself. Three steps:
    or anything else — then follow the printed steps. If it says a server is
    already watching this repo, that IS success: continue, and still share
    the URL.
-3. **Listen**: run \`${CLI_COMMANDS.poll}\` per the printed next steps. It
-   blocks until the reviewer acts, then prints one JSON payload: the
+3. **Listen**: run \`${CLI_COMMANDS.firstPoll}\` per the printed next steps.
+   It blocks until the reviewer acts, then prints one JSON payload: the
    reviewer's comment threads as structured data, with thread ids and the
    step that follows — every payload and command ack names your next step.
+   The title becomes the reviewer's browser tab name, which is how they tell
+   several open reviews apart: ${TAB_TITLE.what} (${TAB_TITLE.examples}).
+   Every later poll is a plain \`${CLI_COMMANDS.poll}\`.
 
 ## Rules that cannot wait for step 1
 

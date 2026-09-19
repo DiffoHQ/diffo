@@ -2,7 +2,11 @@
 import { act, cleanup, renderHook } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { Anchor, ReviewMessage, ReviewThread } from '../shared/review.js'
-import { BANNER_LINGER_MS, useAgentNotifications } from './useAgentNotifications.js'
+import {
+  type AgentNotifications,
+  BANNER_LINGER_MS,
+  useAgentNotifications,
+} from './useAgentNotifications.js'
 
 let seq = 0
 function msg(author: 'reviewer' | 'agent', text = 'x', over: Partial<ReviewMessage> = {}) {
@@ -23,11 +27,14 @@ function thread(over: Partial<ReviewThread> = {}): ReviewThread {
   }
 }
 
-function mount(threads: ReviewThread[]) {
+/** `name` is the agent's title for the change — absent until it polls. */
+type Props = { t: ReviewThread[]; name?: string }
+
+function mount(threads: ReviewThread[], title?: string) {
   const onOpenThread = vi.fn()
-  const rendered = renderHook(
-    ({ t }: { t: ReviewThread[] }) => useAgentNotifications({ threads: t, onOpenThread }),
-    { initialProps: { t: threads } },
+  const rendered = renderHook<AgentNotifications, Props>(
+    ({ t, name }) => useAgentNotifications({ threads: t, title: name, onOpenThread }),
+    { initialProps: { t: threads, name: title } },
   )
   return { ...rendered, onOpenThread }
 }
@@ -49,6 +56,7 @@ beforeEach(() => {
 
 afterEach(() => {
   cleanup()
+  document.querySelector('meta[name="diffo-env"]')?.remove()
   vi.restoreAllMocks()
   vi.useRealTimers()
 })
@@ -165,6 +173,43 @@ describe('useAgentNotifications', () => {
     act(() => result.current.open(result.current.notices[0]!))
     expect(onOpenThread).toHaveBeenCalledWith(t.id)
     expect(result.current.notices).toEqual([])
+  })
+
+  it('the agent title IS the tab name, and the badge rides in front of it', () => {
+    const t = thread()
+    // No app name alongside it: ~20 characters is the whole budget, and the
+    // favicon already says which app this is.
+    const { rerender } = mount([t], 'flaky upload retries')
+    expect(document.title).toBe('flaky upload retries')
+    rerender({ t: [reply(t, 'answer')], name: 'flaky upload retries' })
+    expect(document.title).toBe('(1) flaky upload retries')
+    focusTab()
+    expect(document.title).toBe('flaky upload retries')
+  })
+
+  it('a title arriving mid-review renames the tab, badge and all', () => {
+    const t = thread()
+    const { rerender } = mount([t])
+    // No agent has polled yet — the tab keeps the name the server served.
+    expect(document.title).toBe('Diffo')
+    const answered = reply(t, 'answer')
+    rerender({ t: [answered] })
+    expect(document.title).toBe('(1) Diffo')
+    rerender({ t: [answered], name: 'tab titles' })
+    expect(document.title).toBe('(1) tab titles')
+  })
+
+  it('a dev review still announces itself in the tab, in six characters', () => {
+    document.title = 'diffo-dev'
+    document.head.insertAdjacentHTML('beforeend', '<meta name="diffo-env" content="development" />')
+    mount([thread()], 'tab titles')
+    expect(document.title).toBe('dev · tab titles')
+  })
+
+  it('an untitled dev review keeps the name the server served', () => {
+    document.title = 'diffo-dev'
+    mount([thread()])
+    expect(document.title).toBe('diffo-dev')
   })
 
   it('clear drops everything at once', () => {

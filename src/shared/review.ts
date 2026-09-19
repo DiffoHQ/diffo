@@ -145,6 +145,14 @@ export interface Landed {
 export interface ReviewState {
   version: 1
   threads: ReviewThread[]
+  /**
+   * What this changeset is, in a few words, as the agent named it when it
+   * started polling. Exists for one job: telling a reviewer's tabs apart, all
+   * of them otherwise titled "Diffo". Absent until an agent sends one — the tab
+   * keeps the plain name rather than guessing from the branch, which is how the
+   * reviewer got here in the first place.
+   */
+  title?: string
   lastFinish?: LastFinish
   /**
    * HEAD as of the last recompute that could move it: the base the work under
@@ -197,6 +205,30 @@ export interface OutgoingThread {
   anchor: Anchor
   text: string
   fresh: boolean
+}
+
+/**
+ * The longest title worth carrying. A tab shows around twenty characters, so
+ * this is a backstop against an agent's essay, not a target — the slack over
+ * twenty is for the full name the browser shows on hover.
+ */
+export const MAX_TITLE_LEN = 40
+
+/**
+ * Whatever the agent sent, made fit to be a tab's name: controls stripped,
+ * whitespace collapsed to one line, capped. Null for anything that isn't a
+ * usable title — the caller then leaves the existing name alone rather than
+ * blanking it.
+ */
+export function normalizeTitle(raw: unknown): string | null {
+  if (typeof raw !== 'string') return null
+  const line = raw
+    // biome-ignore lint/suspicious/noControlCharactersInRegex: stripping them is the point
+    .replace(/[\u0000-\u001f\u007f-\u009f]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+  if (line === '') return null
+  return line.length > MAX_TITLE_LEN ? `${line.slice(0, MAX_TITLE_LEN - 1).trimEnd()}…` : line
 }
 
 export const EMPTY_REVIEW: ReviewState = { version: 1, threads: [] }

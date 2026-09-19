@@ -430,6 +430,30 @@ describe('ReviewStore', () => {
   })
 })
 
+describe('ReviewStore titles', () => {
+  it('a title outlives a restart, and a reset takes it with the round', () => {
+    const root = tempRoot()
+    const store = makeStore(root)
+    store.setTitle('tab titles from the agent')
+
+    // The reviewer reloads, or the server is restarted under them: the tab
+    // keeps its name without the agent having to poll again.
+    expect(makeStore(root).get().title).toBe('tab titles from the agent')
+
+    store.reset()
+    expect(store.get().title).toBeUndefined()
+    expect(makeStore(root).get().title).toBeUndefined()
+  })
+
+  it('reset is still a no-op on an untouched review, and a title alone is enough to make it one', () => {
+    const store = makeStore(tempRoot())
+    expect(store.reset()).toEqual([])
+    store.setTitle('retry on flaky uploads')
+    expect(store.reset()).toEqual([])
+    expect(store.get().title).toBeUndefined()
+  })
+})
+
 describe('parseReview', () => {
   it('drops malformed threads, keeps valid ones', () => {
     const parsed = parseReview(
@@ -503,6 +527,15 @@ describe('parseReview', () => {
       expect(thread.id).toBe('t')
       expect(thread.anchored).toBeUndefined()
     }
+  })
+
+  it('normalizes a stored title, and drops an unusable one', () => {
+    const withTitle = (title: unknown) => parseReview(JSON.stringify({ threads: [], title }))!
+    expect(withTitle('  tab\n titles  ').title).toBe('tab titles')
+    expect(withTitle('x'.repeat(200)).title).toBe(`${'x'.repeat(39)}…`)
+    expect(withTitle('   ').title).toBeUndefined()
+    expect(withTitle(42).title).toBeUndefined()
+    expect(withTitle(undefined).title).toBeUndefined()
   })
 
   it('returns null for non-review JSON', () => {

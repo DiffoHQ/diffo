@@ -69,3 +69,20 @@ export function collectNotices(
 export function badgeTitle(pending: number, base: string): string {
   return pending > 0 ? `(${pending}) ${base}` : base
 }
+
+/**
+ * The tab's name: what the agent called this change, and nothing else.
+ *
+ * A tab in a crowded strip shows around twenty characters, so every one spent
+ * on the app's own name is one the title loses — and the favicon sits right
+ * there saying "Diffo" already. Until an agent sends a title the name IS the
+ * app's, unchanged from what the server served.
+ *
+ * `dev` is the exception worth six characters: a review served from a source
+ * checkout has to announce itself in the tab, not only in the header badge,
+ * or a dev review gets read as a shipped one.
+ */
+export function tabTitle(title: string | undefined, app: string, dev = false): string {
+  if (!title) return app
+  return dev ? `dev · ${title}` : title
+}

@@ -1,6 +1,13 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { ReviewThread } from '../shared/review.js'
-import { type AgentNotice, agentMessageKeys, badgeTitle, collectNotices } from './notifications.js'
+import { isDevServer } from './devMode.js'
+import {
+  type AgentNotice,
+  agentMessageKeys,
+  badgeTitle,
+  collectNotices,
+  tabTitle,
+} from './notifications.js'
 
 /**
  * Tells a reviewer who isn't looking that the agent spoke — in-app, not through
@@ -23,6 +30,11 @@ import { type AgentNotice, agentMessageKeys, badgeTitle, collectNotices } from '
  * tab gets the banner for it anyway, and that banner does not fade on its
  * own: it goes when clicked or dismissed, because it is the pointer to the
  * orientation the reviewer was meant to read first.
+ *
+ * It also owns the tab's NAME, not just the badge — the two write the same
+ * property, so one of them has to hold the pen or the last effect to run wins.
+ * The name is the agent's title for the change (`ReviewState.title`); the badge
+ * is a prefix on top of it.
  */
 
 /** How long the banner survives the reviewer's return, so a click can land. */
@@ -37,9 +49,12 @@ export interface AgentNotifications {
 
 export function useAgentNotifications({
   threads,
+  title,
   onOpenThread,
 }: {
   threads: readonly ReviewThread[] | undefined
+  /** The agent's name for this change, once it has sent one. */
+  title: string | undefined
   onOpenThread: (threadId: string) => void
 }): AgentNotifications {
   const [notices, setNotices] = useState<readonly AgentNotice[]>([])
@@ -48,12 +63,34 @@ export function useAgentNotifications({
   // fills the set, so a refresh or an SSE reconnect can never replay old
   // answers.
   const seen = useRef<Set<string> | null>(null)
-  const baseTitle = useRef(document.title)
+  // The app's own name, as the server wrote it into the document — `Diffo`, or
+  // `diffo-dev` from a checkout. Read once, before anything here overwrites it.
+  const appName = useRef(document.title)
+  const dev = useRef(isDevServer())
+  const titleRef = useRef(title)
   const pendingCount = useRef(0)
   const linger = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   const openRef = useRef(onOpenThread)
   openRef.current = onOpenThread
+
+  // The one writer of document.title: name underneath, badge on top. Called
+  // from every path that moves either, so neither can clobber the other.
+  const paintTitle = useCallback(() => {
+    document.title = badgeTitle(
+      pendingCount.current,
+      tabTitle(titleRef.current, appName.current, dev.current),
+    )
+  }, [])
+
+  // The title arrives long after mount — the agent's first poll may land while
+  // the reviewer already has the page open. Declared before the notice effect
+  // below, so a commit that brings both a new title and a new answer paints the
+  // badge over the new name, not the old one.
+  useEffect(() => {
+    titleRef.current = title
+    paintTitle()
+  }, [title, paintTitle])
 
   useEffect(() => {
     if (!threads) return
@@ -79,14 +116,14 @@ export function useAgentNotifications({
       linger.current = null
     }
     pendingCount.current += fresh.length
-    document.title = badgeTitle(pendingCount.current, baseTitle.current)
+    paintTitle()
     setNotices((prev) => [...prev, ...fresh])
-  }, [threads])
+  }, [threads, paintTitle])
 
   useEffect(() => {
     const onFocus = () => {
       pendingCount.current = 0
-      document.title = baseTitle.current
+      paintTitle()
       // The banner outlives the badge: it is what the reviewer is coming back
       // to click. Give the click a window, then let the page speak for itself.
       if (linger.current) clearTimeout(linger.current)
@@ -100,9 +137,11 @@ export function useAgentNotifications({
     return () => {
       window.removeEventListener('focus', onFocus)
       if (linger.current) clearTimeout(linger.current)
-      document.title = baseTitle.current
+      // Unmounting drops the badge, not the name — the page is still this review.
+      pendingCount.current = 0
+      paintTitle()
     }
-  }, [])
+  }, [paintTitle])
 
   const clear = useCallback(() => setNotices([]), [])
 

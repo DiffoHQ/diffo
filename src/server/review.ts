@@ -8,6 +8,7 @@ import {
   EMPTY_REVIEW,
   type Landed,
   type LastFinish,
+  normalizeTitle,
   type ReviewMessage,
   type ReviewState,
   type ReviewThread,
@@ -244,19 +245,31 @@ export class ReviewStore {
   }
 
   /**
-   * Start the review over: threads, the last-finish record, and the landed
-   * marker all go. Not just the threads — a kept `lastFinish` would carry hunk
-   * ids from the dead changeset into the next review's "since last review"
-   * lens, reporting everything as new. `seenHead` survives: it describes the
+   * Start the review over: threads, the last-finish record, the landed marker,
+   * and the tab title all go. Not just the threads — a kept `lastFinish` would
+   * carry hunk ids from the dead changeset into the next review's "since last
+   * review" lens, reporting everything as new, and a kept title would name the
+   * work that just ended. The cleared agent is woken (see the DELETE route), so
+   * its next poll names the new round. `seenHead` survives: it describes the
    * repo, not the review being discarded.
    */
   reset(): string[] {
     const ids = this.state.threads.map((t) => t.id)
-    if (ids.length === 0 && !this.state.lastFinish && !this.state.landed) return []
-    const { lastFinish: _finish, landed: _landed, ...rest } = this.state
+    if (ids.length === 0 && !this.state.lastFinish && !this.state.landed && !this.state.title) {
+      return []
+    }
+    const { lastFinish: _finish, landed: _landed, title: _title, ...rest } = this.state
     this.state = { ...rest, threads: [] }
     this.commit()
     return ids
+  }
+
+  /** The agent's name for this changeset, carried by its poll. The newest one
+   * wins: a change that grows a second subject renames its own tab. */
+  setTitle(title: string): void {
+    if (this.state.title === title) return
+    this.state = { ...this.state, title }
+    this.commit()
   }
 
   /** The base the work under review sits on — see `ReviewState.seenHead` for
@@ -420,9 +433,11 @@ export function parseReview(raw: string): ReviewState | null {
     : []
   const lastFinish = normalizeLastFinish(parsed.lastFinish, now)
   const landed = normalizeLanded(parsed.landed, now)
+  const title = normalizeTitle(parsed.title)
   return {
     version: 1,
     threads: [...valid, ...migrated],
+    ...(title ? { title } : {}),
     ...(lastFinish ? { lastFinish } : {}),
     ...(typeof parsed.seenHead === 'string' && parsed.seenHead !== ''
       ? { seenHead: parsed.seenHead }
