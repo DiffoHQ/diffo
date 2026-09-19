@@ -7,6 +7,20 @@ Until 1.0, minor versions may break things. When they do, the entry says how to 
 
 ## [Unreleased]
 
+### Added
+
+- **Tab titles: `diffo poll --title "<the change, in 2-3 words>"`.** A reviewer
+  with several reviews open saw every tab titled "Diffo" and had to click
+  through them to find one. The agent now names the change on the poll that
+  starts the review, and that name becomes the tab's — just the name, since a
+  tab shows about twenty characters and the favicon already says which app this
+  is. The newest title wins, so a changeset that becomes something else can
+  rename its own tab, and a poll without `--title` leaves the name alone.
+  Nothing changes until an agent sends one: the tab reads "Diffo" exactly as
+  before. The unread-answer badge still rides in front (`(2) tab titles`), a
+  review served from a source checkout still says so (`dev · tab titles`), and
+  clearing the review drops the title along with the round.
+
 ### Changed
 
 - **The review URL reaches you before the guide, not after.** The agent used

@@ -7,6 +7,7 @@ import { SRC_STAMP } from '../devStamp.js'
 import {
   type Anchor,
   type Coverage,
+  normalizeTitle,
   type OutgoingThread,
   type ReviewThread,
   startedByAgent,
@@ -587,6 +588,12 @@ export function createApp(
     }
     const tookOverFrom = queue.claimSession(parseSessionPid(c.req.header('x-diffo-session-pid')))
     if (tookOverFrom !== null) c.header('x-diffo-took-over-from', String(tookOverFrom))
+    // The agent names the change as it starts listening, and that name becomes
+    // the browser tab's (see `ReviewState.title`). Every poll may carry one and
+    // the newest wins; a poll without one leaves the name it found alone, so
+    // re-polling through a long review never has to repeat itself.
+    const title = normalizeTitle(c.req.query('title'))
+    if (title) review.setTitle(title)
     const heartbeatMs = ctx.pollHeartbeatMs ?? POLL_HEARTBEAT_MS
     return stream(c, async (s) => {
       let aborted = false

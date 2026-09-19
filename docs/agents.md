@@ -35,13 +35,41 @@ agent's behalf. Three things follow from it.
 | --- | --- | --- |
 | 1. Open | `diffo --no-open` | Starts the review and prints the URL. `--no-open` because an agent should never throw a browser window at someone; it hands over the URL instead — immediately, before anything else |
 | 2. Guide | `diffo comment -m "…"` | One orientation comment, only when the changeset needs it, written while the reviewer is opening the page. See [the guide comment](#the-guide-comment) |
-| 3. Attach | `diffo poll` | Blocks until the reviewer acts, then prints one payload |
+| 3. Attach | `diffo poll --title "…"` | Blocks until the reviewer acts, then prints one payload. The title becomes the reviewer's browser tab name — see [the tab title](#the-tab-title) |
 | 4. Act | (edits, and `diffo reply`) | Work the threads the payload named, and answer each one |
 | 5. Re-attach | `diffo poll` | Also a statement: see [re-polling closes the batch](#re-polling-closes-the-batch) |
 | 6. Detach | `diffo end` | When the review is over |
 
 Step 1 returns immediately, leaving a background server, so it is a short command
 and not something the agent waits on. Only the poll blocks.
+
+## The tab title
+
+Every Diffo tab is titled "Diffo", which is fine until the reviewer has three
+of them open. The poll that attaches carries `--title "<the change, in 2-3
+words>"`, and that becomes the tab's whole name — `tab titles`, not
+`tab titles · Diffo`.
+
+Two or three words is not a style preference. A tab in a crowded strip shows
+around twenty characters and cuts the rest, so the app's own name would spend
+half the budget repeating what the favicon already says, and the word that
+tells this review apart has to come first rather than last.
+
+It is the agent's to send because the agent is the only party that knows what
+the changeset is at the moment it starts listening. The rules:
+
+- The newest title wins. A changeset that grows into something else renames its
+  own tab on the next poll that carries one.
+- A poll without `--title` leaves the name alone, so re-polling through a long
+  review never has to repeat itself.
+- Until some poll sends one, the tab reads "Diffo" exactly as it always did.
+- A review served from a source checkout reads `dev · <title>`, so a dev review
+  is never mistaken for a shipped one at a glance.
+- Anything over 40 characters is cut with an ellipsis — a backstop against an
+  essay, not a target.
+- The title is part of the review state: it survives a reload and a server
+  restart, and it is dropped when the reviewer clears the review — that round
+  is over, and the poll woken by the clear names the next one.
 
 ## What a poll payload carries
 

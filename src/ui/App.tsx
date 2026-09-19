@@ -745,6 +745,7 @@ function Review() {
 
   const banner = useAgentNotifications({
     threads: review?.threads,
+    title: review?.title,
     onOpenThread: openThreadById,
   })
 

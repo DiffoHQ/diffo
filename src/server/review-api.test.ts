@@ -518,6 +518,62 @@ describe('review API', () => {
     expect(queue.ownerPid()).toBeNull()
   })
 
+  it('a poll titles the review; a later untitled one leaves that name alone', async () => {
+    const { app, review } = setup()
+    const headers = { 'x-diffo-agent': 'cli' }
+    const ask = async (text: string) => {
+      const created = await post(app, '/api/review/threads', {
+        anchor: { kind: 'changeset' },
+        text,
+      })
+      const thread = (await created.json()) as ReviewThread
+      await post(app, `/api/review/threads/${thread.id}/send`)
+    }
+
+    // Nothing has polled — no name to show, and the tab stays as it shipped.
+    expect(review.get().title).toBeUndefined()
+
+    await ask('first')
+    await pollResult(
+      await app.request(`/api/agent/poll?title=${encodeURIComponent('  tab\ntitles  ')}`, {
+        headers,
+      }),
+    )
+    // Whatever the agent sent, made fit for a tab strip.
+    expect(review.get().title).toBe('tab titles')
+
+    await ask('second')
+    await pollResult(await app.request('/api/agent/poll', { headers }))
+    expect(review.get().title).toBe('tab titles')
+
+    // The changeset became something else: the newest title wins.
+    await ask('third')
+    await pollResult(
+      await app.request('/api/agent/poll?title=retry%20on%20flaky%20uploads', {
+        headers,
+      }),
+    )
+    expect(review.get().title).toBe('retry on flaky uploads')
+  })
+
+  it('clearing the review drops its title — the next round names itself', async () => {
+    const { app, review } = setup()
+    const created = await post(app, '/api/review/threads', {
+      anchor: { kind: 'changeset' },
+      text: 'a note',
+    })
+    await post(app, `/api/review/threads/${((await created.json()) as ReviewThread).id}/send`)
+    await pollResult(
+      await app.request('/api/agent/poll?title=tab%20titles', {
+        headers: { 'x-diffo-agent': 'cli' },
+      }),
+    )
+    expect(review.get().title).toBe('tab titles')
+
+    await app.request('/api/review/threads', { method: 'DELETE' })
+    expect(review.get().title).toBeUndefined()
+  })
+
   it('DELETE drops a thread and its pending delivery; unknown ids 404', async () => {
     const { app, queue } = setup()
     const created = await post(app, '/api/review/threads', {

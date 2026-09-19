@@ -2,6 +2,8 @@ import { describe, expect, it } from 'vitest'
 import {
   anchorSpan,
   describeAnchor,
+  MAX_TITLE_LEN,
+  normalizeTitle,
   type ReviewThread,
   threadsInChangeset,
   undeliveredThreadIds,
@@ -128,5 +130,26 @@ describe('anchorSpan / describeAnchor — the one label the agent ever sees', ()
     expect(describeAnchor({ ...single, endLine: 20 })).toBe('a.ts:12-20 (new side)')
     expect(describeAnchor({ kind: 'file', path: 'a.ts' })).toBe('a.ts')
     expect(describeAnchor({ kind: 'changeset' })).toBe('the whole changeset')
+  })
+})
+
+describe("normalizeTitle — an agent's words, made fit to be a tab name", () => {
+  it('collapses to one trimmed line and strips control characters', () => {
+    expect(normalizeTitle('tab titles from the agent')).toBe('tab titles from the agent')
+    expect(normalizeTitle('  tab titles\n  from the agent\t')).toBe('tab titles from the agent')
+    expect(normalizeTitle('tab\u0007titles')).toBe('tab titles')
+  })
+
+  it('caps a long one with an ellipsis rather than filling the tab strip', () => {
+    const long = normalizeTitle('word '.repeat(50))!
+    expect(long).toHaveLength(MAX_TITLE_LEN)
+    expect(long.endsWith('…')).toBe(true)
+  })
+
+  it('anything that is not a usable title is null — the caller keeps the name it has', () => {
+    expect(normalizeTitle('')).toBeNull()
+    expect(normalizeTitle('   \n  ')).toBeNull()
+    expect(normalizeTitle(undefined)).toBeNull()
+    expect(normalizeTitle(7)).toBeNull()
   })
 })
