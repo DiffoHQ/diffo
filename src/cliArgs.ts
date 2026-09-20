@@ -1,5 +1,6 @@
 import { parseArgs } from 'node:util'
-import { CLI_COMMANDS, GUIDE, POLL_STANCE, TAB_TITLE } from './server/prompt.js'
+import { CLI_COMMANDS, GUIDE, LAYERS, POLL_STANCE, TAB_TITLE } from './server/prompt.js'
+import { parseSuggestReason } from './shared/layers.js'
 import { normalizeTitle } from './shared/review.js'
 import type { ChangesetSpec } from './shared/types.js'
 
@@ -27,6 +28,9 @@ For the agent (the AI that wrote the change):
   comment [<file>]   Start a comment thread as the agent — on a line (--line),
                      a file, or (with no file) the whole changeset; the
                      reviewer replies to take it up, or resolves it
+  layers             Outline the changeset as steps to read in order
+                     (--suggest ["why"] flags it at open; --json '<Layer[]>'
+                     or --stdin posts the list, replacing the last one)
   end                Detach from the review politely
   help agent         The agent's whole protocol on one page
 
@@ -76,7 +80,15 @@ The loop:
    ${GUIDE.stance}.
    It lands live at the top of their review — never hold the URL back for it.
    If the changeset later shifts under the guide, ${GUIDE.update}.
-3. Listen: run \`${CLI_COMMANDS.firstPoll}\` — it blocks until the reviewer
+3. Layers — offer them when the changeset reads better in order:
+   ${LAYERS.suggest}.
+   Flag it at open with \`diffo layers --suggest "<why, in one line>"\` and
+   say so in your handoff ("say layers and I'll outline it"). Post the
+   outline only when the reviewer asks: \`diffo layers --json '<Layer[]>'\`
+   (or pipe it to \`diffo layers --stdin\`). Each layer is ${LAYERS.what}.
+   Order: ${LAYERS.order}. ${LAYERS.mechanical}. ${LAYERS.stance}.
+   ${LAYERS.replace}. \`diffo help layers\` has the shape.
+4. Listen: run \`${CLI_COMMANDS.firstPoll}\` — it blocks until the reviewer
    acts, then prints one JSON payload naming the threads to act on. Run it
    attended: ${POLL_STANCE}.
    The title is ${TAB_TITLE.what}: ${TAB_TITLE.why}. Write it the way it is
@@ -84,19 +96,19 @@ The loop:
    every other poll is a plain \`diffo poll\`.
    Killed or timed out? Re-run it; feedback is held in the review, not the
    poll.
-4. Act: \`[issue]\` threads want a code change; \`[question]\` threads want an
+5. Act: \`[issue]\` threads want a code change; \`[question]\` threads want an
    answer in the reply and no edit. Your edits reach the reviewer live.
-5. Reply: \`diffo reply <threadId> --message "<text>"\` (pipe long replies on
+6. Reply: \`diffo reply <threadId> --message "<text>"\` (pipe long replies on
    stdin) — concise, addressed to the reviewer. Markdown renders; a
    \`\`\`mermaid fence draws a diagram. A reply that only promises a
    follow-up ("I'll investigate and report back") goes out with \`--more\` —
    the reviewer keeps seeing you at work — and the real answer follows as a
    plain reply before the next poll.
-6. Comment (sparingly): \`diffo comment [<file>] [--line <n>] -m "<text>"\`
+7. Comment (sparingly): \`diffo comment [<file>] [--line <n>] -m "<text>"\`
    starts a thread in your voice — a concern, or context that helps the read.
-7. Poll again only when the whole batch is handled — a new poll tells the
+8. Poll again only when the whole batch is handled — a new poll tells the
    reviewer you are done with the previous one.
-8. Detach: run \`diffo end\` when the review is over or the user moves on.
+9. Detach: run \`diffo end\` when the review is over or the user moves on.
 
 Rules:
 - Change only what the threads ask about — the reviewer is mid-read, and an
@@ -162,6 +174,29 @@ Output: {"ok":true,"threadId":"t-1","next_step":"…"}
 
 Example:
   diffo comment src/auth.ts --line 42 --message "this branch is unreachable"`,
+  layers: `diffo layers — outline the changeset as steps to read in order
+
+Usage: diffo layers --suggest ["<why, in one line>"]   at open: this read benefits from layers
+       diffo layers --json '<Layer[]>'                 post the outline, replacing the last one
+       … | diffo layers --stdin                        the same payload, piped
+
+Each layer is ${LAYERS.what}.
+Order: ${LAYERS.order}.
+${LAYERS.mechanical}.
+${LAYERS.stance}.
+${LAYERS.replace}. Paths are relative to the repo root; an unknown path is
+accepted (the file may land later) and simply shows nothing until it does.
+Files you touch after posting land in a trailing "Since your review" layer
+until you re-post.
+
+Shape: ${LAYERS.shape}
+
+Output: {"ok":true,"layers":4,"next_step":"…"}
+        {"ok":true,"suggested":true,"next_step":"…"}
+
+Examples:
+  diffo layers --suggest "the parser change explains the rest"
+  diffo layers --json '[{"title":"Parser contract","summary":"parse() now returns null instead of throwing.","files":["src/parse.ts"]},{"title":"Callers adapted","kind":"mechanical","files":["src/cli.ts","src/api.ts"]}]'`,
   end: `diffo end — detach from the review politely
 
 Usage: diffo end
@@ -228,13 +263,20 @@ export type CliCommand =
   | { kind: 'poll'; title: string | null }
   | { kind: 'reply'; threadId: string; message: string | null; more: boolean }
   | { kind: 'comment'; file: string | null; line: number | null; message: string | null }
+  | { kind: 'layers'; source: LayersSource }
   | { kind: 'end' }
   | { kind: 'setup' }
   | { kind: 'status'; json: boolean }
   | { kind: 'stop' }
   | { kind: 'error'; message: string }
 
-const VERBS = new Set(['poll', 'reply', 'comment', 'end', 'setup', 'status', 'stop'])
+/** Where a `layers` post comes from — exactly one of the three. */
+export type LayersSource =
+  | { kind: 'json'; text: string }
+  | { kind: 'stdin' }
+  | { kind: 'suggest'; reason: string | null }
+
+const VERBS = new Set(['poll', 'reply', 'comment', 'layers', 'end', 'setup', 'status', 'stop'])
 
 function editDistance(a: string, b: string): number {
   const dp = Array.from({ length: b.length + 1 }, (_, i) => i)
@@ -366,7 +408,62 @@ export function parseCliArgs(argv: string[]): CliCommand {
   }
 }
 
+/**
+ * `layers` parses on its own: its `--json` takes a value where `status --json`
+ * is a switch, and its one positional is the suggestion's reason rather than a
+ * file. Exactly one source per run — a post and a suggestion mean different
+ * things to the review, and silently picking one would hide the other.
+ */
+function parseLayersVerb(rest: string[]): CliCommand {
+  const parsed = tryParse(() =>
+    parseArgs({
+      args: rest,
+      allowPositionals: true,
+      options: {
+        json: { type: 'string' },
+        stdin: { type: 'boolean' },
+        suggest: { type: 'boolean' },
+        help: { type: 'boolean', short: 'h' },
+      },
+    }),
+  )
+  if (!parsed.ok) return { kind: 'error', message: parsed.message }
+  const { values, positionals } = parsed.value
+  if (values.help) return { kind: 'help', topic: 'layers' }
+  const sources = [values.json !== undefined, values.stdin === true, values.suggest === true]
+  if (sources.filter(Boolean).length !== 1) {
+    return {
+      kind: 'error',
+      message: 'layers takes exactly one of --json <Layer[]>, --stdin, or --suggest ["<why>"]',
+    }
+  }
+  if (values.suggest) {
+    if (positionals.length > 1) {
+      return { kind: 'error', message: '--suggest takes at most one reason — quote it' }
+    }
+    return {
+      kind: 'layers',
+      source: { kind: 'suggest', reason: parseSuggestReason(positionals[0]) ?? null },
+    }
+  }
+  if (positionals.length > 0) {
+    return {
+      kind: 'error',
+      message: 'pass the layers with --json or on stdin (--stdin), not as an argument',
+    }
+  }
+  if (values.stdin) return { kind: 'layers', source: { kind: 'stdin' } }
+  if (values.json!.trim() === '') {
+    return {
+      kind: 'error',
+      message: '--json needs a JSON array of layers — see `diffo help layers`',
+    }
+  }
+  return { kind: 'layers', source: { kind: 'json', text: values.json! } }
+}
+
 function parseVerb(verb: string, rest: string[]): CliCommand {
+  if (verb === 'layers') return parseLayersVerb(rest)
   const parsed = tryParse(() =>
     parseArgs({
       args: rest,

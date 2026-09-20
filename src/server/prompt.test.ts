@@ -14,9 +14,12 @@ import {
   CLI,
   CLI_COMMANDS,
   captureAnchor,
+  GUIDE,
   guideInherit,
   guideNudge,
   INSTALL_SKILL,
+  LAYERS,
+  layersNudge,
   NPX,
   nextStepFor,
   SKILL_REPO,
@@ -833,5 +836,34 @@ describe('the takeover guide-inherit notice', () => {
     // so an agent without the skill can follow it verbatim.
     expect(notice).toContain(`${CLI} reply t-guide`)
     expect(notice).toMatch(/rather than posting a second guide/)
+  })
+})
+
+describe('layers doctrine', () => {
+  it('the nudge appears only while the review has neither layers nor a suggestion', () => {
+    const nudge = layersNudge({})!
+    expect(nudge).toContain(CLI_COMMANDS.layersSuggest)
+    expect(nudge).toContain(CLI_COMMANDS.layers)
+    expect(nudge).toContain(LAYERS.suggest)
+    expect(nudge).toContain(LAYERS.order)
+    expect(nudge).toContain(LAYERS.stance)
+    expect(layersNudge({ layers: { items: [], postedAt: '' } })).toBeNull()
+    expect(layersNudge({ layersSuggested: {} })).toBeNull()
+  })
+
+  it('summaries inherit the guide’s stance verbatim', () => {
+    expect(LAYERS.stance).toBe(GUIDE.stance)
+  })
+
+  it('the mechanical rule names the bar and the default when unsure', () => {
+    expect(LAYERS.mechanical).toMatch(/no behaviour/)
+    expect(LAYERS.mechanical).toMatch(/if unsure, don't tag/)
+  })
+
+  it('every layers ack names the next poll', () => {
+    for (const key of ['layers', 'layersSuggested', 'layersAlready'] as const) {
+      expect(ACK_NEXT_STEP[key]).toContain(CLI_COMMANDS.poll)
+    }
+    expect(ACK_NEXT_STEP.layersSuggested).toContain(CLI_COMMANDS.layers)
   })
 })

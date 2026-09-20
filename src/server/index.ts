@@ -4,6 +4,7 @@ import { serve } from '@hono/node-server'
 import { type Context, Hono } from 'hono'
 import { stream, streamSSE } from 'hono/streaming'
 import { SRC_STAMP } from '../devStamp.js'
+import { parseLayersInput, parseSuggestReason } from '../shared/layers.js'
 import {
   type Anchor,
   type Coverage,
@@ -271,6 +272,24 @@ export function createApp(
     const intent = THREAD_INTENTS.includes(body?.intent) ? (body.intent as ThreadIntent) : undefined
     const capture = store ? captureAnchor(store.get(), anchor) : null
     return c.json(review.createThread(anchor, text, capture, intent))
+  })
+
+  // The agent's reading plan — `{ items }` replaces the whole list — or its flag
+  // that one would help: `{ suggest: true, reason? }`. Either way the store's
+  // commit fans out over the SSE `review` event, so the rail redraws on its own.
+  app.post('/api/review/layers', async (c) => {
+    if (!review) return c.json({ error: 'review unavailable' }, 503)
+    const body = await c.req.json().catch(() => null)
+    if (body?.suggest === true) {
+      const suggested = review.suggestLayers(parseSuggestReason(body.reason))
+      return c.json({
+        suggested,
+        ...(suggested ? {} : { note: 'layers are already posted — nothing to suggest' }),
+      })
+    }
+    const parsed = parseLayersInput(body?.items)
+    if (!parsed.ok) return c.json({ error: parsed.error }, 400)
+    return c.json({ layers: review.setLayers(parsed.items) })
   })
 
   app.post('/api/review/threads/:id/messages', async (c) => {

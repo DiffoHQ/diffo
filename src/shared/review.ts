@@ -142,9 +142,65 @@ export interface Landed {
   at: string
 }
 
+/**
+ * One step of the change, as the agent that wrote it would explain it: a
+ * coherent unit — *the parser now returns null instead of throwing* — and the
+ * files that belong to that step. Ordered the way the change is explained, not
+ * the way it was committed. A layer says what a step IS, never whether it is
+ * fine: the guide's stance applies to every summary.
+ */
+export interface Layer {
+  /** Server-minted. Stable across re-posts while the title matches, so a
+   * re-post never resets the reviewer's place. */
+  id: string
+  title: string
+  /** Markdown; a ```mermaid fence renders, same as the guide. */
+  summary?: string
+  /** The files render collapsed — a rename, a call-site follow-through. Nothing
+   * else changes: fold, never hide. */
+  kind?: 'mechanical'
+  files: LayerFile[]
+}
+
+/**
+ * A file in a layer: the path, or the path with a one-line note on why it is
+ * in this step. Stored as the agent sent it. A `path:from-to` range is accepted
+ * by the parser and ignored in v1 — reserved so a big file can be split later
+ * without a protocol change; `layerFilePath` strips it.
+ */
+export type LayerFile = string | { path: string; note?: string }
+
+export interface Layers {
+  items: Layer[]
+  postedAt: string
+}
+
+/** The path a layer file names, without the reserved `:from-to` range. */
+export function layerFilePath(file: LayerFile): string {
+  const raw = typeof file === 'string' ? file : file.path
+  return raw.replace(/:\d+-\d+$/, '')
+}
+
+export function layerFileNote(file: LayerFile): string | undefined {
+  return typeof file === 'string' ? undefined : file.note
+}
+
 export interface ReviewState {
   version: 1
   threads: ReviewThread[]
+  /**
+   * The agent's reading plan for this changeset. Resolved against the live
+   * changeset at render, never at write: a listed path that no longer differs
+   * contributes nothing, and a file no layer lists lands in a derived trailing
+   * layer the UI computes and never stores.
+   */
+  layers?: Layers
+  /**
+   * The agent flagged at open that this read benefits from layers, without
+   * writing them — generating them is heavy and happens on the reviewer's
+   * request. Cleared the moment layers are posted.
+   */
+  layersSuggested?: { reason?: string }
   /**
    * What this changeset is, in a few words, as the agent named it when it
    * started polling. Exists for one job: telling a reviewer's tabs apart, all

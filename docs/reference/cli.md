@@ -29,6 +29,7 @@ nothing.
 | [`diffo poll`](#diffo-poll) | agent | Wait for the reviewer's feedback |
 | [`diffo reply`](#diffo-reply-threadid) | agent | Reply to a thread |
 | [`diffo comment`](#diffo-comment-file) | agent | Start a thread in the agent's own voice |
+| [`diffo layers`](#diffo-layers) | agent | Outline the changeset as steps to read in order |
 | [`diffo end`](#diffo-end) | agent | Detach from the review |
 | [`diffo help`](#help-and-version) | both | Help for the CLI, or for one command |
 
@@ -124,7 +125,7 @@ the skill copies it installed.
 These are the whole agent protocol. Any agent that can run a shell command can
 drive the loop; [the agent protocol](/agents) is the full reference behind it.
 
-All four talk to this repo's server, starting one if none is running.
+All five talk to this repo's server, starting one if none is running.
 
 ### `diffo poll`
 
@@ -187,6 +188,45 @@ Prints `{ "ok": true, "threadId": "t-1", "next_step": "…" }`.
 
 An agent-started thread is inert until a human replies into it: it doesn't count
 toward the reviewer's outstanding feedback and isn't flushed by Finish review.
+
+### `diffo layers`
+
+```bash
+diffo layers --suggest "the parser change explains the rest"   # at open: this read benefits from layers
+diffo layers --json '[{"title":"Parser contract","files":["src/parse.ts"]}]'
+cat outline.json | diffo layers --stdin
+```
+
+Outlines the changeset as **layers**: ordered steps, each with a title, an
+optional one- or two-sentence summary, and the files that belong to it. The
+reviewer reads one layer at a time; files no layer lists gather in a trailing
+*Since your review* layer until the agent re-posts. [Layers](/agents#layers)
+has the doctrine: when to suggest, how to order, what a summary may say.
+
+Exactly one of:
+
+| Option | What it does |
+| --- | --- |
+| `--suggest ["<why>"]` | Flag, without writing them, that this read benefits from layers. The optional reason is one line, quoted to the reviewer next to the offer |
+| `--json '<Layer[]>'` | Post the outline. **Replaces** the whole list; ids are kept for titles that match, so the reviewer's place survives a re-post |
+| `--stdin` | The same payload, piped |
+
+A layer is `{ title, summary?, kind?, files }`. `files` holds repo-relative
+paths, as strings or as `{ "path", "note" }` where the note is one line on why
+the file is in this step. `kind` may only be `"mechanical"`: the layer changes no
+behaviour, and its files render folded. A `path:from-to` string is accepted and
+reserved; today it means the whole file. Unknown paths are accepted and show
+nothing until the file lands.
+
+A title that is empty or used twice, an empty file list, an absolute or
+`..`-escaping path, or a `kind` other than `mechanical` fails with exit 1 and
+names the layer at fault (`layer 2 ("Callers"): needs a non-empty "files" list`).
+Nothing is stored on a failed post.
+
+Prints `{ "ok": true, "layers": 4, "next_step": "…" }` after a post, and
+`{ "ok": true, "suggested": true, "next_step": "…" }` after a suggestion.
+`suggested` is `false` when layers already exist: there is nothing left to
+suggest, and the next step says to re-post instead.
 
 ### `diffo end`
 

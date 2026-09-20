@@ -81,6 +81,10 @@ export function buildCliCommands(cli: string) {
     // instruction to anchor it to the whole changeset doesn't have to be given
     // alongside a usage string offering a file.
     guide: `${cli} comment --message "<what the change does>"`,
+    // The reading plan: the flag at open, and the post itself (inline or piped).
+    layersSuggest: `${cli} layers --suggest "<why, in one line>"`,
+    layers: `${cli} layers --json '<Layer[]>'`,
+    layersStdin: `${cli} layers --stdin`,
     end: `${cli} end`,
     setup: `${cli} setup`,
   } as const
@@ -156,6 +160,9 @@ export const ACK_NEXT_STEP = {
   replyMore:
     'Interim reply posted — the reviewer still sees you working on this thread. Post the follow-up as a plain reply (no --more) BEFORE your next poll: re-polling closes the batch and counts the promise as never kept.',
   comment: `It's in the review as your comment, labeled as yours — the reviewer replies to take it up, or resolves it. Continue with the review threads, then run \`${CLI_COMMANDS.poll}\`.`,
+  layers: `The outline is live in the reviewer's Layers tab, resolved against the changeset as it moves. Files you touch later land in a trailing "Since your review" layer until you re-post the whole list. Continue with the review threads, then run \`${CLI_COMMANDS.poll}\`.`,
+  layersSuggested: `The review now offers the outline to the reviewer. Mention it in your handoff too — "say layers and I'll outline it" — and post it with \`${CLI_COMMANDS.layers}\` when they ask. Then run \`${CLI_COMMANDS.poll}\`.`,
+  layersAlready: `This review already carries layers, so there is nothing to suggest — re-post the whole list with \`${CLI_COMMANDS.layers}\` if the outline is stale. Then run \`${CLI_COMMANDS.poll}\`.`,
   end: 'Detached. Do not reopen or re-poll this review unless the user asks — deliver anything remaining directly in the conversation.',
 } as const
 
@@ -178,6 +185,40 @@ export const GUIDE = {
 } as const
 
 /**
+ * The layers doctrine — the agent's reading plan for a changeset with an order
+ * worth explaining. Same single-source rule as GUIDE: the skill, `help agent`,
+ * `help layers`, and the open-time nudge all interpolate these, so no surface
+ * can teach a different bar for what a layer is or when to offer one.
+ *
+ * Layers come from the agent only. Every other tool infers a walkthrough by
+ * reading the diff back; the session that wrote the code still remembers the
+ * order it would explain it in, and that is the whole edge — so the doctrine is
+ * about that order, and about not spending the reviewer's attention on a plan
+ * a flat file list already gives them.
+ */
+export const LAYERS = {
+  /** What one is. */
+  what: 'one step of the change — a coherent unit you would explain in one breath — with the files that belong to it and a one- or two-sentence summary (markdown; a ```mermaid fence renders)',
+  /** How to order them. */
+  order:
+    'the order you would explain it, not the order you wrote it — the file that explains the rest first, mechanical consequences last; for a feature, follow the request from entry point to effect; for a refactor, contract first, then consumers',
+  /** When to raise the flag at open — and that not raising it is the common case. */
+  suggest:
+    'suggest layers when the change has an order worth explaining; a wide diff with one idea does not need them',
+  /** The one tag, and the bar for it. */
+  mechanical:
+    'tag a layer "kind": "mechanical" only when it changes no behaviour — a rename, call sites following a signature; if unsure, don\'t tag',
+  /** Summaries orient reading, never pre-review: the guide's line, verbatim. */
+  stance: GUIDE.stance,
+  /** A post is the whole list. */
+  replace:
+    "a post replaces the whole list, never merges; ids are kept for titles that match, so a re-post never moves the reviewer's place",
+  /** The payload, in one line. */
+  shape:
+    '[{ "title": "…", "summary": "…", "kind": "mechanical" (optional), "files": ["src/a.ts", { "path": "src/b.ts", "note": "why this file is in this step" }] }]',
+} as const
+
+/**
  * Printed by `diffo` (open) to a piped stdout when the review has no guide yet.
  * The skill teaches the same step, but this line is what an agent WITHOUT the
  * skill sees — payloads and command output must stand alone (see POLL_STANCE).
@@ -197,6 +238,26 @@ export function guideNudge(hasGuide: boolean): string | null {
     `${GUIDE.what}: \`${CLI_COMMANDS.guide}\` ` +
     `(no file, so it anchors to the changeset; it appears live at the top of ` +
     `their review). ${GUIDE.stance}.`
+  )
+}
+
+/**
+ * Printed by `diffo` (open) next to the guide nudge while the review has neither
+ * layers nor a suggestion. The open is the one moment the agent still holds the
+ * order it would explain the change in, so the flag is raised here; the outline
+ * itself waits for the reviewer to ask, because writing it is the heavy step
+ * and most changesets never need it.
+ */
+export function layersNudge(review: {
+  layers?: unknown
+  layersSuggested?: unknown
+}): string | null {
+  if (review.layers || review.layersSuggested) return null
+  return (
+    `if this changeset reads better in order — ${LAYERS.suggest} — flag it: ` +
+    `\`${CLI_COMMANDS.layersSuggest}\`, and offer it in your handoff ("say layers and I'll ` +
+    `outline it"). Post the outline only when asked: \`${CLI_COMMANDS.layers}\` — each layer ` +
+    `${LAYERS.what}; ${LAYERS.order}. ${LAYERS.stance}. \`diffo help layers\` has the shape.`
   )
 }
 

@@ -35,6 +35,7 @@ agent's behalf. Three things follow from it.
 | --- | --- | --- |
 | 1. Open | `diffo --no-open` | Starts the review and prints the URL. `--no-open` because an agent should never throw a browser window at someone; it hands over the URL instead — immediately, before anything else |
 | 2. Guide | `diffo comment -m "…"` | One orientation comment, only when the changeset needs it, written while the reviewer is opening the page. See [the guide comment](#the-guide-comment) |
+| 2b. Layers | `diffo layers --suggest "…"` | Optional: a flag that this read benefits from an ordered outline. The outline itself is posted only when the reviewer asks. See [layers](#layers) |
 | 3. Attach | `diffo poll --title "…"` | Blocks until the reviewer acts, then prints one payload. The title becomes the reviewer's browser tab name — see [the tab title](#the-tab-title) |
 | 4. Act | (edits, and `diffo reply`) | Work the threads the payload named, and answer each one |
 | 5. Re-attach | `diffo poll` | Also a statement: see [re-polling closes the batch](#re-polling-closes-the-batch) |
@@ -166,6 +167,63 @@ That last constraint is the point of the whole step. A guide that says the chang
 is correct has pre-reviewed the code for the person whose independent judgment is
 the reason Diffo exists. If a takeover happens, the new agent inherits the existing
 guide and updates it in place, so the reviewer never ends up with two.
+
+## Layers
+
+A diff arrives in alphabetical order, which is almost never the order it should
+be read in. **Layers** are the agent's reading plan: the change as ordered steps,
+each a coherent unit a person would explain in one breath, with the files that
+belong to it. They come from the agent only, because the session that wrote the
+code still remembers the order it would explain it in; Diffo never guesses a
+plan from paths, and with no layers the review is exactly the flat file list.
+
+Two commands, one doctrine:
+
+| | |
+| --- | --- |
+| **Suggest** | `diffo layers --suggest "<why, in one line>"`, at open, next to the guide. It flags that this read benefits from layers, without writing them. The review shows the offer to the reviewer; the reason is quoted next to it |
+| **Post** | `diffo layers --json '<Layer[]>'`, or the same JSON piped to `diffo layers --stdin`. Posted only when the reviewer asks, because writing an outline is the heavy step and most changesets never need one |
+| **When to suggest** | When the change has an order worth explaining. A wide diff with one idea does not need layers; four files can hide three steps. Agent judgment, no file-count threshold |
+| **Order** | The order you would explain it, not the order you wrote it: the file that explains the rest first, mechanical consequences last. For a feature, follow the request from entry point to effect; for a refactor, contract first, then consumers |
+| **Mechanical** | `"kind": "mechanical"` marks a layer that changes no behaviour (a rename, call sites following a signature); its files render folded. If unsure, don't tag |
+| **Summaries** | One or two sentences per layer, markdown with a ```` ```mermaid ```` fence if it helps. The guide's line holds verbatim: orient reading, never pre-review |
+
+A layer:
+
+```jsonc
+{
+  "title": "Weekday resolution",
+  "summary": "A bare weekday resolves to the *next* occurrence. Read `weekday.ts` first.",
+  "kind": "mechanical",            // optional — only when nothing changes behaviour
+  "files": [
+    "src/weekday.ts",
+    { "path": "src/dates.ts", "note": "delegates to resolveWeekday; the old arithmetic goes" }
+  ]
+}
+```
+
+Files are whole files, by path relative to the repo root. A `path:from-to` form
+is accepted and reserved; in this version it means the whole file. Unknown paths
+are accepted too, since the file may land later, and simply show nothing until
+it does.
+
+The rules that make a post safe to repeat:
+
+- **A post replaces the whole list.** The agent never diffs its own outline. Ids
+  are minted by the server and kept for every title that survives a re-post, so
+  the reviewer's active layer stays under them.
+- **Resolution happens at render.** Layers are re-resolved against the live
+  changeset on every refresh. A file the agent touches after posting lands in a
+  derived trailing layer, *Since your review*, which is never stored; the agent
+  absorbs it by re-posting. A renamed file lands there too, under its new name.
+- **Marks stay on hunks.** Progress per layer is the same coverage Finish review
+  reports, so a re-post cannot lose a read mark.
+- A suggestion is cleared by the post that answers it, and refused once layers
+  exist. Both go when the reviewer clears the review.
+
+If the agent suggests layers, the suggestion belongs in its handoff message
+too, where the reviewer's eyes already are: *say "layers" and I'll outline it
+before you start*. Saying it in the terminal is the zero-UI path.
 
 ## Presence: what the reviewer can see
 

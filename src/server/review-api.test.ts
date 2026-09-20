@@ -1431,3 +1431,74 @@ describe('the guide (an agent comment on the whole changeset)', () => {
     expect(after.messages.at(-1)!.text).toContain('adopt step is gone')
   })
 })
+
+describe('POST /api/review/layers', () => {
+  it('posts the outline, mints ids, and answers with the stored layers', async () => {
+    const { app, review } = setup()
+    const res = await post(app, '/api/review/layers', {
+      items: [
+        { title: 'Contract', summary: 'the shape', files: ['app.ts'] },
+        { title: 'Callers', kind: 'mechanical', files: [{ path: 'cli.ts', note: 'follows' }] },
+      ],
+    })
+    expect(res.status).toBe(200)
+    const { layers } = (await res.json()) as { layers: { items: { id: string; title: string }[] } }
+    expect(layers.items.map((l) => l.title)).toEqual(['Contract', 'Callers'])
+    expect(layers.items.every((l) => typeof l.id === 'string' && l.id.length > 0)).toBe(true)
+    expect(review.get().layers?.items).toHaveLength(2)
+    // GET /api/review carries them.
+    const got = (await (await app.request('/api/review')).json()) as { layers?: unknown }
+    expect(got.layers).toEqual(layers)
+  })
+
+  it('refuses a malformed post with the validator’s own words, and stores nothing', async () => {
+    const { app, review } = setup()
+    const res = await post(app, '/api/review/layers', { items: [{ title: 'No files' }] })
+    expect(res.status).toBe(400)
+    expect(((await res.json()) as { error: string }).error).toContain('needs a non-empty "files"')
+    expect(review.get().layers).toBeUndefined()
+    const shapeless = await post(app, '/api/review/layers', {})
+    expect(shapeless.status).toBe(400)
+  })
+
+  it('a suggestion is recorded with its reason, and cleared by the post that answers it', async () => {
+    const { app, review } = setup()
+    const res = await post(app, '/api/review/layers', {
+      suggest: true,
+      reason: 'the parser change explains the rest\nsecond line dropped',
+    })
+    expect(res.status).toBe(200)
+    expect(await res.json()).toEqual({ suggested: true })
+    expect(review.get().layersSuggested).toEqual({ reason: 'the parser change explains the rest' })
+    await post(app, '/api/review/layers', { items: [{ title: 'A', files: ['app.ts'] }] })
+    expect(review.get().layersSuggested).toBeUndefined()
+  })
+
+  it('a suggestion after the post is refused, not recorded', async () => {
+    const { app, review } = setup()
+    await post(app, '/api/review/layers', { items: [{ title: 'A', files: ['app.ts'] }] })
+    const res = await post(app, '/api/review/layers', { suggest: true })
+    expect(await res.json()).toMatchObject({ suggested: false })
+    expect(review.get().layersSuggested).toBeUndefined()
+  })
+
+  it('fans out over the SSE review event like any other review change', async () => {
+    const { app } = setup()
+    const res = await app.request('/api/events')
+    const reader = res.body!.getReader()
+    const decoder = new TextDecoder()
+    let seen = ''
+    const readUntil = async (marker: string) => {
+      while (!seen.includes(marker)) {
+        const { value, done } = await reader.read()
+        if (done) break
+        seen += decoder.decode(value)
+      }
+    }
+    await readUntil('event: changeset')
+    await post(app, '/api/review/layers', { items: [{ title: 'A', files: ['app.ts'] }] })
+    await readUntil('event: review')
+    expect(seen).toContain('event: review')
+    await reader.cancel()
+  })
+})

@@ -177,6 +177,41 @@ describe.skipIf(!existsSync(cliPath))('diffo binary (e2e smoke)', () => {
     const agentThreads = after.threads.filter((t) => t.messages[0]?.author === 'agent')
     expect(agentThreads.map((t) => t.anchor.kind).sort()).toEqual(['changeset', 'hunk'])
 
+    // The reading plan: a suggestion, then the outline itself, inline and piped.
+    const suggest = await run(['layers', '--suggest', 'app.ts explains the rest'])
+    expect(suggest.code).toBe(0)
+    expect(JSON.parse(suggest.stdout) as { suggested: boolean }).toMatchObject({ suggested: true })
+    const posted = await run([
+      'layers',
+      '--json',
+      JSON.stringify([{ title: 'The constant', summary: 'b is 43 now.', files: ['app.ts'] }]),
+    ])
+    expect(posted.code).toBe(0)
+    expect(JSON.parse(posted.stdout) as { ok: boolean; layers: number }).toMatchObject({
+      ok: true,
+      layers: 1,
+    })
+    const piped = await run(
+      ['layers', '--stdin'],
+      JSON.stringify([
+        { title: 'The constant', files: ['app.ts'] },
+        { title: 'Everything else', kind: 'mechanical', files: ['nope.ts'] },
+      ]),
+    )
+    expect(piped.code).toBe(0)
+    const withLayers = (await (await fetch(`http://127.0.0.1:${port}/api/review`)).json()) as {
+      layers?: { items: { id: string; title: string }[] }
+      layersSuggested?: unknown
+    }
+    expect(withLayers.layers?.items.map((l) => l.title)).toEqual([
+      'The constant',
+      'Everything else',
+    ])
+    expect(withLayers.layersSuggested).toBeUndefined()
+    const rejected = await run(['layers', '--json', '[{"title":"no files"}]'])
+    expect(rejected.code).toBe(1)
+    expect(rejected.stderr).toContain('needs a non-empty "files"')
+
     const end = await run(['end'])
     expect(end.code).toBe(0)
     expect(JSON.parse(end.stdout) as { ok: boolean }).toMatchObject({ ok: true })

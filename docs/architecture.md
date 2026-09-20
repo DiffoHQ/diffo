@@ -74,10 +74,11 @@ the event loop. Nothing is dropped; the trailing recompute is delayed, never can
 | --- | --- |
 | `GET /api/changeset` | The current `Changeset` |
 | `GET /api/file` | Raw bytes of one file, base or head side (the image differ) |
-| `GET /api/review` | Threads, suggestions, last finish |
+| `GET /api/review` | Threads, layers, last finish |
 | `POST /api/review/threads` · `/:id/messages` · `/:id/state` · `/:id/send` | Comment lifecycle |
 | `POST /api/review/finish/preview` · `/finish` | Batch hand-over, with coverage |
 | `POST /api/review/threads` (agent author) | `diffo comment`, an agent-started thread |
+| `POST /api/review/layers` | `diffo layers`: the agent's reading plan (`{ items }`, replace-not-merge) or its flag that one would help (`{ suggest, reason? }`) |
 | `GET /api/agent/poll` | The agent long poll (`?title=` names the reviewer's tab) |
 | `POST /api/agent/end` · `GET /api/agent/invite` | Detach · onboarding strings |
 | `GET /api/events` | SSE: `changeset`, `review`, `presence`, `ping` |
@@ -131,6 +132,14 @@ for a minute and must not destroy a comment.
 
 `lastFinish` is one record, overwritten each time, never a history: the hunk ids that
 existed when you last pressed Finish. That's what "since last review" is computed from.
+
+`layers` is the agent's reading plan (see [Layers](/agents#layers)): titles, summaries
+and file paths, stored exactly as posted, with server-minted ids that survive a re-post
+whenever the title does. Nothing about which files a layer *currently* holds is stored.
+`resolveLayers` in `ui/layers.ts` re-resolves every path against the live changeset on
+each render, and derives the trailing *Since your review* layer for whatever no layer
+lists; that layer has no id and never touches the store. Progress per layer is read off
+the same hunk marks coverage uses, so the store holds no layer state a re-post could lose.
 
 A **closing note** typed into Finish becomes a real thread anchored to the changeset,
 flagged `closingNote` and flushed with the batch it closes. It was prose in the prompt
