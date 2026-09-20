@@ -778,20 +778,15 @@ describe('ReadingPane in layer mode', () => {
     title: 'Weekday resolution',
     mechanical: false,
     summary: 'A bare weekday resolves forward. Read `src/b.ts:9` first.',
-    chips: [
-      { path: 'src/b.ts', missing: false },
-      { path: 'src/gone.ts', missing: true },
-    ],
+    missing: ['src/gone.ts'],
     listed: 1,
-    hidden: null,
-    onShowHidden: vi.fn(),
     onJump: vi.fn(),
     notes: new Map([['src/b.ts', 'delegates to resolveWeekday']]),
     knownPaths: ['src/b.ts'],
     ...over,
   })
 
-  it('heads the files with the card: kicker, title, summary, chips (missing ones struck)', () => {
+  it('heads the files with the card: kicker, title, summary; only missing paths get chips', () => {
     const { container } = render(<ReadingPane files={[FILES[0]!]} layer={view()} />)
     const head = container.querySelector('.ch-head')!
     expect(head.querySelector('.ch-head-kicker')?.textContent).toBe('Layer 3 of 6')
@@ -801,8 +796,8 @@ describe('ReadingPane in layer mode', () => {
       'A bare weekday resolves forward',
     )
     const chips = [...head.querySelectorAll('.ch-chip')]
-    expect(chips.map((c) => c.textContent)).toEqual(['src/b.ts', 'src/gone.ts'])
-    expect(chips[1]!.className).toContain('ch-chip-done')
+    expect(chips.map((c) => c.textContent)).toEqual(['src/gone.ts'])
+    expect(chips[0]!.className).toContain('ch-chip-done')
     // The card comes before the first file, in the reading column.
     expect(head.nextElementSibling?.className).toContain('file-section')
   })
@@ -831,59 +826,47 @@ describe('ReadingPane in layer mode', () => {
     expect(container.querySelector('.ch-head h2 .ch-kind')?.textContent).toBe('mechanical')
   })
 
-  it('when the filters empty the layer, the card says so and offers the files back', () => {
-    const v = view({ hidden: { count: 1, reviewed: true } })
-    const { container } = render(
-      <ReadingPane
-        files={[]}
-        layer={v}
-        controls={{
-          left: 1,
-          total: 3,
-          query: '',
-          onClearQuery: () => {},
-          hiddenQuery: 0,
-          hideReviewed: true,
-          onHideReviewed: () => {},
-          hideTests: false,
-          onHideTests: () => {},
-          testCount: 0,
-          onlyChanged: false,
-          onOnlyChanged: () => {},
-          changedCount: 0,
-          hiddenTests: 0,
-          hiddenReviewed: 1,
-          hiddenUnchanged: 0,
-          pinned: new Set(),
-          onSweep: () => {},
-          onShowAll: () => {},
-          scopeLeft: 1,
-          scopeTotal: 3,
-          excludedTests: 0,
-          excludedUnchanged: 0,
-          viewMode: 'unified',
-          onSetViewMode: () => {},
-          allCollapsed: false,
-          onToggleCollapseAll: () => {},
-        }}
-      />,
+  it('on a layer the changeset strip is gone; on the Overview it is the whole pane, open', () => {
+    const at = '2026-09-20T00:00:00Z'
+    const guide = {
+      id: 'g',
+      anchor: { kind: 'changeset' as const },
+      state: 'open' as const,
+      codeContext: null,
+      codeChanged: false,
+      messages: [{ id: 'gm', author: 'agent' as const, text: 'Start here.', at }],
+      createdAt: at,
+      updatedAt: at,
+    }
+    const comments = {
+      partition: { byHunk: new Map(), byFile: new Map(), changeset: [guide] },
+      actions: {
+        create: vi.fn(),
+        reply: vi.fn(),
+        send: vi.fn(),
+        resolve: vi.fn(),
+        reopen: vi.fn(),
+        remove: vi.fn(),
+      },
+    }
+    const { container, unmount } = render(
+      <ReadingPane files={[FILES[0]!]} layer={view()} comments={comments} />,
     )
-    const empty = container.querySelector('.ch-head-empty')!
-    expect(empty.textContent).toContain('All 1 file here are marked reviewed and hidden')
-    expect(empty.querySelector('.kbd')?.textContent).toBe(']')
-    fireEvent.click(screen.getByText('Show them'))
-    expect(v.onShowHidden).toHaveBeenCalled()
-    // The generic "hidden by the switches" state stays out of the way.
-    expect(container.querySelector('.empty-state')).toBeNull()
+    expect(container.querySelector('.changeset-strip')).toBeNull()
+    expect(container.querySelector('.ch-head')).toBeTruthy()
+    unmount()
+    const { container: c2 } = render(<ReadingPane files={[]} overview comments={comments} />)
+    const strip = c2.querySelector('.changeset-strip')!
+    expect(strip).toBeTruthy()
+    expect(strip.querySelector('.strip-head')?.getAttribute('aria-expanded')).toBe('true')
+    expect(c2.textContent).toContain('Start here.')
+    expect(c2.querySelector('.ch-head')).toBeNull()
+    expect(c2.querySelector('.empty-state')).toBeNull()
   })
 
   it('a layer whose files all left the changeset says that instead', () => {
     const { container } = render(
-      <ReadingPane
-        files={[]}
-        layer={view({ listed: 0, chips: [{ path: 'src/gone.ts', missing: true }] })}
-        controls={emptiedControls}
-      />,
+      <ReadingPane files={[]} layer={view({ listed: 0 })} controls={emptiedControls} />,
     )
     expect(container.querySelector('.ch-head-empty')?.textContent).toContain(
       'Nothing this layer lists is in the changeset right now',

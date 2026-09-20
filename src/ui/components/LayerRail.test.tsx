@@ -67,10 +67,8 @@ const rows = () => [...document.querySelectorAll('.row-layer:not(.row-layer-over
 const subOf = (row: Element) => row.querySelector('.ch-sub')?.textContent
 
 describe('LayerRail', () => {
-  it('one row per layer, numbered, counts under the title; the derived one below a rule with +', () => {
+  it('one row per layer, file counts under the title; the derived one below a rule', () => {
     render(<LayerRail layers={resolved} activeIndex={-1} onPick={() => {}} viewed={new Set()} />)
-    const glyphs = rows().map((r) => r.querySelector('.ch-n')?.textContent)
-    expect(glyphs).toEqual(['1', '2', '3', '+'])
     const titles = rows().map((r) => r.querySelector('.row-base')?.textContent)
     expect(titles).toEqual([
       'Parser contract',
@@ -78,12 +76,11 @@ describe('LayerRail', () => {
       'Rename parseDate → parseDue',
       'Since your review',
     ])
-    expect(subOf(rows()[0]!)).toBe('1 file · 2 hunks')
-    expect(subOf(rows()[1]!)).toBe('2 files · 5 hunks')
-    expect(subOf(rows()[2]!)).toContain('· mechanical')
+    expect(subOf(rows()[0]!)).toBe('1 file')
+    expect(subOf(rows()[1]!)).toBe('2 files')
+    expect(subOf(rows()[2]!)).toBe('1 file · mechanical')
     expect(rows()[3]!.className).toContain('row-layer-since')
     expect(rows()[3]!.previousElementSibling?.className).toBe('rail-rule')
-    expect(document.querySelector('.ch-rail-head')?.textContent).toContain('read in this order')
   })
 
   it('progress is derived from hunk marks, and a read layer dims and reads "read"', () => {
@@ -92,7 +89,7 @@ describe('LayerRail', () => {
     expect(subOf(rows()[0]!)).toBe('1 file · read')
     expect(rows()[0]!.className).toContain('row-done')
     expect(rows()[0]!.querySelector('[role="checkbox"]')?.getAttribute('aria-checked')).toBe('true')
-    expect(subOf(rows()[1]!)).toBe('2 files · 2 of 5 hunks')
+    expect(subOf(rows()[1]!)).toBe('2 files')
     expect(rows()[1]!.querySelector('[role="checkbox"]')?.getAttribute('aria-checked')).toBe(
       'mixed',
     )
@@ -131,7 +128,30 @@ describe('LayerRail', () => {
     expect(onClearFiles).toHaveBeenCalledWith(['src/dates.ts', 'src/weekday.ts'])
   })
 
-  it('the current layer is expanded to its file rows, notes as tooltips; a pick reports up', () => {
+  it('files start folded, the active layer included; the chevron opens and shuts them', () => {
+    render(<LayerRail layers={resolved} activeIndex={1} onPick={() => {}} viewed={new Set()} />)
+    const files = () =>
+      [...document.querySelectorAll('.ch-files .row .row-base')].map((n) => n.textContent)
+    expect(files()).toEqual([])
+    fireEvent.click(screen.getByLabelText('Show the files in Parser contract'))
+    fireEvent.click(screen.getByLabelText('Show the files in Weekday resolution'))
+    expect(files()).toEqual(['parse.ts', 'dates.ts', 'weekday.ts'])
+    fireEvent.click(screen.getByLabelText('Hide the files in Weekday resolution'))
+    expect(files()).toEqual(['parse.ts'])
+  })
+
+  it('the whole title-and-count block is the pick target; the chevron is not', () => {
+    const onPick = vi.fn()
+    render(<LayerRail layers={resolved} activeIndex={-1} onPick={onPick} viewed={new Set()} />)
+    const row = rows()[1]!
+    expect(row.querySelector('.row-pick .ch-sub')).toBeTruthy()
+    fireEvent.click(row.querySelector('.ch-sub')!)
+    expect(onPick).toHaveBeenCalledWith(1)
+    fireEvent.click(screen.getByLabelText('Show the files in Weekday resolution'))
+    expect(onPick).toHaveBeenCalledTimes(1)
+  })
+
+  it('an opened layer lists its file rows, notes as tooltips; a pick reports up', () => {
     const onPick = vi.fn()
     const onPickFile = vi.fn()
     render(
@@ -144,6 +164,7 @@ describe('LayerRail', () => {
       />,
     )
     expect(rows()[1]!.getAttribute('aria-current')).toBe('true')
+    fireEvent.click(screen.getByLabelText('Show the files in Weekday resolution'))
     const files = [...document.querySelectorAll('.ch-files .row .row-base')].map(
       (n) => n.textContent,
     )
@@ -184,7 +205,6 @@ describe('LayerRail', () => {
       />,
     )
     const overview = document.querySelector('.row-layer-overview')!
-    expect(overview.querySelector('.ch-n')?.textContent).toBe('0')
     expect(overview.querySelector('.row-base')?.textContent).toBe('Overview')
     expect(overview.querySelector('[role="checkbox"]')).toBeNull()
     expect(subOf(overview)).toBe('guide · agent · with diagram')

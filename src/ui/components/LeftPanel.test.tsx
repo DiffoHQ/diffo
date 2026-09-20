@@ -21,12 +21,12 @@ const panel = (over: Partial<Parameters<typeof LeftPanel>[0]> = {}) =>
   )
 
 describe('LeftPanel — the Layers tab', () => {
-  it('is always present, first, and carries no count without layers', () => {
+  it('is always present, last, and carries no count without layers', () => {
     panel()
     const tabs = screen.getAllByRole('tab').map((t) => t.textContent?.trim())
-    expect(tabs[0]).toBe('Layers')
-    expect(tabs[1]).toMatch(/^Files/)
-    expect(tabs[2]).toMatch(/^Threads/)
+    expect(tabs[0]).toMatch(/^Files/)
+    expect(tabs[1]).toMatch(/^Threads/)
+    expect(tabs[2]).toBe('Layers')
     expect(screen.getByRole('tab', { name: /Layers/ }).querySelector('.tab-n')).toBeNull()
   })
 

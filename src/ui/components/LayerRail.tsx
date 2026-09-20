@@ -1,3 +1,4 @@
+import { useState } from 'react'
 import type { ReviewThread } from '../../shared/review.js'
 import { isFileViewed } from '../fileMarks.js'
 import { layerProgress, type ResolvedLayer } from '../layers.js'
@@ -7,8 +8,8 @@ import { MarkBox } from './MarkBox.js'
 import { FileRow } from './Nav.js'
 
 /**
- * The outline: one row per layer, a directory row with a number where the
- * folder icon would be. The leading mark is the directory control — one click
+ * The outline: one row per layer, a directory row without the folder icon. The
+ * leading mark is the directory control — one click
  * marks every file in the layer read, same toggle, same mixed state. Counts sit
  * under the title rather than beside it, because at 264px a right-hand tally
  * truncated titles; the thread count is the one thing that stays on the right,
@@ -24,20 +25,19 @@ function subLine(layer: ResolvedLayer, viewed: ReadonlySet<string>): string {
       ? 'nothing here now'
       : `${plural(layer.missing.length, 'listed file')} not in the changeset`
   }
+  // Files and a bar, no hunk arithmetic: the bar is the progress, the words
+  // only say what is here and whether it is done.
   const p = layerProgress(layer, viewed)
-  const read =
-    p.doneFiles === p.files
-      ? 'read'
-      : p.doneMarks === 0
-        ? plural(p.marks, 'hunk')
-        : `${p.doneMarks} of ${plural(p.marks, 'hunk')}`
-  return `${plural(p.files, 'file')} · ${read}${layer.kind === 'mechanical' ? ' · mechanical' : ''}`
+  const done = p.doneFiles === p.files ? ' · read' : ''
+  return `${plural(p.files, 'file')}${done}${layer.kind === 'mechanical' ? ' · mechanical' : ''}`
 }
 
 function LayerRow({
   layer,
   index,
   current,
+  open,
+  onToggleOpen,
   viewed,
   threadCount,
   onPick,
@@ -47,6 +47,9 @@ function LayerRow({
   layer: ResolvedLayer
   index: number
   current: boolean
+  /** The file rows under it are shown. */
+  open: boolean
+  onToggleOpen: () => void
   viewed: ReadonlySet<string>
   threadCount: number
   onPick: (index: number) => void
@@ -58,7 +61,6 @@ function LayerRow({
   const some = p.doneMarks > 0
   const markable = layer.files.filter((f) => !isFileViewed(f.file, viewed)).map((f) => f.file.path)
   const paths = layer.files.map((f) => f.file.path)
-  const glyph = layer.number === null ? '+' : String(layer.number)
   return (
     <div
       className={`row row-layer${allDone ? ' row-done' : ''}${layer.derived ? ' row-layer-since' : ''}`}
@@ -89,18 +91,23 @@ function LayerRow({
       >
         <MarkBox state={allDone ? true : some ? 'mixed' : false} />
       </button>
-      <button
-        type="button"
-        className="row-pick"
-        aria-expanded={current}
-        title={layer.title}
-        onClick={() => onPick(index)}
-      >
+      {/* Title and count are one target: anywhere on them picks the layer. Only
+          the mark and the fold chevron are their own controls. */}
+      <button type="button" className="row-pick" title={layer.title} onClick={() => onPick(index)}>
         <span className="row-name">
-          <span className="ch-n" aria-hidden="true">
-            {glyph}
-          </span>
           <span className="row-base">{layer.title}</span>
+        </span>
+        <span className="ch-sub">
+          {p.files > 0 && (
+            <span className="prog-track" aria-hidden="true">
+              <i
+                style={{
+                  width: `${p.marks === 0 ? 0 : Math.round((p.doneMarks / p.marks) * 100)}%`,
+                }}
+              />
+            </span>
+          )}
+          <span>{subLine(layer, viewed)}</span>
         </span>
       </button>
       <span className="row-right">
@@ -110,17 +117,19 @@ function LayerRow({
             {threadCount}
           </span>
         )}
-      </span>
-      <div className="ch-sub">
-        {p.files > 0 && (
-          <span className="prog-track" aria-hidden="true">
-            <i
-              style={{ width: `${p.marks === 0 ? 0 : Math.round((p.doneMarks / p.marks) * 100)}%` }}
-            />
-          </span>
+        {layer.files.length > 0 && (
+          <button
+            type="button"
+            className={`row-act ch-fold chevron${open ? '' : ' chevron-shut'}`}
+            aria-expanded={open}
+            aria-label={`${open ? 'Hide' : 'Show'} the files in ${layer.title}`}
+            data-tip={open ? 'Hide files' : 'Show files'}
+            onClick={onToggleOpen}
+          >
+            <Icon name="chev" size="sm" />
+          </button>
         )}
-        <span>{subLine(layer, viewed)}</span>
-      </div>
+      </span>
     </div>
   )
 }
@@ -131,6 +140,7 @@ export function LayerRail({
   onPick,
   viewed,
   guide,
+  overviewActive = false,
   onOpenGuide,
   threads,
   attention,
@@ -150,6 +160,9 @@ export function LayerRail({
   /** The guide comment, folded in as row 0 — one outline, not two agent
    * artifacts in two places. Not markable: it is not code. */
   guide?: ReviewThread
+  /** The reviewer is standing on the Overview: the pane shows the guide and the
+   * other changeset threads instead of a layer's files. */
+  overviewActive?: boolean
   onOpenGuide?: () => void
   threads?: Map<string, ReviewThread[]>
   attention?: Map<string, ThreadItem[]>
@@ -167,12 +180,23 @@ export function LayerRail({
   const threadCount = (layer: ResolvedLayer) =>
     layer.files.reduce((n, f) => n + (threads?.get(f.file.path)?.length ?? 0), 0)
   const guideText = guide?.messages[0]?.text ?? ''
+  // Files stay folded until the chevron opens them — the outline is the list of
+  // steps, and a step's files are detail the reviewer asks for.
+  const [opened, setOpened] = useState<ReadonlySet<string>>(new Set())
+  const isOpen = (layer: ResolvedLayer) => opened.has(layer.id ?? 'since')
+  const toggle = (layer: ResolvedLayer) =>
+    setOpened((prev) => {
+      const next = new Set(prev)
+      const key = layer.id ?? 'since'
+      if (next.has(key)) next.delete(key)
+      else next.add(key)
+      return next
+    })
   return (
     <div className="rail-scroll">
-      <div className="ch-rail-head">
-        <span>read in this order</span>
-        <span className="grow" />
-        {onRefresh && (
+      {onRefresh && (
+        <div className="ch-rail-head">
+          <span className="grow" />
           <button
             type="button"
             className="btn btn-ghost btn-sm"
@@ -181,10 +205,13 @@ export function LayerRail({
           >
             refresh
           </button>
-        )}
-      </div>
+        </div>
+      )}
       {guide && (
-        <div className="row row-layer row-layer-overview">
+        <div
+          className="row row-layer row-layer-overview"
+          aria-current={overviewActive ? 'true' : undefined}
+        >
           <span className="row-box" aria-hidden="true">
             <MarkBox />
           </span>
@@ -195,20 +222,18 @@ export function LayerRail({
             onClick={onOpenGuide}
           >
             <span className="row-name">
-              <span className="ch-n" aria-hidden="true">
-                0
-              </span>
               <span className="row-base">Overview</span>
+            </span>
+            <span className="ch-sub">
+              <span>guide · agent{guideText.includes('```mermaid') ? ' · with diagram' : ''}</span>
             </span>
           </button>
           <span className="row-right" />
-          <div className="ch-sub">
-            <span>guide · agent{guideText.includes('```mermaid') ? ' · with diagram' : ''}</span>
-          </div>
         </div>
       )}
       {layers.map((layer, index) => {
         const current = index === activeIndex
+        const open = isOpen(layer)
         return (
           <div key={layer.id ?? 'since'} className="ch-layer">
             {layer.derived && <div className="rail-rule" />}
@@ -216,13 +241,15 @@ export function LayerRail({
               layer={layer}
               index={index}
               current={current}
+              open={open}
+              onToggleOpen={() => toggle(layer)}
               viewed={viewed}
               threadCount={threadCount(layer)}
               onPick={onPick}
               onMarkFiles={onMarkFiles}
               onClearFiles={onClearFiles}
             />
-            {current && layer.files.length > 0 && (
+            {open && layer.files.length > 0 && (
               <div className="ch-files">
                 {layer.files.map(({ file, note }) => (
                   <FileRow

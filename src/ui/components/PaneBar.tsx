@@ -7,10 +7,10 @@ import type { ViewMode } from './ReadingPane.js'
  * view. `prev` / `next` are null at the ends of the outline.
  */
 export interface PaneLayer {
-  /** `layer 3 / 6`, or `since your review` for the derived one. */
-  label: string
-  files: number
-  left: number
+  /** The one line: `layer 3 / 6 · 3 files · 2 left`, or `overview · the guide`. */
+  text: string
+  /** The burndown's title, for the hover. */
+  title: string
   /** 0..1, from the layer's hunk marks. */
   progress: number
   prev: { title: string; onGo: () => void } | null
@@ -96,12 +96,8 @@ export function PaneBar({
         />
       </span>
       {layer ? (
-        <span
-          className="pane-left"
-          title={`${layer.files - layer.left} of ${layer.files} files in this layer marked reviewed`}
-        >
-          {layer.label} · {layer.files} {layer.files === 1 ? 'file' : 'files'} ·{' '}
-          {layer.files === 0 ? 'nothing here' : layer.left === 0 ? 'read' : `${layer.left} left`}
+        <span className="pane-left" title={layer.title}>
+          {layer.text}
         </span>
       ) : (
         <span className="pane-left" title={`${done} of ${total} files marked reviewed`}>
@@ -109,7 +105,8 @@ export function PaneBar({
         </span>
       )}
       <span className="grow" />
-      {onAddNote && (
+      {/* In layer mode the Overview's strip carries "+ Note on the changeset". */}
+      {!layer && onAddNote && (
         <>
           <button
             type="button"
@@ -123,7 +120,9 @@ export function PaneBar({
           <span className="pane-sep" />
         </>
       )}
-      {trimmedQuery !== '' && onClearQuery && (
+      {/* In layer mode the outline is the narrowing: a layer shows all of its
+          files, so the filters have nothing to say and step aside. */}
+      {!layer && trimmedQuery !== '' && onClearQuery && (
         <button
           type="button"
           className="pane-q"
@@ -136,7 +135,7 @@ export function PaneBar({
           <Icon name="x" size="sm" />
         </button>
       )}
-      {showChanged && (
+      {!layer && showChanged && (
         <Switch
           on={onlyChanged}
           onChange={onOnlyChanged}
@@ -144,8 +143,8 @@ export function PaneBar({
           n={changedCount}
         />
       )}
-      <Switch on={hideReviewed} onChange={onHideReviewed} label="Hide reviewed" />
-      {showTests && (
+      {!layer && <Switch on={hideReviewed} onChange={onHideReviewed} label="Hide reviewed" />}
+      {!layer && showTests && (
         <Switch on={hideTests} onChange={onHideTests} label="Hide tests" n={testCount} />
       )}
       <span className="pane-sep" />

@@ -32,20 +32,7 @@ export function LeftPanel({
 }) {
   return (
     <nav className="rail">
-      <div className="tabs" role="tablist" aria-label="Layers, files, or threads">
-        <button
-          type="button"
-          role="tab"
-          className="tab"
-          aria-selected={tab === 'layers'}
-          onClick={() => onSetTab('layers')}
-          title={layerCount === null ? 'The agent’s reading plan, once it posts one' : undefined}
-        >
-          {layersSuggested && layerCount === null && (
-            <span className="tab-dot" aria-hidden="true" />
-          )}
-          Layers {layerCount !== null && <span className="tab-n">{layerCount}</span>}
-        </button>
+      <div className="tabs" role="tablist" aria-label="Files, threads, or layers">
         <button
           type="button"
           role="tab"
@@ -67,6 +54,19 @@ export function LeftPanel({
         >
           {wantsYou > 0 && <span className="tab-dot" aria-hidden="true" />}
           Threads <span className="tab-n">{threadCount}</span>
+        </button>
+        <button
+          type="button"
+          role="tab"
+          className="tab"
+          aria-selected={tab === 'layers'}
+          onClick={() => onSetTab('layers')}
+          title={layerCount === null ? 'The agent’s reading plan, once it posts one' : undefined}
+        >
+          {layersSuggested && layerCount === null && (
+            <span className="tab-dot" aria-hidden="true" />
+          )}
+          Layers {layerCount !== null && <span className="tab-n">{layerCount}</span>}
         </button>
       </div>
       {tab === 'layers' ? layers : tab === 'files' ? files : threads}

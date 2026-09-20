@@ -3,7 +3,6 @@ import type { ReviewThread } from '../../shared/review.js'
 import type { FileChange, FileStatus } from '../../shared/types.js'
 import { isFileViewed } from '../fileMarks.js'
 import { fileAnchor, glideTo } from '../hooks.js'
-import { type ResolvedLayer, SINCE_TITLE } from '../layers.js'
 import { isTestFile } from '../reviewFilter.js'
 import type { ThreadItem } from '../threads.js'
 import { Icon } from './Icon.js'
@@ -81,26 +80,6 @@ export function treeOrder(files: FileChange[]): FileChange[] {
   return buildTree(files).flatMap(filesUnder)
 }
 
-/** With layers present, which one a file belongs to — the Files tree becomes an
- * index into the outline rather than a second view. */
-export interface FileLayer {
-  /** The layer's number, or `+` for the derived "Since your review". */
-  glyph: string
-  title: string
-  derived: boolean
-}
-
-export function fileLayerOf(layer: ResolvedLayer | undefined): FileLayer | undefined {
-  if (!layer) return undefined
-  return layer.derived
-    ? { glyph: '+', title: SINCE_TITLE, derived: true }
-    : {
-        glyph: String(layer.number),
-        title: `layer ${layer.number} · ${layer.title}`,
-        derived: false,
-      }
-}
-
 export function FileRow({
   file,
   depth,
@@ -110,7 +89,6 @@ export function FileRow({
   wantsYou = 0,
   changed = false,
   note,
-  inLayer,
   onPick,
   onToggleViewed,
   onAsk,
@@ -124,7 +102,6 @@ export function FileRow({
   changed?: boolean
   /** The agent's one line on why this file is in its layer — the row's tooltip. */
   note?: string
-  inLayer?: FileLayer
   onPick?: () => void
   onToggleViewed?: () => void
   onAsk?: () => void
@@ -229,16 +206,6 @@ export function FileRow({
             </button>
           )}
         </span>
-        {inLayer && (
-          <span
-            className={`ch-in${inLayer.derived ? ' ch-in-since' : ''}`}
-            role="img"
-            title={inLayer.title}
-            aria-label={inLayer.title}
-          >
-            {inLayer.glyph}
-          </span>
-        )}
       </span>
     </div>
   )
@@ -265,15 +232,11 @@ export function Nav({
   onHideTests,
   onlyChanged = false,
   onOnlyChanged,
-  layerOf,
 }: {
   files: FileChange[]
   viewed?: ReadonlySet<string>
   selectedPath?: string | null
   onPickFile?: (path: string) => void
-  /** With layers present: each row shows its layer's number, and a pick opens
-   * the file inside that layer (the app does the switching). */
-  layerOf?: ReadonlyMap<string, ResolvedLayer>
   onToggleFileViewed?: (path: string) => void
   onMarkFiles?: (paths: string[]) => void
   onClearFiles?: (paths: string[]) => void
@@ -339,7 +302,6 @@ export function Nav({
       threads={threads?.get(file.path)}
       wantsYou={(attention?.get(file.path) ?? []).filter((i) => i.turn === 'yours').length}
       changed={changed?.has(file.path) ?? false}
-      inLayer={layerOf ? fileLayerOf(layerOf.get(file.path)) : undefined}
       onPick={onPickFile ? () => onPickFile(file.path) : undefined}
       onToggleViewed={onToggleFileViewed ? () => onToggleFileViewed(file.path) : undefined}
       onAsk={onAskFile ? () => onAskFile(file.path) : undefined}
@@ -478,11 +440,6 @@ export function Nav({
       </div>
       {files.length > 0 && (
         <div className="rail-tally">{left === 0 ? 'all reviewed' : `${left} left to review`}</div>
-      )}
-      {layerOf && (
-        <div className="ch-rail-head">
-          <span>click a file to open it in its layer</span>
-        </div>
       )}
 
       <div className="rail-scroll">
