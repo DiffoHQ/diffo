@@ -76,3 +76,53 @@ describe('the typed-filter chip', () => {
     expect(container.querySelector('.pane-q')).toBeNull()
   })
 })
+
+describe('the layer pager', () => {
+  const layer = (over: Partial<NonNullable<Parameters<typeof PaneBar>[0]['layer']>> = {}) => ({
+    label: 'layer 3 / 6',
+    files: 3,
+    left: 2,
+    progress: 0.4,
+    prev: { title: 'Callers adapted', onGo: vi.fn() },
+    next: { title: 'Relative phrases', onGo: vi.fn() },
+    ...over,
+  })
+
+  it('the burndown reads the layer, not the review', () => {
+    const { container } = render(bar({ layer: layer() }))
+    expect(container.querySelector('.pane-left')?.textContent).toBe(
+      'layer 3 / 6 · 3 files · 2 left',
+    )
+    expect(container.querySelector<HTMLElement>('.prog-track i')?.style.width).toBe('40%')
+  })
+
+  it('prev and next sit on the bar with their titles and the ] hint, and go where they say', () => {
+    const l = layer()
+    render(bar({ layer: l }))
+    fireEvent.click(screen.getByLabelText('Previous layer: Callers adapted'))
+    expect(l.prev!.onGo).toHaveBeenCalled()
+    const next = screen.getByLabelText('Next layer: Relative phrases')
+    expect(next.querySelector('.kbd')?.textContent).toBe(']')
+    fireEvent.click(next)
+    expect(l.next!.onGo).toHaveBeenCalled()
+  })
+
+  it('the ends of the outline drop the button that has nowhere to go', () => {
+    const { container, unmount } = render(bar({ layer: layer({ prev: null }) }))
+    expect(screen.queryByLabelText(/Previous layer/)).toBeNull()
+    expect(screen.getByLabelText(/Next layer/)).toBeTruthy()
+    unmount()
+    render(bar({ layer: layer({ next: null }) }))
+    expect(screen.queryByLabelText(/Next layer/)).toBeNull()
+    expect(container).toBeTruthy()
+  })
+
+  it('a read layer says so; the derived layer is named', () => {
+    const { container } = render(
+      bar({ layer: layer({ label: 'since your review', left: 0, files: 1, progress: 1 }) }),
+    )
+    expect(container.querySelector('.pane-left')?.textContent).toBe(
+      'since your review · 1 file · read',
+    )
+  })
+})

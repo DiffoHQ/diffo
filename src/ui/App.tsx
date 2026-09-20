@@ -19,16 +19,33 @@ import { FinishReview } from './components/FinishReview.js'
 import { Header } from './components/Header.js'
 import { Icon, IconSprite } from './components/Icon.js'
 import { InviteAgent } from './components/InviteAgent.js'
+import { LayerRail } from './components/LayerRail.js'
+import { LayersEmpty, type LayersEmptyState } from './components/LayersEmpty.js'
 import { LeftPanel } from './components/LeftPanel.js'
 import { Monitor } from './components/Monitor.js'
 import { Nav, treeOrder } from './components/Nav.js'
-import { ReadingPane, type ReviewComments, type ViewMode } from './components/ReadingPane.js'
+import {
+  type LayerView,
+  ReadingPane,
+  type ReviewComments,
+  type ViewMode,
+} from './components/ReadingPane.js'
 import { Shortcuts } from './components/Shortcuts.js'
 import { ThreadRail } from './components/ThreadRail.js'
 import type { ReviewActions } from './components/Threads.js'
 import { isFileViewed } from './fileMarks.js'
 import { fileAnchor, glideTo } from './hooks.js'
 import { actionForKey, isTypingTarget } from './keyboard.js'
+import {
+  findGuide,
+  layerByPath,
+  layerKey,
+  layerProgress,
+  type ResolvedLayer,
+  resolveLayers,
+  startingLayer,
+  stepLayer,
+} from './layers.js'
 import { computeDelta, EMPTY_DELTA } from './liveDelta.js'
 import { useReviewFilter } from './reviewFilter.js'
 import { partitionThreads, threadsByFile } from './reviewPlacement.js'
@@ -289,8 +306,97 @@ function Review() {
     set: setOnlyChanged,
   })
 
+  // ---------- layers: the agent's reading plan ----------
+  // Resolved against the live changeset on every render, never stored (see
+  // ui/layers.ts). With none, `layerMode` is off and the pane is exactly the
+  // flat list it always was.
+  const resolvedLayers = useMemo(
+    () => resolveLayers(review?.layers, allFiles),
+    [review?.layers, allFiles],
+  )
+  const layerMode = resolvedLayers.length > 0
+  const layersByPath = useMemo(() => layerByPath(resolvedLayers), [resolvedLayers])
+  // The active layer is remembered by key — its stored id, which a re-post keeps
+  // for a matching title — so a re-post never moves the reviewer. Until the
+  // marks have loaded (or when the remembered layer is gone) the outline opens
+  // on the first layer with something unread.
+  const [activeLayerKey, setActiveLayerKey] = useState<string | null>(null)
+  const foundLayer = resolvedLayers.findIndex((l) => layerKey(l) === activeLayerKey)
+  const activeIndex = !layerMode
+    ? -1
+    : foundLayer === -1
+      ? startingLayer(resolvedLayers, viewed)
+      : foundLayer
+  const activeLayer: ResolvedLayer | undefined = layerMode ? resolvedLayers[activeIndex] : undefined
+  useEffect(() => {
+    if (!layerMode || !viewedLoaded || foundLayer !== -1) return
+    // Pin the derived start once, so a later mark cannot slide the reviewer on.
+    setActiveLayerKey(layerKey(resolvedLayers[activeIndex]!))
+  }, [layerMode, viewedLoaded, foundLayer, resolvedLayers, activeIndex])
+  // What the filters let through, review-wide; a layer shows the intersection.
+  const visibleSet = useMemo(() => new Set(filter.files.map((f) => f.path)), [filter.files])
+  // The pane's file order: the active layer's files as the agent listed them,
+  // narrowed by the filters — or, outside layer mode, the filtered tree order.
+  const paneOrder = useMemo(
+    () =>
+      activeLayer
+        ? activeLayer.files.map((f) => f.file).filter((f) => visibleSet.has(f.path))
+        : filter.files,
+    [activeLayer, visibleSet, filter.files],
+  )
+  // A layer the filters emptied is skipped by next/prev; its card still says why.
+  const layerEmptied = useCallback(
+    (layer: ResolvedLayer) => !layer.files.some((f) => visibleSet.has(f.file.path)),
+    [visibleSet],
+  )
+  const guide = useMemo(() => findGuide(review?.threads ?? []), [review?.threads])
+
   const [visibleCount, setVisibleCount] = useState(FILE_BATCH)
   const loadMoreFiles = useCallback(() => setVisibleCount((c) => c + FILE_BATCH), [])
+
+  const goLayer = useCallback(
+    (index: number) => {
+      const layer = resolvedLayers[index]
+      if (!layer) return
+      setActiveLayerKey(layerKey(layer))
+      setSelectedId(null)
+      setFocusPath(null)
+      setVisibleCount(FILE_BATCH)
+      requestAnimationFrame(() => {
+        document.querySelector<HTMLElement>('.reading-pane')?.scrollTo({ top: 0 })
+      })
+    },
+    [resolvedLayers],
+  )
+
+  // A file opens inside its layer, never outside layer mode: the Files tab, a
+  // thread jump, and `n` all land here first.
+  const enterLayerFor = useCallback(
+    (path: string) => {
+      if (!layerMode) return
+      if (activeLayer?.files.some((f) => f.file.path === path)) return
+      const target = layersByPath.get(path)
+      if (target) goLayer(resolvedLayers.indexOf(target))
+    },
+    [layerMode, activeLayer, layersByPath, resolvedLayers, goLayer],
+  )
+
+  // A mechanical layer's files arrive folded — fold, never hide — each time the
+  // reviewer enters it. Expanding one is a click, and stays expanded.
+  useEffect(() => {
+    if (activeLayer?.kind !== 'mechanical') return
+    const paths = activeLayer.files.map((f) => f.file.path)
+    setCollapsed((prev) => new Set([...prev, ...paths]))
+  }, [activeLayer])
+
+  // Layers, once posted, are the default tab — the one place to look.
+  useEffect(() => {
+    if (layerMode) setPanel('layers')
+  }, [layerMode])
+
+  // TODO(slice 3): the request loop — enqueue a `layers` poll item, show the
+  // agent working on it in the chip. Until then the button is inert.
+  const requestLayers = useCallback(() => {}, [])
   // A jump can target a file beyond the window — widen it, or the scroll finds no
   // node. It can also target a file the pane is *hiding*; pinning exempts that one
   // path from the filters. The window is sized from the file's index in the whole
@@ -303,10 +409,7 @@ function Review() {
     },
     [allFiles, filter.pin],
   )
-  const visibleFiles = useMemo(
-    () => filter.files.slice(0, visibleCount),
-    [filter.files, visibleCount],
-  )
+  const visibleFiles = useMemo(() => paneOrder.slice(0, visibleCount), [paneOrder, visibleCount])
 
   const { active: activeThreads, past: pastThreads } = useMemo(
     () => threadsInChangeset(data?.files ?? [], review?.threads ?? []),
@@ -633,8 +736,23 @@ function Review() {
     [data, toggleFile, viewed, filter.hideReviewed, filter.unpin, rememberLanding],
   )
 
+  /**
+   * Land on a file's card. A layer switch re-renders the whole pane, so one frame
+   * is a race: retry across frames until the node exists, bounded so a path that
+   * never renders can't spin.
+   */
+  const scrollToFile = useCallback((path: string) => {
+    const seek = (attempts: number) => {
+      const node = document.getElementById(fileAnchor(path))
+      if (node) glideTo(node, flashLanding)
+      else if (attempts > 0) requestAnimationFrame(() => seek(attempts - 1))
+    }
+    requestAnimationFrame(() => seek(30))
+  }, [])
+
   const pickFile = useCallback(
     (path: string) => {
+      enterLayerFor(path)
       revealFile(path)
       setCollapsed((prev) => {
         if (!prev.has(path)) return prev
@@ -642,12 +760,45 @@ function Review() {
         next.delete(path)
         return next
       })
-      requestAnimationFrame(() => {
-        const node = document.getElementById(fileAnchor(path))
-        if (node) glideTo(node, flashLanding)
-      })
+      scrollToFile(path)
     },
-    [revealFile],
+    [revealFile, enterLayerFor, scrollToFile],
+  )
+
+  // A `path:line` reference in a layer summary. The line is head-side; the hunk
+  // that shows it is found by its rendered rows, falling back to the file card.
+  const jumpTo = useCallback(
+    (path: string, line: number | null) => {
+      const file = data?.files.find((f) => f.path === path)
+      if (!file) return
+      enterLayerFor(path)
+      revealFile(path)
+      setCollapsed((prev) => {
+        if (!prev.has(path)) return prev
+        const next = new Set(prev)
+        next.delete(path)
+        return next
+      })
+      const hunk =
+        line === null
+          ? undefined
+          : file.hunks.find((h) => h.lines.some((l) => l.kind !== 'del' && l.newNo === line))
+      if (hunk) {
+        setSelectedId(hunk.id)
+        setFocusPath(null)
+        requestAnimationFrame(() => {
+          const seek = (attempts: number) => {
+            const node = document.querySelector(`[data-hunk-id="${hunk.id}"]`)
+            if (node) glideTo(node, flashLanding)
+            else if (attempts > 0) requestAnimationFrame(() => seek(attempts - 1))
+          }
+          seek(30)
+        })
+      } else {
+        scrollToFile(path)
+      }
+    },
+    [data, enterLayerFor, revealFile, scrollToFile],
   )
 
   const markFilesViewed = useCallback(
@@ -671,23 +822,47 @@ function Review() {
     [clearFiles],
   )
 
+  // `n`: the next unread file. In layer mode it walks the plan — this layer's
+  // files first, then the layers after it, wrapping to the front — so one key
+  // reads the whole outline end to end; the layer switches as the file does.
   const nextUnreviewed = useCallback(() => {
-    const file = allFiles.find((f) => !isFileViewed(f, viewed))
+    const unread = (f: FileChange) => !isFileViewed(f, viewed)
+    let file: FileChange | undefined
+    if (layerMode && activeIndex >= 0) {
+      const walk = [...resolvedLayers.slice(activeIndex), ...resolvedLayers.slice(0, activeIndex)]
+      for (const layer of walk) {
+        const hit = layer.files.map((f) => f.file).find(unread)
+        if (hit) {
+          file = hit
+          if (layer !== activeLayer) goLayer(resolvedLayers.indexOf(layer))
+          break
+        }
+      }
+    } else {
+      file = allFiles.find(unread)
+    }
     if (!file) return
     revealFile(file.path)
     setCollapsed((prev) => {
-      if (!prev.has(file.path)) return prev
+      if (!prev.has(file!.path)) return prev
       const next = new Set(prev)
-      next.delete(file.path)
+      next.delete(file!.path)
       return next
     })
     setSelectedId(file.hunks[0]?.id ?? null)
     setFocusPath(file.hunks.length === 0 ? file.path : null)
-    requestAnimationFrame(() => {
-      const node = document.getElementById(fileAnchor(file.path))
-      if (node) glideTo(node, flashLanding)
-    })
-  }, [allFiles, viewed, revealFile])
+    scrollToFile(file.path)
+  }, [
+    allFiles,
+    viewed,
+    revealFile,
+    layerMode,
+    activeIndex,
+    activeLayer,
+    resolvedLayers,
+    goLayer,
+    scrollToFile,
+  ])
 
   const openThread = useCallback(
     (item: { threadId: string; path: string | null; gone?: boolean }) => {
@@ -697,6 +872,7 @@ function Review() {
       if (item.gone) {
         setRevealPastTick((t) => t + 1)
       } else if (item.path) {
+        enterLayerFor(item.path)
         revealFile(item.path)
         setCollapsed((prev) => {
           if (!prev.has(item.path!)) return prev
@@ -724,7 +900,7 @@ function Review() {
       }
       requestAnimationFrame(() => seek(30))
     },
-    [revealFile],
+    [revealFile, enterLayerFor],
   )
 
   // A notification click knows only the thread id — recover the pane target the
@@ -775,9 +951,8 @@ function Review() {
   }, [data, delta])
 
   const hunkOrder = useMemo(
-    () =>
-      filter.files.flatMap((file) => file.hunks.map((hunk) => ({ id: hunk.id, path: file.path }))),
-    [filter.files],
+    () => paneOrder.flatMap((file) => file.hunks.map((hunk) => ({ id: hunk.id, path: file.path }))),
+    [paneOrder],
   )
 
   // A live update can delete the selected hunk out from under us.
@@ -849,6 +1024,15 @@ function Review() {
         if (selectedPath) toggleCollapsed(selectedPath)
       } else if (action === 'hide-reviewed') {
         filter.setHideReviewed(!filter.hideReviewed)
+      } else if (action === 'next-layer' || action === 'prev-layer') {
+        if (!layerMode) return
+        const to = stepLayer(
+          resolvedLayers,
+          activeIndex,
+          action === 'next-layer' ? 1 : -1,
+          layerEmptied,
+        )
+        if (to !== null) goLayer(to)
       } else {
         moveSelection(action)
       }
@@ -866,7 +1050,79 @@ function Review() {
     toggleCollapsed,
     filter.hideReviewed,
     filter.setHideReviewed,
+    layerMode,
+    resolvedLayers,
+    activeIndex,
+    layerEmptied,
+    goLayer,
   ])
+
+  // ---------- what the pane and the bar say about the active layer ----------
+  const layerCount = resolvedLayers.filter((l) => !l.derived).length
+  const layerView: LayerView | undefined = useMemo(() => {
+    if (!activeLayer) return undefined
+    const hiddenFiles = activeLayer.files.map((f) => f.file).filter((f) => !visibleSet.has(f.path))
+    const notes = new Map<string, string>()
+    for (const { file, note } of activeLayer.files) {
+      if (note) notes.set(file.path, note)
+      else if (activeLayer.kind === 'mechanical' && file.hunks.length > 0) {
+        notes.set(file.path, `${file.hunks.length} ${file.hunks.length === 1 ? 'site' : 'sites'}`)
+      }
+    }
+    return {
+      kicker: activeLayer.derived
+        ? 'Outside the outline'
+        : `Layer ${activeLayer.number} of ${layerCount}`,
+      title: activeLayer.title,
+      mechanical: activeLayer.kind === 'mechanical',
+      ...(activeLayer.derived
+        ? {
+            summary:
+              'Files no layer lists — touched after the outline was posted, or left out of it. The agent absorbs them by re-posting.',
+          }
+        : activeLayer.summary
+          ? { summary: activeLayer.summary }
+          : {}),
+      chips: [
+        ...activeLayer.files.map((f) => ({ path: f.file.path, missing: false })),
+        ...activeLayer.missing.map((path) => ({ path, missing: true })),
+      ],
+      listed: activeLayer.files.length,
+      hidden:
+        hiddenFiles.length > 0
+          ? { count: hiddenFiles.length, reviewed: hiddenFiles.every(isFileDone) }
+          : null,
+      onShowHidden: () => {
+        // "Show them" lifts the one filter that took them when that is the whole
+        // story; anything more tangled clears the lot.
+        if (hiddenFiles.every(isFileDone) && filter.hideReviewed) filter.setHideReviewed(false)
+        else filter.showAll()
+      },
+      onJump: jumpTo,
+      notes,
+      knownPaths: allFiles.map((f) => f.path),
+    }
+  }, [activeLayer, visibleSet, layerCount, isFileDone, filter, jumpTo, allFiles])
+  const paneLayer = useMemo(() => {
+    if (!activeLayer) return undefined
+    const p = layerProgress(activeLayer, viewed)
+    const prev = stepLayer(resolvedLayers, activeIndex, -1, layerEmptied)
+    const next = stepLayer(resolvedLayers, activeIndex, 1, layerEmptied)
+    return {
+      label: activeLayer.derived
+        ? 'since your review'
+        : `layer ${activeLayer.number} / ${layerCount}`,
+      files: p.files,
+      left: p.files - p.doneFiles,
+      progress: p.marks === 0 ? 0 : p.doneMarks / p.marks,
+      prev:
+        prev === null ? null : { title: resolvedLayers[prev]!.title, onGo: () => goLayer(prev) },
+      next:
+        next === null ? null : { title: resolvedLayers[next]!.title, onGo: () => goLayer(next) },
+    }
+  }, [activeLayer, viewed, resolvedLayers, activeIndex, layerEmptied, layerCount, goLayer])
+  const layersEmptyState: LayersEmptyState =
+    presence === 'waiting' ? 'noagent' : review?.layersSuggested ? 'suggested' : 'quiet'
 
   if (isLoading) {
     return (
@@ -901,6 +1157,10 @@ function Review() {
           activity,
           onInvite: () => setInviteOpen(true),
           batch: batchForBadge,
+          suggestion:
+            !layerMode && review?.layersSuggested
+              ? { reason: review.layersSuggested.reason, onOutline: requestLayers }
+              : undefined,
           monitorOpen,
           onOpenMonitor: setMonitorOpen,
           monitorPanel: (
@@ -937,6 +1197,41 @@ function Review() {
           wantsYou={wantsYou}
           threadCount={liveThreads}
           settledCount={settledThreads}
+          layerCount={layerMode ? layerCount : null}
+          layersSuggested={review?.layersSuggested !== undefined}
+          layers={
+            layerMode ? (
+              <LayerRail
+                layers={resolvedLayers}
+                activeIndex={activeIndex}
+                onPick={goLayer}
+                viewed={viewed}
+                guide={guide}
+                onOpenGuide={
+                  guide ? () => openThread({ threadId: guide.id, path: null }) : undefined
+                }
+                threads={fileThreads}
+                attention={fileAttention}
+                changed={sinceLastReview.changed}
+                selectedPath={selectedPath}
+                onPickFile={pickFile}
+                onToggleFileViewed={toggleFileViewed}
+                onMarkFiles={markFilesViewed}
+                onClearFiles={clearFilesViewed}
+                onAskFile={(path) => {
+                  revealFile(path)
+                  setComposeFilePath(path)
+                }}
+              />
+            ) : (
+              <LayersEmpty
+                state={layersEmptyState}
+                reason={review?.layersSuggested?.reason}
+                onOutline={requestLayers}
+                onInvite={() => setInviteOpen(true)}
+              />
+            )
+          }
           files={
             <Nav
               files={allFiles}
@@ -964,6 +1259,7 @@ function Review() {
               onHideTests={filter.setHideTests}
               onlyChanged={onlyChanged}
               onOnlyChanged={setOnlyChanged}
+              layerOf={layerMode ? layersByPath : undefined}
             />
           }
           threads={
@@ -1017,9 +1313,11 @@ function Review() {
           delta={delta}
           landed={landedNotice}
           sinceReview={sinceLastReview.changedHunkIds}
-          hasMore={visibleCount < filter.files.length}
+          hasMore={visibleCount < paneOrder.length}
           onLoadMore={loadMoreFiles}
+          layer={layerView}
           controls={{
+            layer: paneLayer,
             navHidden,
             onToggleNav: toggleNav,
             left: fileProgress.total - fileProgress.viewed,

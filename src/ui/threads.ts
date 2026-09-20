@@ -103,7 +103,9 @@ export interface ThreadItem {
   gone?: boolean
 }
 
-export type PanelTab = 'files' | 'threads'
+/** The rail's three lists. Layers is always present — with layers it is the
+ * default and carries a count; without, its body offers to outline. */
+export type PanelTab = 'layers' | 'files' | 'threads'
 
 const firstLine = (text: string) => text.split('\n', 1)[0]!.trim()
 

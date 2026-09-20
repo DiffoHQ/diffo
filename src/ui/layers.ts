@@ -1,4 +1,10 @@
-import { type Layers, layerFileNote, layerFilePath } from '../shared/review.js'
+import {
+  type Layers,
+  layerFileNote,
+  layerFilePath,
+  type ReviewThread,
+  startedByAgent,
+} from '../shared/review.js'
 import type { FileChange } from '../shared/types.js'
 import { fileMarks } from './fileMarks.js'
 
@@ -92,6 +98,19 @@ export function resolveLayers(
   return resolved
 }
 
+/** What the UI remembers the active layer by: the stored id, which a re-post
+ * keeps for a matching title, or a fixed key for the derived layer. */
+export function layerKey(layer: ResolvedLayer): string {
+  return layer.id ?? 'since'
+}
+
+/** Row 0 of the outline: the guide comment, when the review has one — the same
+ * rule the CLI applies (`findGuideThread`), the newest agent thread on the whole
+ * changeset. */
+export function findGuide(threads: readonly ReviewThread[]): ReviewThread | undefined {
+  return threads.filter((t) => t.anchor.kind === 'changeset' && startedByAgent(t)).at(-1)
+}
+
 /** The layer each file belongs to — the first one that lists it — for the Files
  * tab's index numbers and for opening a file inside its layer. */
 export function layerByPath(resolved: readonly ResolvedLayer[]): Map<string, ResolvedLayer> {
@@ -161,4 +180,65 @@ export function startingLayer(
 ): number {
   const unread = resolved.findIndex((l) => l.files.length > 0 && !layerDone(l, viewed))
   return unread === -1 ? 0 : unread
+}
+
+// ---------- references in a summary ----------
+//
+// "Read `weekday.ts` first" should be a click. A summary is markdown, so the
+// cheapest honest hook is the code span: a span naming a file in the changeset
+// (`src/weekday.ts`, or `weekday.ts` when only one file has that basename),
+// with an optional `:line` or `:from-to`, becomes a link the card intercepts.
+// Prose outside backticks is left alone — a bare word that happens to be a
+// path is the author's to mark, not ours to guess — and fenced blocks are
+// skipped whole, so a mermaid diagram is never rewritten under itself.
+
+/** The href prefix the card recognises. Kept under `#` so the sanitiser's URI
+ * rule lets it through and no browser ever navigates on it. */
+export const LAYER_LINK = '#diffo-file:'
+
+export function layerLinkHref(path: string, line: number | null): string {
+  return `${LAYER_LINK}${encodeURIComponent(path)}${line === null ? '' : `:${line}`}`
+}
+
+export function parseLayerLink(href: string): { path: string; line: number | null } | null {
+  if (!href.startsWith(LAYER_LINK)) return null
+  const rest = href.slice(LAYER_LINK.length)
+  const at = /^(.*):(\d+)$/.exec(rest)
+  try {
+    return at
+      ? { path: decodeURIComponent(at[1]!), line: Number.parseInt(at[2]!, 10) }
+      : { path: decodeURIComponent(rest), line: null }
+  } catch {
+    return null
+  }
+}
+
+const SPAN = /`([^`\n]+)`/g
+const REF = /^([^\s:`]+?)(?::(\d+)(?:-\d+)?)?$/
+
+/** The changeset path a reference names: exact, or a basename only one file has. */
+function resolveRef(name: string, paths: readonly string[]): string | null {
+  if (paths.includes(name)) return name
+  const hits = paths.filter((p) => p.slice(p.lastIndexOf('/') + 1) === name)
+  return hits.length === 1 ? hits[0]! : null
+}
+
+export function linkPaths(summary: string, paths: readonly string[]): string {
+  if (paths.length === 0) return summary
+  // Fences are opaque: split on them and only touch the prose between.
+  return summary
+    .split(/(```[\s\S]*?```)/)
+    .map((part, i) =>
+      i % 2 === 1
+        ? part
+        : part.replace(SPAN, (span, inner: string) => {
+            const ref = REF.exec(inner)
+            if (!ref) return span
+            const path = resolveRef(ref[1]!, paths)
+            if (path === null) return span
+            const line = ref[2] === undefined ? null : Number.parseInt(ref[2], 10)
+            return `[${span}](${layerLinkHref(path, line)})`
+          }),
+    )
+    .join('')
 }

@@ -5622,3 +5622,357 @@ i.q-now {
   }
   /* biome-ignore-end lint/complexity/noImportantStyles: overriding every animation is the point */
 }
+
+/* ---------- layers ---------- */
+/* The agent's reading plan. Same vocabulary as the file rows: one leading mark
+   slot, a name, a right-hand tally. The number is the only new glyph. */
+
+/* A layer row is a directory row with a number where the folder is. Two lines
+   tall: counts sit under the title, because a right-hand tally truncated
+   titles at 264px. */
+.row-layer {
+  padding-top: 7px;
+  padding-bottom: 7px;
+}
+
+.row-layer .row-name {
+  font-family: var(--sans);
+  font-size: var(--t-13);
+  gap: var(--s-3);
+  white-space: normal;
+  align-items: flex-start;
+}
+
+.row-layer .ch-n {
+  margin-top: 1px;
+}
+
+.row-layer .row-base {
+  white-space: normal;
+  overflow: visible;
+  line-height: 1.3;
+  font-weight: 500;
+  color: var(--ink);
+}
+
+.row-layer[aria-current="true"] .row-base {
+  font-weight: 600;
+}
+
+.row-layer.row-done .row-base {
+  color: var(--ink-3);
+  font-weight: 500;
+}
+
+.ch-n {
+  flex: 0 0 18px;
+  width: 18px;
+  height: 18px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 5px;
+  background: var(--fill);
+  color: var(--ink-2);
+  font-size: var(--t-11);
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.row-layer[aria-current="true"] .ch-n {
+  background: var(--acc);
+  color: var(--acc-fg);
+}
+
+.row-done .ch-n {
+  background: transparent;
+  color: var(--ink-3);
+}
+
+.ch-sub {
+  grid-column: 2 / -1;
+  margin-top: -2px;
+  padding-left: 26px;
+  display: flex;
+  align-items: center;
+  gap: var(--s-3);
+  font-size: var(--t-11);
+  color: var(--ink-3);
+  font-variant-numeric: tabular-nums;
+}
+
+.ch-sub .prog-track {
+  width: 44px;
+  flex: none;
+}
+
+.row-layer .row-count {
+  gap: 7px;
+}
+
+/* The active layer's files, nested under a hairline. */
+.ch-files {
+  border-left: 1px solid var(--hair);
+  margin: 0 0 4px 27px;
+}
+
+/* The derived trailing layer — attention, not accent: it is the agent's doing,
+   not the reviewer's. */
+.row-layer-since .ch-n {
+  background: var(--attn-wash);
+  color: var(--attn);
+}
+
+.row-layer-since .row-base {
+  color: var(--attn);
+}
+
+/* The rail head when layers exist: refresh sits where a directory's hover
+   actions would. */
+.ch-rail-head {
+  display: flex;
+  align-items: center;
+  gap: var(--s-3);
+  padding: 4px 14px 6px var(--s-5);
+  font-size: var(--t-11);
+  color: var(--ink-3);
+}
+
+.ch-rail-head .grow {
+  flex: 1;
+}
+
+/* Layers tab, empty. Same voice as .rail-empty, with room for one action. */
+.ch-empty {
+  padding: 22px 18px 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  align-items: flex-start;
+}
+
+.ch-empty p {
+  margin: 0;
+  font-size: var(--t-13);
+  color: var(--ink);
+}
+
+.ch-empty .ch-empty-sub {
+  font-size: var(--t-12);
+  color: var(--ink-3);
+  line-height: 1.45;
+}
+
+.ch-empty .btn {
+  margin-top: 8px;
+}
+
+.ch-working {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  vertical-align: 1px;
+  margin-right: 4px;
+}
+
+.ch-working i {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--attn);
+  animation: ch-blink 1.1s infinite;
+}
+
+.ch-working i:nth-child(2) {
+  animation-delay: 0.2s;
+}
+
+.ch-working i:nth-child(3) {
+  animation-delay: 0.4s;
+}
+
+@keyframes ch-blink {
+  0%,
+  100% {
+    opacity: 0.25;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+
+/* Row 0: the guide, folded into the outline. Not markable — it is not code. */
+.row-layer-overview .ch-n {
+  background: transparent;
+  border: 1px solid var(--hair);
+  color: var(--ink-3);
+}
+
+.row-layer-overview .row-box {
+  visibility: hidden;
+}
+
+/* Per-file note: why this file is in this step. One line, truncates — and it is
+   the note that gives way, never the path it annotates. */
+.file-header:has(.ch-file-note) .file-path {
+  flex-shrink: 0;
+}
+
+.ch-file-note {
+  min-width: 0;
+  flex: 0 1 auto;
+  font-size: var(--t-12);
+  color: var(--ink-3);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  padding-left: 2px;
+}
+
+.ch-file-note::before {
+  content: "— ";
+}
+
+/* Layer pager on the sticky bar. Titles clip rather than widen the bar. */
+.ch-pager {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.ch-pager .btn {
+  height: 26px;
+  padding: 0 9px;
+  font-size: var(--t-12);
+  max-width: 24ch;
+}
+
+.ch-pager-t {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+}
+
+/* Mechanical layer: a chip after the title; files render collapsed. */
+.ch-kind {
+  font-size: var(--t-11);
+  padding: 2px 7px;
+  border-radius: var(--r-pill);
+  background: var(--fill);
+  color: var(--ink-3);
+  font-family: var(--sans);
+  margin-left: 8px;
+  vertical-align: 2px;
+  font-weight: 500;
+}
+
+/* Files tab, with layers present: each file shows the layer it belongs to. */
+.ch-in {
+  flex: 0 0 auto;
+  width: 16px;
+  height: 16px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 4px;
+  background: var(--fill);
+  color: var(--ink-3);
+  font-size: 10px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.ch-in-since {
+  background: var(--attn-wash);
+  color: var(--attn);
+}
+
+/* The layer header card in the reading pane: read once, scrolled past. */
+.ch-head {
+  margin-bottom: var(--s-6);
+  padding: 14px 18px 14px 16px;
+  border: 1px solid var(--hair);
+  border-radius: var(--r);
+  background: var(--paper);
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 6px var(--s-6);
+  align-items: start;
+}
+
+.ch-head-kicker {
+  font-size: var(--t-11);
+  color: var(--ink-3);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.01em;
+}
+
+.ch-head h2 {
+  margin: 0;
+  font-size: 17px;
+  font-weight: 600;
+  letter-spacing: -0.015em;
+  color: var(--ink);
+}
+
+.ch-head .ch-summary {
+  grid-column: 1 / -1;
+  margin-top: 4px;
+  padding-left: 0;
+  font-size: var(--t-13);
+  color: var(--ink-2);
+  line-height: 1.5;
+}
+
+.ch-head .ch-summary p {
+  margin: 0 0 6px;
+}
+
+.ch-head .ch-summary a {
+  color: var(--exp-ink);
+  text-decoration: none;
+  border-bottom: 1px solid var(--exp-wash);
+}
+
+.ch-head-files {
+  grid-column: 1 / -1;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 4px;
+}
+
+.ch-chip {
+  font-family: var(--mono);
+  font-size: var(--t-11);
+  padding: 3px 8px;
+  border-radius: var(--r-pill);
+  background: var(--fill);
+  color: var(--ink-2);
+}
+
+.ch-chip-done {
+  color: var(--ink-3);
+  text-decoration: line-through;
+}
+
+.ch-head-empty {
+  grid-column: 1 / -1;
+  font-size: var(--t-12);
+  color: var(--ink-3);
+}
+
+.ch-head-link {
+  border: 0;
+  padding: 0;
+  background: none;
+  font: inherit;
+  color: var(--exp-ink);
+  cursor: pointer;
+  border-bottom: 1px solid var(--exp-wash);
+}
+
+.ch-head-link:hover {
+  color: var(--ink);
+}

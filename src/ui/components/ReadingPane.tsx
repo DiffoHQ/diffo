@@ -15,15 +15,17 @@ import {
   NO_EXPANSION,
 } from '../gaps.js'
 import { fileAnchor } from '../hooks.js'
+import { linkPaths, parseLayerLink } from '../layers.js'
 import { EMPTY_DELTA, type LiveDelta } from '../liveDelta.js'
 import type { ThreadPartition } from '../reviewPlacement.js'
 import { GapBand, type GapControls, HunkCard } from './HunkCard.js'
 import { Icon } from './Icon.js'
 import { ImageDiff } from './ImageDiff.js'
 import { MarkBox } from './MarkBox.js'
+import { Markdown } from './Markdown.js'
 import { canPreviewMarkdown, MarkdownPreview } from './MarkdownPreview.js'
 import { Menu, MenuItem } from './Menu.js'
-import { PaneBar } from './PaneBar.js'
+import { PaneBar, type PaneLayer } from './PaneBar.js'
 import { ReviewDone } from './ReviewDone.js'
 import { type LandedNotice, ReviewLanded } from './ReviewLanded.js'
 import { CommentBox, type ReviewActions, ThreadList } from './Threads.js'
@@ -65,6 +67,113 @@ export interface PaneControls {
   allCollapsed: boolean
   onToggleCollapseAll: () => void
   onAddNote?: () => void
+  /** The bar's account of the active layer, with its pager. */
+  layer?: PaneLayer
+}
+
+/**
+ * The active layer, as the pane reads it: a header card above the files, read
+ * once and scrolled past — so navigation is not on it (see `PaneLayer`). The
+ * pane shows only this layer's files; `hidden` is what the filters took from
+ * it, so the card can say so when they took everything.
+ */
+export interface LayerView {
+  /** `Layer 3 of 6`, or the derived layer's own kicker. */
+  kicker: string
+  title: string
+  /** The agent tagged it `mechanical`: a chip after the title; files fold. */
+  mechanical: boolean
+  summary?: string
+  /** Every path the layer lists — struck through when the changeset lacks it. */
+  chips: { path: string; missing: boolean }[]
+  /** How many listed files the changeset has right now. */
+  listed: number
+  /** Files of this layer the filters hid. `reviewed` when every one of them is
+   * hidden for being read, which is the card's common case. */
+  hidden: { count: number; reviewed: boolean } | null
+  onShowHidden: () => void
+  /** A `path` / `path:line` reference in the summary was clicked. */
+  onJump: (path: string, line: number | null) => void
+  /** Per-file notes for the file headers — the agent's, or a site count on a
+   * mechanical layer. */
+  notes: ReadonlyMap<string, string>
+  /** What a summary reference may resolve to. */
+  knownPaths: readonly string[]
+}
+
+function LayerHead({
+  layer,
+  filesShown,
+}: {
+  layer: LayerView
+  /** How many of the layer's files the pane is rendering under the card. */
+  filesShown: number
+}) {
+  const summary = layer.summary ? linkPaths(layer.summary, layer.knownPaths) : null
+  const onClick = (e: React.MouseEvent) => {
+    const a = (e.target as Element).closest('a')
+    if (!a) return
+    const ref = parseLayerLink(a.getAttribute('href') ?? '')
+    if (!ref) return
+    e.preventDefault()
+    layer.onJump(ref.path, ref.line)
+  }
+  const emptied = filesShown === 0
+  return (
+    <section className="ch-head" aria-label={`${layer.kicker}: ${layer.title}`}>
+      <div className="ch-head-kicker">{layer.kicker}</div>
+      <h2>
+        {layer.title}
+        {layer.mechanical && (
+          <span
+            className="ch-kind"
+            title="changes no behaviour — files are folded, expand one to check"
+          >
+            mechanical
+          </span>
+        )}
+      </h2>
+      {summary && (
+        // biome-ignore lint/a11y/noStaticElementInteractions: click delegation for the links inside rendered markdown
+        // biome-ignore lint/a11y/useKeyWithClickEvents: the links themselves are focusable and keyboard-activated
+        <div onClick={onClick}>
+          <Markdown text={summary} className="cmt-body markdown ch-summary" />
+        </div>
+      )}
+      {layer.chips.length > 0 && (
+        <div className="ch-head-files">
+          {layer.chips.map((chip) => (
+            <span
+              key={chip.path}
+              className={`ch-chip${chip.missing ? ' ch-chip-done' : ''}`}
+              title={chip.missing ? `${chip.path} — not in the changeset now` : chip.path}
+            >
+              {chip.path}
+            </span>
+          ))}
+        </div>
+      )}
+      {emptied && layer.listed === 0 && (
+        <div className="ch-head-empty">
+          Nothing this layer lists is in the changeset right now. Move on with{' '}
+          <span className="kbd">]</span>.
+        </div>
+      )}
+      {emptied && layer.listed > 0 && layer.hidden && (
+        <div className="ch-head-empty">
+          All {layer.listed} {layer.listed === 1 ? 'file' : 'files'} here{' '}
+          {layer.hidden.reviewed
+            ? 'are marked reviewed and hidden'
+            : 'are hidden by the filters on the bar above'}
+          .{' '}
+          <button type="button" className="ch-head-link" onClick={layer.onShowHidden}>
+            Show them
+          </button>{' '}
+          · or move on with <span className="kbd">]</span>.
+        </div>
+      )}
+    </section>
+  )
 }
 
 export interface ReviewComments {
@@ -128,6 +237,7 @@ function FileHeader({
   onToggle,
   commentCount = 0,
   sinceCount = 0,
+  note,
   onComment,
   onToggleFileViewed,
 }: {
@@ -139,6 +249,9 @@ function FileHeader({
   /** Hunks the agent changed since the last Finish and still unread — said once
    * here, as a count; the hunks themselves carry only the bar. */
   sinceCount?: number
+  /** Why this file is in its layer, in the agent's words — or, on a mechanical
+   * layer, how many sites it holds. */
+  note?: string
   onComment?: () => void
   onToggleFileViewed?: () => void
 }) {
@@ -190,6 +303,11 @@ function FileHeader({
           {sinceCount === file.hunks.length
             ? 'this'
             : `${sinceCount} ${sinceCount === 1 ? 'hunk' : 'hunks'}`}
+        </span>
+      )}
+      {note && (
+        <span className="ch-file-note" title={note}>
+          {note}
         </span>
       )}
       <button
@@ -580,6 +698,7 @@ export function ReadingPane({
   onLoadMore,
   controls,
   landed,
+  layer,
   ...handlers
 }: {
   files: FileChange[]
@@ -590,6 +709,8 @@ export function ReadingPane({
   controls?: PaneControls
   /** The previous review landed in a commit — offer the fresh start. */
   landed?: LandedNotice
+  /** Layer mode: `files` is the active layer's, and this card heads them. */
+  layer?: LayerView
 } & ReviewHandlers) {
   const [fileComposerFor, setFileComposerFor] = useState<string | null>(null)
   const [doneDismissed, setDoneDismissed] = useState(false)
@@ -854,6 +975,11 @@ export function ReadingPane({
         </p>
       </div>
     )
+  ) : layer && files.length === 0 ? (
+    // A layer with nothing to show says so on its own card, and next/prev skip
+    // it — the generic "hidden by the switches" state would lose the reader's
+    // place in the outline.
+    <LayerHead layer={layer} filesShown={0} />
   ) : allHidden && scopeDone ? (
     done
   ) : allHidden && controls ? (
@@ -877,6 +1003,7 @@ export function ReadingPane({
     </div>
   ) : (
     <>
+      {layer && <LayerHead layer={layer} filesShown={files.length} />}
       {files.map((file) => {
         const isCollapsed = handlers.collapsed?.has(file.path) ?? false
         const fileThreadCount = comments?.partition.byFile.get(file.path)?.length ?? 0
@@ -906,6 +1033,7 @@ export function ReadingPane({
               onToggle={() => handlers.onToggleCollapsed?.(file.path)}
               commentCount={fileThreadCount + hunkThreadCount}
               sinceCount={sinceCount}
+              note={layer?.notes.get(file.path)}
               onToggleFileViewed={
                 handlers.onToggleFileViewed
                   ? () => handlers.onToggleFileViewed!(file.path)
@@ -990,6 +1118,7 @@ export function ReadingPane({
           allCollapsed={controls.allCollapsed}
           onToggleCollapseAll={controls.onToggleCollapseAll}
           onAddNote={controls.onAddNote}
+          layer={controls.layer}
         />
       )}
       <div className="reading-col">

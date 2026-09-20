@@ -9,6 +9,8 @@ const GROUPS: { name: string; keys: [string, string][] }[] = [
       ['J', 'Next file'],
       ['K', 'Previous file'],
       ['n', 'Next unreviewed file'],
+      [']', 'Next layer'],
+      ['[', 'Previous layer'],
       ['/', 'Filter files'],
     ],
   },

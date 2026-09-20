@@ -4,6 +4,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { ReviewThread } from '../../shared/review.js'
 import type { DiffLine, FileChange, Hunk, LineKind } from '../../shared/types.js'
 import { fileMark } from '../fileMarks.js'
+import { layerByPath, resolveLayers } from '../layers.js'
 import { buildTree, Nav, type TreeDir, type TreeNode, treeOrder } from './Nav.js'
 
 afterEach(cleanup)
@@ -428,5 +429,39 @@ describe('Nav', () => {
   it('with no round sent, no file carries a reason — there is no "since" yet', () => {
     render(<Nav files={FILES} viewed={new Set()} />)
     expect(document.querySelectorAll('.row-since')).toHaveLength(0)
+  })
+})
+
+describe('Nav with layers present', () => {
+  const layered = resolveLayers(
+    {
+      postedAt: '2026-09-20T00:00:00Z',
+      items: [
+        { id: 'a', title: 'Server', files: ['src/server/git.ts'] },
+        { id: 'b', title: 'UI', files: ['src/ui/App.tsx'] },
+      ],
+    },
+    FILES,
+  )
+
+  it('each file row carries its layer number; an unlisted file carries the amber +', () => {
+    render(<Nav files={FILES} layerOf={layerByPath(layered)} />)
+    const badge = (path: string) =>
+      document.querySelector(`[data-path="${path}"] .ch-in`) as HTMLElement | null
+    expect(badge('src/server/git.ts')?.textContent).toBe('1')
+    expect(badge('src/server/git.ts')?.getAttribute('title')).toBe('layer 1 · Server')
+    expect(badge('src/ui/App.tsx')?.textContent).toBe('2')
+    expect(badge('docs/index.md')?.textContent).toBe('+')
+    expect(badge('docs/index.md')?.className).toContain('ch-in-since')
+    expect(badge('docs/index.md')?.getAttribute('title')).toBe('Since your review')
+    expect(document.querySelector('.ch-rail-head')?.textContent).toContain(
+      'click a file to open it in its layer',
+    )
+  })
+
+  it('without layers the tree is just the tree', () => {
+    render(<Nav files={FILES} />)
+    expect(document.querySelector('.ch-in')).toBeNull()
+    expect(document.querySelector('.ch-rail-head')).toBeNull()
   })
 })

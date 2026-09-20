@@ -1,11 +1,16 @@
 import { describe, expect, it } from 'vitest'
-import type { Layers } from '../shared/review.js'
+import type { Layers, ReviewThread } from '../shared/review.js'
 import type { FileChange, Hunk } from '../shared/types.js'
 import { fileMark } from './fileMarks.js'
 import {
+  findGuide,
   layerByPath,
   layerDone,
+  layerKey,
+  layerLinkHref,
   layerProgress,
+  linkPaths,
+  parseLayerLink,
   resolveLayers,
   SINCE_TITLE,
   startingLayer,
@@ -229,5 +234,85 @@ describe('stepLayer / startingLayer', () => {
     expect(startingLayer(out, new Set(['src/parse.ts#1', 'src/parse.ts#2']))).toBe(1)
     const all = new Set(FILES.flatMap((f) => f.hunks.map((h) => h.id)))
     expect(startingLayer(out, all)).toBe(0)
+  })
+})
+
+describe('layerKey / findGuide', () => {
+  it('keys a layer by its id, and the derived one by a fixed name', () => {
+    const out = resolveLayers(layers([{ id: 'a', title: 'A', files: ['src/cli.ts'] }]), FILES)
+    expect(layerKey(out[0]!)).toBe('a')
+    expect(layerKey(out[1]!)).toBe('since')
+  })
+
+  it('the guide is the newest agent thread on the whole changeset', () => {
+    const at = '2026-09-20T00:00:00Z'
+    const thread = (id: string, anchor: ReviewThread['anchor'], author: 'agent' | 'reviewer') =>
+      ({
+        id,
+        anchor,
+        state: 'open',
+        codeContext: null,
+        codeChanged: false,
+        messages: [{ id: `${id}-m`, author, text: 'hi', at }],
+        createdAt: at,
+        updatedAt: at,
+      }) as ReviewThread
+    expect(findGuide([])).toBeUndefined()
+    expect(findGuide([thread('r', { kind: 'changeset' }, 'reviewer')])).toBeUndefined()
+    expect(findGuide([thread('f', { kind: 'file', path: 'a.ts' }, 'agent')])).toBeUndefined()
+    const guides = [
+      thread('g1', { kind: 'changeset' }, 'agent'),
+      thread('r', { kind: 'changeset' }, 'reviewer'),
+      thread('g2', { kind: 'changeset' }, 'agent'),
+    ]
+    expect(findGuide(guides)?.id).toBe('g2')
+  })
+})
+
+describe('summary references', () => {
+  const known = ['src/weekday.ts', 'src/dates.ts', 'src/a/util.ts', 'src/b/util.ts']
+
+  it('turns a code span naming a changeset file into a link the card can intercept', () => {
+    const out = linkPaths('Read `src/weekday.ts` first.', known)
+    expect(out).toBe(`Read [\`src/weekday.ts\`](${layerLinkHref('src/weekday.ts', null)}) first.`)
+  })
+
+  it('resolves a basename when exactly one file has it, and leaves an ambiguous one alone', () => {
+    expect(linkPaths('see `weekday.ts`', known)).toContain(layerLinkHref('src/weekday.ts', null))
+    expect(linkPaths('see `util.ts`', known)).toBe('see `util.ts`')
+    expect(linkPaths('see `nope.ts`', known)).toBe('see `nope.ts`')
+  })
+
+  it('carries a line, and reads a range as its first line', () => {
+    expect(linkPaths('`dates.ts:42`', known)).toContain(layerLinkHref('src/dates.ts', 42))
+    expect(linkPaths('`src/dates.ts:41-80`', known)).toContain(layerLinkHref('src/dates.ts', 41))
+  })
+
+  it('never touches a fenced block — a diagram must not be rewritten under itself', () => {
+    const fence = '```mermaid\nflowchart LR\n  A["`weekday.ts`"] --> B\n```'
+    const text = `Before \`weekday.ts\`.\n${fence}\nAfter \`dates.ts\`.`
+    const out = linkPaths(text, known)
+    expect(out).toContain(fence)
+    expect(out).toContain(layerLinkHref('src/weekday.ts', null))
+    expect(out).toContain(layerLinkHref('src/dates.ts', null))
+  })
+
+  it('leaves prose outside backticks alone, and code that is not a path', () => {
+    expect(linkPaths('src/weekday.ts is first', known)).toBe('src/weekday.ts is first')
+    expect(linkPaths('call `resolveWeekday(name)`', known)).toBe('call `resolveWeekday(name)`')
+    expect(linkPaths('anything', [])).toBe('anything')
+  })
+
+  it('round-trips through the href', () => {
+    expect(parseLayerLink(layerLinkHref('src/a b.ts', null))).toEqual({
+      path: 'src/a b.ts',
+      line: null,
+    })
+    expect(parseLayerLink(layerLinkHref('src/dates.ts', 42))).toEqual({
+      path: 'src/dates.ts',
+      line: 42,
+    })
+    expect(parseLayerLink('#other')).toBeNull()
+    expect(parseLayerLink('https://example.com')).toBeNull()
   })
 })

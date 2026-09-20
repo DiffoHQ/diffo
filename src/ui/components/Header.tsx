@@ -78,6 +78,15 @@ export interface AgentBatch {
   done: number
 }
 
+/** The agent flagged at open that this read benefits from layers. The chip
+ * becomes the call to action, the way it does for Invite when nobody is
+ * attached: agent status is the header's job, and the rail carries no
+ * notifications. */
+export interface LayersSuggestion {
+  reason?: string
+  onOutline: () => void
+}
+
 function PresenceChip({
   presence,
   since,
@@ -87,6 +96,7 @@ function PresenceChip({
   monitorOpen = false,
   onOpenMonitor,
   monitorPanel,
+  suggestion,
 }: {
   presence: Presence
   since?: number | null
@@ -96,6 +106,7 @@ function PresenceChip({
   monitorOpen?: boolean
   onOpenMonitor?: (open: boolean) => void
   monitorPanel?: ReactNode
+  suggestion?: LayersSuggestion
 }) {
   // A ticking clock needs ticking renders — but only while it shows one.
   const [, setTick] = useState(0)
@@ -144,6 +155,30 @@ function PresenceChip({
     )
   }
   const total = batch?.segments.length ?? 0
+  // A live batch outranks the suggestion: what the agent is doing right now is
+  // the thing to show, and the offer waits in the Layers tab meanwhile.
+  if (presence !== 'waiting' && suggestion && total === 0) {
+    return (
+      <button
+        type="button"
+        className={`presence presence-${presence} presence-invite presence-suggests`}
+        onClick={suggestion.onOutline}
+        title={
+          suggestion.reason
+            ? `the agent suggests reading this in layers: “${suggestion.reason}”`
+            : 'the agent suggests reading this in layers'
+        }
+      >
+        <span className="presence-live" aria-hidden="true">
+          <i />
+          <i />
+          <i />
+        </span>
+        <span className="presence-label">agent · suggests layers</span>
+        <span className="presence-cta">Outline</span>
+      </button>
+    )
+  }
   if (presence === 'waiting' || total === 0 || !onOpenMonitor) {
     return (
       <span className={`presence presence-${presence}`} title={PRESENCE_TITLE[presence]}>
@@ -187,6 +222,8 @@ export interface HeaderAgent {
   monitorOpen?: boolean
   onOpenMonitor?: (open: boolean) => void
   monitorPanel?: ReactNode
+  /** Set while the agent's layers suggestion stands and no layers exist yet. */
+  suggestion?: LayersSuggestion
 }
 
 export interface HeaderReview {
@@ -240,6 +277,7 @@ export function Header({
           monitorOpen={agent.monitorOpen}
           onOpenMonitor={agent.onOpenMonitor}
           monitorPanel={agent.monitorPanel}
+          suggestion={agent.suggestion}
         />
       )}
       {onFinishReview && (

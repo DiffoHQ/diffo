@@ -56,8 +56,14 @@ function ensureHooks(): void {
   purify.addHook('afterSanitizeAttributes', (node) => {
     if (!(node instanceof Element)) return
     // Any link that survives sanitising leaves this page, and must not be able to
-    // reach back into it through `window.opener`.
-    if (node.tagName === 'A' && node.hasAttribute('href')) {
+    // reach back into it through `window.opener`. A fragment link is the one
+    // that stays: a layer summary's `file:line` reference is handled in-page
+    // (see `linkPaths` in layers.ts), and opening a new tab on it would be wrong.
+    if (
+      node.tagName === 'A' &&
+      node.hasAttribute('href') &&
+      !(node.getAttribute('href') ?? '').startsWith('#')
+    ) {
       node.setAttribute('target', '_blank')
       node.setAttribute('rel', 'noopener noreferrer')
     }
