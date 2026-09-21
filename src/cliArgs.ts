@@ -84,7 +84,8 @@ The loop:
    ${LAYERS.suggest}.
    Flag it at open with \`diffo layers --suggest "<why, in one line>"\` and
    say so in your handoff ("say layers and I'll outline it"). Post the
-   outline only when the reviewer asks: \`diffo layers --json '<Layer[]>'\`
+   outline only when the reviewer asks — in chat, or through the poll as a
+   \`"kind": "layers"\` payload: \`diffo layers --json '<Layer[]>'\`
    (or pipe it to \`diffo layers --stdin\`). Each layer is ${LAYERS.what}.
    Order: ${LAYERS.order}. ${LAYERS.mechanical}. ${LAYERS.stance}.
    ${LAYERS.replace}. \`diffo help layers\` has the shape.

@@ -11,7 +11,14 @@ import {
 } from 'react'
 import { type Coverage, threadsInChangeset, untouchedAgentVoice } from '../shared/review.js'
 import type { Changeset, FileChange } from '../shared/types.js'
-import { type Presence, type PresenceReason, reviewApi, useChangeset, useReview } from './api.js'
+import {
+  type LayersRequest,
+  type Presence,
+  type PresenceReason,
+  reviewApi,
+  useChangeset,
+  useReview,
+} from './api.js'
 import { copyText } from './clipboard.js'
 import { AgentBanner } from './components/AgentBanner.js'
 import { ClearThreads } from './components/ClearThreads.js'
@@ -106,9 +113,13 @@ function useLiveUpdates(): {
   workingOn: ReadonlySet<string>
   queuedOn: ReadonlyMap<string, number>
   answeredOn: ReadonlySet<string>
+  /** The reviewer's layers request: parked for the next poll, in the agent's
+   * hands, or none. */
+  layersRequest: LayersRequest
 } {
   const client = useQueryClient()
   const [presence, setPresence] = useState<Presence>('waiting')
+  const [layersRequest, setLayersRequest] = useState<LayersRequest>(null)
   const [reason, setReason] = useState<PresenceReason>('no-agent')
   const [since, setSince] = useState<number | null>(null)
   const [workingOn, setWorkingOn] = useState<ReadonlySet<string>>(NO_THREADS)
@@ -131,10 +142,14 @@ function useLiveUpdates(): {
           workingOn?: string[]
           queued?: string[]
           answered?: string[]
+          layers?: unknown
         }
         const { state } = detail
         if (state === 'waiting' || state === 'listening' || state === 'working') {
           setPresence(state)
+          setLayersRequest(
+            detail.layers === 'queued' || detail.layers === 'outlining' ? detail.layers : null,
+          )
           if (detail.reason) setReason(detail.reason)
           setSince(typeof detail.since === 'number' ? detail.since : null)
           setWorkingOn(
@@ -172,10 +187,11 @@ function useLiveUpdates(): {
       setWorkingOn(NO_THREADS)
       setQueuedOn(NO_QUEUE)
       setAnsweredOn(NO_THREADS)
+      setLayersRequest(null)
     }
     return () => source.close()
   }, [client])
-  return { presence, reason, since, workingOn, queuedOn, answeredOn }
+  return { presence, reason, since, workingOn, queuedOn, answeredOn, layersRequest }
 }
 
 /**
@@ -243,6 +259,7 @@ function Review() {
     workingOn,
     queuedOn,
     answeredOn,
+    layersRequest,
   } = useLiveUpdates()
   const {
     viewed,
@@ -436,9 +453,12 @@ function Review() {
     if (layerMode) setPanel('layers')
   }, [layerMode])
 
-  // TODO(slice 3): the request loop — enqueue a `layers` poll item, show the
-  // agent working on it in the chip. Until then the button is inert.
-  const requestLayers = useCallback(() => {}, [])
+  // Outline, or refresh: the click rides the delivery queue to the agent's
+  // next poll, and the presence stream carries "outlining" back. Nothing to
+  // await here — the SSE event is what changes the screen.
+  const requestLayers = useCallback(() => {
+    void reviewApi.requestLayers().catch(() => {})
+  }, [])
   // A jump can target a file beyond the window — widen it, or the scroll finds no
   // node. It can also target a file the pane is *hiding*; pinning exempts that one
   // path from the filters. The window is sized from the file's index in the whole
@@ -487,7 +507,13 @@ function Review() {
     [batch],
   )
   const lastAnswered = useLastAnswered(items, answeredOn, presence)
-  const activity = presence === 'working' ? agentActivity(batch.stillTo, lastAnswered) : null
+  // A live batch names itself first; an outline in progress is the next most
+  // useful thing to say, and reads the same whether it is the first or a refresh.
+  const activity =
+    presence === 'working'
+      ? (agentActivity(batch.stillTo, lastAnswered) ??
+        (layersRequest === 'outlining' ? 'outlining layers' : null))
+      : null
   const [monitorOpen, setMonitorOpen] = useState(false)
   useEffect(() => {
     if (monitorOpen && batch.stillTo.length === 0 && batch.back.length === 0) setMonitorOpen(false)
@@ -1185,8 +1211,16 @@ function Review() {
     goOverview,
     guide,
   ])
+  // Nobody attached wins: a request parked for a poll nobody is running is not
+  // "outlining", and the honest thing to offer is Invite.
   const layersEmptyState: LayersEmptyState =
-    presence === 'waiting' ? 'noagent' : review?.layersSuggested ? 'suggested' : 'quiet'
+    presence === 'waiting'
+      ? 'noagent'
+      : layersRequest !== null
+        ? 'working'
+        : review?.layersSuggested
+          ? 'suggested'
+          : 'quiet'
 
   if (isLoading) {
     return (
@@ -1222,7 +1256,7 @@ function Review() {
           onInvite: () => setInviteOpen(true),
           batch: batchForBadge,
           suggestion:
-            !layerMode && review?.layersSuggested
+            !layerMode && layersRequest === null && review?.layersSuggested
               ? { reason: review.layersSuggested.reason, onOutline: requestLayers }
               : undefined,
           monitorOpen,
@@ -1285,6 +1319,8 @@ function Review() {
                   revealFile(path)
                   setComposeFilePath(path)
                 }}
+                onRefresh={agentAttached ? requestLayers : undefined}
+                refreshing={agentAttached && layersRequest !== null}
               />
             ) : (
               <LayersEmpty

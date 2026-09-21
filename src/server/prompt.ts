@@ -3,6 +3,7 @@ import {
   type Anchor,
   type Coverage,
   describeAnchor,
+  type Layer,
   type ReviewThread,
   startedByAgent,
   THREAD_INTENTS,
@@ -142,7 +143,13 @@ export const JOIN_PROMPT =
   `the title is ${TAB_TITLE.what} — ${TAB_TITLE.why}) ` +
   'and follow the JSON payload it prints — each payload carries its own instructions'
 
-export function nextStepFor(kind: 'threads' | 'finish' | 'cleared', actionable: number): string {
+export function nextStepFor(
+  kind: 'threads' | 'finish' | 'cleared' | 'layers',
+  actionable: number,
+): string {
+  if (kind === 'layers') {
+    return `Post the outline with \`${CLI_COMMANDS.layers}\` (or pipe it to \`${CLI_COMMANDS.layersStdin}\`), then run \`${CLI_COMMANDS.poll}\` again to keep listening (${POLL_STANCE}).`
+  }
   if (kind === 'cleared') {
     // A cleared review dropped its tab title along with its threads (see
     // ReviewStore.reset) — this round names itself again.
@@ -612,6 +619,40 @@ export function buildCoalescedPrompt(threads: ReviewThread[], ctx: PromptContext
  * orientation for the fresh round, so this restates the guide doctrine the way
  * the open-time nudge does (payloads must stand alone — see POLL_STANCE).
  */
+/**
+ * The reviewer pressed Outline (or refresh): the poll item that asks for the
+ * layers. Standalone by the same rule as every payload — an agent with no
+ * skill and no memory of `help layers` still gets the whole doctrine here.
+ */
+export function buildLayersRequestPrompt(
+  ctx: PromptContext,
+  existing: Pick<Layer, 'title'>[] | null,
+): string {
+  const refresh = existing !== null && existing.length > 0
+  const titles = refresh ? existing.map((l) => `"${l.title}"`).join(', ') : ''
+  return [
+    refresh
+      ? `The reviewer asked you to refresh the layers in \`${ctx.repo.name}\` (branch \`${ctx.repo.branch}\`): the code moved since you outlined it, and files outside the outline have been gathering under "Since your review". Re-post the whole list as the change stands now.`
+      : `The reviewer asked for layers in \`${ctx.repo.name}\` (branch \`${ctx.repo.branch}\`): outline the changeset as steps to read in order. The Layers tab reads "The agent is outlining…" until you post.`,
+    '',
+    ...(ctx.changeset ? [specLine(ctx.changeset), ''] : []),
+    ...(refresh
+      ? [
+          `The outline they have: ${titles}. Keep a title that still fits its step, rename or drop the ones that don't — ${LAYERS.replace}.`,
+          '',
+        ]
+      : []),
+    `Each layer is ${LAYERS.what}. Order: ${LAYERS.order}. ${LAYERS.mechanical}. ${LAYERS.stance}. Files are whole files, by path relative to the repo root; list every file of the changeset somewhere, or the leftovers land in "Since your review".`,
+    '',
+    `Shape: ${LAYERS.shape}`,
+    '',
+    `Post it: \`${CLI_COMMANDS.layers}\`, or pipe the JSON to \`${CLI_COMMANDS.layersStdin}\` when it is long. Nothing else is owed for this item — no reply, no comment.`,
+    '',
+    `Then run \`${CLI_COMMANDS.poll}\` again to keep listening (${POLL_STANCE}).`,
+    '',
+  ].join('\n')
+}
+
 export function buildClearedPrompt(ctx: PromptContext): string {
   return [
     `The reviewer cleared the review in \`${ctx.repo.name}\` (branch \`${ctx.repo.branch}\`): the previous round landed, and its threads and guide are gone. What the reviewer sees now is a fresh round.`,

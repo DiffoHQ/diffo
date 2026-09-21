@@ -152,6 +152,7 @@ export function LayerRail({
   onClearFiles,
   onAskFile,
   onRefresh,
+  refreshing = false,
 }: {
   layers: readonly ResolvedLayer[]
   activeIndex: number
@@ -173,9 +174,11 @@ export function LayerRail({
   onMarkFiles?: (paths: string[]) => void
   onClearFiles?: (paths: string[]) => void
   onAskFile?: (path: string) => void
-  /** Ask the agent to refresh the outline. Absent until the request loop
-   * exists, so the rail head shows no action it cannot honour. */
+  /** Ask the agent to re-outline the change as it stands now. Absent when no
+   * agent is attached: the line at the foot of the outline says so instead. */
   onRefresh?: () => void
+  /** A re-outline is in flight: the line says so and cannot be clicked again. */
+  refreshing?: boolean
 }) {
   const threadCount = (layer: ResolvedLayer) =>
     layer.files.reduce((n, f) => n + (threads?.get(f.file.path)?.length ?? 0), 0)
@@ -194,19 +197,6 @@ export function LayerRail({
     })
   return (
     <div className="rail-scroll">
-      {onRefresh && (
-        <div className="ch-rail-head">
-          <span className="grow" />
-          <button
-            type="button"
-            className="btn btn-ghost btn-sm"
-            title="Ask the agent to refresh the layers"
-            onClick={onRefresh}
-          >
-            refresh
-          </button>
-        </div>
-      )}
       {guide && (
         <div
           className="row row-layer row-layer-overview"
@@ -276,6 +266,31 @@ export function LayerRail({
           </div>
         )
       })}
+      {/* The foot of the outline, in the voice of the Threads tab's "Clear all
+          threads…": a sentence, not a button, and only ever the one action. */}
+      {refreshing ? (
+        <div className="ch-foot ch-foot-live" aria-live="polite">
+          <span className="ch-working" aria-hidden="true">
+            <i />
+            <i />
+            <i />
+          </span>{' '}
+          re-outlining…
+        </div>
+      ) : onRefresh ? (
+        <button
+          type="button"
+          className="ch-foot ch-foot-act"
+          title="the change moved on; a re-post keeps your place"
+          onClick={onRefresh}
+        >
+          Ask the agent to re-outline…
+        </button>
+      ) : (
+        <div className="ch-foot" title="Invite one from the header">
+          No agent attached to re-outline
+        </div>
+      )}
     </div>
   )
 }

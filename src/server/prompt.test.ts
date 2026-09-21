@@ -10,6 +10,7 @@ import {
   buildCoalescedPrompt,
   buildFinishPrompt,
   buildInstallSkill,
+  buildLayersRequestPrompt,
   buildThreadPrompt,
   CLI,
   CLI_COMMANDS,
@@ -729,6 +730,14 @@ describe('the poll envelope (next_step per payload kind)', () => {
     expect(empty).not.toMatch(/act on each thread/i)
   })
 
+  it('a layers payload points at the post, then back to the poll', () => {
+    const step = nextStepFor('layers', 0)
+    expect(step).toContain(CLI_COMMANDS.layers)
+    expect(step).toContain(CLI_COMMANDS.layersStdin)
+    expect(step).toMatch(/keep listening/i)
+    expect(step).not.toMatch(/act on each thread/i)
+  })
+
   it('a cleared payload points at the guide, then back to the poll', () => {
     const step = nextStepFor('cleared', 0)
     expect(step).toMatch(/guide/i)
@@ -803,6 +812,39 @@ describe('the open-time guide nudge', () => {
     expect(guideNudge(false)).toContain(CLI_COMMANDS.guide)
     // The guide anchors to the changeset, so the command must not offer a file.
     expect(guideNudge(false)).not.toContain('[<file>]')
+  })
+})
+
+describe('the layers payload (reviewer pressed Outline)', () => {
+  it('asks for the outline, carries the whole doctrine, and owes nothing else', () => {
+    const prompt = buildLayersRequestPrompt({ repo, changeset: changeset() }, null)
+    expect(prompt).toContain('asked for layers')
+    expect(prompt).toContain('is outlining…')
+    expect(prompt).not.toContain('refresh')
+    // An agent with no skill still gets every rule the CLI help carries.
+    expect(prompt).toContain(LAYERS.order)
+    expect(prompt).toContain(LAYERS.mechanical)
+    expect(prompt).toContain(LAYERS.stance)
+    expect(prompt).toContain(LAYERS.shape)
+    expect(prompt).toContain(CLI_COMMANDS.layers)
+    expect(prompt).toContain(CLI_COMMANDS.layersStdin)
+    expect(prompt).toContain('no reply, no comment')
+    expect(prompt).toContain('The changeset under review')
+    expect(prompt).toContain(CLI_COMMANDS.poll)
+  })
+
+  it('a refresh names the outline they have and asks for the whole list again', () => {
+    const prompt = buildLayersRequestPrompt({ repo, changeset: null }, [
+      { title: 'Contract' },
+      { title: 'Callers' },
+    ])
+    expect(prompt).toContain('refresh the layers')
+    expect(prompt).toContain('"Contract", "Callers"')
+    expect(prompt).toContain('Since your review')
+    expect(prompt).toContain(LAYERS.replace)
+    expect(prompt).not.toContain('The changeset under review')
+    // An empty outline is not a refresh.
+    expect(buildLayersRequestPrompt({ repo, changeset: null }, [])).toContain('asked for layers')
   })
 })
 

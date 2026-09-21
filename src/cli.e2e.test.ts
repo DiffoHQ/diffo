@@ -212,6 +212,34 @@ describe.skipIf(!existsSync(cliPath))('diffo binary (e2e smoke)', () => {
     expect(rejected.code).toBe(1)
     expect(rejected.stderr).toContain('needs a non-empty "files"')
 
+    // The request loop: the reviewer's re-outline click rides the poll as a
+    // `layers` item that names the outline they have; a post concludes it.
+    const refreshPoll = run(['poll'])
+    await new Promise((r) => setTimeout(r, 300))
+    const asked = await fetch(`http://127.0.0.1:${port}/api/review/layers/request`, {
+      method: 'POST',
+    })
+    expect((await asked.json()) as { ok: boolean }).toMatchObject({ ok: true })
+    const refresh = await refreshPoll
+    expect(refresh.code).toBe(0)
+    const refreshPayload = JSON.parse(refresh.stdout.trim()) as {
+      status: string
+      kind: string
+      threadIds: string[]
+      prompt: string
+      next_step: string
+    }
+    expect(refreshPayload).toMatchObject({ status: 'feedback', kind: 'layers', threadIds: [] })
+    expect(refreshPayload.prompt).toContain('refresh the layers')
+    expect(refreshPayload.prompt).toContain('"The constant", "Everything else"')
+    expect(refreshPayload.next_step).toContain('layers --json')
+    const reposted = await run([
+      'layers',
+      '--json',
+      JSON.stringify([{ title: 'The constant', files: ['app.ts'] }]),
+    ])
+    expect(reposted.code).toBe(0)
+
     const end = await run(['end'])
     expect(end.code).toBe(0)
     expect(JSON.parse(end.stdout) as { ok: boolean }).toMatchObject({ ok: true })

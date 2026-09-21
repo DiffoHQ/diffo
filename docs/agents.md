@@ -89,6 +89,7 @@ A `feedback` payload:
 {
   "status": "feedback",
   "kind": "threads",           // "threads" = individual sends · "finish" = the reviewer is done reading
+                               // "layers" = the reviewer asked for the outline · "cleared" = they started over
   "threadIds": ["4f1c9a2e-…"], // reply to each of these
   "prompt": "…",               // the authoritative instruction (see below)
   "next_step": "…"             // what to do once they are all handled
@@ -106,6 +107,13 @@ batch at once, with coverage attached (`38/42 hunks read, 2 files skipped`). Any
 closing note leads that batch as its own thread on the whole changeset, with an id
 to reply to. It re-ships every thread that was sent, including ones already
 answered, and the prompt tells the agent not to answer those twice.
+
+A `kind: "layers"` payload is the reviewer pressing **Ask the agent to outline
+this**, or *re-outline* over an outline that has gone stale. It carries no threads and owes no
+reply: the prompt restates the whole [layers](#layers) doctrine and asks for one
+`diffo layers --json` post, which is what concludes it. A `kind: "cleared"`
+payload is the reviewer starting the review over; it owes nothing but a fresh
+guide, if the changeset warrants one.
 
 ## Change or Question: the intent contract
 
@@ -183,6 +191,8 @@ Two commands, one doctrine:
 | --- | --- |
 | **Suggest** | `diffo layers --suggest "<why, in one line>"`, at open, next to the guide. It flags that this read benefits from layers, without writing them. The review shows the offer to the reviewer; the reason is quoted next to it |
 | **Post** | `diffo layers --json '<Layer[]>'`, or the same JSON piped to `diffo layers --stdin`. Posted only when the reviewer asks, because writing an outline is the heavy step and most changesets never need one |
+| **The ask** | The reviewer's click arrives through the poll as a `kind: "layers"` payload, with the doctrine restated and no threads to answer. The Layers tab reads *The agent is outlining…* and the presence chip *outlining layers* until the post lands; a re-poll without a post lets the request lapse and gives the reviewer their button back |
+| **Re-outline** | The same ask over an existing outline, from the line at the foot of the Layers tab. The payload names the layers they have and asks for the whole list again, which is how *Since your review* gets absorbed. Ids survive for titles that match, so the reviewer's place holds. There is no "remove": an outline is replaced, or cleared with the review |
 | **When to suggest** | When the change has an order worth explaining. A wide diff with one idea does not need layers; four files can hide three steps. Agent judgment, no file-count threshold |
 | **Order** | The order you would explain it, not the order you wrote it: the file that explains the rest first, mechanical consequences last. For a feature, follow the request from entry point to effect; for a refactor, contract first, then consumers |
 | **Mechanical** | `"kind": "mechanical"` marks a layer that changes no behaviour (a rename, call sites following a signature); its files render folded. If unsure, don't tag |

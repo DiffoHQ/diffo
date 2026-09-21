@@ -142,7 +142,10 @@ the connection alive; a single poll is capped at **30 minutes**.
 ```
 
 `status` is one of `feedback` (the only one that carries work), `timeout`,
-`superseded` (another session took the review), or `ended`.
+`superseded` (another session took the review), or `ended`. A `feedback`
+payload's `kind` is `threads` (individual sends), `finish` (the reviewer is done
+reading), `layers` (the reviewer asked for the outline; see
+[`diffo layers`](#diffo-layers)), or `cleared` (they started the review over).
 
 Run it attended, in the foreground or as a tracked background task, never
 detached: a payload delivered to a process nobody is reading never reaches the
@@ -227,6 +230,10 @@ Prints `{ "ok": true, "layers": 4, "next_step": "…" }` after a post, and
 `{ "ok": true, "suggested": true, "next_step": "…" }` after a suggestion.
 `suggested` is `false` when layers already exist: there is nothing left to
 suggest, and the next step says to re-post instead.
+
+The reviewer's **Ask the agent to outline this** button, and *re-outline* over
+an existing outline, reach the agent as a `kind: "layers"` poll payload whose
+prompt asks for exactly this post. A post concludes the request.
 
 ### `diffo end`
 

@@ -263,7 +263,7 @@ describe('Header — the layers suggestion', () => {
     )
     const chip = screen.getByRole('button', { name: /suggests layers/ })
     expect(chip.className).toContain('presence-suggests')
-    expect(chip.querySelector('.presence-cta')?.textContent).toBe('Outline')
+    expect(chip.querySelector('.presence-cta')?.textContent).toBe('Ask it')
     expect(chip.getAttribute('title')).toContain('“the parser change explains the rest”')
     fireEvent.click(chip)
     expect(onOutline).toHaveBeenCalled()

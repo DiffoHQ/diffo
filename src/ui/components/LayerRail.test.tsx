@@ -231,21 +231,33 @@ describe('LayerRail', () => {
     expect(document.querySelector('.ch-files')).toBeNull()
   })
 
-  it('offers refresh only when the app can honour it', () => {
-    const { unmount } = render(
-      <LayerRail layers={resolved} activeIndex={-1} onPick={() => {}} viewed={new Set()} />,
-    )
-    expect(screen.queryByText('refresh')).toBeNull()
-    unmount()
+  const rail = (over: Partial<Parameters<typeof LayerRail>[0]> = {}) =>
     render(
       <LayerRail
         layers={resolved}
         activeIndex={-1}
         onPick={() => {}}
         viewed={new Set()}
-        onRefresh={() => {}}
+        {...over}
       />,
     )
-    expect(screen.getByText('refresh')).toBeTruthy()
+
+  it('ends with the one ask, as a sentence, and only when an agent can hear it', () => {
+    const onRefresh = vi.fn()
+    const { unmount } = rail({ onRefresh })
+    const foot = screen.getByRole('button', { name: /Ask the agent to re-outline/ })
+    expect(document.querySelector('.rail-scroll')!.lastElementChild).toBe(foot)
+    fireEvent.click(foot)
+    expect(onRefresh).toHaveBeenCalledTimes(1)
+    unmount()
+    rail()
+    expect(screen.queryByRole('button', { name: /re-outline/ })).toBeNull()
+    expect(screen.getByText('No agent attached to re-outline')).toBeTruthy()
+  })
+
+  it('a re-outline in flight: the line says so and cannot be clicked', () => {
+    rail({ onRefresh: vi.fn(), refreshing: true })
+    expect(screen.getByText(/re-outlining…/)).toBeTruthy()
+    expect(screen.queryByRole('button', { name: /re-outline/ })).toBeNull()
   })
 })

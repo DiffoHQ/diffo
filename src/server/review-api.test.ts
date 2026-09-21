@@ -1502,3 +1502,79 @@ describe('POST /api/review/layers', () => {
     await reader.cancel()
   })
 })
+
+describe('the layers request loop', () => {
+  const poll = (app: ReturnType<typeof setup>['app']) =>
+    Promise.resolve(app.request('/api/agent/poll', { headers: { 'x-diffo-agent': 'cli' } })).then(
+      pollResult,
+    )
+
+  it('the click rides to a waiting poll as a `layers` item, and presence says outlining', async () => {
+    const { app, queue } = setup()
+    const pending = poll(app)
+    await tick()
+    const res = await post(app, '/api/review/layers/request')
+    expect(await res.json()).toMatchObject({ ok: true })
+    const payload = await pending
+    expect(payload.status).toBe('feedback')
+    expect(payload.kind).toBe('layers')
+    expect(payload.threadIds).toEqual([])
+    expect(payload.prompt).toContain('asked for layers')
+    expect(payload.prompt).toContain('npx -y @diffohq/diffo layers --json')
+    expect(payload.next_step).toContain('diffo layers')
+    expect(queue.layersRequest()).toBe('outlining')
+    expect(queue.presence()).toBe('working')
+    // The post answers it.
+    await post(app, '/api/review/layers', { items: [{ title: 'A', files: ['app.ts'] }] })
+    expect(queue.layersRequest()).toBeNull()
+    expect(queue.take()).toBeNull()
+  })
+
+  it('with nobody polling the request parks, and answers as queued', async () => {
+    const { app, queue } = setup()
+    const res = await post(app, '/api/review/layers/request')
+    expect(await res.json()).toMatchObject({ ok: true, request: 'queued', presence: 'waiting' })
+    expect(queue.take()).toEqual({ kind: 'layers' })
+  })
+
+  it('a refresh over an existing outline names it in the prompt', async () => {
+    const { app } = setup()
+    await post(app, '/api/review/layers', {
+      items: [{ title: 'Contract', files: ['app.ts'] }],
+    })
+    await post(app, '/api/review/layers/request')
+    const payload = await poll(app)
+    expect(payload.kind).toBe('layers')
+    expect(payload.prompt).toContain('refresh the layers')
+    expect(payload.prompt).toContain('"Contract"')
+  })
+
+  it('clearing the review withdraws the request with the layers', async () => {
+    const { app, queue } = setup()
+    await post(app, '/api/review/layers/request')
+    await app.request('/api/review/threads', { method: 'DELETE' })
+    expect(queue.take()).toBeNull()
+  })
+
+  it('the presence stream carries where the request stands', async () => {
+    const { app } = setup()
+    const res = await app.request('/api/events')
+    const reader = res.body!.getReader()
+    const decoder = new TextDecoder()
+    let seen = ''
+    const readUntil = async (marker: string) => {
+      while (!seen.includes(marker)) {
+        const { value, done } = await reader.read()
+        if (done) break
+        seen += decoder.decode(value)
+      }
+    }
+    await readUntil('event: presence')
+    expect(seen).toContain('"layers":null')
+    await post(app, '/api/review/layers/request')
+    await readUntil('"layers":"queued"')
+    await poll(app)
+    await readUntil('"layers":"outlining"')
+    await reader.cancel()
+  })
+})

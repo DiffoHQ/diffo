@@ -5719,17 +5719,30 @@ i.q-now {
 
 /* The rail head when layers exist: refresh sits where a directory's hover
    actions would. */
-.ch-rail-head {
-  display: flex;
-  align-items: center;
-  gap: var(--s-3);
-  padding: 4px 14px 6px var(--s-5);
-  font-size: var(--t-11);
+/* The foot of the outline: the Threads tab's "Clear all threads…" voice —
+   a grey sentence that takes colour on hover, or a quiet status line. */
+.ch-foot {
+  display: block;
+  width: 100%;
+  padding: var(--s-4) var(--s-6);
+  border: none;
+  background: none;
+  font: inherit;
+  font-size: var(--t-12);
   color: var(--ink-3);
+  text-align: left;
 }
 
-.ch-rail-head .grow {
-  flex: 1;
+.ch-foot-act {
+  cursor: pointer;
+}
+
+.ch-foot-act:hover {
+  color: var(--acc);
+}
+
+.ch-foot-live {
+  color: var(--attn);
 }
 
 /* Layers tab, empty. Same voice as .rail-empty, with room for one action. */
@@ -5755,6 +5768,107 @@ i.q-now {
 
 .ch-empty .btn {
   margin-top: 8px;
+  /* A sentence, not a word: at a narrow rail it wraps rather than clips. */
+  white-space: normal;
+  text-align: left;
+  height: auto;
+  max-width: 100%;
+  line-height: 1.3;
+}
+
+.ch-empty .ch-empty-quote {
+  font-size: var(--t-12);
+  color: var(--ink-2);
+  font-style: italic;
+  padding-left: 10px;
+  border-left: 2px solid var(--attn);
+}
+
+/* An example outline: captioned, numbered, dimmed. It shows the shape of the
+   thing and cannot be mistaken for the thing. */
+.ch-empty-example {
+  margin: 4px 0 2px;
+  padding: 8px 12px 10px;
+  border: 1px dashed var(--border);
+  border-radius: var(--r);
+  width: 100%;
+  max-width: 220px;
+  font-size: var(--t-11);
+  color: var(--ink-3);
+}
+
+.ch-empty-example figcaption {
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+  margin-bottom: 6px;
+}
+
+.ch-empty-example ol {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  counter-reset: layer;
+  position: relative;
+}
+
+/* The thread down the left joins the numbers into one sequence. */
+.ch-empty-example ol::before {
+  content: "";
+  position: absolute;
+  left: 7px;
+  top: 8px;
+  bottom: 8px;
+  width: 1px;
+  background: var(--hair);
+}
+
+.ch-empty-example li {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  counter-increment: layer;
+  position: relative;
+}
+
+.ch-empty-example li::before {
+  content: counter(layer);
+  flex: none;
+  width: 15px;
+  height: 15px;
+  border-radius: 50%;
+  border: 1px solid var(--border);
+  background: var(--paper);
+  font-size: 9px;
+  font-weight: 600;
+  line-height: 13px;
+  text-align: center;
+  color: var(--ink-3);
+}
+
+.ch-empty-example li span {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--ink-2);
+}
+
+.ch-empty-example li small {
+  font-size: inherit;
+}
+
+.ch-empty .ch-empty-hint {
+  font-size: var(--t-11);
+  color: var(--ink-3);
+  margin-top: -2px;
 }
 
 .ch-working {

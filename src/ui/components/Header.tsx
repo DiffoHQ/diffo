@@ -175,7 +175,7 @@ function PresenceChip({
           <i />
         </span>
         <span className="presence-label">agent · suggests layers</span>
-        <span className="presence-cta">Outline</span>
+        <span className="presence-cta">Ask it</span>
       </button>
     )
   }
