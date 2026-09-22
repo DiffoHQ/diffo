@@ -95,3 +95,12 @@ describe('shortAgo', () => {
     expect(shortAgo('whenever', NOW)).toBe('')
   })
 })
+
+describe('fragment links', () => {
+  it('a `#` link stays in-page — no new tab, no rel — while external links still leave', () => {
+    const html = renderMarkdown('[here](#diffo-file:src%2Fa.ts:3) and [out](https://x.test)')
+    expect(html).toContain('href="#diffo-file:src%2Fa.ts:3"')
+    expect(html).not.toMatch(/href="#diffo-file[^>]*target=/)
+    expect(html).toMatch(/href="https:\/\/x.test"[^>]*target="_blank"/)
+  })
+})

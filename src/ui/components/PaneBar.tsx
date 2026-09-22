@@ -1,6 +1,22 @@
 import { Icon } from './Icon.js'
 import type { ViewMode } from './ReadingPane.js'
 
+/**
+ * The active layer, as the bar tells it. Navigation lives here and not on the
+ * header card: the card is read once and scrolled past, the bar is always in
+ * view. `prev` / `next` are null at the ends of the outline.
+ */
+export interface PaneLayer {
+  /** The one line: `layer 3 / 6 · 3 files · 2 left`, or `overview · the guide`. */
+  text: string
+  /** The burndown's title, for the hover. */
+  title: string
+  /** 0..1, from the layer's hunk marks. */
+  progress: number
+  prev: { title: string; onGo: () => void } | null
+  next: { title: string; onGo: () => void } | null
+}
+
 export function PaneBar({
   navHidden,
   onToggleNav,
@@ -21,11 +37,15 @@ export function PaneBar({
   allCollapsed,
   onToggleCollapseAll,
   onAddNote,
+  layer,
 }: {
   navHidden?: boolean
   onToggleNav?: () => void
   left: number
   total: number
+  /** In layer mode the burndown reads the active layer, and a pager sits at
+   * the end of the bar. */
+  layer?: PaneLayer
   /** The rail's typed filter. The pane obeys it, so the bar must say so — with the
    * rail collapsed this chip is the only trace of why files are missing. */
   query?: string
@@ -63,13 +83,30 @@ export function PaneBar({
         </button>
       )}
       <span className="prog-track" aria-hidden="true">
-        <i style={{ width: `${total === 0 ? 0 : Math.round((done / total) * 100)}%` }} />
+        <i
+          style={{
+            width: `${
+              layer
+                ? Math.round(layer.progress * 100)
+                : total === 0
+                  ? 0
+                  : Math.round((done / total) * 100)
+            }%`,
+          }}
+        />
       </span>
-      <span className="pane-left" title={`${done} of ${total} files marked reviewed`}>
-        {left === 0 ? 'all reviewed' : `${left} left`}
-      </span>
+      {layer ? (
+        <span className="pane-left" title={layer.title}>
+          {layer.text}
+        </span>
+      ) : (
+        <span className="pane-left" title={`${done} of ${total} files marked reviewed`}>
+          {left === 0 ? 'all reviewed' : `${left} left`}
+        </span>
+      )}
       <span className="grow" />
-      {onAddNote && (
+      {/* In layer mode the Overview's strip carries "+ Note on the changeset". */}
+      {!layer && onAddNote && (
         <>
           <button
             type="button"
@@ -83,7 +120,9 @@ export function PaneBar({
           <span className="pane-sep" />
         </>
       )}
-      {trimmedQuery !== '' && onClearQuery && (
+      {/* In layer mode the outline is the narrowing: a layer shows all of its
+          files, so the filters have nothing to say and step aside. */}
+      {!layer && trimmedQuery !== '' && onClearQuery && (
         <button
           type="button"
           className="pane-q"
@@ -96,7 +135,7 @@ export function PaneBar({
           <Icon name="x" size="sm" />
         </button>
       )}
-      {showChanged && (
+      {!layer && showChanged && (
         <Switch
           on={onlyChanged}
           onChange={onOnlyChanged}
@@ -104,8 +143,8 @@ export function PaneBar({
           n={changedCount}
         />
       )}
-      <Switch on={hideReviewed} onChange={onHideReviewed} label="Hide reviewed" />
-      {showTests && (
+      {!layer && <Switch on={hideReviewed} onChange={onHideReviewed} label="Hide reviewed" />}
+      {!layer && showTests && (
         <Switch on={hideTests} onChange={onHideTests} label="Hide tests" n={testCount} />
       )}
       <span className="pane-sep" />
@@ -142,6 +181,38 @@ export function PaneBar({
       >
         <Icon name="fold" size="sm" />
       </button>
+      {layer && (layer.prev || layer.next) && (
+        <>
+          <span className="pane-sep" />
+          <span className="ch-pager">
+            {layer.prev && (
+              <button
+                type="button"
+                className="btn btn-ghost btn-sm"
+                title={`Previous layer: ${layer.prev.title} ([)`}
+                aria-label={`Previous layer: ${layer.prev.title}`}
+                onClick={layer.prev.onGo}
+              >
+                ‹ <span className="ch-pager-t">{layer.prev.title}</span>
+              </button>
+            )}
+            {layer.next && (
+              <button
+                type="button"
+                className="btn btn-sm"
+                title={`Next layer: ${layer.next.title} (])`}
+                aria-label={`Next layer: ${layer.next.title}`}
+                onClick={layer.next.onGo}
+              >
+                <span className="ch-pager-t">{layer.next.title}</span> ›{' '}
+                <span className="kbd" aria-hidden="true">
+                  ]
+                </span>
+              </button>
+            )}
+          </span>
+        </>
+      )}
     </div>
   )
 }

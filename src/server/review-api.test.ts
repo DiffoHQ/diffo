@@ -1431,3 +1431,150 @@ describe('the guide (an agent comment on the whole changeset)', () => {
     expect(after.messages.at(-1)!.text).toContain('adopt step is gone')
   })
 })
+
+describe('POST /api/review/layers', () => {
+  it('posts the outline, mints ids, and answers with the stored layers', async () => {
+    const { app, review } = setup()
+    const res = await post(app, '/api/review/layers', {
+      items: [
+        { title: 'Contract', summary: 'the shape', files: ['app.ts'] },
+        { title: 'Callers', kind: 'mechanical', files: [{ path: 'cli.ts', note: 'follows' }] },
+      ],
+    })
+    expect(res.status).toBe(200)
+    const { layers } = (await res.json()) as { layers: { items: { id: string; title: string }[] } }
+    expect(layers.items.map((l) => l.title)).toEqual(['Contract', 'Callers'])
+    expect(layers.items.every((l) => typeof l.id === 'string' && l.id.length > 0)).toBe(true)
+    expect(review.get().layers?.items).toHaveLength(2)
+    // GET /api/review carries them.
+    const got = (await (await app.request('/api/review')).json()) as { layers?: unknown }
+    expect(got.layers).toEqual(layers)
+  })
+
+  it('refuses a malformed post with the validator’s own words, and stores nothing', async () => {
+    const { app, review } = setup()
+    const res = await post(app, '/api/review/layers', { items: [{ title: 'No files' }] })
+    expect(res.status).toBe(400)
+    expect(((await res.json()) as { error: string }).error).toContain('needs a non-empty "files"')
+    expect(review.get().layers).toBeUndefined()
+    const shapeless = await post(app, '/api/review/layers', {})
+    expect(shapeless.status).toBe(400)
+  })
+
+  it('a suggestion is recorded with its reason, and cleared by the post that answers it', async () => {
+    const { app, review } = setup()
+    const res = await post(app, '/api/review/layers', {
+      suggest: true,
+      reason: 'the parser change explains the rest\nsecond line dropped',
+    })
+    expect(res.status).toBe(200)
+    expect(await res.json()).toEqual({ suggested: true })
+    expect(review.get().layersSuggested).toEqual({ reason: 'the parser change explains the rest' })
+    await post(app, '/api/review/layers', { items: [{ title: 'A', files: ['app.ts'] }] })
+    expect(review.get().layersSuggested).toBeUndefined()
+  })
+
+  it('a suggestion after the post is refused, not recorded', async () => {
+    const { app, review } = setup()
+    await post(app, '/api/review/layers', { items: [{ title: 'A', files: ['app.ts'] }] })
+    const res = await post(app, '/api/review/layers', { suggest: true })
+    expect(await res.json()).toMatchObject({ suggested: false })
+    expect(review.get().layersSuggested).toBeUndefined()
+  })
+
+  it('fans out over the SSE review event like any other review change', async () => {
+    const { app } = setup()
+    const res = await app.request('/api/events')
+    const reader = res.body!.getReader()
+    const decoder = new TextDecoder()
+    let seen = ''
+    const readUntil = async (marker: string) => {
+      while (!seen.includes(marker)) {
+        const { value, done } = await reader.read()
+        if (done) break
+        seen += decoder.decode(value)
+      }
+    }
+    await readUntil('event: changeset')
+    await post(app, '/api/review/layers', { items: [{ title: 'A', files: ['app.ts'] }] })
+    await readUntil('event: review')
+    expect(seen).toContain('event: review')
+    await reader.cancel()
+  })
+})
+
+describe('the layers request loop', () => {
+  const poll = (app: ReturnType<typeof setup>['app']) =>
+    Promise.resolve(app.request('/api/agent/poll', { headers: { 'x-diffo-agent': 'cli' } })).then(
+      pollResult,
+    )
+
+  it('the click rides to a waiting poll as a `layers` item, and presence says outlining', async () => {
+    const { app, queue } = setup()
+    const pending = poll(app)
+    await tick()
+    const res = await post(app, '/api/review/layers/request')
+    expect(await res.json()).toMatchObject({ ok: true })
+    const payload = await pending
+    expect(payload.status).toBe('feedback')
+    expect(payload.kind).toBe('layers')
+    expect(payload.threadIds).toEqual([])
+    expect(payload.prompt).toContain('asked for layers')
+    expect(payload.prompt).toContain('npx -y @diffohq/diffo layers --json')
+    expect(payload.next_step).toContain('diffo layers')
+    expect(queue.layersRequest()).toBe('outlining')
+    expect(queue.presence()).toBe('working')
+    // The post answers it.
+    await post(app, '/api/review/layers', { items: [{ title: 'A', files: ['app.ts'] }] })
+    expect(queue.layersRequest()).toBeNull()
+    expect(queue.take()).toBeNull()
+  })
+
+  it('with nobody polling the request parks, and answers as queued', async () => {
+    const { app, queue } = setup()
+    const res = await post(app, '/api/review/layers/request')
+    expect(await res.json()).toMatchObject({ ok: true, request: 'queued', presence: 'waiting' })
+    expect(queue.take()).toEqual({ kind: 'layers' })
+  })
+
+  it('a refresh over an existing outline names it in the prompt', async () => {
+    const { app } = setup()
+    await post(app, '/api/review/layers', {
+      items: [{ title: 'Contract', files: ['app.ts'] }],
+    })
+    await post(app, '/api/review/layers/request')
+    const payload = await poll(app)
+    expect(payload.kind).toBe('layers')
+    expect(payload.prompt).toContain('refresh the layers')
+    expect(payload.prompt).toContain('"Contract"')
+  })
+
+  it('clearing the review withdraws the request with the layers', async () => {
+    const { app, queue } = setup()
+    await post(app, '/api/review/layers/request')
+    await app.request('/api/review/threads', { method: 'DELETE' })
+    expect(queue.take()).toBeNull()
+  })
+
+  it('the presence stream carries where the request stands', async () => {
+    const { app } = setup()
+    const res = await app.request('/api/events')
+    const reader = res.body!.getReader()
+    const decoder = new TextDecoder()
+    let seen = ''
+    const readUntil = async (marker: string) => {
+      while (!seen.includes(marker)) {
+        const { value, done } = await reader.read()
+        if (done) break
+        seen += decoder.decode(value)
+      }
+    }
+    await readUntil('event: presence')
+    expect(seen).toContain('"layers":null')
+    await post(app, '/api/review/layers/request')
+    await readUntil('"layers":"queued"')
+    await poll(app)
+    await readUntil('"layers":"outlining"')
+    await reader.cancel()
+  })
+})

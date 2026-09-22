@@ -3,6 +3,7 @@ import {
   type Anchor,
   type Coverage,
   describeAnchor,
+  type Layer,
   type ReviewThread,
   startedByAgent,
   THREAD_INTENTS,
@@ -81,6 +82,10 @@ export function buildCliCommands(cli: string) {
     // instruction to anchor it to the whole changeset doesn't have to be given
     // alongside a usage string offering a file.
     guide: `${cli} comment --message "<what the change does>"`,
+    // The reading plan: the flag at open, and the post itself (inline or piped).
+    layersSuggest: `${cli} layers --suggest "<why, in one line>"`,
+    layers: `${cli} layers --json '<Layer[]>'`,
+    layersStdin: `${cli} layers --stdin`,
     end: `${cli} end`,
     setup: `${cli} setup`,
   } as const
@@ -138,7 +143,13 @@ export const JOIN_PROMPT =
   `the title is ${TAB_TITLE.what} — ${TAB_TITLE.why}) ` +
   'and follow the JSON payload it prints — each payload carries its own instructions'
 
-export function nextStepFor(kind: 'threads' | 'finish' | 'cleared', actionable: number): string {
+export function nextStepFor(
+  kind: 'threads' | 'finish' | 'cleared' | 'layers',
+  actionable: number,
+): string {
+  if (kind === 'layers') {
+    return `Post the outline with \`${CLI_COMMANDS.layers}\` (or pipe it to \`${CLI_COMMANDS.layersStdin}\`), then run \`${CLI_COMMANDS.poll}\` again to keep listening (${POLL_STANCE}).`
+  }
   if (kind === 'cleared') {
     // A cleared review dropped its tab title along with its threads (see
     // ReviewStore.reset) — this round names itself again.
@@ -156,6 +167,9 @@ export const ACK_NEXT_STEP = {
   replyMore:
     'Interim reply posted — the reviewer still sees you working on this thread. Post the follow-up as a plain reply (no --more) BEFORE your next poll: re-polling closes the batch and counts the promise as never kept.',
   comment: `It's in the review as your comment, labeled as yours — the reviewer replies to take it up, or resolves it. Continue with the review threads, then run \`${CLI_COMMANDS.poll}\`.`,
+  layers: `The outline is live in the reviewer's Layers tab, resolved against the changeset as it moves. Files you touch later land in a trailing "Since your review" layer until you re-post the whole list. Continue with the review threads, then run \`${CLI_COMMANDS.poll}\`.`,
+  layersSuggested: `The review now offers the outline to the reviewer. Mention it in your handoff too — "say layers and I'll outline it" — and post it with \`${CLI_COMMANDS.layers}\` when they ask. Then run \`${CLI_COMMANDS.poll}\`.`,
+  layersAlready: `This review already carries layers, so there is nothing to suggest — re-post the whole list with \`${CLI_COMMANDS.layers}\` if the outline is stale. Then run \`${CLI_COMMANDS.poll}\`.`,
   end: 'Detached. Do not reopen or re-poll this review unless the user asks — deliver anything remaining directly in the conversation.',
 } as const
 
@@ -178,6 +192,40 @@ export const GUIDE = {
 } as const
 
 /**
+ * The layers doctrine — the agent's reading plan for a changeset with an order
+ * worth explaining. Same single-source rule as GUIDE: the skill, `help agent`,
+ * `help layers`, and the open-time nudge all interpolate these, so no surface
+ * can teach a different bar for what a layer is or when to offer one.
+ *
+ * Layers come from the agent only. Every other tool infers a walkthrough by
+ * reading the diff back; the session that wrote the code still remembers the
+ * order it would explain it in, and that is the whole edge — so the doctrine is
+ * about that order, and about not spending the reviewer's attention on a plan
+ * a flat file list already gives them.
+ */
+export const LAYERS = {
+  /** What one is. */
+  what: 'one step of the change — a coherent unit you would explain in one breath — with the files that belong to it and a one- or two-sentence summary (markdown; a ```mermaid fence renders)',
+  /** How to order them. */
+  order:
+    'the order you would explain it, not the order you wrote it — the file that explains the rest first, mechanical consequences last; for a feature, follow the request from entry point to effect; for a refactor, contract first, then consumers',
+  /** When to raise the flag at open — and that not raising it is the common case. */
+  suggest:
+    'suggest layers when the change has an order worth explaining; a wide diff with one idea does not need them',
+  /** The one tag, and the bar for it. */
+  mechanical:
+    'tag a layer "kind": "mechanical" only when it changes no behaviour — a rename, call sites following a signature; if unsure, don\'t tag',
+  /** Summaries orient reading, never pre-review: the guide's line, verbatim. */
+  stance: GUIDE.stance,
+  /** A post is the whole list. */
+  replace:
+    "a post replaces the whole list, never merges; ids are kept for titles that match, so a re-post never moves the reviewer's place",
+  /** The payload, in one line. */
+  shape:
+    '[{ "title": "…", "summary": "…", "kind": "mechanical" (optional), "files": ["src/a.ts", { "path": "src/b.ts", "note": "why this file is in this step" }] }]',
+} as const
+
+/**
  * Printed by `diffo` (open) to a piped stdout when the review has no guide yet.
  * The skill teaches the same step, but this line is what an agent WITHOUT the
  * skill sees — payloads and command output must stand alone (see POLL_STANCE).
@@ -197,6 +245,26 @@ export function guideNudge(hasGuide: boolean): string | null {
     `${GUIDE.what}: \`${CLI_COMMANDS.guide}\` ` +
     `(no file, so it anchors to the changeset; it appears live at the top of ` +
     `their review). ${GUIDE.stance}.`
+  )
+}
+
+/**
+ * Printed by `diffo` (open) next to the guide nudge while the review has neither
+ * layers nor a suggestion. The open is the one moment the agent still holds the
+ * order it would explain the change in, so the flag is raised here; the outline
+ * itself waits for the reviewer to ask, because writing it is the heavy step
+ * and most changesets never need it.
+ */
+export function layersNudge(review: {
+  layers?: unknown
+  layersSuggested?: unknown
+}): string | null {
+  if (review.layers || review.layersSuggested) return null
+  return (
+    `if this changeset reads better in order — ${LAYERS.suggest} — flag it: ` +
+    `\`${CLI_COMMANDS.layersSuggest}\`, and offer it in your handoff ("say layers and I'll ` +
+    `outline it"). Post the outline only when asked: \`${CLI_COMMANDS.layers}\` — each layer ` +
+    `${LAYERS.what}; ${LAYERS.order}. ${LAYERS.stance}. \`diffo help layers\` has the shape.`
   )
 }
 
@@ -551,6 +619,40 @@ export function buildCoalescedPrompt(threads: ReviewThread[], ctx: PromptContext
  * orientation for the fresh round, so this restates the guide doctrine the way
  * the open-time nudge does (payloads must stand alone — see POLL_STANCE).
  */
+/**
+ * The reviewer pressed Outline (or refresh): the poll item that asks for the
+ * layers. Standalone by the same rule as every payload — an agent with no
+ * skill and no memory of `help layers` still gets the whole doctrine here.
+ */
+export function buildLayersRequestPrompt(
+  ctx: PromptContext,
+  existing: Pick<Layer, 'title'>[] | null,
+): string {
+  const refresh = existing !== null && existing.length > 0
+  const titles = refresh ? existing.map((l) => `"${l.title}"`).join(', ') : ''
+  return [
+    refresh
+      ? `The reviewer asked you to refresh the layers in \`${ctx.repo.name}\` (branch \`${ctx.repo.branch}\`): the code moved since you outlined it, and files outside the outline have been gathering under "Since your review". Re-post the whole list as the change stands now.`
+      : `The reviewer asked for layers in \`${ctx.repo.name}\` (branch \`${ctx.repo.branch}\`): outline the changeset as steps to read in order. The Layers tab reads "The agent is outlining…" until you post.`,
+    '',
+    ...(ctx.changeset ? [specLine(ctx.changeset), ''] : []),
+    ...(refresh
+      ? [
+          `The outline they have: ${titles}. Keep a title that still fits its step, rename or drop the ones that don't — ${LAYERS.replace}.`,
+          '',
+        ]
+      : []),
+    `Each layer is ${LAYERS.what}. Order: ${LAYERS.order}. ${LAYERS.mechanical}. ${LAYERS.stance}. Files are whole files, by path relative to the repo root; list every file of the changeset somewhere, or the leftovers land in "Since your review".`,
+    '',
+    `Shape: ${LAYERS.shape}`,
+    '',
+    `Post it: \`${CLI_COMMANDS.layers}\`, or pipe the JSON to \`${CLI_COMMANDS.layersStdin}\` when it is long. Nothing else is owed for this item — no reply, no comment.`,
+    '',
+    `Then run \`${CLI_COMMANDS.poll}\` again to keep listening (${POLL_STANCE}).`,
+    '',
+  ].join('\n')
+}
+
 export function buildClearedPrompt(ctx: PromptContext): string {
   return [
     `The reviewer cleared the review in \`${ctx.repo.name}\` (branch \`${ctx.repo.branch}\`): the previous round landed, and its threads and guide are gone. What the reviewer sees now is a fresh round.`,

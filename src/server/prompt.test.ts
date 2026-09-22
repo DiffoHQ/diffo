@@ -10,13 +10,17 @@ import {
   buildCoalescedPrompt,
   buildFinishPrompt,
   buildInstallSkill,
+  buildLayersRequestPrompt,
   buildThreadPrompt,
   CLI,
   CLI_COMMANDS,
   captureAnchor,
+  GUIDE,
   guideInherit,
   guideNudge,
   INSTALL_SKILL,
+  LAYERS,
+  layersNudge,
   NPX,
   nextStepFor,
   SKILL_REPO,
@@ -726,6 +730,14 @@ describe('the poll envelope (next_step per payload kind)', () => {
     expect(empty).not.toMatch(/act on each thread/i)
   })
 
+  it('a layers payload points at the post, then back to the poll', () => {
+    const step = nextStepFor('layers', 0)
+    expect(step).toContain(CLI_COMMANDS.layers)
+    expect(step).toContain(CLI_COMMANDS.layersStdin)
+    expect(step).toMatch(/keep listening/i)
+    expect(step).not.toMatch(/act on each thread/i)
+  })
+
   it('a cleared payload points at the guide, then back to the poll', () => {
     const step = nextStepFor('cleared', 0)
     expect(step).toMatch(/guide/i)
@@ -803,6 +815,39 @@ describe('the open-time guide nudge', () => {
   })
 })
 
+describe('the layers payload (reviewer pressed Outline)', () => {
+  it('asks for the outline, carries the whole doctrine, and owes nothing else', () => {
+    const prompt = buildLayersRequestPrompt({ repo, changeset: changeset() }, null)
+    expect(prompt).toContain('asked for layers')
+    expect(prompt).toContain('is outlining…')
+    expect(prompt).not.toContain('refresh')
+    // An agent with no skill still gets every rule the CLI help carries.
+    expect(prompt).toContain(LAYERS.order)
+    expect(prompt).toContain(LAYERS.mechanical)
+    expect(prompt).toContain(LAYERS.stance)
+    expect(prompt).toContain(LAYERS.shape)
+    expect(prompt).toContain(CLI_COMMANDS.layers)
+    expect(prompt).toContain(CLI_COMMANDS.layersStdin)
+    expect(prompt).toContain('no reply, no comment')
+    expect(prompt).toContain('The changeset under review')
+    expect(prompt).toContain(CLI_COMMANDS.poll)
+  })
+
+  it('a refresh names the outline they have and asks for the whole list again', () => {
+    const prompt = buildLayersRequestPrompt({ repo, changeset: null }, [
+      { title: 'Contract' },
+      { title: 'Callers' },
+    ])
+    expect(prompt).toContain('refresh the layers')
+    expect(prompt).toContain('"Contract", "Callers"')
+    expect(prompt).toContain('Since your review')
+    expect(prompt).toContain(LAYERS.replace)
+    expect(prompt).not.toContain('The changeset under review')
+    // An empty outline is not a refresh.
+    expect(buildLayersRequestPrompt({ repo, changeset: null }, [])).toContain('asked for layers')
+  })
+})
+
 describe('the cleared payload (reviewer started the review over)', () => {
   it('says what happened, owes nothing, and restates the guide doctrine', () => {
     const prompt = buildClearedPrompt({ repo, changeset: changeset() })
@@ -833,5 +878,34 @@ describe('the takeover guide-inherit notice', () => {
     // so an agent without the skill can follow it verbatim.
     expect(notice).toContain(`${CLI} reply t-guide`)
     expect(notice).toMatch(/rather than posting a second guide/)
+  })
+})
+
+describe('layers doctrine', () => {
+  it('the nudge appears only while the review has neither layers nor a suggestion', () => {
+    const nudge = layersNudge({})!
+    expect(nudge).toContain(CLI_COMMANDS.layersSuggest)
+    expect(nudge).toContain(CLI_COMMANDS.layers)
+    expect(nudge).toContain(LAYERS.suggest)
+    expect(nudge).toContain(LAYERS.order)
+    expect(nudge).toContain(LAYERS.stance)
+    expect(layersNudge({ layers: { items: [], postedAt: '' } })).toBeNull()
+    expect(layersNudge({ layersSuggested: {} })).toBeNull()
+  })
+
+  it('summaries inherit the guide’s stance verbatim', () => {
+    expect(LAYERS.stance).toBe(GUIDE.stance)
+  })
+
+  it('the mechanical rule names the bar and the default when unsure', () => {
+    expect(LAYERS.mechanical).toMatch(/no behaviour/)
+    expect(LAYERS.mechanical).toMatch(/if unsure, don't tag/)
+  })
+
+  it('every layers ack names the next poll', () => {
+    for (const key of ['layers', 'layersSuggested', 'layersAlready'] as const) {
+      expect(ACK_NEXT_STEP[key]).toContain(CLI_COMMANDS.poll)
+    }
+    expect(ACK_NEXT_STEP.layersSuggested).toContain(CLI_COMMANDS.layers)
   })
 })

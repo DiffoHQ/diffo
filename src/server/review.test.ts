@@ -628,3 +628,145 @@ describe('parseReview', () => {
     })
   })
 })
+
+describe('ReviewStore layers', () => {
+  const post = (store: ReviewStore, titles: string[]) =>
+    store.setLayers(titles.map((title) => ({ title, files: [`${title}.ts`] })))
+
+  it('mints ids, persists the list, and GET-side state carries it after a restart', () => {
+    const root = tempRoot()
+    const store = makeStore(root)
+    const layers = post(store, ['Contract', 'Callers'])
+    expect(layers.items.map((l) => l.title)).toEqual(['Contract', 'Callers'])
+    expect(new Set(layers.items.map((l) => l.id)).size).toBe(2)
+    expect(makeStore(root).get().layers).toEqual(layers)
+  })
+
+  it('a re-post replaces the list and keeps the id of every title that survives', () => {
+    const store = makeStore(tempRoot())
+    const first = post(store, ['Contract', 'Callers', 'Tests'])
+    const second = post(store, ['Tests', 'Contract', 'Docs'])
+    const id = (layers: typeof first, title: string) =>
+      layers.items.find((l) => l.title === title)!.id
+    expect(second.items.map((l) => l.title)).toEqual(['Tests', 'Contract', 'Docs'])
+    expect(id(second, 'Contract')).toBe(id(first, 'Contract'))
+    expect(id(second, 'Tests')).toBe(id(first, 'Tests'))
+    expect(second.items.map((l) => l.id)).not.toContain(id(first, 'Callers'))
+    expect(store.get().layers).toEqual(second)
+  })
+
+  it('a suggestion stands until the post answers it, and is refused once layers exist', () => {
+    const root = tempRoot()
+    const store = makeStore(root)
+    expect(store.suggestLayers('the parser change explains the rest')).toBe(true)
+    expect(store.get().layersSuggested).toEqual({ reason: 'the parser change explains the rest' })
+    expect(makeStore(root).get().layersSuggested).toEqual({
+      reason: 'the parser change explains the rest',
+    })
+    post(store, ['Contract'])
+    expect(store.get().layersSuggested).toBeUndefined()
+    expect(store.suggestLayers()).toBe(false)
+    expect(store.get().layersSuggested).toBeUndefined()
+  })
+
+  it('a suggestion without a reason is still a suggestion', () => {
+    const store = makeStore(tempRoot())
+    expect(store.suggestLayers()).toBe(true)
+    expect(store.get().layersSuggested).toEqual({})
+  })
+
+  it('reset takes the layers and the suggestion with the round', () => {
+    const store = makeStore(tempRoot())
+    post(store, ['Contract'])
+    expect(store.reset()).toEqual([])
+    expect(store.get().layers).toBeUndefined()
+    store.suggestLayers()
+    store.reset()
+    expect(store.get().layersSuggested).toBeUndefined()
+    expect(store.reset()).toEqual([])
+  })
+
+  it('a suggestion and a post each notify subscribers — the SSE fan-out rides on commit', () => {
+    const store = makeStore(tempRoot())
+    let seen = 0
+    store.subscribe(() => seen++)
+    store.suggestLayers()
+    post(store, ['Contract'])
+    expect(seen).toBe(2)
+    // Refused, so nothing changed, so nobody is told.
+    store.suggestLayers()
+    expect(seen).toBe(2)
+  })
+})
+
+describe('parseReview layers', () => {
+  it('round-trips layers with their ids and the suggestion', () => {
+    const stored = JSON.stringify({
+      version: 1,
+      threads: [],
+      layers: {
+        items: [
+          {
+            id: 'l-1',
+            title: 'Contract',
+            summary: 's',
+            files: ['a.ts', { path: 'b.ts', note: 'n' }],
+          },
+          { id: 'l-2', title: 'Callers', kind: 'mechanical', files: ['c.ts:1-4'] },
+        ],
+        postedAt: '2026-09-20T00:00:00Z',
+      },
+    })
+    expect(parseReview(stored)!.layers).toEqual({
+      items: [
+        {
+          id: 'l-1',
+          title: 'Contract',
+          summary: 's',
+          files: ['a.ts', { path: 'b.ts', note: 'n' }],
+        },
+        { id: 'l-2', title: 'Callers', kind: 'mechanical', files: ['c.ts:1-4'] },
+      ],
+      postedAt: '2026-09-20T00:00:00Z',
+    })
+    const suggested = parseReview(
+      JSON.stringify({ version: 1, threads: [], layersSuggested: { reason: 'why' } }),
+    )!
+    expect(suggested.layersSuggested).toEqual({ reason: 'why' })
+    expect(
+      parseReview(JSON.stringify({ version: 1, threads: [], layersSuggested: {} }))!,
+    ).toHaveProperty('layersSuggested', {})
+  })
+
+  it('re-mints a missing id and drops a list that would fail validation', () => {
+    const minted = parseReview(
+      JSON.stringify({
+        version: 1,
+        threads: [],
+        layers: { items: [{ title: 'Contract', files: ['a.ts'] }] },
+      }),
+    )!
+    expect(typeof minted.layers!.items[0]!.id).toBe('string')
+    expect(minted.layers!.postedAt).toBeTruthy()
+    const broken = parseReview(
+      JSON.stringify({ version: 1, threads: [], layers: { items: [{ title: 'No files' }] } }),
+    )!
+    expect(broken.layers).toBeUndefined()
+    expect(
+      parseReview(JSON.stringify({ version: 1, threads: [], layers: 'x' }))!.layers,
+    ).toBeUndefined()
+  })
+
+  it('a suggestion stored next to layers is stale and dropped', () => {
+    const parsed = parseReview(
+      JSON.stringify({
+        version: 1,
+        threads: [],
+        layers: { items: [{ id: 'l', title: 'A', files: ['a.ts'] }], postedAt: 'x' },
+        layersSuggested: { reason: 'stale' },
+      }),
+    )!
+    expect(parsed.layers).toBeDefined()
+    expect(parsed.layersSuggested).toBeUndefined()
+  })
+})

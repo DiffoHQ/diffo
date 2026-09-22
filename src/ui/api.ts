@@ -11,6 +11,10 @@ import type { Changeset } from '../shared/types.js'
 
 export type Presence = 'waiting' | 'listening' | 'working'
 
+/** The reviewer's layers request, as the presence stream reports it: parked
+ * for the next poll, in the agent's hands, or none. Mirrors the server's type. */
+export type LayersRequest = 'queued' | 'outlining' | null
+
 export type PresenceReason =
   | 'no-agent'
   | 'polling'
@@ -128,5 +132,7 @@ export const reviewApi = {
     }),
   remove: (threadId: string) => del<{ removed: boolean }>(`/api/review/threads/${threadId}`),
   clear: () => del<{ removed: number }>('/api/review/threads'),
+  /** Outline, or refresh: the click rides to the agent's next poll. */
+  requestLayers: () => post<{ ok: boolean }>('/api/review/layers/request'),
   dismissLanded: () => del<{ ok: boolean }>('/api/review/landed'),
 }

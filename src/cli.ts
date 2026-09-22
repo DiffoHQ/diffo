@@ -17,6 +17,7 @@ import {
   CLI_COMMANDS,
   guideInherit,
   guideNudge,
+  layersNudge,
   TAB_TITLE,
 } from './server/prompt.js'
 import {
@@ -29,7 +30,8 @@ import {
 } from './serverLifecycle.js'
 import { apiUrl, reviewUrl } from './serverUrl.js'
 import { postRegisterHint, refreshInstalledSkills, runSetup } from './setup.js'
-import type { ReviewState } from './shared/review.js'
+import { parseLayersInput } from './shared/layers.js'
+import type { Layers, ReviewState } from './shared/review.js'
 import type { ChangesetSpec as CliSpec } from './shared/types.js'
 import { VERSION } from './version.js'
 
@@ -485,6 +487,53 @@ if (command.kind === 'comment') {
   process.exit(0)
 }
 
+if (command.kind === 'layers') {
+  const { source } = command
+  if (source.kind === 'stdin' && process.stdin.isTTY) {
+    fail('layers --stdin needs the JSON piped on stdin — or pass it with --json')
+  }
+  const port = await requireServer()
+  if (source.kind === 'suggest') {
+    const { status, body } = await postJson(port, '/api/review/layers', {
+      suggest: true,
+      ...(source.reason === null ? {} : { reason: source.reason }),
+    })
+    if (status !== 200) fail(`layers failed (${status})`)
+    const { suggested } = body as { suggested: boolean }
+    console.log(
+      JSON.stringify({
+        ok: true,
+        suggested,
+        next_step: suggested ? ACK_NEXT_STEP.layersSuggested : ACK_NEXT_STEP.layersAlready,
+      }),
+    )
+    process.exit(0)
+  }
+  // Validated here first so a malformed payload is refused with the layer it
+  // names and never leaves the machine; the server checks it again regardless.
+  const text = source.kind === 'json' ? source.text : await readStdin()
+  let raw: unknown
+  try {
+    raw = JSON.parse(text)
+  } catch (err) {
+    fail(`layers needs a JSON array of layers — ${(err as Error).message}`)
+  }
+  const parsed = parseLayersInput(raw)
+  if (!parsed.ok) fail(`layers: ${parsed.error}`)
+  const { status, body } = await postJson(port, '/api/review/layers', { items: parsed.items })
+  if (status === 400) fail(`layers: ${(body as { error?: string } | null)?.error ?? 'rejected'}`)
+  if (status !== 200) fail(`layers failed (${status})`)
+  const { layers } = body as { layers: Layers }
+  console.log(
+    JSON.stringify({
+      ok: true,
+      layers: layers.items.length,
+      next_step: ACK_NEXT_STEP.layers,
+    }),
+  )
+  process.exit(0)
+}
+
 if (command.kind === 'end') {
   const port = await requireServer()
   const { status, body } = await postJson(port, '/api/agent/end', {})
@@ -518,6 +567,8 @@ async function printAgentNextStep(port: number): Promise<void> {
   const review = await fetchReviewState(port)
   const nudge = review ? guideNudge(findGuideThread(review) !== undefined) : null
   if (nudge) console.log(`first: ${nudge}`)
+  const layers = review ? layersNudge(review) : null
+  if (layers) console.log(`also: ${layers}`)
   console.log(
     `next: run \`${CLI_COMMANDS.firstPoll}\` to receive the reviewer's feedback — the ` +
       `title is ${TAB_TITLE.what} (${TAB_TITLE.examples}): ${TAB_TITLE.why} ` +

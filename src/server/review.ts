@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto'
 import { resolve } from 'node:path'
+import { type LayerInput, parseLayersInput, parseSuggestReason } from '../shared/layers.js'
 import {
   type Anchor,
   type AnchoredLines,
@@ -8,6 +9,7 @@ import {
   EMPTY_REVIEW,
   type Landed,
   type LastFinish,
+  type Layers,
   normalizeTitle,
   type ReviewMessage,
   type ReviewState,
@@ -255,13 +257,50 @@ export class ReviewStore {
    */
   reset(): string[] {
     const ids = this.state.threads.map((t) => t.id)
-    if (ids.length === 0 && !this.state.lastFinish && !this.state.landed && !this.state.title) {
+    const { lastFinish, landed, title, layers, layersSuggested } = this.state
+    if (ids.length === 0 && !lastFinish && !landed && !title && !layers && !layersSuggested) {
       return []
     }
-    const { lastFinish: _finish, landed: _landed, title: _title, ...rest } = this.state
+    const {
+      lastFinish: _finish,
+      landed: _landed,
+      title: _title,
+      // The plan described the round that ended; the next one is outlined afresh.
+      layers: _layers,
+      layersSuggested: _suggested,
+      ...rest
+    } = this.state
     this.state = { ...rest, threads: [] }
     this.commit()
     return ids
+  }
+
+  /**
+   * Replace the reading plan — the whole list, never a merge, so the agent never
+   * has to diff its own outline. Ids are minted here and kept for any layer
+   * whose title matches an existing one: that is what holds the reviewer's
+   * active layer in place across a re-post. Posting also answers the suggestion,
+   * so it goes.
+   */
+  setLayers(items: readonly LayerInput[]): Layers {
+    const kept = new Map((this.state.layers?.items ?? []).map((l) => [l.title, l.id]))
+    const layers: Layers = {
+      items: items.map((item) => ({ id: kept.get(item.title) ?? randomUUID(), ...item })),
+      postedAt: new Date().toISOString(),
+    }
+    const { layersSuggested: _suggested, ...rest } = this.state
+    this.state = { ...rest, layers }
+    this.commit()
+    return layers
+  }
+
+  /** The agent's flag at open: this read benefits from layers. Once layers exist
+   * the flag has nothing to add, so it is refused rather than recorded. */
+  suggestLayers(reason?: string): boolean {
+    if (this.state.layers) return false
+    this.state = { ...this.state, layersSuggested: reason ? { reason } : {} }
+    this.commit()
+    return true
   }
 
   /** The agent's name for this changeset, carried by its poll. The newest one
@@ -434,6 +473,8 @@ export function parseReview(raw: string): ReviewState | null {
   const lastFinish = normalizeLastFinish(parsed.lastFinish, now)
   const landed = normalizeLanded(parsed.landed, now)
   const title = normalizeTitle(parsed.title)
+  const layers = normalizeLayers(parsed.layers, now)
+  const layersSuggested = normalizeSuggested(parsed.layersSuggested)
   return {
     version: 1,
     threads: [...valid, ...migrated],
@@ -443,7 +484,37 @@ export function parseReview(raw: string): ReviewState | null {
       ? { seenHead: parsed.seenHead }
       : {}),
     ...(landed ? { landed } : {}),
+    ...(layers ? { layers } : {}),
+    // A suggestion answered by a post has nothing left to say.
+    ...(layersSuggested && !layers ? { layersSuggested } : {}),
   }
+}
+
+/** Stored layers go back through the same validation a post does; a list that
+ * would be refused at the door is dropped whole rather than half-kept. Ids are
+ * the one field a post never carries, so they are read here and re-minted only
+ * when missing. */
+function normalizeLayers(value: unknown, now: string): Layers | null {
+  if (typeof value !== 'object' || value === null) return null
+  const l = value as Record<string, unknown>
+  if (!Array.isArray(l.items)) return null
+  const parsed = parseLayersInput(l.items)
+  if (!parsed.ok) return null
+  const ids = l.items.map((item: unknown) =>
+    typeof item === 'object' && item !== null && typeof (item as { id?: unknown }).id === 'string'
+      ? ((item as { id: string }).id as string)
+      : randomUUID(),
+  )
+  return {
+    items: parsed.items.map((item, i) => ({ id: ids[i]!, ...item })),
+    postedAt: typeof l.postedAt === 'string' ? l.postedAt : now,
+  }
+}
+
+function normalizeSuggested(value: unknown): { reason?: string } | null {
+  if (typeof value !== 'object' || value === null) return null
+  const reason = parseSuggestReason((value as { reason?: unknown }).reason)
+  return reason ? { reason } : {}
 }
 
 /** A landed marker without a sha can't be checked against history, so it is

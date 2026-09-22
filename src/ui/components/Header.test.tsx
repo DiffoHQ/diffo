@@ -248,3 +248,49 @@ describe('Header', () => {
     })
   })
 })
+
+describe('Header — the layers suggestion', () => {
+  it('turns the presence chip into the call to action while the suggestion stands', () => {
+    const onOutline = vi.fn()
+    render(
+      <Header
+        changeset={changeset()}
+        agent={{
+          presence: 'listening',
+          suggestion: { reason: 'the parser change explains the rest', onOutline },
+        }}
+      />,
+    )
+    const chip = screen.getByRole('button', { name: /suggests layers/ })
+    expect(chip.className).toContain('presence-suggests')
+    expect(chip.querySelector('.presence-cta')?.textContent).toBe('Ask it')
+    expect(chip.getAttribute('title')).toContain('“the parser change explains the rest”')
+    fireEvent.click(chip)
+    expect(onOutline).toHaveBeenCalled()
+  })
+
+  it('a live batch outranks it, and nobody attached means Invite, not Outline', () => {
+    const { container, unmount } = render(
+      <Header
+        changeset={changeset()}
+        agent={{
+          presence: 'working',
+          suggestion: { onOutline: vi.fn() },
+          batch: { segments: ['now'], done: 0 },
+          onOpenMonitor: vi.fn(),
+        }}
+      />,
+    )
+    expect(container.querySelector('.presence-suggests')).toBeNull()
+    expect(container.querySelector('.presence-batch')).toBeTruthy()
+    unmount()
+    render(
+      <Header
+        changeset={changeset()}
+        agent={{ presence: 'waiting', suggestion: { onOutline: vi.fn() }, onInvite: vi.fn() }}
+      />,
+    )
+    expect(screen.getByRole('button', { name: /Invite/ })).toBeTruthy()
+    expect(document.querySelector('.presence-suggests')).toBeNull()
+  })
+})

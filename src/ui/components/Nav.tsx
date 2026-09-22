@@ -80,7 +80,7 @@ export function treeOrder(files: FileChange[]): FileChange[] {
   return buildTree(files).flatMap(filesUnder)
 }
 
-function FileRow({
+export function FileRow({
   file,
   depth,
   done,
@@ -88,6 +88,7 @@ function FileRow({
   threads,
   wantsYou = 0,
   changed = false,
+  note,
   onPick,
   onToggleViewed,
   onAsk,
@@ -99,6 +100,8 @@ function FileRow({
   threads?: ReviewThread[]
   wantsYou?: number
   changed?: boolean
+  /** The agent's one line on why this file is in its layer — the row's tooltip. */
+  note?: string
   onPick?: () => void
   onToggleViewed?: () => void
   onAsk?: () => void
@@ -139,7 +142,7 @@ function FileRow({
       <button
         type="button"
         className="row-pick"
-        title={`${file.path} · ${STATUS_WORD[file.status]}${done ? ' · read' : ''}${stat}`}
+        title={`${file.path} · ${STATUS_WORD[file.status]}${done ? ' · read' : ''}${stat}${note ? ` — ${note}` : ''}`}
         onClick={() => {
           if (onPick) return onPick()
           const node = document.getElementById(fileAnchor(file.path))

@@ -8,6 +8,9 @@ export function LeftPanel({
   threadCount,
   settledCount = 0,
   wantsYou,
+  layerCount = null,
+  layersSuggested = false,
+  layers,
   files,
   threads,
 }: {
@@ -17,12 +20,19 @@ export function LeftPanel({
   threadCount: number
   settledCount?: number
   wantsYou: number
+  /** How many layers the agent posted; null when there are none — the tab then
+   * carries no count, and its body is the offer to outline. */
+  layerCount?: number | null
+  /** The agent flagged that this read benefits from layers: an amber dot, the
+   * same signal the Threads tab gives for an answer waiting on you. */
+  layersSuggested?: boolean
+  layers?: ReactNode
   files: ReactNode
   threads: ReactNode
 }) {
   return (
     <nav className="rail">
-      <div className="tabs" role="tablist" aria-label="Files or threads">
+      <div className="tabs" role="tablist" aria-label="Files, threads, or layers">
         <button
           type="button"
           role="tab"
@@ -45,8 +55,21 @@ export function LeftPanel({
           {wantsYou > 0 && <span className="tab-dot" aria-hidden="true" />}
           Threads <span className="tab-n">{threadCount}</span>
         </button>
+        <button
+          type="button"
+          role="tab"
+          className="tab"
+          aria-selected={tab === 'layers'}
+          onClick={() => onSetTab('layers')}
+          title={layerCount === null ? 'The agent’s reading plan, once it posts one' : undefined}
+        >
+          {layersSuggested && layerCount === null && (
+            <span className="tab-dot" aria-hidden="true" />
+          )}
+          Layers {layerCount !== null && <span className="tab-n">{layerCount}</span>}
+        </button>
       </div>
-      {tab === 'files' ? files : threads}
+      {tab === 'layers' ? layers : tab === 'files' ? files : threads}
     </nav>
   )
 }

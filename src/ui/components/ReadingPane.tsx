@@ -15,15 +15,17 @@ import {
   NO_EXPANSION,
 } from '../gaps.js'
 import { fileAnchor } from '../hooks.js'
+import { linkPaths, parseLayerLink } from '../layers.js'
 import { EMPTY_DELTA, type LiveDelta } from '../liveDelta.js'
 import type { ThreadPartition } from '../reviewPlacement.js'
 import { GapBand, type GapControls, HunkCard } from './HunkCard.js'
 import { Icon } from './Icon.js'
 import { ImageDiff } from './ImageDiff.js'
 import { MarkBox } from './MarkBox.js'
+import { Markdown } from './Markdown.js'
 import { canPreviewMarkdown, MarkdownPreview } from './MarkdownPreview.js'
 import { Menu, MenuItem } from './Menu.js'
-import { PaneBar } from './PaneBar.js'
+import { PaneBar, type PaneLayer } from './PaneBar.js'
 import { ReviewDone } from './ReviewDone.js'
 import { type LandedNotice, ReviewLanded } from './ReviewLanded.js'
 import { CommentBox, type ReviewActions, ThreadList } from './Threads.js'
@@ -65,6 +67,99 @@ export interface PaneControls {
   allCollapsed: boolean
   onToggleCollapseAll: () => void
   onAddNote?: () => void
+  /** The bar's account of the active layer, with its pager. */
+  layer?: PaneLayer
+}
+
+/**
+ * The active layer, as the pane reads it: a header card above the files, read
+ * once and scrolled past — so navigation is not on it (see `PaneLayer`). The
+ * pane shows this layer's files, all of them: the outline is the narrowing,
+ * and the filters step aside while it is up.
+ */
+export interface LayerView {
+  /** `Layer 3 of 6`, or the derived layer's own kicker. */
+  kicker: string
+  title: string
+  /** The agent tagged it `mechanical`: a chip after the title; files fold. */
+  mechanical: boolean
+  summary?: string
+  /** Listed paths the changeset lacks right now — named on the card, since no
+   * file header below will. The files it has are the headers themselves. */
+  missing: string[]
+  /** How many listed files the changeset has right now. */
+  listed: number
+  /** A `path` / `path:line` reference in the summary was clicked. */
+  onJump: (path: string, line: number | null) => void
+  /** Per-file notes for the file headers — the agent's, or a site count on a
+   * mechanical layer. */
+  notes: ReadonlyMap<string, string>
+  /** What a summary reference may resolve to. */
+  knownPaths: readonly string[]
+}
+
+function LayerHead({
+  layer,
+  filesShown,
+}: {
+  layer: LayerView
+  /** How many of the layer's files the pane is rendering under the card. */
+  filesShown: number
+}) {
+  const summary = layer.summary ? linkPaths(layer.summary, layer.knownPaths) : null
+  const onClick = (e: React.MouseEvent) => {
+    const a = (e.target as Element).closest('a')
+    if (!a) return
+    const ref = parseLayerLink(a.getAttribute('href') ?? '')
+    if (!ref) return
+    e.preventDefault()
+    layer.onJump(ref.path, ref.line)
+  }
+  const emptied = filesShown === 0
+  return (
+    <section className="ch-head" aria-label={`${layer.kicker}: ${layer.title}`}>
+      <div className="ch-head-kicker">{layer.kicker}</div>
+      {/* The title is the card: what this step IS, before anything about it. */}
+      <h2>
+        {layer.title}
+        {layer.mechanical && (
+          <span
+            className="ch-kind"
+            title="changes no behaviour — files are folded, expand one to check"
+          >
+            mechanical
+          </span>
+        )}
+      </h2>
+      {summary && (
+        // biome-ignore lint/a11y/noStaticElementInteractions: click delegation for the links inside rendered markdown
+        // biome-ignore lint/a11y/useKeyWithClickEvents: the links themselves are focusable and keyboard-activated
+        <div onClick={onClick}>
+          <Markdown text={summary} className="cmt-body markdown ch-summary" />
+        </div>
+      )}
+      {layer.missing.length > 0 && (
+        <div className="ch-head-files">
+          <span className="ch-head-missing">not in the changeset now:</span>
+          {layer.missing.map((path) => (
+            <span
+              key={path}
+              className="ch-chip ch-chip-done"
+              title={`${path} — not in the changeset now`}
+            >
+              {path}
+            </span>
+          ))}
+        </div>
+      )}
+      {emptied && layer.listed === 0 && (
+        <div className="ch-head-empty">
+          Nothing this layer lists is in the changeset right now. Move on with{' '}
+          <span className="kbd">]</span>.
+        </div>
+      )}
+    </section>
+  )
 }
 
 export interface ReviewComments {
@@ -128,6 +223,7 @@ function FileHeader({
   onToggle,
   commentCount = 0,
   sinceCount = 0,
+  note,
   onComment,
   onToggleFileViewed,
 }: {
@@ -139,6 +235,9 @@ function FileHeader({
   /** Hunks the agent changed since the last Finish and still unread — said once
    * here, as a count; the hunks themselves carry only the bar. */
   sinceCount?: number
+  /** Why this file is in its layer, in the agent's words — or, on a mechanical
+   * layer, how many sites it holds. */
+  note?: string
   onComment?: () => void
   onToggleFileViewed?: () => void
 }) {
@@ -190,6 +289,11 @@ function FileHeader({
           {sinceCount === file.hunks.length
             ? 'this'
             : `${sinceCount} ${sinceCount === 1 ? 'hunk' : 'hunks'}`}
+        </span>
+      )}
+      {note && (
+        <span className="ch-file-note" title={note}>
+          {note}
         </span>
       )}
       <button
@@ -580,6 +684,8 @@ export function ReadingPane({
   onLoadMore,
   controls,
   landed,
+  layer,
+  overview = false,
   ...handlers
 }: {
   files: FileChange[]
@@ -590,6 +696,11 @@ export function ReadingPane({
   controls?: PaneControls
   /** The previous review landed in a commit — offer the fresh start. */
   landed?: LandedNotice
+  /** Layer mode: `files` is the active layer's, and this card heads them. */
+  layer?: LayerView
+  /** Layer mode, standing on the Overview: the pane is the changeset threads —
+   * the guide first — and nothing else. */
+  overview?: boolean
 } & ReviewHandlers) {
   const [fileComposerFor, setFileComposerFor] = useState<string | null>(null)
   const [doneDismissed, setDoneDismissed] = useState(false)
@@ -701,14 +812,23 @@ export function ReadingPane({
     handlers.comments?.onComposeFileHandled?.()
   }, [askedFor])
   // Open by default: agent heads-ups and unanswered questions must not hide
-  // behind a count the way the old "N changeset notes" fold did.
-  const [notesOpen, setNotesOpen] = useState(true)
+  // behind a count the way the old "N changeset notes" fold did. In layer mode
+  // the strip starts folded instead — the guide is row 0 of the outline, one
+  // click away, and the layer's own card is what the pane should lead with.
+  // The default is derived, not stored: layers arrive after the first render,
+  // and a reviewer's own click is the only thing that should outlast that.
+  const [notesChoice, setNotesChoice] = useState<boolean | null>(null)
+  const notesOpen = notesChoice ?? layer === undefined
+  const setNotesOpen = setNotesChoice
   const comments = handlers.comments
   const revealTick = comments?.revealNotesTick ?? 0
   useEffect(() => {
     if (revealTick > 0) setNotesOpen(true)
   }, [revealTick])
-  const notesExpanded = notesOpen || comments?.changesetComposerOpen === true
+  // On the Overview the strip IS the pane, so it cannot fold; on a layer it is
+  // not shown at all — the guide is one click away as row 0 of the outline.
+  const notesExpanded = overview || notesOpen || comments?.changesetComposerOpen === true
+  const stripShown = overview || layer === undefined
   const [pastOpen, setPastOpen] = useState(false)
   const pastTick = comments?.revealPastTick ?? 0
   useEffect(() => {
@@ -716,63 +836,65 @@ export function ReadingPane({
   }, [pastTick])
 
   const noteCount = comments?.partition.changeset.length ?? 0
-  const changesetSection = comments && (noteCount > 0 || comments.changesetComposerOpen) && (
-    <section className="changeset-strip">
-      <button
-        type="button"
-        className="strip-head"
-        onClick={() => setNotesOpen((v) => !v)}
-        aria-expanded={notesExpanded}
-      >
-        <span className={`file-chevron chevron${notesExpanded ? '' : ' chevron-shut'}`}>
-          <Icon name="chev" />
-        </span>
-        On the changeset
-        <span className="strip-n">{noteCount}</span>
-      </button>
-      {notesExpanded && (
-        <div className="strip-body">
-          <ThreadList
-            threads={comments.partition.changeset}
-            actions={comments.actions}
-            showContext
-            agentConnected={comments.agentConnected}
-            workingOn={comments.workingOn}
-            queuedOn={comments.queuedOn}
-          />
-          {comments.changesetComposerOpen ? (
-            <CommentBox
-              title="Note on the whole changeset"
-              placeholder="Leave a note…"
-              scope={{ label: 'the whole changeset', canWiden: false }}
+  const changesetSection = comments &&
+    stripShown &&
+    (noteCount > 0 || comments.changesetComposerOpen || overview) && (
+      <section className="changeset-strip">
+        <button
+          type="button"
+          className="strip-head"
+          onClick={() => setNotesOpen(!notesOpen)}
+          aria-expanded={notesExpanded}
+        >
+          <span className={`file-chevron chevron${notesExpanded ? '' : ' chevron-shut'}`}>
+            <Icon name="chev" />
+          </span>
+          On the changeset
+          <span className="strip-n">{noteCount}</span>
+        </button>
+        {notesExpanded && (
+          <div className="strip-body">
+            <ThreadList
+              threads={comments.partition.changeset}
+              actions={comments.actions}
+              showContext
               agentConnected={comments.agentConnected}
-              onSubmit={(text, _wide, intent) => {
-                void comments.actions.create({ kind: 'changeset' }, text, intent)
-                comments.onCloseChangesetComposer?.()
-              }}
-              onSend={(text, _wide, intent) => {
-                void comments.actions
-                  .create({ kind: 'changeset' }, text, intent)
-                  .then((t) => comments.actions.send(t.id))
-                comments.onCloseChangesetComposer?.()
-              }}
-              onCancel={() => comments.onCloseChangesetComposer?.()}
+              workingOn={comments.workingOn}
+              queuedOn={comments.queuedOn}
             />
-          ) : (
-            comments.onOpenChangesetComposer && (
-              <button
-                type="button"
-                className="strip-add"
-                onClick={comments.onOpenChangesetComposer}
-              >
-                + Note on the changeset
-              </button>
-            )
-          )}
-        </div>
-      )}
-    </section>
-  )
+            {comments.changesetComposerOpen ? (
+              <CommentBox
+                title="Note on the whole changeset"
+                placeholder="Leave a note…"
+                scope={{ label: 'the whole changeset', canWiden: false }}
+                agentConnected={comments.agentConnected}
+                onSubmit={(text, _wide, intent) => {
+                  void comments.actions.create({ kind: 'changeset' }, text, intent)
+                  comments.onCloseChangesetComposer?.()
+                }}
+                onSend={(text, _wide, intent) => {
+                  void comments.actions
+                    .create({ kind: 'changeset' }, text, intent)
+                    .then((t) => comments.actions.send(t.id))
+                  comments.onCloseChangesetComposer?.()
+                }}
+                onCancel={() => comments.onCloseChangesetComposer?.()}
+              />
+            ) : (
+              comments.onOpenChangesetComposer && (
+                <button
+                  type="button"
+                  className="strip-add"
+                  onClick={comments.onOpenChangesetComposer}
+                >
+                  + Note on the changeset
+                </button>
+              )
+            )}
+          </div>
+        )}
+      </section>
+    )
 
   const past = comments?.past ?? []
   const pastSection = comments && past.length > 0 && (
@@ -841,7 +963,7 @@ export function ReadingPane({
     />
   )
 
-  const body = emptyChangeset ? (
+  const body = overview ? null : emptyChangeset ? (
     landed ? (
       <ReviewLanded {...landed} shape="full" />
     ) : (
@@ -854,6 +976,10 @@ export function ReadingPane({
         </p>
       </div>
     )
+  ) : layer && files.length === 0 ? (
+    // A layer whose files all left the changeset says so on its own card, and
+    // next/prev skip it — the generic empty state would lose the reader's place.
+    <LayerHead layer={layer} filesShown={0} />
   ) : allHidden && scopeDone ? (
     done
   ) : allHidden && controls ? (
@@ -877,6 +1003,7 @@ export function ReadingPane({
     </div>
   ) : (
     <>
+      {layer && <LayerHead layer={layer} filesShown={files.length} />}
       {files.map((file) => {
         const isCollapsed = handlers.collapsed?.has(file.path) ?? false
         const fileThreadCount = comments?.partition.byFile.get(file.path)?.length ?? 0
@@ -906,6 +1033,7 @@ export function ReadingPane({
               onToggle={() => handlers.onToggleCollapsed?.(file.path)}
               commentCount={fileThreadCount + hunkThreadCount}
               sinceCount={sinceCount}
+              note={layer?.notes.get(file.path)}
               onToggleFileViewed={
                 handlers.onToggleFileViewed
                   ? () => handlers.onToggleFileViewed!(file.path)
@@ -990,6 +1118,7 @@ export function ReadingPane({
           allCollapsed={controls.allCollapsed}
           onToggleCollapseAll={controls.onToggleCollapseAll}
           onAddNote={controls.onAddNote}
+          layer={controls.layer}
         />
       )}
       <div className="reading-col">

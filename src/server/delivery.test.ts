@@ -781,3 +781,113 @@ describe('DeliveryQueue — the full protocol is owed once per session', () => {
     expect(q.needsFullProtocol()).toBe(true)
   })
 })
+
+describe('DeliveryQueue — the layers request', () => {
+  const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms))
+
+  it('wakes a waiting attach, is consumed by its confirm, and reads as outlining', async () => {
+    const q = new DeliveryQueue()
+    const attached = q.attach()
+    expect(q.layersRequest()).toBeNull()
+    q.enqueueLayers()
+    expect(await attached).toBe('data')
+    const snapshot = q.take()!
+    expect(snapshot).toEqual({ kind: 'layers' })
+    q.confirm(snapshot, [])
+    expect(q.take()).toBeNull()
+    // No batch, no reply owed — but the outline IS owed, and presence says so.
+    expect(q.presence()).toBe('working')
+    expect(q.presenceDetail().reason).toBe('delivered')
+    expect(q.layersRequest()).toBe('outlining')
+    expect(q.currentBatch()).toBeNull()
+  })
+
+  it('reads as queued while parked, and two clicks before a poll are one item', () => {
+    const q = new DeliveryQueue()
+    q.enqueueLayers()
+    q.enqueueLayers()
+    expect(q.layersRequest()).toBe('queued')
+    expect(q.presence()).toBe('waiting')
+    const snapshot = q.take()!
+    q.confirm(snapshot, [])
+    expect(q.take()).toBeNull()
+  })
+
+  it('waits behind replies the reviewer is owed, ahead of the cleared heads-up', () => {
+    const q = new DeliveryQueue()
+    q.enqueueCleared()
+    q.enqueueLayers()
+    q.enqueueThreads(['t1'])
+    const first = q.take()!
+    expect(first).toMatchObject({ kind: 'threads', threadIds: ['t1'] })
+    q.confirm(first, ['t1'])
+    const second = q.take()!
+    expect(second).toEqual({ kind: 'layers' })
+    q.confirm(second, [])
+    expect(q.take()).toEqual({ kind: 'cleared' })
+  })
+
+  it('the post concludes it and parks the agent in the re-poll grace', () => {
+    const q = new DeliveryQueue()
+    q.enqueueLayers()
+    q.confirm(q.take()!, [])
+    expect(q.layersPosted()).toBeGreaterThanOrEqual(0)
+    expect(q.layersRequest()).toBeNull()
+    expect(q.presence()).toBe('working')
+    expect(q.presenceDetail().reason).toBe('replied')
+    // A spontaneous post — no request standing — concludes nothing.
+    expect(q.layersPosted()).toBeNull()
+  })
+
+  it('a settled re-poll without a post lapses the request; a quick one does not', async () => {
+    const quick = new DeliveryQueue(undefined, undefined, {}, 50)
+    quick.enqueueLayers()
+    quick.confirm(quick.take()!, [])
+    void quick.attach()
+    expect(quick.layersRequest()).toBe('outlining')
+    quick.end()
+
+    const slow = new DeliveryQueue(undefined, undefined, {}, 10)
+    slow.enqueueLayers()
+    slow.confirm(slow.take()!, [])
+    await sleep(25)
+    void slow.attach()
+    expect(slow.layersRequest()).toBeNull()
+    expect(slow.presence()).toBe('listening')
+    slow.end()
+  })
+
+  it('dropLayers withdraws a parked request and an outline in flight alike', () => {
+    const q = new DeliveryQueue()
+    q.enqueueLayers()
+    q.dropLayers()
+    expect(q.take()).toBeNull()
+    expect(q.layersRequest()).toBeNull()
+    q.enqueueLayers()
+    q.confirm(q.take()!, [])
+    expect(q.layersRequest()).toBe('outlining')
+    q.dropLayers()
+    expect(q.layersRequest()).toBeNull()
+    expect(q.presence()).toBe('waiting')
+  })
+
+  it('is scoped like any feedback, and end() clears an outline in flight', () => {
+    const q = new DeliveryQueue()
+    q.enqueueLayers()
+    q.rescope('other')
+    expect(q.take()).toBeNull()
+    expect(q.layersRequest()).toBeNull()
+    q.rescope('')
+    expect(q.take()).toEqual({ kind: 'layers' })
+    q.confirm(q.take()!, [])
+    // The outline owed on this branch is not owed on another.
+    q.rescope('other')
+    expect(q.layersRequest()).toBeNull()
+    expect(q.presence()).toBe('waiting')
+    q.rescope('')
+    expect(q.layersRequest()).toBe('outlining')
+    q.end()
+    expect(q.layersRequest()).toBeNull()
+    expect(q.presence()).toBe('waiting')
+  })
+})

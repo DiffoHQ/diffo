@@ -3,7 +3,7 @@ import { cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { FileChange, Hunk } from '../../shared/types.js'
 import { fileMark } from '../fileMarks.js'
-import { ReadingPane } from './ReadingPane.js'
+import { type LayerView, ReadingPane } from './ReadingPane.js'
 
 vi.mock('../highlight.js', () => ({
   tokenizeLines: async () => null,
@@ -739,5 +739,137 @@ describe('ReadingPane — the pane bar', () => {
       expect(swept).toEqual([])
       restore()
     })
+  })
+})
+
+describe('ReadingPane in layer mode', () => {
+  // A review with files, all of them filtered out of this layer.
+  const emptiedControls = {
+    left: 1,
+    total: 3,
+    query: '',
+    onClearQuery: () => {},
+    hiddenQuery: 0,
+    hideReviewed: true,
+    onHideReviewed: () => {},
+    hideTests: false,
+    onHideTests: () => {},
+    testCount: 0,
+    onlyChanged: false,
+    onOnlyChanged: () => {},
+    changedCount: 0,
+    hiddenTests: 0,
+    hiddenReviewed: 1,
+    hiddenUnchanged: 0,
+    pinned: new Set<string>(),
+    onSweep: () => {},
+    onShowAll: () => {},
+    scopeLeft: 1,
+    scopeTotal: 3,
+    excludedTests: 0,
+    excludedUnchanged: 0,
+    viewMode: 'unified' as const,
+    onSetViewMode: () => {},
+    allCollapsed: false,
+    onToggleCollapseAll: () => {},
+  }
+  const view = (over: Partial<LayerView> = {}): LayerView => ({
+    kicker: 'Layer 3 of 6',
+    title: 'Weekday resolution',
+    mechanical: false,
+    summary: 'A bare weekday resolves forward. Read `src/b.ts:9` first.',
+    missing: ['src/gone.ts'],
+    listed: 1,
+    onJump: vi.fn(),
+    notes: new Map([['src/b.ts', 'delegates to resolveWeekday']]),
+    knownPaths: ['src/b.ts'],
+    ...over,
+  })
+
+  it('heads the files with the card: kicker, title, summary; only missing paths get chips', () => {
+    const { container } = render(<ReadingPane files={[FILES[0]!]} layer={view()} />)
+    const head = container.querySelector('.ch-head')!
+    expect(head.querySelector('.ch-head-kicker')?.textContent).toBe('Layer 3 of 6')
+    expect(head.querySelector('h2')?.textContent).toBe('Weekday resolution')
+    expect(head.querySelector('.ch-kind')).toBeNull()
+    expect(head.querySelector('.ch-summary')?.textContent).toContain(
+      'A bare weekday resolves forward',
+    )
+    const chips = [...head.querySelectorAll('.ch-chip')]
+    expect(chips.map((c) => c.textContent)).toEqual(['src/gone.ts'])
+    expect(chips[0]!.className).toContain('ch-chip-done')
+    // The card comes before the first file, in the reading column.
+    expect(head.nextElementSibling?.className).toContain('file-section')
+  })
+
+  it('a `path:line` reference in the summary jumps instead of navigating', () => {
+    const v = view()
+    const { container } = render(<ReadingPane files={[FILES[0]!]} layer={v} />)
+    const link = container.querySelector<HTMLAnchorElement>('.ch-summary a')!
+    expect(link.getAttribute('href')).toContain('#diffo-file:')
+    expect(link.getAttribute('target')).toBeNull()
+    fireEvent.click(link)
+    expect(v.onJump).toHaveBeenCalledWith('src/b.ts', 9)
+  })
+
+  it('the per-file note renders after the path in the file header', () => {
+    const { container } = render(<ReadingPane files={[FILES[0]!]} layer={view()} />)
+    expect(container.querySelector('.file-header .ch-file-note')?.textContent).toBe(
+      'delegates to resolveWeekday',
+    )
+  })
+
+  it('a mechanical layer wears the chip', () => {
+    const { container } = render(
+      <ReadingPane files={[FILES[0]!]} layer={view({ mechanical: true })} />,
+    )
+    expect(container.querySelector('.ch-head h2 .ch-kind')?.textContent).toBe('mechanical')
+  })
+
+  it('on a layer the changeset strip is gone; on the Overview it is the whole pane, open', () => {
+    const at = '2026-09-20T00:00:00Z'
+    const guide = {
+      id: 'g',
+      anchor: { kind: 'changeset' as const },
+      state: 'open' as const,
+      codeContext: null,
+      codeChanged: false,
+      messages: [{ id: 'gm', author: 'agent' as const, text: 'Start here.', at }],
+      createdAt: at,
+      updatedAt: at,
+    }
+    const comments = {
+      partition: { byHunk: new Map(), byFile: new Map(), changeset: [guide] },
+      actions: {
+        create: vi.fn(),
+        reply: vi.fn(),
+        send: vi.fn(),
+        resolve: vi.fn(),
+        reopen: vi.fn(),
+        remove: vi.fn(),
+      },
+    }
+    const { container, unmount } = render(
+      <ReadingPane files={[FILES[0]!]} layer={view()} comments={comments} />,
+    )
+    expect(container.querySelector('.changeset-strip')).toBeNull()
+    expect(container.querySelector('.ch-head')).toBeTruthy()
+    unmount()
+    const { container: c2 } = render(<ReadingPane files={[]} overview comments={comments} />)
+    const strip = c2.querySelector('.changeset-strip')!
+    expect(strip).toBeTruthy()
+    expect(strip.querySelector('.strip-head')?.getAttribute('aria-expanded')).toBe('true')
+    expect(c2.textContent).toContain('Start here.')
+    expect(c2.querySelector('.ch-head')).toBeNull()
+    expect(c2.querySelector('.empty-state')).toBeNull()
+  })
+
+  it('a layer whose files all left the changeset says that instead', () => {
+    const { container } = render(
+      <ReadingPane files={[]} layer={view({ listed: 0 })} controls={emptiedControls} />,
+    )
+    expect(container.querySelector('.ch-head-empty')?.textContent).toContain(
+      'Nothing this layer lists is in the changeset right now',
+    )
   })
 })

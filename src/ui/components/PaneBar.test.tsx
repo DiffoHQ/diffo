@@ -76,3 +76,76 @@ describe('the typed-filter chip', () => {
     expect(container.querySelector('.pane-q')).toBeNull()
   })
 })
+
+describe('the layer pager', () => {
+  const layer = (over: Partial<NonNullable<Parameters<typeof PaneBar>[0]['layer']>> = {}) => ({
+    text: 'layer 3 / 6 · 3 files · 2 left',
+    title: '1 of 3 files in this layer marked reviewed',
+    progress: 0.4,
+    prev: { title: 'Callers adapted', onGo: vi.fn() },
+    next: { title: 'Relative phrases', onGo: vi.fn() },
+    ...over,
+  })
+
+  it('the burndown reads the layer, not the review', () => {
+    const { container } = render(bar({ layer: layer() }))
+    expect(container.querySelector('.pane-left')?.textContent).toBe(
+      'layer 3 / 6 · 3 files · 2 left',
+    )
+    expect(container.querySelector<HTMLElement>('.prog-track i')?.style.width).toBe('40%')
+  })
+
+  it('prev and next sit on the bar with their titles and the ] hint, and go where they say', () => {
+    const l = layer()
+    render(bar({ layer: l }))
+    fireEvent.click(screen.getByLabelText('Previous layer: Callers adapted'))
+    expect(l.prev!.onGo).toHaveBeenCalled()
+    const next = screen.getByLabelText('Next layer: Relative phrases')
+    expect(next.querySelector('.kbd')?.textContent).toBe(']')
+    fireEvent.click(next)
+    expect(l.next!.onGo).toHaveBeenCalled()
+  })
+
+  it('the ends of the outline drop the button that has nowhere to go', () => {
+    const { container, unmount } = render(bar({ layer: layer({ prev: null }) }))
+    expect(screen.queryByLabelText(/Previous layer/)).toBeNull()
+    expect(screen.getByLabelText(/Next layer/)).toBeTruthy()
+    unmount()
+    render(bar({ layer: layer({ next: null }) }))
+    expect(screen.queryByLabelText(/Next layer/)).toBeNull()
+    expect(container).toBeTruthy()
+  })
+
+  it('says exactly the line the app composed', () => {
+    const { container } = render(
+      bar({ layer: layer({ text: 'since your review · 1 file · read', progress: 1 }) }),
+    )
+    expect(container.querySelector('.pane-left')?.textContent).toBe(
+      'since your review · 1 file · read',
+    )
+    expect(container.querySelector<HTMLElement>('.prog-track i')?.style.width).toBe('100%')
+  })
+
+  it('the filters step aside in layer mode — a layer shows all of its files', () => {
+    const { container, unmount } = render(
+      bar({ testCount: 3, query: 'x', onClearQuery: () => {}, onAddNote: () => {} }),
+    )
+    expect(container.querySelectorAll('[role="switch"]').length).toBeGreaterThan(0)
+    expect(container.querySelector('.pane-q')).toBeTruthy()
+    expect(screen.getByText('Note')).toBeTruthy()
+    unmount()
+    const { container: c2 } = render(
+      bar({
+        layer: layer(),
+        testCount: 3,
+        query: 'x',
+        onClearQuery: () => {},
+        onAddNote: () => {},
+      }),
+    )
+    expect(c2.querySelectorAll('[role="switch"]')).toHaveLength(0)
+    expect(c2.querySelector('.pane-q')).toBeNull()
+    // The Overview's strip carries the changeset note in layer mode.
+    expect(screen.queryByText('Note')).toBeNull()
+  })
+})

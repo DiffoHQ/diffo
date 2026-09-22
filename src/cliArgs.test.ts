@@ -180,7 +180,7 @@ describe('parseCliArgs — help is never an error', () => {
   })
 
   it('every verb answers --help / -h, whatever else is on the line', () => {
-    for (const verb of ['poll', 'reply', 'comment', 'end', 'setup', 'status', 'stop']) {
+    for (const verb of ['poll', 'reply', 'comment', 'layers', 'end', 'setup', 'status', 'stop']) {
       expect(parseCliArgs([verb, '--help'])).toEqual({ kind: 'help', topic: verb })
       expect(parseCliArgs([verb, '-h'])).toEqual({ kind: 'help', topic: verb })
     }
@@ -192,7 +192,7 @@ describe('parseCliArgs — help is never an error', () => {
   it('helpFor returns the main help, or a per-command page with an example', () => {
     expect(helpFor()).toBe(HELP_TEXT)
     expect(helpFor('nonsense')).toBe(HELP_TEXT)
-    for (const verb of ['poll', 'reply', 'comment', 'end', 'setup', 'status', 'stop']) {
+    for (const verb of ['poll', 'reply', 'comment', 'layers', 'end', 'setup', 'status', 'stop']) {
       const page = helpFor(verb)
       expect(page).toContain(`diffo ${verb}`)
       expect(page).toContain('Usage:')
@@ -245,5 +245,66 @@ describe('parseCliArgs — unknown commands', () => {
     expect(result).toMatchObject({ kind: 'error' })
     expect((result as { message: string }).message).toContain("unknown command 'frobnicate'")
     expect((result as { message: string }).message).not.toContain('did you mean')
+  })
+})
+
+describe('parseCliArgs — layers', () => {
+  it('takes exactly one source: --json, --stdin, or --suggest', () => {
+    expect(parseCliArgs(['layers', '--json', '[{"title":"A","files":["a.ts"]}]'])).toEqual({
+      kind: 'layers',
+      source: { kind: 'json', text: '[{"title":"A","files":["a.ts"]}]' },
+    })
+    expect(parseCliArgs(['layers', '--stdin'])).toEqual({
+      kind: 'layers',
+      source: { kind: 'stdin' },
+    })
+    expect(parseCliArgs(['layers', '--suggest'])).toEqual({
+      kind: 'layers',
+      source: { kind: 'suggest', reason: null },
+    })
+    expect(parseCliArgs(['layers'])).toMatchObject({ kind: 'error' })
+    expect(parseCliArgs(['layers', '--json', '[]', '--stdin'])).toMatchObject({ kind: 'error' })
+    expect(parseCliArgs(['layers', '--suggest', '--stdin'])).toMatchObject({ kind: 'error' })
+  })
+
+  it('--suggest takes one optional reason, cut to one line', () => {
+    expect(parseCliArgs(['layers', '--suggest', 'the parser explains the rest\nmore'])).toEqual({
+      kind: 'layers',
+      source: { kind: 'suggest', reason: 'the parser explains the rest' },
+    })
+    expect(parseCliArgs(['layers', '--suggest', ''])).toMatchObject({
+      source: { kind: 'suggest', reason: null },
+    })
+    expect(parseCliArgs(['layers', '--suggest', 'a', 'b'])).toMatchObject({ kind: 'error' })
+  })
+
+  it('the payload never rides as a positional, and an empty --json is an error', () => {
+    expect(parseCliArgs(['layers', '[]'])).toMatchObject({ kind: 'error' })
+    expect(parseCliArgs(['layers', '--stdin', 'x'])).toMatchObject({ kind: 'error' })
+    expect(parseCliArgs(['layers', '--json', '  '])).toMatchObject({ kind: 'error' })
+  })
+
+  it('the other verbs’ flags are refused here, and layers has a help page', () => {
+    expect(parseCliArgs(['layers', '--message', 'x'])).toMatchObject({ kind: 'error' })
+    expect(parseCliArgs(['layers', '--help'])).toEqual({ kind: 'help', topic: 'layers' })
+    expect(parseCliArgs(['help', 'layers'])).toEqual({ kind: 'help', topic: 'layers' })
+    const page = helpFor('layers')
+    expect(page).toContain('--suggest')
+    expect(page).toContain('--json')
+    expect(page).toContain('--stdin')
+    expect(page).toContain('mechanical')
+    expect(HELP_TEXT).toContain('layers')
+  })
+
+  it('help agent teaches layers between the guide and the poll', () => {
+    const page = helpFor('agent')
+    const guide = page.indexOf('2. Guide')
+    const layers = page.indexOf('3. Layers')
+    const listen = page.indexOf('4. Listen')
+    expect(guide).toBeGreaterThan(-1)
+    expect(layers).toBeGreaterThan(guide)
+    expect(listen).toBeGreaterThan(layers)
+    expect(page).toContain('diffo layers --suggest')
+    expect(page).toContain("diffo layers --json '<Layer[]>'")
   })
 })

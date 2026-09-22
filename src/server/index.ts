@@ -4,6 +4,7 @@ import { serve } from '@hono/node-server'
 import { type Context, Hono } from 'hono'
 import { stream, streamSSE } from 'hono/streaming'
 import { SRC_STAMP } from '../devStamp.js'
+import { parseLayersInput, parseSuggestReason } from '../shared/layers.js'
 import {
   type Anchor,
   type Coverage,
@@ -37,6 +38,7 @@ import {
   buildClearedPrompt,
   buildCoalescedPrompt,
   buildFinishPrompt,
+  buildLayersRequestPrompt,
   buildThreadPrompt,
   captureAnchor,
   INSTALL_SKILL,
@@ -273,6 +275,38 @@ export function createApp(
     return c.json(review.createThread(anchor, text, capture, intent))
   })
 
+  // The agent's reading plan — `{ items }` replaces the whole list — or its flag
+  // that one would help: `{ suggest: true, reason? }`. Either way the store's
+  // commit fans out over the SSE `review` event, so the rail redraws on its own.
+  app.post('/api/review/layers', async (c) => {
+    if (!review) return c.json({ error: 'review unavailable' }, 503)
+    const body = await c.req.json().catch(() => null)
+    if (body?.suggest === true) {
+      const suggested = review.suggestLayers(parseSuggestReason(body.reason))
+      return c.json({
+        suggested,
+        ...(suggested ? {} : { note: 'layers are already posted — nothing to suggest' }),
+      })
+    }
+    const parsed = parseLayersInput(body?.items)
+    if (!parsed.ok) return c.json({ error: parsed.error }, 400)
+    const layers = review.setLayers(parsed.items)
+    // The post answers a standing request, if there was one: "Outlining…" gives
+    // way to the outline, and the agent is back in the re-poll grace.
+    queue?.layersPosted()
+    return c.json({ layers })
+  })
+
+  // The reviewer's click — Outline, or refresh over an outline that has gone
+  // stale. It rides the delivery queue like a comment: the next `diffo poll`
+  // carries it as a `layers` item, and presence shows the agent on it. Nothing
+  // is written to the review; a request is a request, the post is the record.
+  app.post('/api/review/layers/request', (c) => {
+    if (!review || !queue) return c.json({ error: 'review unavailable' }, 503)
+    queue.enqueueLayers()
+    return c.json({ ok: true, request: queue.layersRequest(), presence: queue.presence() })
+  })
+
   app.post('/api/review/threads/:id/messages', async (c) => {
     if (!review) return c.json({ error: 'review unavailable' }, 503)
     const body = await c.req.json().catch(() => null)
@@ -342,6 +376,8 @@ export function createApp(
     const hadRound = before.threads.length > 0 || before.lastFinish !== undefined
     const removed = review.reset()
     for (const id of removed) queue?.drop(id)
+    // reset() dropped the layers; a request for them has nothing to answer.
+    queue?.dropLayers()
     // The fresh round may already be on screen, guideless — wake the polling
     // agent with the heads-up so it can orient the reviewer with a new guide.
     if (hadRound && (store?.get().files.length ?? 0) > 0) queue?.enqueueCleared()
@@ -532,6 +568,17 @@ export function createApp(
     // re-shipping the full text with every delivery was the loop's largest
     // recurring token cost.
     const protocol = queue?.needsFullProtocol() === false ? ('compact' as const) : undefined
+    if (snapshot.kind === 'layers') {
+      return {
+        status: 'feedback' as const,
+        kind: 'layers' as const,
+        threadIds: [] as string[],
+        prompt: buildLayersRequestPrompt(
+          { repo: repoInfo(), changeset: store?.get() ?? null },
+          review?.get().layers?.items ?? null,
+        ),
+      }
+    }
     if (snapshot.kind === 'cleared') {
       return {
         status: 'feedback' as const,
@@ -794,6 +841,7 @@ export function createApp(
             workingOn: queue.deliveredThreadIds(),
             queued: queue.queuedThreadIds(),
             answered: queue.currentBatch()?.answered ?? [],
+            layers: queue.layersRequest(),
           }),
           id: String(id++),
         })
@@ -821,6 +869,7 @@ export function createApp(
             workingOn: queue.deliveredThreadIds(),
             queued: queue.queuedThreadIds(),
             answered: queue.currentBatch()?.answered ?? [],
+            layers: queue.layersRequest(),
           }),
           id: String(id++),
         })

@@ -55,7 +55,12 @@ export type AttachOutcome = 'data' | 'superseded' | 'ended' | 'gone'
 export type Snapshot =
   | { kind: 'threads'; threadIds: string[] }
   | { kind: 'finish'; coverage: Coverage; absorbedThreadIds: string[] }
+  | { kind: 'layers' }
   | { kind: 'cleared' }
+
+/** Where the reviewer's request for layers stands: parked for the next poll,
+ * in the agent's hands, or nowhere. */
+export type LayersRequest = 'queued' | 'outlining' | null
 
 interface ScopePending {
   threads: Set<string>
@@ -64,6 +69,15 @@ interface ScopePending {
    * a chance to post a fresh guide). Rides behind real feedback: take() only
    * surfaces it once nothing else is pending. */
   cleared: boolean
+  /** The reviewer asked for the outline (or a fresh one). A boolean like
+   * `cleared`: two clicks before a poll are one request. */
+  layers: boolean
+  /** The request was delivered and the outline is owed: epoch ms of the
+   * delivery, or null. Per scope like the request itself — a branch switch
+   * must not carry "outlining" to a review nobody asked about. No batch and no
+   * reply clock: the post that answers it (`layersPosted`) or a settled
+   * re-poll without one ends it. */
+  outlining: number | null
 }
 
 export class DeliveryQueue {
@@ -201,7 +215,13 @@ export class DeliveryQueue {
   private bucket(): ScopePending {
     let bucket = this.buckets.get(this.scope)
     if (!bucket) {
-      bucket = { threads: new Set(), finish: null, cleared: false }
+      bucket = {
+        threads: new Set(),
+        finish: null,
+        cleared: false,
+        layers: false,
+        outlining: null,
+      }
       this.buckets.set(this.scope, bucket)
     }
     return bucket
@@ -220,9 +240,21 @@ export class DeliveryQueue {
     // A stall does NOT drop out of 'working' — a slow agent is indistinguishable
     // from a dead one, so `reason`/`since` carry how long it has been quiet.
     if (this.awaitingReply) return 'working'
+    if (this.outlining() !== null) return 'working'
     if (this.waiter) return 'listening'
     if (this.betweenPolls) return 'working'
     return 'waiting'
+  }
+
+  /** Where the reviewer's layers request stands (see `LayersRequest`). */
+  layersRequest(): LayersRequest {
+    if (this.outlining() !== null) return 'outlining'
+    if (this.buckets.get(this.scope)?.layers) return 'queued'
+    return null
+  }
+
+  private outlining(): number | null {
+    return this.buckets.get(this.scope)?.outlining ?? null
   }
 
   presenceDetail(): PresenceDetail {
@@ -231,6 +263,7 @@ export class DeliveryQueue {
 
   private reason(): PresenceReason {
     if (this.awaitingReply) return this.stalled ? 'stalled' : 'delivered'
+    if (this.outlining() !== null) return 'delivered'
     if (this.waiter) return 'polling'
     if (this.betweenPolls) return 'replied'
     return this.lastDetach ?? 'no-agent'
@@ -356,6 +389,42 @@ export class DeliveryQueue {
     if (queued) this.notify()
   }
 
+  /** The reviewer asked for layers — the outline, or a fresh one. Rides like
+   * the cleared heads-up: a boolean per scope, surfaced once real feedback is
+   * answered. */
+  enqueueLayers(): void {
+    this.bucket().layers = true
+    const queued = this.waiter === null
+    this.wake()
+    if (queued) this.notify()
+  }
+
+  /** The reviewer cleared the review: whatever request was standing is
+   * withdrawn — parked or already in the agent's hands. A post that arrives
+   * anyway still lands; the store does not consult the queue. */
+  dropLayers(): void {
+    const bucket = this.buckets.get(this.scope)
+    if (bucket) {
+      bucket.layers = false
+      bucket.outlining = null
+    }
+    this.notify()
+  }
+
+  /** The agent posted layers. Concludes an outstanding request; a spontaneous
+   * post concludes nothing. Returns how long the outline took, or null. */
+  layersPosted(): number | null {
+    const bucket = this.buckets.get(this.scope)
+    const since = bucket?.outlining ?? null
+    if (bucket === undefined || since === null) return null
+    bucket.outlining = null
+    // Not mid-batch and not already parked: the agent re-polls next, and the
+    // grace window is what models that.
+    if (!this.awaitingReply && !this.betweenPolls) this.armGrace()
+    this.notify()
+    return Date.now() - since
+  }
+
   drop(threadId: string): void {
     for (const bucket of this.buckets.values()) bucket.threads.delete(threadId)
     this.deliveredAt.delete(threadId)
@@ -375,6 +444,17 @@ export class DeliveryQueue {
       const worked =
         this.batch.sawReply || Date.now() - this.batch.deliveredAt >= this.batchSettleMs
       if (worked) this.closeBatch('repoll')
+    }
+    // A settled re-poll without a post: the agent declined or forgot, and the
+    // request lapses so the reviewer's button comes back. Within the settle
+    // window it reads as "hasn't started yet", same as a batch.
+    const owing = this.buckets.get(this.scope)
+    if (
+      owing !== undefined &&
+      owing.outlining !== null &&
+      Date.now() - owing.outlining >= this.batchSettleMs
+    ) {
+      owing.outlining = null
     }
     if (this.hasPending()) return Promise.resolve('data')
     return new Promise((resolve) => {
@@ -423,7 +503,8 @@ export class DeliveryQueue {
   private hasPending(): boolean {
     const bucket = this.buckets.get(this.scope)
     return (
-      bucket !== undefined && (bucket.threads.size > 0 || bucket.finish !== null || bucket.cleared)
+      bucket !== undefined &&
+      (bucket.threads.size > 0 || bucket.finish !== null || bucket.cleared || bucket.layers)
     )
   }
 
@@ -447,6 +528,9 @@ export class DeliveryQueue {
       }
     }
     if (bucket.threads.size > 0) return { kind: 'threads', threadIds: [...bucket.threads] }
+    // The outline is heavy work: it waits behind replies the reviewer is
+    // already owed, and ahead of the cleared heads-up, which owes nothing.
+    if (bucket.layers) return { kind: 'layers' }
     // Real feedback outranks the heads-up: a cleared notice only surfaces once
     // nothing else is owed, and survives in the bucket until then.
     if (bucket.cleared) return { kind: 'cleared' }
@@ -456,6 +540,13 @@ export class DeliveryQueue {
   /** The poll response for this snapshot was fully written — NOW it counts as
    * delivered. Clears exactly what the snapshot covered. */
   confirm(snapshot: Snapshot, deliveredThreadIds: string[]): void {
+    if (snapshot.kind === 'layers') {
+      const bucket = this.bucket()
+      bucket.layers = false
+      bucket.outlining = Date.now()
+      this.notify()
+      return
+    }
     if (snapshot.kind === 'cleared') {
       // No batch, no reply owed: the agent may post a guide and re-poll, which
       // is what the grace window already models.
@@ -527,6 +618,7 @@ export class DeliveryQueue {
     this.releaseWaiter('ended')
     this.closeBatch('ended')
     this.awaitingReply = false
+    for (const bucket of this.buckets.values()) bucket.outlining = null
     this.stalled = false
     this.clearStall()
     this.clearGrace()
