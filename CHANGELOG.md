@@ -7,6 +7,10 @@ Until 1.0, minor versions may break things. When they do, the entry says how to 
 
 ## [Unreleased]
 
+Nothing yet.
+
+## [0.4.0] — 2026-09-22
+
 ### Added
 
 - **Layers: the agent's reading plan.** A diff arrives in alphabetical order,
@@ -229,7 +233,8 @@ shipped in it, written as a starting point rather than a history.
 - **Guided reading** — splitting a large change into an ordered sequence of small,
   reviewable sections — is designed but not built.
 
-[Unreleased]: https://github.com/DiffoHQ/diffo/compare/v0.3.0...HEAD
+[Unreleased]: https://github.com/DiffoHQ/diffo/compare/v0.4.0...HEAD
+[0.4.0]: https://github.com/DiffoHQ/diffo/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/DiffoHQ/diffo/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/DiffoHQ/diffo/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/DiffoHQ/diffo/compare/v0.0.2...v0.1.0
