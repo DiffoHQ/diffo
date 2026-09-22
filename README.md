@@ -21,7 +21,7 @@ come back as fixes.
 [![License](https://img.shields.io/badge/license-Apache--2.0-blue)](LICENSE)
 [![Node](https://img.shields.io/badge/node-%E2%89%A5%2024-brightgreen)](#quick-start)
 [![Docs](https://img.shields.io/badge/docs-diffo-8b5cf6)](https://diffohq.github.io/diffo/)
-[![Tests](https://img.shields.io/badge/tests-1000-brightgreen)](#contributing)
+[![Tests](https://img.shields.io/badge/tests-1141-brightgreen)](#contributing)
 
 </div>
 
@@ -143,7 +143,7 @@ nothing to configure.
 </td>
 </tr>
 <tr>
-<td colspan="2">
+<td width="50%">
 
 **It explains itself**
 
@@ -154,8 +154,25 @@ orients, and it never pre-reviews: no verdicts, nothing is "fine". That judgemen
 part it doesn't get to make.
 
 </td>
+<td width="50%">
+
+**Read it in the right order**
+
+A diff arrives alphabetically, which is almost never the order to read it in. Ask, and the
+agent posts **layers**: the change as ordered steps, each with a title, a summary, and its
+files. You read one layer at a time; `]` steps to the next. Anything the agent touches after
+posting gathers in a *Since your review* layer, so nothing hides outside the plan.
+
+</td>
 </tr>
 </table>
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/assets/layers-dark.gif">
+  <img alt="A 23-file change, every file folded. The header chip reads agent · suggests layers; the reviewer clicks it, eight layers land, and picking the first shows its summary card. ] steps to layers 2 and 3, where the reviewer asks on a line and the agent answers in the thread." src="docs/assets/layers.gif" width="100%">
+</picture>
+
+<p align="center"><sub>Layers, in one take: the agent offers an outline, the reviewer asks, and a 23-file change arrives as eight steps to read in order. Three layers in, a question on a line comes back answered in the thread. A real server and a real <code>diffo poll</code> on the other end; only the agent's thinking time is cut.</sub></p>
 
 ## Where it fits
 
@@ -202,7 +219,7 @@ cheapest to change.
 | --- | --- |
 | [**Your first review**](https://diffohq.github.io/diffo/tutorial) | The whole loop end to end, about five minutes |
 | [**Getting started**](https://diffohq.github.io/diffo/guide/getting-started) | Install, and where each agent gets wired |
-| [**The review loop**](https://diffohq.github.io/diffo/guide/the-loop) | Reading, commenting, and what the agent receives |
+| [**The review loop**](https://diffohq.github.io/diffo/guide/the-loop) | Reading, layers, commenting, and what the agent receives |
 | [**How it works**](https://diffohq.github.io/diffo/guide/how-it-works) | The components and the server lifecycle |
 | [**The agent side**](https://diffohq.github.io/diffo/agents) | The agent protocol: every command, every payload |
 | [**Architecture**](https://diffohq.github.io/diffo/architecture) | Diff pipeline, delivery queue, SQLite state |
@@ -214,7 +231,7 @@ cheapest to change.
 TypeScript on Node >= 24: a [Hono](https://hono.dev) server over loopback serving a React 19
 UI, live updates over server-sent events from one recursive filesystem watch, and state in a
 single SQLite file at `~/.diffo/diffo.db` through the runtime's built-in `node:sqlite`, so
-there is no database to install. **Zero network calls.** 1,000 tests across 57 files.
+there is no database to install. **Zero network calls.** 1,141 tests across 63 files.
 
 Reviews are scoped per repo **and branch**, and the server is loopback-only, rejecting
 non-loopback `Host` and `Origin` headers so a web page can't reach into your repo through
@@ -254,6 +271,7 @@ daily — and the edges are still moving. What works today:
 
 - [x] [Live review of any changeset](https://diffohq.github.io/diffo/guide/how-it-works): the working tree, or anything since `--base`.
 - [x] [The comment loop](https://diffohq.github.io/diffo/guide/the-loop): threads that reach the session that wrote the code.
+- [x] [Layers](https://diffohq.github.io/diffo/guide/the-loop#read-it-in-layers): the agent's reading plan, one ordered step at a time.
 - [x] [One setup, every agent](https://diffohq.github.io/diffo/guide/getting-started): Claude Code, Codex, Cursor, VS Code, Copilot CLI, Gemini CLI, Amp, Goose, OpenCode.
 - [x] [Reading tools](https://diffohq.github.io/diffo/reference/keyboard-shortcuts): unified and split diffs, word-level marks, coverage tracking.
 

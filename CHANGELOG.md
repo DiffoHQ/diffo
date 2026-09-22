@@ -7,7 +7,20 @@ Until 1.0, minor versions may break things. When they do, the entry says how to 
 
 ## [Unreleased]
 
-Nothing yet.
+### Added
+
+- **Layers: the agent's reading plan.** A diff arrives in alphabetical order,
+  which is almost never the order it should be read in. The agent that wrote
+  the change can now post an outline (`diffo layers --json`, or `--suggest` at
+  open to offer one): ordered steps, each with a title, a short summary, and
+  its files. The review gains a **Layers** tab; picking a layer narrows the
+  pane to its files under the summary, and `]` / `[` / `n` walk the plan. The
+  reviewer's **Ask the agent to outline this** reaches the agent through
+  `diffo poll` as a `kind: "layers"` payload. Layers come from the agent only,
+  and with none posted the review is the flat file list it was. They resolve
+  against the live changeset on every refresh, so files touched after posting
+  gather in a *Since your review* layer until a re-post, which keeps the
+  reviewer's place for every title that survives.
 
 ## [0.3.0] — 2026-09-19
 

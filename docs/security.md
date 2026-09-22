@@ -52,7 +52,7 @@ Diffo exists to read code nobody has vetted yet, so repo content must never
 gain execution in the review UI:
 
 - Files are rendered inert — highlighted text, never live markup.
-- Markdown in comments and replies goes through
+- Markdown in comments, replies, and the agent's layer summaries goes through
   [DOMPurify](https://github.com/cure53/DOMPurify) before it touches the DOM;
   the parser is not the trust boundary, the sanitizer is.
 - File-serving endpoints resolve symlinks and re-check the real path, so a
@@ -61,8 +61,8 @@ gain execution in the review UI:
 ## What's stored, and where
 
 The diff itself is never stored — it's recomputed from git on demand. What
-persists is review state: comment threads, read marks, and a registry of
-running servers, all in a single SQLite file at `~/.diffo/diffo.db`. The
+persists is review state: comment threads, the agent's layers (titles, summaries,
+and file paths), read marks, and a registry of running servers, all in a single SQLite file at `~/.diffo/diffo.db`. The
 directory is created `0700` and the file `0600`, so it's readable by the
 owning user only. Deleting `~/.diffo` removes every trace.
 
@@ -95,7 +95,7 @@ Other properties a scanner (or a human) will care about:
 
 The skill is a markdown instruction file — it grants no permissions and
 executes nothing by itself. It tells a coding agent how to drive the same CLI
-a human would (`diffo poll`, `diffo reply`, …), and those commands talk to the
+a human would (`diffo poll`, `diffo reply`, `diffo layers`, …), and those commands talk to the
 same loopback server under the same guards. Whatever your agent is allowed to
 do comes from your agent harness's own permission system, not from Diffo. One
 deliberate property to know: text a reviewer types into a review is delivered

@@ -12,6 +12,15 @@ No, and deliberately not. Diffo doesn't grade your diff or leave generated nitpi
 a reading tool for the human, on the bet that your judgement is the scarce resource and
 the machine's is not.
 
+### The diff is in alphabetical order. Can it show me the right order to read it in?
+
+Yes, if the agent posts one. Ask for **layers** from the Layers tab and the agent that
+wrote the change outlines it as ordered steps, each with a title, a summary, and its files;
+you read one layer at a time. Layers come from the agent only: Diffo never guesses a plan
+from paths, and with none posted the review is the flat file list. Details in
+[the review loop](guide/the-loop.md#read-it-in-layers); the agent's side is in
+[the agent protocol](agents.md#layers).
+
 ### Why not just use a pull request?
 
 You still can, and probably should. A pull request is how you hand finished work to
@@ -38,7 +47,7 @@ Yes. The interface is a CLI and a generated Agent Skill, not an integration with
 vendor. `diffo setup` knows about Claude Code, Cursor, VS Code and Copilot CLI, and writes a shared
 copy into the `~/.agents/skills` directory that Codex, Gemini CLI, Amp, Goose and OpenCode
 read. Any agent that can run a shell command can drive the loop: `diffo poll`,
-`diffo reply`, `diffo comment`, `diffo end`. That's the whole protocol.
+`diffo reply`, `diffo comment`, `diffo layers`, `diffo end`. That's the whole protocol.
 
 ### I closed my terminal. Is the review gone?
 
