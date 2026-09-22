@@ -6042,17 +6042,3 @@ i.q-now {
   font-size: var(--t-12);
   color: var(--ink-3);
 }
-
-.ch-head-link {
-  border: 0;
-  padding: 0;
-  background: none;
-  font: inherit;
-  color: var(--exp-ink);
-  cursor: pointer;
-  border-bottom: 1px solid var(--exp-wash);
-}
-
-.ch-head-link:hover {
-  color: var(--ink);
-}

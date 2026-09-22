@@ -256,8 +256,14 @@ describe('LayerRail', () => {
   })
 
   it('a re-outline in flight: the line says so and cannot be clicked', () => {
-    rail({ onRefresh: vi.fn(), refreshing: true })
+    const { unmount } = rail({ onRefresh: vi.fn(), request: 'outlining' })
     expect(screen.getByText(/re-outlining…/)).toBeTruthy()
+    expect(screen.queryByRole('button', { name: /re-outline/ })).toBeNull()
+    unmount()
+    // Parked behind open threads: not "outlining", and still not clickable.
+    rail({ onRefresh: vi.fn(), request: 'queued' })
+    expect(screen.getByText(/asked · waits for the open threads/)).toBeTruthy()
+    expect(screen.queryByText(/re-outlining/)).toBeNull()
     expect(screen.queryByRole('button', { name: /re-outline/ })).toBeNull()
   })
 })

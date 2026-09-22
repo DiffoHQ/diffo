@@ -35,9 +35,17 @@ describe('LayersEmpty', () => {
     expect(screen.queryByText(/“/)).toBeNull()
   })
 
-  it('working: no button — the agent is writing them', () => {
-    render(<LayersEmpty state="working" onOutline={() => {}} />)
+  it('outlining: no button — the agent is writing them', () => {
+    render(<LayersEmpty state="outlining" onOutline={() => {}} />)
     expect(screen.getByText(/The agent is outlining…/)).toBeTruthy()
+    expect(screen.queryByRole('button')).toBeNull()
+  })
+
+  it('queued: says the ask is parked behind the open threads, not being written', () => {
+    render(<LayersEmpty state="queued" onOutline={() => {}} />)
+    expect(screen.getByText(/Asked\./)).toBeTruthy()
+    expect(screen.getByText(/once it finishes the threads/)).toBeTruthy()
+    expect(screen.queryByText(/is outlining/)).toBeNull()
     expect(screen.queryByRole('button')).toBeNull()
   })
 

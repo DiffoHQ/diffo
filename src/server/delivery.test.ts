@@ -880,6 +880,12 @@ describe('DeliveryQueue — the layers request', () => {
     q.rescope('')
     expect(q.take()).toEqual({ kind: 'layers' })
     q.confirm(q.take()!, [])
+    // The outline owed on this branch is not owed on another.
+    q.rescope('other')
+    expect(q.layersRequest()).toBeNull()
+    expect(q.presence()).toBe('waiting')
+    q.rescope('')
+    expect(q.layersRequest()).toBe('outlining')
     q.end()
     expect(q.layersRequest()).toBeNull()
     expect(q.presence()).toBe('waiting')

@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import type { ReviewThread } from '../../shared/review.js'
+import type { LayersRequest } from '../api.js'
 import { isFileViewed } from '../fileMarks.js'
 import { layerProgress, type ResolvedLayer } from '../layers.js'
 import type { ThreadItem } from '../threads.js'
@@ -152,7 +153,7 @@ export function LayerRail({
   onClearFiles,
   onAskFile,
   onRefresh,
-  refreshing = false,
+  request = null,
 }: {
   layers: readonly ResolvedLayer[]
   activeIndex: number
@@ -177,8 +178,9 @@ export function LayerRail({
   /** Ask the agent to re-outline the change as it stands now. Absent when no
    * agent is attached: the line at the foot of the outline says so instead. */
   onRefresh?: () => void
-  /** A re-outline is in flight: the line says so and cannot be clicked again. */
-  refreshing?: boolean
+  /** A re-outline is in flight — parked behind the agent's open threads, or in
+   * its hands. The line says which, and cannot be clicked again. */
+  request?: LayersRequest
 }) {
   const threadCount = (layer: ResolvedLayer) =>
     layer.files.reduce((n, f) => n + (threads?.get(f.file.path)?.length ?? 0), 0)
@@ -268,14 +270,14 @@ export function LayerRail({
       })}
       {/* The foot of the outline, in the voice of the Threads tab's "Clear all
           threads…": a sentence, not a button, and only ever the one action. */}
-      {refreshing ? (
+      {request !== null ? (
         <div className="ch-foot ch-foot-live" aria-live="polite">
           <span className="ch-working" aria-hidden="true">
             <i />
             <i />
             <i />
           </span>{' '}
-          re-outlining…
+          {request === 'outlining' ? 're-outlining…' : 'asked · waits for the open threads'}
         </div>
       ) : onRefresh ? (
         <button

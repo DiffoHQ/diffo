@@ -10,10 +10,11 @@ import { Icon } from './Icon.js'
  *   quiet      nothing said either way; the button is there
  *   suggested  the agent flagged at open that this read benefits from layers;
  *              its reason is quoted here, next to the button it argues for
- *   working    the outline was requested and the agent is writing it
+ *   queued     the outline was asked for, and waits behind the agent's open threads
+ *   outlining  the agent has the request and is writing the plan
  *   noagent    nobody is attached, so nobody can outline — Invite instead
  */
-export type LayersEmptyState = 'quiet' | 'suggested' | 'working' | 'noagent'
+export type LayersEmptyState = 'quiet' | 'suggested' | 'queued' | 'outlining' | 'noagent'
 
 /** What a layer is, for a reviewer who has never seen one. The same words in
  * every state, so the tab teaches once and then gets out of the way. */
@@ -80,20 +81,23 @@ export function LayersEmpty({
       </div>
     )
   }
-  if (state === 'working') {
+  if (state === 'queued' || state === 'outlining') {
+    const outlining = state === 'outlining'
     return (
       <div className="rail-scroll">
-        <div className="ch-empty" data-state="working">
+        <div className="ch-empty" data-state={state}>
           <p>
             <span className="ch-working" aria-hidden="true">
               <i />
               <i />
               <i />
             </span>{' '}
-            The agent is outlining…
+            {outlining ? 'The agent is outlining…' : 'Asked.'}
           </p>
           <p className="ch-empty-sub">
-            It is writing the reading plan now. Layers appear here as soon as it posts them.
+            {outlining
+              ? 'It is writing the reading plan now. Layers appear here as soon as it posts them.'
+              : 'The agent starts on the plan once it finishes the threads it is answering now.'}
           </p>
           <Example />
         </div>

@@ -315,4 +315,14 @@ describe('summary references', () => {
     expect(parseLayerLink('#other')).toBeNull()
     expect(parseLayerLink('https://example.com')).toBeNull()
   })
+
+  it('leaves a span alone when it already sits inside a link', () => {
+    const known = ['src/weekday.ts']
+    const linked = 'see [`weekday.ts`](https://example.com/weekday) for the rest'
+    expect(linkPaths(linked, known)).toBe(linked)
+    // Prose after the link is still ours.
+    expect(linkPaths(`${linked} and \`weekday.ts\``, known)).toContain(
+      `${linked} and [\`weekday.ts\`](${layerLinkHref('src/weekday.ts', null)})`,
+    )
+  })
 })

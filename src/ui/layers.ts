@@ -225,9 +225,11 @@ function resolveRef(name: string, paths: readonly string[]): string | null {
 
 export function linkPaths(summary: string, paths: readonly string[]): string {
   if (paths.length === 0) return summary
-  // Fences are opaque: split on them and only touch the prose between.
+  // Fences are opaque, and so is a link the author already wrote — a span
+  // inside `[…](…)` would otherwise become a link inside a link, which no
+  // renderer survives. Split on both and only touch the prose between.
   return summary
-    .split(/(```[\s\S]*?```)/)
+    .split(/(```[\s\S]*?```|\[[^\]\n]*\]\([^)\n]*\))/)
     .map((part, i) =>
       i % 2 === 1
         ? part

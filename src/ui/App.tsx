@@ -441,12 +441,17 @@ function Review() {
   )
 
   // A mechanical layer's files arrive folded — fold, never hide — each time the
-  // reviewer enters it. Expanding one is a click, and stays expanded.
+  // reviewer enters it. Expanding one is a click, and stays expanded: the fold
+  // keys on the layer's identity, not the resolved object, which every
+  // changeset event rebuilds.
+  const mechanicalKey = paneLayerActive?.kind === 'mechanical' ? layerKey(paneLayerActive) : null
+  const foldLayerRef = useRef(paneLayerActive)
+  foldLayerRef.current = paneLayerActive
   useEffect(() => {
-    if (paneLayerActive?.kind !== 'mechanical') return
-    const paths = paneLayerActive.files.map((f) => f.file.path)
+    if (mechanicalKey === null) return
+    const paths = foldLayerRef.current?.files.map((f) => f.file.path) ?? []
     setCollapsed((prev) => new Set([...prev, ...paths]))
-  }, [paneLayerActive])
+  }, [mechanicalKey])
 
   // Layers, once posted, are the default tab — the one place to look.
   useEffect(() => {
@@ -461,15 +466,25 @@ function Review() {
   }, [])
   // A jump can target a file beyond the window — widen it, or the scroll finds no
   // node. It can also target a file the pane is *hiding*; pinning exempts that one
-  // path from the filters. The window is sized from the file's index in the whole
-  // changeset, which is never an underestimate of its index in the filtered list.
+  // path from the filters. The window is sized from the file's index in the order
+  // the pane will render: in layer mode the layer's list, as the agent wrote it —
+  // the layer this file lives in, since a jump may be entering it this same
+  // tick — and otherwise the whole changeset, which is never an underestimate of
+  // its index in the filtered list.
   const revealFile = useCallback(
     (path: string) => {
       filter.pin(path)
-      const idx = allFiles.findIndex((f) => f.path === path)
+      const layer = inLayers
+        ? activeLayer?.files.some((f) => f.file.path === path)
+          ? activeLayer
+          : layersByPath.get(path)
+        : undefined
+      const idx = layer
+        ? layer.files.findIndex((f) => f.file.path === path)
+        : allFiles.findIndex((f) => f.path === path)
       if (idx >= 0) setVisibleCount((c) => Math.max(c, idx + 1))
     },
-    [allFiles, filter.pin],
+    [allFiles, filter.pin, inLayers, activeLayer, layersByPath],
   )
   const visibleFiles = useMemo(() => paneOrder.slice(0, visibleCount), [paneOrder, visibleCount])
 
@@ -1217,7 +1232,7 @@ function Review() {
     presence === 'waiting'
       ? 'noagent'
       : layersRequest !== null
-        ? 'working'
+        ? layersRequest
         : review?.layersSuggested
           ? 'suggested'
           : 'quiet'
@@ -1320,7 +1335,7 @@ function Review() {
                   setComposeFilePath(path)
                 }}
                 onRefresh={agentAttached ? requestLayers : undefined}
-                refreshing={agentAttached && layersRequest !== null}
+                request={agentAttached ? layersRequest : null}
               />
             ) : (
               <LayersEmpty
