@@ -18,7 +18,7 @@ All in [the repo](https://github.com/DiffoHQ/diffo):
 
 | Part | What it is |
 | --- | --- |
-| **[The CLI](https://github.com/DiffoHQ/diffo/blob/main/src/cli.ts)** | One `diffo` binary for both sides: you open reviews with it, the agent drives `poll` / `reply` / `comment` through it |
+| **[The CLI](https://github.com/DiffoHQ/diffo/blob/main/src/cli.ts)** | One `diffo` binary for both sides: you open reviews with it, the agent drives `poll` / `reply` / `comment` / `layers` through it |
 | **[The server](https://github.com/DiffoHQ/diffo/tree/main/src/server)** | A local server per repo. Reads git directly, keeps threads in SQLite, streams live updates to the browser, and holds the agent's long poll |
 | **[The UI](https://github.com/DiffoHQ/diffo/tree/main/src/ui)** | The review you read in the browser. React, served as static files by the same process |
 | **[The skill](https://github.com/DiffoHQ/diffo/blob/main/src/skill.ts)** | Compiled to [skills/diffo/SKILL.md](https://github.com/DiffoHQ/diffo/blob/main/skills/diffo/SKILL.md) and installed by [`diffo setup`](/reference/cli#diffo-setup); teaches any coding agent when to open a review and how to behave inside one |
@@ -107,7 +107,7 @@ context.
 
 | Where | What |
 | --- | --- |
-| `~/.diffo/diffo.db`, SQLite (WAL), mode `0600` | Review threads, keyed by repo path + branch + base, pruned after 60 days untouched · which server holds which repo · each repo's preferred port |
+| `~/.diffo/diffo.db`, SQLite (WAL), mode `0600` | Review threads and the agent's [layers](/guide/the-loop#read-it-in-layers), keyed by repo path + branch + base, pruned after 60 days untouched · which server holds which repo · each repo's preferred port |
 | Your browser's `localStorage` | Which hunks you've read, keyed by worktree path and changeset spec |
 | Nowhere | Your code. Diffo reads git on demand and stores no copy of your files |
 
@@ -122,8 +122,8 @@ The server binds loopback, but a page on `evil.com` whose DNS is rebound to
 must be loopback, and any `Origin` present must be loopback too. A missing `Host`
 isn't a free pass, because HTTP/1.1 requires one: its absence means a hand-rolled
 request. Static file serving separately refuses any path that escapes the client
-directory, and agent replies (Markdown, from a process outside the app) go through
-DOMPurify before they reach the DOM.
+directory, and agent replies and layer summaries (Markdown, from a process outside the
+app) go through DOMPurify before they reach the DOM.
 
 ## The server lifecycle
 

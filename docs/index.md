@@ -73,8 +73,9 @@ nothing to push, no CI to wait for.
     <h3>The agent orients you</h3>
     <p>On a multi-file or structural change it leaves one guide comment at the top of the review:
     what the change does, plus a <a href="https://mermaid.js.org">mermaid</a> diagram when
-    the shape is easier to see than to read. It orients your reading and stops there, with
-    no verdicts.</p>
+    the shape is easier to see than to read. Ask, and it posts <a href="./guide/the-loop#read-it-in-layers">layers</a>:
+    the change as ordered steps, so you read it in the order it should be read in, not
+    alphabetically. It orients your reading and stops there, with no verdicts.</p>
   </div>
   <div class="home-step">
     <div class="home-step-n">2</div>

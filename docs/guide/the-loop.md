@@ -23,6 +23,33 @@ there is no guide at all, and silence is the correct outcome.
 If the change moves on while you're reading, the update lands as a reply under
 the same guide thread rather than as a second guide.
 
+## Read it in layers
+
+A diff arrives in alphabetical order, which is almost never the order it
+should be read in. **Layers** are the agent's reading plan: the change as
+ordered steps, each with a title, a short summary, and the files that belong
+to it. You read one layer at a time, in the order the agent would explain it.
+
+Layers come from the agent only; Diffo never guesses a plan from paths. With
+no layers, the review is exactly the flat file list.
+
+The rail's **Layers** tab offers **Ask the agent to outline this**. When the
+agent thinks the change reads better in order it says so at open, and the
+header chip (*agent · suggests layers*) is the same ask in one click. Picking a
+layer narrows the reading pane to its files under a card with the summary,
+which renders markdown and mermaid like a thread does; `]` / `[` step between
+layers, and `n` rolls from one layer's last unread file into the next. A layer
+tagged *mechanical* keeps its files folded.
+
+Layers are resolved against the live changeset on every refresh. A file the
+agent touches after posting, or one no layer names, gathers in a trailing
+**Since your review** layer, and one line at the foot of the tab asks the agent
+to re-outline; a re-post keeps your place for every title that survives.
+Progress per layer is read off the same hunk marks Finish review reports.
+
+A layer summary follows the guide's rule: it orients your reading and never
+pre-reviews it.
+
 ## You read
 
 Syntax-highlighted unified/split diffs, keyboard-first navigation, context

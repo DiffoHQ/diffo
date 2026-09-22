@@ -28,6 +28,18 @@ to read. It's written while you open the page and lands at the top of the review
 later, with a banner pointing at it if you've already scrolled on. It orients your reading
 and stops there, with no verdicts, so you start with a map instead of a wall of diff.
 
+For a change with an order worth explaining, the agent may also suggest **layers**: the
+header chip reads *agent · suggests layers*. Click it, or press **Ask the agent to outline
+this** in the **Layers** tab, and a moment later the change arrives as ordered steps, each
+with a title, a summary, and its files. You can ask whether the agent suggested it or not;
+without an outline the review is the plain file list.
+[The review loop](guide/the-loop.md#read-it-in-layers) has the detail.
+
+<video class="clip clip-light" src="./assets/layers.mp4" muted loop playsinline width="1440" height="1102" poster="./assets/layers-poster.jpg" preload="none"
+  aria-label="A 23-file change, every file folded. The header chip reads agent · suggests layers; the reviewer clicks it, eight layers land, and picking the first shows its summary card. ] steps to layers 2 and 3, where the reviewer asks on a line and the agent answers in the thread."></video>
+<video class="clip clip-dark" src="./assets/layers-dark.mp4" muted loop playsinline width="1440" height="1102" poster="./assets/layers-dark-poster.jpg" preload="none"
+  aria-label="A 23-file change, every file folded. The header chip reads agent · suggests layers; the reviewer clicks it, eight layers land, and picking the first shows its summary card. ] steps to layers 2 and 3, where the reviewer asks on a line and the agent answers in the thread."></video>
+
 ## 2 · Review the code
 
 Read the diff, start threads on any line, file, or changeset. Every one of them is a
@@ -39,7 +51,8 @@ live conversation with the agent that opened the review.
   aria-label="Pressing j moves through hunks, v marks a file reviewed, n jumps to the next unread file, and the counter above the diff drops toward zero."></video>
 
 The bar above the diff counts down as you mark files reviewed: `12 left`, then
-`all reviewed`.
+`all reviewed`. With layers, `]` and `[` step between them, and `n` rolls from one layer's
+last unread file into the next.
 
 To comment, press `c` on a hunk, or hover any line and click the button in the gutter.
 For several lines at once, drag down the line numbers and release — the composer opens
