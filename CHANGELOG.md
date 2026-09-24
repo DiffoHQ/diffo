@@ -7,6 +7,10 @@ Until 1.0, minor versions may break things. When they do, the entry says how to 
 
 ## [Unreleased]
 
+Nothing yet.
+
+## [0.4.1] — 2026-09-24
+
 ### Fixed
 
 - **Skill: the poll step reads as data again.** Step 3 of `SKILL.md` said
@@ -239,7 +243,8 @@ shipped in it, written as a starting point rather than a history.
 - **Guided reading** — splitting a large change into an ordered sequence of small,
   reviewable sections — is designed but not built.
 
-[Unreleased]: https://github.com/DiffoHQ/diffo/compare/v0.4.0...HEAD
+[Unreleased]: https://github.com/DiffoHQ/diffo/compare/v0.4.1...HEAD
+[0.4.1]: https://github.com/DiffoHQ/diffo/compare/v0.4.0...v0.4.1
 [0.4.0]: https://github.com/DiffoHQ/diffo/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/DiffoHQ/diffo/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/DiffoHQ/diffo/compare/v0.1.0...v0.2.0
