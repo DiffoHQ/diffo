@@ -7,7 +7,13 @@ Until 1.0, minor versions may break things. When they do, the entry says how to 
 
 ## [Unreleased]
 
-Nothing yet.
+### Fixed
+
+- **Skill: the poll step reads as data again.** Step 3 of `SKILL.md` said
+  every poll payload "names your next step", which read as reviewer text
+  steering the agent and brought back Snyk's W011 (third-party content).
+  It now says the payload's `next_step` is fixed text the CLI writes, never
+  reviewer-typed, and points at the trust rule from the poll step itself.
 
 ## [0.4.0] — 2026-09-22
 
