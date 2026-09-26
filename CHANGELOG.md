@@ -7,6 +7,10 @@ Until 1.0, minor versions may break things. When they do, the entry says how to 
 
 ## [Unreleased]
 
+Nothing yet.
+
+## [0.5.0] — 2026-09-26
+
 ### Changed
 
 - **The guide is a map, not a tour.** Since layers took over the reading
@@ -36,6 +40,15 @@ Until 1.0, minor versions may break things. When they do, the entry says how to 
   node, is now a jump to that file in the review, the same way a layer
   summary's references already were. Layer-card diagrams get the same.
 
+- **Agent-offered replies.** `diffo comment` and `diffo reply` take
+  `--suggest-reply "<one line>"`: the answer the agent expects when its
+  message ends in a decision that is the reviewer's ("want me to extract
+  this?" → "yes, extract it"). In the composer it shows as ghost text in the
+  reply box with a Tab chip; Tab or → takes it, typing or Shift+Tab
+  withdraws it, and nothing is sent without ⌘↵ — an offer is a draft, never
+  a hand-over. The help text and agent protocol say when to use it: only on
+  a message that proposes something, never on one that only reports.
+
 ### Fixed
 
 - **Hide tests** now catches Cypress (`.cy.ts`, `cypress/`), e2e layouts
@@ -45,6 +58,18 @@ Until 1.0, minor versions may break things. When they do, the entry says how to 
   Kotest/Spock `*Spec`, pytest `conftest.py`, RSpec `spec/**/*.rb`, Go
   `testdata/` and mocks, Gherkin `.feature` files, and any `.NET`
   `*.UnitTests/`-style project.
+- **Review page polish.** Mermaid figures scale to the comment card instead
+  of clipping (below 60% they scroll); file headers keep the basename at
+  narrow widths, ellipsizing the directory from the left; `c` comments on
+  the clicked line (a click marks it focused, the hunk's first changed line
+  stays the fallback); the composer footer is a Change · Question · Agent
+  decides control, posted cards and Threads rail rows carry the kind badge;
+  quick actions are the three asks reviewers of agent code make most
+  (Explain this, Clean up the comments, Simplify this); cards and rail share
+  one status vocabulary (Draft → Sent → Answered / Addressed → Resolved);
+  the pane bar reads "18 of 30 files" and "hunk 2 / 64" with the selected
+  hunk marked by a rail and ring; below 800px the file list starts folded;
+  layer rows pick on a click anywhere.
 
 ## [0.4.1] — 2026-09-24
 
@@ -280,7 +305,8 @@ shipped in it, written as a starting point rather than a history.
 - **Guided reading** — splitting a large change into an ordered sequence of small,
   reviewable sections — is designed but not built.
 
-[Unreleased]: https://github.com/DiffoHQ/diffo/compare/v0.4.1...HEAD
+[Unreleased]: https://github.com/DiffoHQ/diffo/compare/v0.5.0...HEAD
+[0.5.0]: https://github.com/DiffoHQ/diffo/compare/v0.4.1...v0.5.0
 [0.4.1]: https://github.com/DiffoHQ/diffo/compare/v0.4.0...v0.4.1
 [0.4.0]: https://github.com/DiffoHQ/diffo/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/DiffoHQ/diffo/compare/v0.2.0...v0.3.0
