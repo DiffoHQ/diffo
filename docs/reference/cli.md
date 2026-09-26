@@ -203,9 +203,9 @@ diffo layers --json '[{"title":"Parser contract","files":["src/parse.ts"]}]'
 cat outline.json | diffo layers --stdin
 ```
 
-Outlines the changeset as **layers**: ordered steps, each with a title, an
-optional one- or two-sentence summary, and the files that belong to it. The
-reviewer reads one layer at a time; files no layer lists gather in a trailing
+Outlines the changeset as **layers**: ordered steps, each with a title, a
+short summary of what the step is about (a diagram when it helps), and the
+files that belong to it. The reviewer reads one layer at a time; files no layer lists gather in a trailing
 *Since your review* layer until the agent re-posts. [Layers](/agents#layers)
 has the doctrine: when to suggest, how to order, what a summary may say.
 
@@ -234,7 +234,7 @@ Prints `{ "ok": true, "layers": 4, "next_step": "…" }` after a post, and
 `suggested` is `false` when layers already exist: there is nothing left to
 suggest, and the next step says to re-post instead.
 
-The reviewer's **Ask the agent to outline this** button, and *re-outline* over
+The reviewer's **Ask the agent to outline** button, and *re-outline* over
 an existing outline, reach the agent as a `kind: "layers"` poll payload whose
 prompt asks for exactly this post. A post concludes the request.
 

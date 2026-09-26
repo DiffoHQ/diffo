@@ -6025,130 +6025,61 @@ i.q-now {
   color: var(--attn);
 }
 
-/* Layers tab, empty. Same voice as .rail-empty, with room for one action. */
+/* Layers tab, empty: a title, one line, and the one action. */
 .ch-empty {
-  padding: 22px 18px 8px;
   display: flex;
   flex-direction: column;
-  gap: 6px;
-  align-items: flex-start;
+  gap: var(--s-1);
+  min-width: 0;
+  padding: var(--s-8) var(--s-5) var(--s-6);
 }
 
-.ch-empty p {
+.ch-empty-title {
+  display: flex;
+  align-items: center;
+  gap: var(--s-3);
   margin: 0;
-  font-size: var(--t-13);
+  font-size: var(--t-15);
+  font-weight: 600;
+  line-height: 1.3;
   color: var(--ink);
 }
 
-.ch-empty .ch-empty-sub {
-  font-size: var(--t-12);
-  color: var(--ink-3);
-  line-height: 1.45;
-}
-
-.ch-empty .btn {
-  margin-top: 8px;
-  /* A sentence, not a word: at a narrow rail it wraps rather than clips. */
-  white-space: normal;
-  text-align: left;
-  height: auto;
-  max-width: 100%;
-  line-height: 1.3;
-}
-
-.ch-empty .ch-empty-quote {
-  font-size: var(--t-12);
-  color: var(--ink-2);
-  font-style: italic;
-  padding-left: 10px;
-  border-left: 2px solid var(--attn);
-}
-
-/* An example outline: captioned, numbered, dimmed. It shows the shape of the
-   thing and cannot be mistaken for the thing. */
-.ch-empty-example {
-  margin: 4px 0 2px;
-  padding: 8px 12px 10px;
-  border: 1px dashed var(--border);
-  border-radius: var(--r);
-  width: 100%;
-  max-width: 220px;
-  font-size: var(--t-11);
-  color: var(--ink-3);
-}
-
-.ch-empty-example figcaption {
-  font-size: 10px;
-  font-weight: 600;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-  color: var(--ink-3);
-  margin-bottom: 6px;
-}
-
-.ch-empty-example ol {
-  list-style: none;
+.ch-empty-sub,
+.ch-empty-note {
   margin: 0;
-  padding: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  counter-reset: layer;
-  position: relative;
+  font-size: var(--t-125);
+  line-height: 1.45;
+  color: var(--ink-3);
+  overflow-wrap: anywhere;
 }
 
-/* The thread down the left joins the numbers into one sequence. */
-.ch-empty-example ol::before {
-  content: "";
-  position: absolute;
-  left: 7px;
-  top: 8px;
-  bottom: 8px;
-  width: 1px;
-  background: var(--hair);
+.ch-empty-note {
+  margin-top: var(--s-4);
 }
 
-.ch-empty-example li {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  min-width: 0;
-  counter-increment: layer;
-  position: relative;
-}
-
-.ch-empty-example li::before {
-  content: counter(layer);
-  flex: none;
-  width: 15px;
-  height: 15px;
-  border-radius: 50%;
-  border: 1px solid var(--border);
-  background: var(--paper);
-  font-size: 9px;
-  font-weight: 600;
-  line-height: 13px;
+/* Full width, so it reads as the thing to do rather than a chip. A sentence,
+   not a word: at a narrow rail it wraps rather than clips. */
+.ch-empty-cta.btn {
+  width: 100%;
+  min-height: 32px;
+  height: auto;
+  margin-top: var(--s-4);
+  padding: 6px 14px;
+  justify-content: center;
+  white-space: normal;
   text-align: center;
-  color: var(--ink-3);
+  line-height: 1.25;
 }
 
-.ch-empty-example li span {
-  flex: 1;
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  color: var(--ink-2);
+.ch-empty-note + .ch-empty-cta.btn {
+  margin-top: var(--s-3);
 }
 
-.ch-empty-example li small {
-  font-size: inherit;
-}
-
-.ch-empty .ch-empty-hint {
-  font-size: var(--t-11);
-  color: var(--ink-3);
-  margin-top: -2px;
+@container (max-width: 232px) {
+  .ch-empty-cta .icon {
+    display: none;
+  }
 }
 
 .ch-working {
@@ -6157,6 +6088,10 @@ i.q-now {
   gap: 6px;
   vertical-align: 1px;
   margin-right: 4px;
+}
+
+.ch-empty-title .ch-working {
+  margin-right: 0;
 }
 
 .ch-working i {
@@ -6173,6 +6108,18 @@ i.q-now {
 
 .ch-working i:nth-child(3) {
   animation-delay: 0.4s;
+}
+
+/* Asked, not yet started: the dots hold still. */
+.ch-working-idle i {
+  animation: none;
+  opacity: 0.45;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ch-working i {
+    animation: none;
+  }
 }
 
 @keyframes ch-blink {

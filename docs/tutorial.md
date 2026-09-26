@@ -29,8 +29,8 @@ later, with a banner pointing at it if you've already scrolled on. It orients yo
 and stops there, with no verdicts, so you start with a map instead of a wall of diff.
 
 For a change with an order worth explaining, the agent may also suggest **layers**: the
-header chip reads *agent · suggests layers*. Click it, or press **Ask the agent to outline
-this** in the **Layers** tab, and a moment later the change arrives as ordered steps, each
+header chip reads *agent · suggests layers*. Click it, or press **Ask the agent to outline** in
+the **Layers** tab, and a moment later the change arrives as ordered steps, each
 with a title, a summary, and its files. You can ask whether the agent suggested it or not;
 without an outline the review is the plain file list.
 [The review loop](guide/the-loop.md#read-it-in-layers) has the detail.

@@ -12,11 +12,34 @@ Until 1.0, minor versions may break things. When they do, the entry says how to 
 - **Edit your comments.** Hover one of your messages and click the pencil. If
   the agent hasn't seen it yet, the edit just fixes the text in place. If it
   has, editing works like editing a chat message: everything after it is
-  deleted, the messages that will go are struck through while you edit, and
+  deleted, the messages that will go fade while you edit, and
   **Save & resend** hands the thread back (plain **Save** holds it). The
   agent is told its earlier replies were withdrawn, and that any code it
   changed for them is still in the tree, so it should keep or revert that code
   and say which. The pencil is off while the agent is answering the thread.
+
+### Changed
+
+- **The guide opens with the problem, and its diagram draws what happens.**
+  The map-not-a-tour doctrine still let a guide explain a change through its
+  own code names: "what it does" came out as a mechanism line, and "how the
+  changed pieces talk to each other" as a chart of which constant feeds which
+  function. It now asks for the problem the change solves and what it changes,
+  written for a reader who never saw the session, and a diagram of the flow it
+  changes — from what sets it off to what someone sees, people and screens
+  when they are the flow, never which code references which. A plain node is
+  anything existing, not only code. `help guide`'s example leads with the
+  problem too, since agents copy examples.
+- **Layer summaries say what the step is about.** Agents kept writing them
+  as retellings of the files right below, so the card gave the reviewer no
+  context. The doctrine now asks for what the layer is about and enough
+  context to review it — short, free-form, never a retelling of the diff — and
+  a small diagram when the step has a shape. `help layers`, `help agent`, the
+  open-time nudge, and the outline request all carry the same words.
+- **The Layers tab, before there are any, is a title, one line, and the
+  button.** The explainer paragraph, the dashed example, and the hint under
+  the button are gone; an agent's suggestion to read in layers shows in the
+  header chip, not as a state of the tab.
 
 ## [0.5.0] — 2026-09-26
 
