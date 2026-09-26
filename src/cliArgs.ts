@@ -98,6 +98,7 @@ The loop:
    outline only when the reviewer asks — in chat, or through the poll as a
    \`"kind": "layers"\` payload: \`diffo layers --json '<Layer[]>'\`
    (or pipe it to \`diffo layers --stdin\`). Each layer is ${LAYERS.what}.
+   Summary: ${LAYERS.summary}. Diagram: ${LAYERS.diagram}.
    Order: ${LAYERS.order}. ${LAYERS.mechanical}. ${LAYERS.stance}.
    ${LAYERS.replace}. \`diffo help layers\` has the shape.
 4. Listen: run \`${CLI_COMMANDS.firstPoll}\` — it blocks until the reviewer
@@ -161,9 +162,9 @@ would have to decode.
 One shape that works — not THE shape: a rename needs no diagram, a one-file
 change needs no checks, and headings are optional.
 
-  Caps oversized tool results at the model boundary and adds
-  \`read_tool_result\` so the model can page the rest — nothing is stored,
-  the text is recomputed on read.
+  A huge tool result could overflow the model's context. This caps it at the
+  model boundary and adds \`read_tool_result\` so the model can page the
+  rest — nothing is stored, the text is recomputed on read.
 
   \`\`\`mermaid
   flowchart LR
@@ -256,6 +257,12 @@ Usage: diffo layers --suggest ["<why, in one line>"]   at open: this read benefi
        … | diffo layers --stdin                        the same payload, piped
 
 Each layer is ${LAYERS.what}.
+Summary: ${LAYERS.summary}.
+Diagram: ${LAYERS.diagram}:
+
+  ${GUIDE_CLASSDEFS[0]}
+  ${GUIDE_CLASSDEFS[1]}
+
 Order: ${LAYERS.order}.
 ${LAYERS.mechanical}.
 ${LAYERS.stance}.
@@ -271,7 +278,7 @@ Output: {"ok":true,"layers":4,"next_step":"…"}
 
 Examples:
   diffo layers --suggest "the parser change explains the rest"
-  diffo layers --json '[{"title":"Parser contract","summary":"parse() now returns null instead of throwing.","files":["src/parse.ts"]},{"title":"Callers adapted","kind":"mechanical","files":["src/cli.ts","src/api.ts"]}]'`,
+  diffo layers --json '[{"title":"Parser contract","summary":"The contract the rest of the change leans on: bad input now comes back as null, not an exception.","files":["src/parse.ts"]},{"title":"Callers adapted","kind":"mechanical","summary":"Call sites following the new return type.","files":["src/cli.ts","src/api.ts"]}]'`,
   end: `diffo end — detach from the review politely
 
 Usage: diffo end

@@ -10,8 +10,8 @@ export type LayerInput = Omit<Layer, 'id'>
 
 export type LayersParse = { ok: true; items: LayerInput[] } | { ok: false; error: string }
 
-/** A summary is one or two sentences by doctrine; this is the backstop against
- * an essay, the same cap a closing note gets. */
+/** A summary is short by doctrine; this is the backstop against an essay, the
+ * same cap a closing note gets. */
 const SUMMARY_CAP = 4000
 
 /** A note is one line by contract — anything past the first newline is dropped,

@@ -180,8 +180,10 @@ export const ACK_NEXT_STEP = {
  * POLL_STANCE keeps the poll rules aligned: the surfaces phrase it at different
  * lengths, but these invariants cannot drift apart.
  *
- * It is a map, not a tour. Every other tool infers a summary by reading the
- * diff back; the session that wrote the change still holds what no diff shows
+ * It is a map, not a tour, written for a reader who never saw the session:
+ * the problem comes before the mechanism, and the diagram draws what happens,
+ * not which code names which — a change to text alone has no call graph worth
+ * drawing. Every other tool infers a summary by reading the diff back; the session that wrote the change still holds what no diff shows
  * — the invariant it had to respect, the seam it chose, the alternative it
  * rejected, what it left alone on purpose — and that is what the reviewer
  * cannot get anywhere else. Reading order is not on the list: layers own it.
@@ -190,7 +192,7 @@ export const GUIDE = {
   /** When one is warranted — and that silence is a valid outcome. */
   when: 'multi-file, structural, or subtle — skip when the diff explains itself',
   /** What it contains: ingredients, not sections — use the ones this change needs. */
-  what: 'a map of the change, not a tour of it: what it does and why, in a sentence; how the changed pieces talk to each other, as a small ```mermaid diagram of the runtime flow (functions and modules, not a file list) when a picture beats words; what is worth checking as they read — an invariant the change must keep, a judgment call it made, a shortcoming it knows about — said in plain words, never behind a label of your own; and what is safe to skip',
+  what: 'a map of the change, not a tour of it: the problem it solves and what it changes, in a sentence or two a reader who never saw your session follows; the flow it changes, from what sets it off to what someone sees, as a small ```mermaid diagram when a picture beats words — functions where code carries it, people and screens when they are the flow, never a file list or which code references which; what is worth checking as they read — an invariant the change must keep, a judgment call it made, a shortcoming it knows about — said in plain words, never behind a label of your own; and what is safe to skip',
   /** The line it must not cross. */
   stance: 'Orient reading, never pre-review: no verdicts, nothing is "fine"',
   /** What layers took over: the guide never orders the read. */
@@ -199,9 +201,9 @@ export const GUIDE = {
   /** How much: one screen, and only the parts that apply. */
   budget:
     'about a hundred words of prose plus the diagram — one screen; use only the parts this change needs, in whatever form fits',
-  /** The diagram convention: two tags, and a plain node means existing code. */
+  /** The diagram convention: two tags, and a plain node means anything existing. */
   legend:
-    'in the diagram tag new code `:::new` and changed code `:::changed`, declared by the two classDef lines below; a plain node is existing code the change now leans on',
+    'in the diagram tag new code `:::new` and changed code `:::changed`, declared by the two classDef lines below; a plain node is anything existing the change now leans on',
   /** Staleness: the guide is a thread, so updates land under it. */
   update: 'reply to your own guide thread with a short update',
 } as const
@@ -228,7 +230,15 @@ export const GUIDE_CLASSDEFS = [
  */
 export const LAYERS = {
   /** What one is. */
-  what: 'one step of the change — a coherent unit you would explain in one breath — with the files that belong to it and a one- or two-sentence summary (markdown; a ```mermaid fence renders)',
+  what: 'one step of the change — a coherent unit you would explain in one breath — with the files that belong to it and a short summary',
+  /** What the summary is for — a goal, not a template: the model writes it
+   * however this step reads best. The files sit right under it, so retelling
+   * them spends the reviewer's attention twice. */
+  summary:
+    "say what this layer is about and give the reviewer enough context to review it — the part the files below cannot show on their own. Write it however fits the step, keep it short, and don't retell the diff",
+  /** Diagrams when they help: a picture of the step usually beats a paragraph. */
+  diagram:
+    'when the step has a shape — a flow, a decision, a before/after — a small ```mermaid diagram usually says it better than prose; tag nodes as the guide does (`:::new`, `:::changed`, plain for anything existing) with the same two classDef lines',
   /** How to order them. */
   order:
     'the order you would explain it, not the order you wrote it — the file that explains the rest first, mechanical consequences last; for a feature, follow the request from entry point to effect; for a refactor, contract first, then consumers',
@@ -287,7 +297,8 @@ export function layersNudge(review: {
     `if this changeset reads better in order — ${LAYERS.suggest} — flag it: ` +
     `\`${CLI_COMMANDS.layersSuggest}\`, and offer it in your handoff ("say layers and I'll ` +
     `outline it"). Post the outline only when asked: \`${CLI_COMMANDS.layers}\` — each layer ` +
-    `${LAYERS.what}; ${LAYERS.order}. ${LAYERS.stance}. \`diffo help layers\` has the shape.`
+    `${LAYERS.what}; ${LAYERS.summary}; ${LAYERS.diagram}; ${LAYERS.order}. ${LAYERS.stance}. ` +
+    `\`diffo help layers\` has the shape.`
   )
 }
 
@@ -656,7 +667,7 @@ export function buildLayersRequestPrompt(
   return [
     refresh
       ? `The reviewer asked you to refresh the layers in \`${ctx.repo.name}\` (branch \`${ctx.repo.branch}\`): the code moved since you outlined it, and files outside the outline have been gathering under "Since your review". Re-post the whole list as the change stands now.`
-      : `The reviewer asked for layers in \`${ctx.repo.name}\` (branch \`${ctx.repo.branch}\`): outline the changeset as steps to read in order. The Layers tab reads "The agent is outlining…" until you post.`,
+      : `The reviewer asked for layers in \`${ctx.repo.name}\` (branch \`${ctx.repo.branch}\`): outline the changeset as steps to read in order. The Layers tab reads "Outlining…" until you post.`,
     '',
     ...(ctx.changeset ? [specLine(ctx.changeset), ''] : []),
     ...(refresh
@@ -665,7 +676,11 @@ export function buildLayersRequestPrompt(
           '',
         ]
       : []),
-    `Each layer is ${LAYERS.what}. Order: ${LAYERS.order}. ${LAYERS.mechanical}. ${LAYERS.stance}. Files are whole files, by path relative to the repo root; list every file of the changeset somewhere, or the leftovers land in "Since your review".`,
+    `Each layer is ${LAYERS.what}. Summary: ${LAYERS.summary}. Diagram: ${LAYERS.diagram}:`,
+    '',
+    ...GUIDE_CLASSDEFS.map((line) => `    ${line}`),
+    '',
+    `Order: ${LAYERS.order}. ${LAYERS.mechanical}. ${LAYERS.stance}. Files are whole files, by path relative to the repo root; list every file of the changeset somewhere, or the leftovers land in "Since your review".`,
     '',
     `Shape: ${LAYERS.shape}`,
     '',

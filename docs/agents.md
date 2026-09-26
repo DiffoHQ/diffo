@@ -108,8 +108,8 @@ closing note leads that batch as its own thread on the whole changeset, with an 
 to reply to. It re-ships every thread that was sent, including ones already
 answered, and the prompt tells the agent not to answer those twice.
 
-A `kind: "layers"` payload is the reviewer pressing **Ask the agent to outline
-this**, or *re-outline* over an outline that has gone stale. It carries no threads and owes no
+A `kind: "layers"` payload is the reviewer pressing **Ask the agent to outline**,
+or *re-outline* over an outline that has gone stale. It carries no threads and owes no
 reply: the prompt restates the whole [layers](#layers) doctrine and asks for one
 `diffo layers --json` post, which is what concludes it. A `kind: "cleared"`
 payload is the reviewer starting the review over; it owes nothing but a fresh
@@ -167,10 +167,10 @@ teaches it, so all of them say the same thing:
 | | |
 | --- | --- |
 | **When** | Multi-file, structural, or subtle. Skipped when the diff explains itself |
-| **What** | A map of the change, not a tour of it: what it does and why, in a sentence; how the changed pieces talk to each other, as a small ```` ```mermaid ```` diagram of the runtime flow when a picture beats words; what has to stay true, as checks for the reviewer to run (an invariant the change must keep, a judgment call it made, a shortcoming it knows about); and what they can skip. Ingredients, not sections: a rename needs no diagram, a one-file change needs no checks |
+| **What** | A map of the change, not a tour of it, written for a reader who never saw the session: the problem it solves and what it changes, in a sentence or two; the flow it changes, from what sets it off to what someone sees, as a small ```` ```mermaid ```` diagram when a picture beats words (functions where code carries it, people and screens when they are the flow, never a file list or which code references which); what has to stay true, as checks for the reviewer to run (an invariant the change must keep, a judgment call it made, a shortcoming it knows about); and what they can skip. Ingredients, not sections: a rename needs no diagram, a one-file change needs no checks |
 | **Not in it** | A reading order or a file list. [Layers](#layers) and the Files tab own those; a change that reads better in order gets `diffo layers --suggest`, not a numbered guide |
 | **How much** | About a hundred words of prose plus the diagram, one screen |
-| **The legend** | In the diagram, new code is tagged `:::new` and changed code `:::changed`, with two `classDef` lines `diffo help guide` prints verbatim; a plain node is existing code the change now leans on. A reviewer sees the seam where new meets old by color, in the same visual language on every review |
+| **The legend** | In the diagram, new code is tagged `:::new` and changed code `:::changed`, with two `classDef` lines `diffo help guide` prints verbatim; a plain node is anything existing the change now leans on. A reviewer sees the seam where new meets old by color, in the same visual language on every review |
 | **The line it must not cross** | Orient reading, never pre-review: no verdicts, nothing is "fine" |
 | **When it goes stale** | The agent replies to its own guide thread with a short update, rather than posting a second guide |
 
@@ -204,12 +204,13 @@ Two commands, one doctrine:
 | --- | --- |
 | **Suggest** | `diffo layers --suggest "<why, in one line>"`, at open, next to the guide. It flags that this read benefits from layers, without writing them. The review shows the offer to the reviewer; the reason is quoted next to it |
 | **Post** | `diffo layers --json '<Layer[]>'`, or the same JSON piped to `diffo layers --stdin`. Posted only when the reviewer asks, because writing an outline is the heavy step and most changesets never need one |
-| **The ask** | The reviewer's click arrives through the poll as a `kind: "layers"` payload, with the doctrine restated and no threads to answer. The Layers tab reads *The agent is outlining…* and the presence chip *outlining layers* until the post lands; a re-poll without a post lets the request lapse and gives the reviewer their button back |
+| **The ask** | The reviewer's click arrives through the poll as a `kind: "layers"` payload, with the doctrine restated and no threads to answer. The Layers tab reads *Outlining…* and the presence chip *outlining layers* until the post lands; a re-poll without a post lets the request lapse and gives the reviewer their button back |
 | **Re-outline** | The same ask over an existing outline, from the line at the foot of the Layers tab. The payload names the layers they have and asks for the whole list again, which is how *Since your review* gets absorbed. Ids survive for titles that match, so the reviewer's place holds. There is no "remove": an outline is replaced, or cleared with the review |
 | **When to suggest** | When the change has an order worth explaining. A wide diff with one idea does not need layers; four files can hide three steps. Agent judgment, no file-count threshold |
 | **Order** | The order you would explain it, not the order you wrote it: the file that explains the rest first, mechanical consequences last. For a feature, follow the request from entry point to effect; for a refactor, contract first, then consumers |
 | **Mechanical** | `"kind": "mechanical"` marks a layer that changes no behaviour (a rename, call sites following a signature); its files render folded. If unsure, don't tag |
-| **Summaries** | One or two sentences per layer, markdown with a ```` ```mermaid ```` fence if it helps. The guide's line holds verbatim: orient reading, never pre-review |
+| **Summaries** | What the layer is about, and enough context to review it: the part its files cannot show on their own. No template: the agent writes it however the step reads best, kept short, without retelling the diff. The guide's line holds verbatim: orient reading, never pre-review |
+| **Diagrams** | When the step has a shape (a flow, a decision, a before/after), a small ```` ```mermaid ```` diagram usually beats prose. Nodes are tagged `:::new` / `:::changed` with the guide's two classDef lines |
 
 A layer:
 

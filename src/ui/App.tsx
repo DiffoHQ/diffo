@@ -1275,13 +1275,7 @@ function Review() {
   // Nobody attached wins: a request parked for a poll nobody is running is not
   // "outlining", and the honest thing to offer is Invite.
   const layersEmptyState: LayersEmptyState =
-    presence === 'waiting'
-      ? 'noagent'
-      : layersRequest !== null
-        ? layersRequest
-        : review?.layersSuggested
-          ? 'suggested'
-          : 'quiet'
+    presence === 'waiting' ? 'noagent' : (layersRequest ?? 'quiet')
 
   if (isLoading) {
     return (
@@ -1386,7 +1380,6 @@ function Review() {
             ) : (
               <LayersEmpty
                 state={layersEmptyState}
-                reason={review?.layersSuggested?.reason}
                 onOutline={requestLayers}
                 onInvite={() => setInviteOpen(true)}
               />
