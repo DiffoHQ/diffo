@@ -10,6 +10,7 @@ import {
   type Coverage,
   normalizeTitle,
   type OutgoingThread,
+  parseSuggestedReply,
   type ReviewThread,
   startedByAgent,
   THREAD_INTENTS,
@@ -266,7 +267,16 @@ export function createApp(
           : null
       const anchor = agentAnchor(file, line)
       const capture = store ? captureAnchor(store.get(), anchor) : null
-      return c.json(review.createThread(anchor, text, capture, undefined, 'agent'))
+      return c.json(
+        review.createThread(
+          anchor,
+          text,
+          capture,
+          undefined,
+          'agent',
+          parseSuggestedReply(body?.suggestedReply),
+        ),
+      )
     }
     const anchor = parseAnchor(body?.anchor)
     if (!anchor) return c.json({ error: 'need {anchor, text}' }, 400)
@@ -329,7 +339,15 @@ export function createApp(
       const more = body?.more === true
       const waitedMs = queue?.agentReplied(id, more) ?? null
       const seenThroughMs = waitedMs === null ? undefined : Date.now() - waitedMs
-      const thread = review.addMessage(id, 'agent', text, false, seenThroughMs, more)
+      const thread = review.addMessage(
+        id,
+        'agent',
+        text,
+        false,
+        seenThroughMs,
+        more,
+        parseSuggestedReply(body?.suggestedReply),
+      )
       if (!thread) return c.json({ error: 'no such thread' }, 404)
       if (waitedMs !== null) review.annotateAgentReplies([thread.id], waitedMs)
       return c.json({ thread, delivered: false })

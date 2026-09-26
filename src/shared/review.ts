@@ -47,6 +47,19 @@ export interface ReviewMessage {
   text: string
   at: string
   durationMs?: number
+  /** Agent only: a reply the agent offers the reviewer, one line. The composer
+   * shows it as ghost text while the reviewer has typed nothing; Tab takes it.
+   * Never sent on its own — the reviewer still presses send. */
+  suggestedReply?: string
+}
+
+/** Ghost text has one line and little room: collapse whitespace and cap it. */
+export const SUGGESTED_REPLY_MAX = 120
+
+export function parseSuggestedReply(value: unknown): string | undefined {
+  if (typeof value !== 'string') return undefined
+  const line = value.replace(/\s+/g, ' ').trim()
+  return line ? line.slice(0, SUGGESTED_REPLY_MAX) : undefined
 }
 
 export interface ReviewThread {

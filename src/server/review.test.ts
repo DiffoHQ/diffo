@@ -198,6 +198,48 @@ describe('ReviewStore', () => {
     expect(seen).toBe(0)
   })
 
+  it("an offered reply rides the agent message, never the reviewer's, and survives a reload", () => {
+    const root = tempRoot()
+    const store = makeStore(root)
+    const opened = store.createThread(
+      hunkAnchor('h1'),
+      'fold these?',
+      null,
+      undefined,
+      'agent',
+      'fold them',
+    )
+    expect(opened.messages[0]).toMatchObject({ author: 'agent', suggestedReply: 'fold them' })
+
+    const asked = store.createThread(
+      hunkAnchor('h2'),
+      'why?',
+      null,
+      undefined,
+      'reviewer',
+      'ignored',
+    )
+    expect(asked.messages[0]!.suggestedReply).toBeUndefined()
+
+    store.addMessage(
+      asked.id,
+      'agent',
+      'want me to rename it?',
+      false,
+      undefined,
+      false,
+      'yes, rename',
+    )
+    store.addMessage(asked.id, 'reviewer', 'hmm', false, undefined, false, 'ignored')
+    const messages = store.get().threads[1]!.messages
+    expect(messages[1]!.suggestedReply).toBe('yes, rename')
+    expect(messages[2]!.suggestedReply).toBeUndefined()
+
+    const reloaded = makeStore(root).get().threads
+    expect(reloaded[0]!.messages[0]!.suggestedReply).toBe('fold them')
+    expect(reloaded[1]!.messages[1]!.suggestedReply).toBe('yes, rename')
+  })
+
   it('annotateAgentReplies stamps the newest unstamped agent message only', () => {
     const root = tempRoot()
     const store = makeStore(root)

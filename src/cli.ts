@@ -446,7 +446,12 @@ if (command.kind === 'reply') {
   const { status, body } = await postJson(
     port,
     `/api/review/threads/${encodeURIComponent(command.threadId)}/messages`,
-    { author: 'agent', text: message, ...(command.more ? { more: true } : {}) },
+    {
+      author: 'agent',
+      text: message,
+      ...(command.more ? { more: true } : {}),
+      ...(command.suggestReply ? { suggestedReply: command.suggestReply } : {}),
+    },
   )
   if (status === 404) fail(`no thread with id '${command.threadId}'`)
   if (status !== 200) fail(`reply failed (${status})`)
@@ -474,6 +479,7 @@ if (command.kind === 'comment') {
     file: command.file,
     line: command.line,
     text: message,
+    ...(command.suggestReply ? { suggestedReply: command.suggestReply } : {}),
   })
   if (status !== 200) fail(`comment failed (${status})`)
   const thread = body as { id: string }

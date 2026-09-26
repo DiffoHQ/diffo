@@ -81,6 +81,7 @@ export class ReviewStore {
     capture: ThreadCapture | null,
     intent?: ThreadIntent,
     author: Author = 'reviewer',
+    suggestedReply?: string,
   ): ReviewThread {
     const now = new Date().toISOString()
     return this.insert({
@@ -91,7 +92,15 @@ export class ReviewStore {
       codeContext: capture?.codeContext ?? null,
       ...(capture?.anchored ? { anchored: capture.anchored } : {}),
       codeChanged: false,
-      messages: [{ id: randomUUID(), author, text, at: now }],
+      messages: [
+        {
+          id: randomUUID(),
+          author,
+          text,
+          at: now,
+          ...(author === 'agent' && suggestedReply ? { suggestedReply } : {}),
+        },
+      ],
       createdAt: now,
       updatedAt: now,
     })
@@ -140,9 +149,16 @@ export class ReviewStore {
     withheld = false,
     seenThroughMs?: number,
     followUp = false,
+    suggestedReply?: string,
   ): ReviewThread | null {
     return this.update(threadId, ({ unanswered: _answered, ...thread }) => {
-      const message = { id: randomUUID(), author, text, at: new Date().toISOString() }
+      const message: ReviewMessage = {
+        id: randomUUID(),
+        author,
+        text,
+        at: new Date().toISOString(),
+        ...(author === 'agent' && suggestedReply ? { suggestedReply } : {}),
+      }
       // Raced = a reviewer message the agent has not seen. The agent's own
       // messages are never raced past — an interim reply postdates the delivery
       // too, and the follow-up must land after it, not above it.
@@ -643,6 +659,9 @@ function normalizeThread(value: unknown, now: string): ReviewThread | null {
       text: msg.text,
       at: typeof msg.at === 'string' ? msg.at : now,
       ...(typeof msg.durationMs === 'number' ? { durationMs: msg.durationMs } : {}),
+      ...(msg.author === 'agent' && typeof msg.suggestedReply === 'string' && msg.suggestedReply
+        ? { suggestedReply: msg.suggestedReply }
+        : {}),
     })
   }
   return {

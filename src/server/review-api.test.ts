@@ -239,6 +239,43 @@ describe('review API', () => {
     expect(undeliveredThreadIds([thread])).toEqual([id])
   })
 
+  it('the agent can offer the reviewer a reply on a comment or a reply — one trimmed line', async () => {
+    const { app } = setup()
+    const created = await post(app, '/api/review/threads', {
+      author: 'agent',
+      text: 'fold these two guards?',
+      suggestedReply: '  yes,\n fold   them ',
+    })
+    const { id, messages } = (await created.json()) as ReviewThread
+    expect(messages[0]!.suggestedReply).toBe('yes, fold them')
+
+    await post(app, `/api/review/threads/${id}/messages`, { text: 'which two?' })
+    const replied = await post(app, `/api/review/threads/${id}/messages`, {
+      author: 'agent',
+      text: 'lines 4 and 9 — want that?',
+      suggestedReply: 'yes',
+    })
+    const { thread } = (await replied.json()) as { thread: ReviewThread }
+    expect(thread.messages.at(-1)).toMatchObject({ author: 'agent', suggestedReply: 'yes' })
+
+    // Junk or empty offers are dropped, never stored as a stray field.
+    const noisy = await post(app, `/api/review/threads/${id}/messages`, {
+      author: 'agent',
+      text: 'done',
+      suggestedReply: 42,
+    })
+    const { thread: after } = (await noisy.json()) as { thread: ReviewThread }
+    expect('suggestedReply' in after.messages.at(-1)!).toBe(false)
+
+    // The reviewer cannot offer themselves one.
+    const own = await post(app, `/api/review/threads/${id}/messages`, {
+      text: 'ok',
+      suggestedReply: 'nope',
+    })
+    const { thread: theirs } = (await own.json()) as { thread: ReviewThread }
+    expect('suggestedReply' in theirs.messages.at(-1)!).toBe(false)
+  })
+
   it("a withheld reply to the agent's comment keeps it open for Send", async () => {
     const { app, review } = setup()
     const created = await post(app, '/api/review/threads', { author: 'agent', text: 'rename?' })
