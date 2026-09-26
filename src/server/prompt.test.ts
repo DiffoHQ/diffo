@@ -1,15 +1,13 @@
-import { readFileSync } from 'node:fs'
-import { dirname, resolve } from 'node:path'
-import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
 import type { Anchor, ReviewThread } from '../shared/review.js'
 import type { Changeset } from '../shared/types.js'
+import { DEV_SKILL_NAME, SKILL_NAME } from '../skill.js'
 import {
   ACK_NEXT_STEP,
   buildClearedPrompt,
   buildCoalescedPrompt,
+  buildConnectAsk,
   buildFinishPrompt,
-  buildInstallSkill,
   buildLayersRequestPrompt,
   buildThreadPrompt,
   CLI,
@@ -19,12 +17,9 @@ import {
   GUIDE_CLASSDEFS,
   guideInherit,
   guideNudge,
-  INSTALL_SKILL,
   LAYERS,
   layersNudge,
-  NPX,
   nextStepFor,
-  SKILL_REPO,
 } from './prompt.js'
 
 const repo = { path: '/tmp/demo', name: 'demo', branch: 'main', worktree: null }
@@ -754,39 +749,30 @@ describe('the poll envelope (next_step per payload kind)', () => {
   })
 })
 
-describe('INSTALL_SKILL (how a human installs Diffo)', () => {
-  it('installs from the repo this package actually publishes from', () => {
-    const pkg = JSON.parse(
-      readFileSync(resolve(dirname(fileURLToPath(import.meta.url)), '../../package.json'), 'utf-8'),
-    ) as { repository: { url: string } }
-    expect(pkg.repository.url).toContain(SKILL_REPO)
-    expect(INSTALL_SKILL.global).toBe(`npx skills add ${SKILL_REPO} --skill diffo -g`)
+describe('buildConnectAsk (what the reviewer pastes to bring an agent in)', () => {
+  it('names this review by its repo, so any session lands on it', () => {
+    expect(buildConnectAsk(false, '/Users/me/code/app', '/Users/me')).toBe(
+      'connect to the diffo review in ~/code/app',
+    )
+    expect(buildConnectAsk(false, '/srv/app', '/Users/me')).toBe(
+      'connect to the diffo review in /srv/app',
+    )
   })
 
-  it('names a skill that is actually shipped under skills/', () => {
-    const skill = resolve(dirname(fileURLToPath(import.meta.url)), '../../skills/diffo/SKILL.md')
-    expect(readFileSync(skill, 'utf-8')).toContain('name: diffo')
+  it('only folds a real home prefix into ~', () => {
+    expect(buildConnectAsk(false, '/Users/me', '/Users/me')).toBe(
+      'connect to the diffo review in ~',
+    )
+    expect(buildConnectAsk(false, '/Users/meg/app', '/Users/me')).toContain('/Users/meg/app')
   })
 
-  it('needs no npm publish — that is the point of this route', () => {
-    expect(INSTALL_SKILL.global).not.toContain(NPX)
+  it('wakes the skill by name — the dev one only answers its slash command', () => {
+    expect(buildConnectAsk(false, '/r', '/h')).toContain(SKILL_NAME)
+    expect(buildConnectAsk(true, '/r', '/h')).toBe(`/${DEV_SKILL_NAME} connect to the review in /r`)
   })
 
-  it('offers both scopes, in both modes — the reviewer picks', () => {
-    expect(INSTALL_SKILL.global).toContain(' -g')
-    expect(INSTALL_SKILL.project).not.toContain(' -g')
-    expect(buildInstallSkill(true, '/repo', true)).toBe('cd /repo && pnpm dev:skill --global')
-    expect(buildInstallSkill(true, '/repo', false)).toBe('cd /repo && pnpm dev:skill')
-  })
-
-  it('a dev run installs THIS working tree, not what is on GitHub', () => {
-    const dev = buildInstallSkill(true, '/repo')
-    expect(dev).toBe('cd /repo && pnpm dev:skill --global')
-    expect(dev).not.toContain('npx skills add')
-  })
-
-  it('a published run is unaffected by the checkout path', () => {
-    expect(buildInstallSkill(false, '/wherever')).toBe(INSTALL_SKILL.global)
+  it('teaches no loop — that is what the skill is for', () => {
+    expect(buildConnectAsk(false, '/r', '/h')).not.toContain('poll')
   })
 })
 

@@ -1,4 +1,5 @@
 import { readFile } from 'node:fs/promises'
+import { homedir } from 'node:os'
 import { extname, resolve, sep } from 'node:path'
 import { serve } from '@hono/node-server'
 import { type Context, Hono } from 'hono'
@@ -39,13 +40,12 @@ import {
   answeredByAgent,
   buildClearedPrompt,
   buildCoalescedPrompt,
+  buildConnectAsk,
   buildFinishPrompt,
   buildLayersRequestPrompt,
   buildThreadPrompt,
   captureAnchor,
-  INSTALL_SKILL,
   IS_DEV,
-  JOIN_PROMPT,
   nextStepFor,
   type PromptContext,
 } from './prompt.js'
@@ -812,8 +812,7 @@ export function createApp(
 
   app.get('/api/agent/invite', (c) =>
     c.json({
-      install: INSTALL_SKILL,
-      join: JOIN_PROMPT,
+      ask: buildConnectAsk(IS_DEV, resolve(ctx.root), homedir()),
       presence: queue?.presence() ?? 'waiting',
     }),
   )

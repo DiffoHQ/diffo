@@ -15,10 +15,9 @@ export function InviteAgent({
   onClose: () => void
 }) {
   const { data, isLoading, error } = useInvite(true)
-  const [copied, setCopied] = useState<string | null>(null)
+  const [copied, setCopied] = useState(false)
   const [copyFailed, setCopyFailed] = useState(false)
   const [watching, setWatching] = useState(false)
-  const [global, setGlobal] = useState(true)
   const attached = presence !== 'waiting'
   const [phase, setPhase] = useState<'invite' | 'connected'>(attached ? 'connected' : 'invite')
   const [detached, setDetached] = useState(false)
@@ -41,15 +40,15 @@ export function InviteAgent({
     return () => clearTimeout(timer)
   }, [phase])
 
-  const copy = (what: string, text: string) => {
+  const copy = (text: string) => {
     void copyText(text).then((ok) => {
       setCopyFailed(!ok)
       if (!ok) return
-      setCopied(what)
+      setCopied(true)
       // Watching outlives the "Copied" flash: gating the listening strip on `copied`
       // tied it to that 2.5s timer. It ends when presence changes, or you close.
       setWatching(true)
-      setTimeout(() => setCopied(null), 2500)
+      setTimeout(() => setCopied(false), 2500)
     })
   }
 
@@ -64,10 +63,8 @@ export function InviteAgent({
     )
   }
 
-  const install = data ? (global ? data.install.global : data.install.project) : ''
-
   return (
-    <Modal title="Install the Diffo skill" wide onClose={onClose}>
+    <Modal title="Connect your agent" onClose={onClose}>
       {detached && (
         <div className="warn">
           <Icon name="alert" size="sm" />
@@ -90,39 +87,19 @@ export function InviteAgent({
       {error && <p className="cov-note">Couldn't build the invite: {(error as Error).message}</p>}
       {data && (
         <>
-          <p className="cov-note">One command in your terminal. That's the whole setup.</p>
+          {/* Everyone arrives through the skill, so this only has to wake it —
+              the path is what points it at this review and not another. */}
+          <p className="cov-note">Paste this to your agent. Its Diffo skill does the rest.</p>
 
           <button
             type="button"
             className="invite-cmd"
-            title={copied === 'install' ? 'Copied' : 'copy the install command'}
-            onClick={() => copy('install', install)}
+            title={copied ? 'Copied' : 'copy the ask'}
+            onClick={() => copy(data.ask)}
           >
-            <code>{install}</code>
-            <Icon name={copied === 'install' ? 'check' : 'copy'} size="sm" />
+            <code>{data.ask}</code>
+            <Icon name={copied ? 'check' : 'copy'} size="sm" />
           </button>
-
-          <label className="invite-scope">
-            <input type="checkbox" checked={global} onChange={(e) => setGlobal(e.target.checked)} />
-            Available in every project
-          </label>
-
-          <p className="cov-note">
-            Your agent can then open reviews and act on your comments — just ask it to.
-          </p>
-
-          <div className="invite-join">
-            <p className="cov-note">Already have it? Paste this to your agent:</p>
-            <button
-              type="button"
-              className="invite-cmd"
-              title={copied === 'join' ? 'Copied' : 'copy the prompt'}
-              onClick={() => copy('join', data.join)}
-            >
-              <code>{data.join}</code>
-              <Icon name={copied === 'join' ? 'check' : 'copy'} size="sm" />
-            </button>
-          </div>
 
           {watching && (
             <div className="invite-live">
@@ -135,8 +112,8 @@ export function InviteAgent({
             <div className="warn">
               <Icon name="alert" size="sm" />
               <div>
-                <b>Couldn't reach the clipboard</b> — this browser blocked it. Select the command
-                and copy it by hand.
+                <b>Couldn't reach the clipboard</b> — this browser blocked it. Select the text and
+                copy it by hand.
               </div>
             </div>
           )}

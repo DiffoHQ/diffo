@@ -1,12 +1,13 @@
 import { execFileSync } from 'node:child_process'
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
-import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { homedir, tmpdir } from 'node:os'
+import { join, resolve } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
 import { type OutgoingThread, type ReviewThread, undeliveredThreadIds } from '../shared/review.js'
 import { DiffoDb } from './db.js'
 import { DeliveryQueue } from './delivery.js'
 import { createApp } from './index.js'
+import { buildConnectAsk } from './prompt.js'
 import { ReviewStore } from './review.js'
 import { ChangesetStore } from './store.js'
 
@@ -1190,22 +1191,14 @@ describe('the pull loop', () => {
 })
 
 describe('the invite (bringing an agent in)', () => {
-  it('serves the install command and the one prompt you paste after it', async () => {
-    const { app } = setup()
+  it('serves one ask that points the agent at this repo', async () => {
+    const { app, root } = setup()
     const res = await app.request('/api/agent/invite')
     expect(res.status).toBe(200)
     const body = (await res.json()) as Record<string, unknown>
-    expect(body.install).toEqual({
-      global: 'npx skills add DiffoHQ/diffo --skill diffo -g',
-      project: 'npx skills add DiffoHQ/diffo --skill diffo',
-    })
     expect(body.presence).toBe('waiting')
-    // The join prompt must bootstrap a skill-less agent: name the poll command
-    // and how to hold it — the payloads teach the rest.
-    expect(body.join).toContain('join the diffo review')
-    expect(body.join).toContain('poll')
-    expect(body.join).toContain('tracked background task')
-    expect(Object.keys(body).sort()).toEqual(['install', 'join', 'presence'])
+    expect(body.ask).toBe(buildConnectAsk(false, resolve(root), homedir()))
+    expect(Object.keys(body).sort()).toEqual(['ask', 'presence'])
   })
 
   it('is available with no review store — inviting is how you get one attached', async () => {
