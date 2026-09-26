@@ -440,6 +440,7 @@ function SplitLines({
               <tr
                 className={`line${rowClass(selRows, rangeRows, focusRow, row.left?.idx, row.right?.idx)}`}
               >
+                {/* biome-ignore lint/a11y/useKeyWithClickEvents: a click only focuses the line; the keyboard path is j/k + c */}
                 <td
                   className="line-no"
                   onMouseDown={row.left ? gutterDown(onGutterDown, row.left.idx) : undefined}
@@ -452,6 +453,7 @@ function SplitLines({
                   )}
                   {row.left?.line.oldNo ?? ''}
                 </td>
+                {/* biome-ignore lint/a11y/useKeyWithClickEvents: a click only focuses the line; the keyboard path is j/k + c */}
                 <td
                   className={`line-half line-half-${row.left?.line.kind ?? 'empty'}`}
                   onMouseEnter={enter(row.left?.idx)}
@@ -465,6 +467,7 @@ function SplitLines({
                     />
                   )}
                 </td>
+                {/* biome-ignore lint/a11y/useKeyWithClickEvents: a click only focuses the line; the keyboard path is j/k + c */}
                 <td
                   className="line-no"
                   onMouseDown={row.right ? gutterDown(onGutterDown, row.right.idx) : undefined}
@@ -477,6 +480,7 @@ function SplitLines({
                   )}
                   {row.right?.line.newNo ?? ''}
                 </td>
+                {/* biome-ignore lint/a11y/useKeyWithClickEvents: a click only focuses the line; the keyboard path is j/k + c */}
                 <td
                   className={`line-half line-half-${row.right?.line.kind ?? 'empty'}`}
                   onMouseEnter={enter(row.right?.idx)}
