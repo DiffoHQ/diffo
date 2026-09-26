@@ -1,5 +1,12 @@
 import { parseArgs } from 'node:util'
-import { CLI_COMMANDS, GUIDE, LAYERS, POLL_STANCE, TAB_TITLE } from './server/prompt.js'
+import {
+  CLI_COMMANDS,
+  GUIDE,
+  GUIDE_CLASSDEFS,
+  LAYERS,
+  POLL_STANCE,
+  TAB_TITLE,
+} from './server/prompt.js'
 import { parseSuggestReason } from './shared/layers.js'
 import { normalizeTitle } from './shared/review.js'
 import type { ChangesetSpec } from './shared/types.js'
@@ -33,6 +40,7 @@ For the agent (the AI that wrote the change):
                      or --stdin posts the list, replacing the last one)
   end                Detach from the review politely
   help agent         The agent's whole protocol on one page
+  help guide         The guide comment — the map of the change — with an example
 
 Options (for opening the review):
   --base <branch>    Review everything since forking from <branch>
@@ -75,9 +83,12 @@ The loop:
 2. Guide — post one only when the changeset needs orientation:
    ${GUIDE.when}.
    Right after sharing the URL, while the reviewer opens the page, post ONE
-   comment on the whole changeset (\`diffo comment -m "…"\`, no file),
-   containing: ${GUIDE.what}.
+   comment on the whole changeset (\`diffo comment -m "…"\`, no file). It is
+   ${GUIDE.what}.
+   Not in it: ${GUIDE.order}.
+   How much: ${GUIDE.budget}.
    ${GUIDE.stance}.
+   Legend: ${GUIDE.legend} — \`diffo help guide\` has them, and one example.
    It lands live at the top of their review — never hold the URL back for it.
    If the changeset later shifts under the guide, ${GUIDE.update}.
 3. Layers — offer them when the changeset reads better in order:
@@ -124,6 +135,54 @@ Rules:
   a poll says it took the review over, or returns status "superseded", say so
   to the user: their feedback moved with it.
 - Resolving a thread is the reviewer's call, never yours.`,
+  guide: `diffo help guide — the map an agent posts on the whole changeset
+
+Posted with \`diffo comment -m "…"\` (no file, so it anchors to the changeset)
+right after sharing the URL, while the reviewer opens the page — and only
+when the changeset needs orientation: ${GUIDE.when}.
+
+It is ${GUIDE.what}.
+Not in it: ${GUIDE.order}.
+How much: ${GUIDE.budget}.
+${GUIDE.stance}.
+Legend: ${GUIDE.legend}:
+
+  ${GUIDE_CLASSDEFS[0]}
+  ${GUIDE_CLASSDEFS[1]}
+
+A file named as \`path\` or \`path:line\` — in backticks, or in a diagram
+node — becomes a jump into the review, so the map is navigation too.
+If the changeset later shifts under the guide, ${GUIDE.update}.
+
+Say each part in plain words a reader meets cold — "worth checking as you
+read", "safe to skip" — never a label of your own like "Hold:" that they
+would have to decode.
+
+One shape that works — not THE shape: a rename needs no diagram, a one-file
+change needs no checks, and headings are optional.
+
+  Caps oversized tool results at the model boundary and adds
+  \`read_tool_result\` so the model can page the rest — nothing is stored,
+  the text is recomputed on read.
+
+  \`\`\`mermaid
+  flowchart LR
+    E[tool.execute] --> W[withToolResultCap]:::new
+    W -->|over budget: slice + notice| P[provider]
+    M[read_tool_result]:::new --> R[resolveFullToolResult]:::new
+    R --> S[SDK steps · raw output]
+    T[island-chat-transport.ts · prepareStep]:::changed --> W
+    ${GUIDE_CLASSDEFS[0]}
+    ${GUIDE_CLASSDEFS[1]}
+  \`\`\`
+
+  Worth checking as you read: the capper and the reader must agree, byte for
+  byte, on one string — \`canonicalToolText\` is the only definition both use.
+  And the reader re-runs each tool's own \`toModelOutput\`, which assumes every
+  converter is pure.
+
+  Safe to skip: four \`tool-*\` display components moved only because a prop
+  went dead.`,
   poll: `diffo poll — wait for the reviewer's feedback
 
 Usage: diffo poll [--title "<what the change is>"]
@@ -350,7 +409,7 @@ function parseHelp(rest: string[]): CliCommand {
   const topic = rest[0]
   if (rest.length > 1) return { kind: 'error', message: 'help takes at most one command' }
   if (topic === undefined || topic === 'help') return { kind: 'help' }
-  if (topic !== 'agent' && !VERBS.has(topic)) return unknownCommand(topic)
+  if (topic !== 'agent' && topic !== 'guide' && !VERBS.has(topic)) return unknownCommand(topic)
   return { kind: 'help', topic }
 }
 

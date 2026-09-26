@@ -6,6 +6,7 @@ import {
   type ThreadState,
   untouchedAgentVoice,
 } from '../../shared/review.js'
+import { linkPaths, type RefLinks, refClickTarget } from '../layers.js'
 import { timeAgo } from '../markdown.js'
 import { isUnsent, TURN_LABEL } from '../threads.js'
 import { Avatar, CommentBox } from './CommentBox.js'
@@ -145,8 +146,28 @@ function submitOnCmdEnter(e: React.KeyboardEvent, submit: () => void) {
   }
 }
 
-function Body({ text }: { text: string }) {
-  return <Markdown className="cmt-body markdown" text={text} />
+/** A message body. With `links`, a code span naming a changeset file — and a
+ * diagram node naming one — becomes a jump into the review: the guide is a map,
+ * and a map you can click is navigation. */
+function Body({ text, links }: { text: string; links?: RefLinks }) {
+  if (!links) return <Markdown className="cmt-body markdown" text={text} />
+  const onClick = (e: React.MouseEvent) => {
+    const ref = refClickTarget(e.target as Element)
+    if (!ref) return
+    e.preventDefault()
+    links.onJump(ref.path, ref.line)
+  }
+  return (
+    // biome-ignore lint/a11y/noStaticElementInteractions: click delegation for the links inside rendered markdown
+    // biome-ignore lint/a11y/useKeyWithClickEvents: the links themselves are focusable and keyboard-activated
+    <div onClick={onClick}>
+      <Markdown
+        className="cmt-body markdown"
+        text={linkPaths(text, links.paths)}
+        paths={links.paths}
+      />
+    </div>
+  )
 }
 
 export { CommentBox }
@@ -159,6 +180,7 @@ export function ThreadCard({
   working = false,
   queuePosition,
   gone = false,
+  links,
 }: {
   thread: ReviewThread
   actions: ReviewActions
@@ -167,6 +189,8 @@ export function ThreadCard({
   working?: boolean
   queuePosition?: number
   gone?: boolean
+  /** File references in the messages become jumps into the review. */
+  links?: RefLinks
 }) {
   const [reply, setReply] = useState('')
   const [copied, setCopied] = useState(false)
@@ -463,7 +487,7 @@ export function ThreadCard({
                         : `${verbFor(m.author, i)} ${timeAgo(m.at)}`}
                     </span>
                   </div>
-                  <Body text={m.text} />
+                  <Body text={m.text} links={links} />
                 </div>
               </Fragment>
             ))}
@@ -644,6 +668,7 @@ export function ThreadList({
   workingOn,
   queuedOn,
   gone = false,
+  links,
 }: {
   threads: ReviewThread[]
   actions: ReviewActions
@@ -652,6 +677,7 @@ export function ThreadList({
   workingOn?: ReadonlySet<string>
   queuedOn?: ReadonlyMap<string, number>
   gone?: boolean
+  links?: RefLinks
 }) {
   if (threads.length === 0) return null
   return (
@@ -666,6 +692,7 @@ export function ThreadList({
           working={workingOn?.has(t.id) ?? false}
           queuePosition={queuedOn?.get(t.id)}
           gone={gone}
+          links={links}
         />
       ))}
     </div>

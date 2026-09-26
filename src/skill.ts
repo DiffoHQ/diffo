@@ -106,9 +106,9 @@ This file only gets you started; installed copies go stale, and the loop's
 details travel with the CLI itself. Three steps:
 
 1. **Read the loop once**: run \`${cli} help agent\` — the agent's whole
-   protocol on one page (when to post a guide for the reviewer, when to offer
-   layers, how to reply to threads, how the review ends). Follow that page,
-   not memory.
+   protocol on one page (when to post a guide and what goes in it, when to
+   offer layers, how to reply to threads, how the review ends). Follow that
+   page, not memory.
 2. **Open the review**: run \`${CLI_COMMANDS.open} --no-open\` from inside the
    repo. It **returns straight away**, leaving a background server watching
    the working tree (your later edits appear live), and prints the review URL

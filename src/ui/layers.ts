@@ -214,10 +214,27 @@ export function parseLayerLink(href: string): { path: string; line: number | nul
 }
 
 const SPAN = /`([^`\n]+)`/g
-const REF = /^([^\s:`]+?)(?::(\d+)(?:-\d+)?)?$/
+export const REF = /^([^\s:`]+?)(?::(\d+)(?:-\d+)?)?$/
+
+/** What a rendered body needs to turn a file reference into a jump: the paths
+ * a reference may resolve to, and where the click goes. The guide thread gets
+ * one; so does a layer card. */
+export interface RefLinks {
+  paths: readonly string[]
+  onJump: (path: string, line: number | null) => void
+}
+
+/** The reference a click landed on, if any: a link `linkPaths` wrote, or a
+ * diagram node `linkDiagramRefs` tagged. Both carry the same `#diffo-file:`
+ * href, so one resolver serves the prose and the picture. */
+export function refClickTarget(target: Element): { path: string; line: number | null } | null {
+  const el = target.closest('a[href], [data-diffo-jump]')
+  if (!el) return null
+  return parseLayerLink(el.getAttribute('data-diffo-jump') ?? el.getAttribute('href') ?? '')
+}
 
 /** The changeset path a reference names: exact, or a basename only one file has. */
-function resolveRef(name: string, paths: readonly string[]): string | null {
+export function resolveRef(name: string, paths: readonly string[]): string | null {
   if (paths.includes(name)) return name
   const hits = paths.filter((p) => p.slice(p.lastIndexOf('/') + 1) === name)
   return hits.length === 1 ? hits[0]! : null

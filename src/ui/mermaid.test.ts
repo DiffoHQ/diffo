@@ -21,7 +21,8 @@ vi.mock('beautiful-mermaid', async (importOriginal) => {
   }
 })
 
-import { renderMermaidIn } from './mermaid.js'
+import { layerLinkHref, refClickTarget } from './layers.js'
+import { diagramRef, linkDiagramRefs, renderMermaidIn } from './mermaid.js'
 
 // jsdom has no matchMedia; the fallback renderer's theme pick needs one, and
 // the theme watcher subscribes to its change event.
@@ -157,5 +158,80 @@ describe('renderMermaidIn', () => {
     // MutationObserver delivery + any (wrong) re-render would land within a tick.
     await new Promise((r) => setTimeout(r, 20))
     expect(figure.innerHTML).toBe(before)
+  })
+})
+
+describe('linkDiagramRefs — the map as navigation', () => {
+  const known = ['src/ui/layers.ts', 'src/server/prompt.ts', 'src/a/util.ts', 'src/b/util.ts']
+
+  it('reads a path or path:line out of a label, the way a summary code span is read', () => {
+    expect(diagramRef('src/ui/layers.ts', known)).toEqual({ path: 'src/ui/layers.ts', line: null })
+    expect(diagramRef('prompt.ts:183 · GUIDE', known)).toEqual({
+      path: 'src/server/prompt.ts',
+      line: 183,
+    })
+    expect(diagramRef('resolveLayers (layers.ts)', known)).toEqual({
+      path: 'src/ui/layers.ts',
+      line: null,
+    })
+    // An ambiguous basename, a function name, and a plain word resolve to nothing.
+    expect(diagramRef('util.ts', known)).toBeNull()
+    expect(diagramRef('withToolResultCap', known)).toBeNull()
+    expect(diagramRef('SDK steps', known)).toBeNull()
+  })
+
+  it('tags the labels that name a file, leaves the rest, and is idempotent', async () => {
+    const root = fence(
+      'flowchart LR\n  a["src/ui/layers.ts:111<br/>resolveLayers"] --> b[SDK steps]\n  b --> c[prompt.ts]',
+    )
+    await renderMermaidIn(root)
+    linkDiagramRefs(root, known)
+    const tagged = Array.from(root.querySelectorAll('text[data-diffo-jump]'))
+    expect(tagged.map((t) => t.getAttribute('data-diffo-jump'))).toEqual([
+      layerLinkHref('src/ui/layers.ts', 111),
+      layerLinkHref('src/server/prompt.ts', null),
+    ])
+    for (const t of tagged) {
+      expect(t.classList.contains('diffo-ref')).toBe(true)
+      expect(t.getAttribute('role')).toBe('link')
+      expect(t.getAttribute('tabindex')).toBe('0')
+    }
+    const plain = root.querySelector('text[data-diffo-plain]')!
+    expect(plain.textContent).toBe('SDK steps')
+    const before = root.innerHTML
+    linkDiagramRefs(root, known)
+    expect(root.innerHTML).toBe(before)
+  })
+
+  it('is a no-op with no paths, no figure, or no root', async () => {
+    const root = fence('flowchart LR\n  a[src/ui/layers.ts] --> b')
+    await renderMermaidIn(root)
+    linkDiagramRefs(root, [])
+    expect(root.querySelector('[data-diffo-jump]')).toBeNull()
+    const empty = document.createElement('div')
+    empty.innerHTML = '<p>no diagram</p>'
+    linkDiagramRefs(empty, known)
+    expect(empty.innerHTML).toBe('<p>no diagram</p>')
+    linkDiagramRefs(null, known)
+  })
+
+  it('a click resolves a prose link and a tagged diagram label alike', () => {
+    document.body.innerHTML = `
+      <div>
+        <a href="${layerLinkHref('src/weekday.ts', 42)}"><code>weekday.ts:42</code></a>
+        <svg><text data-diffo-jump="${layerLinkHref('src/dates.ts', null)}">src/dates.ts</text></svg>
+        <a href="https://example.com">out</a>
+        <span>plain</span>
+      </div>`
+    expect(refClickTarget(document.querySelector('code')!)).toEqual({
+      path: 'src/weekday.ts',
+      line: 42,
+    })
+    expect(refClickTarget(document.querySelector('text')!)).toEqual({
+      path: 'src/dates.ts',
+      line: null,
+    })
+    expect(refClickTarget(document.querySelector('a[href^="https"]')!)).toBeNull()
+    expect(refClickTarget(document.querySelector('span')!)).toBeNull()
   })
 })
