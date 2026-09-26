@@ -7,6 +7,10 @@ Until 1.0, minor versions may break things. When they do, the entry says how to 
 
 ## [Unreleased]
 
+Nothing yet.
+
+## [0.7.0] — 2026-09-26
+
 ### Added
 
 - **Pull request review: `diffo <PR URL>`** (also `owner/repo#N`, `#N`, or
@@ -475,7 +479,8 @@ shipped in it, written as a starting point rather than a history.
 - **Guided reading** — splitting a large change into an ordered sequence of small,
   reviewable sections — is designed but not built.
 
-[Unreleased]: https://github.com/DiffoHQ/diffo/compare/v0.6.0...HEAD
+[Unreleased]: https://github.com/DiffoHQ/diffo/compare/v0.7.0...HEAD
+[0.7.0]: https://github.com/DiffoHQ/diffo/compare/v0.6.0...v0.7.0
 [0.6.0]: https://github.com/DiffoHQ/diffo/compare/v0.5.0...v0.6.0
 [0.5.0]: https://github.com/DiffoHQ/diffo/compare/v0.4.1...v0.5.0
 [0.4.1]: https://github.com/DiffoHQ/diffo/compare/v0.4.0...v0.4.1
