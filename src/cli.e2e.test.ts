@@ -165,17 +165,22 @@ describe.skipIf(!existsSync(cliPath))('diffo binary (e2e smoke)', () => {
       'comment',
       '--message',
       'start with app.ts — the rest is plumbing',
+      '--suggest-reply',
+      'ok, reading app.ts first',
     ])
     expect(onChangeset.code).toBe(0)
     const after = (await (await fetch(`http://127.0.0.1:${port}/api/review`)).json()) as {
       threads: {
         anchor: { kind: string }
-        messages: { author: string }[]
+        messages: { author: string; suggestedReply?: string }[]
       }[]
     }
     expect(after.threads).toHaveLength(3)
     const agentThreads = after.threads.filter((t) => t.messages[0]?.author === 'agent')
     expect(agentThreads.map((t) => t.anchor.kind).sort()).toEqual(['changeset', 'hunk'])
+    expect(
+      agentThreads.find((t) => t.anchor.kind === 'changeset')!.messages[0]!.suggestedReply,
+    ).toBe('ok, reading app.ts first')
 
     // The reading plan: a suggestion, then the outline itself, inline and piped.
     const suggest = await run(['layers', '--suggest', 'app.ts explains the rest'])

@@ -178,6 +178,7 @@ export function ThreadCard({
   const [expanded, setExpanded] = useState(false)
   const [shut, setShut] = useState(false)
   const card = useRef<HTMLDivElement>(null)
+  const box = useRef<HTMLTextAreaElement>(null)
   // A live update can unmount this card before the "copied" flag times out.
   const copyTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
   useEffect(() => () => clearTimeout(copyTimer.current), [])
@@ -228,6 +229,33 @@ export function ThreadCard({
   // button to the row it already had rather than a second band of its own.
   const writing = thread.state !== 'resolved' && composerOpen
   const showStub = thread.state !== 'resolved' && !composerOpen
+  // The agent offered the reviewer their answer: ghost text in the composer,
+  // Tab takes it. Only while the agent has the last word — the reviewer's own
+  // reply, whatever it says, supersedes the offer.
+  const last = thread.messages[thread.messages.length - 1]
+  const offered =
+    thread.state !== 'resolved' && last?.author === 'agent' ? (last.suggestedReply ?? null) : null
+  const ghost = offered !== null && reply === ''
+  // Take the offer as the draft: the box opens with it, caret at the end, so
+  // the next keystroke edits it and ⌘↵ sends it.
+  const useOffer = () => {
+    if (offered === null) return
+    setReply(offered)
+    setReplyOpen(true)
+    requestAnimationFrame(() => {
+      const el = box.current
+      if (!el) return
+      el.focus()
+      el.setSelectionRange(el.value.length, el.value.length)
+    })
+  }
+  const takesOffer = (e: React.KeyboardEvent) =>
+    ghost &&
+    (e.key === 'Tab' || e.key === 'ArrowRight') &&
+    !e.shiftKey &&
+    !e.metaKey &&
+    !e.ctrlKey &&
+    !e.altKey
 
   const status = proposed
     ? 'From the agent'
@@ -459,7 +487,28 @@ export function ThreadCard({
       )}
       {!shut && (
         <div className={`thread-foot${showStub || writing ? '' : ' thread-foot-bare'}`}>
-          {showStub && (
+          {showStub && offered !== null && (
+            <div className="thread-offer replybar">
+              <button
+                type="button"
+                className="thread-reply-stub thread-reply-stub-offer"
+                onClick={() => setReplyOpen(true)}
+                title="the agent suggests this reply — click to write your own, Tab in the box takes this one"
+              >
+                <Icon name="sparkle" size="sm" className="thread-offer-icon" />
+                <span className="thread-offer-text">{offered}</span>
+              </button>
+              <button
+                type="button"
+                className="btn btn-outline btn-sm thread-offer-use"
+                onClick={useOffer}
+                title="take the suggested reply into the box, ready to edit or send"
+              >
+                Use
+              </button>
+            </div>
+          )}
+          {showStub && offered === null && (
             <button
               type="button"
               className="thread-reply-stub replybar"
@@ -469,22 +518,50 @@ export function ThreadCard({
             </button>
           )}
           {writing && (
-            <textarea
-              // biome-ignore lint/a11y/noAutofocus: the reply box is opened by an explicit click
-              autoFocus
-              rows={1}
-              className="thread-input"
-              placeholder="reply…"
-              value={reply}
-              onChange={(e) => setReply(e.target.value)}
-              onBlur={() => {
-                if (!reply.trim()) setReplyOpen(false)
-              }}
-              onKeyDown={(e) => {
-                if (e.key === 'Escape' && !reply.trim()) setReplyOpen(false)
-                else submitOnCmdEnter(e, () => doReply(true))
-              }}
-            />
+            <div className={`thread-input-wrap${ghost ? ' thread-input-wrap-ghost' : ''}`}>
+              {/* The glyph belongs to the ghost text, not the field: the moment
+                  the reviewer types, the words are theirs and it goes. */}
+              {ghost && (
+                <Icon name="sparkle" size="sm" className="thread-offer-icon thread-ghost-icon" />
+              )}
+              <textarea
+                // biome-ignore lint/a11y/noAutofocus: the reply box is opened by an explicit click
+                autoFocus
+                ref={box}
+                rows={1}
+                className={`thread-input${ghost ? ' thread-input-ghost' : ''}`}
+                // The placeholder IS the ghost text: it wraps and sits exactly
+                // where the typed reply will, for free.
+                placeholder={ghost ? offered : 'reply…'}
+                aria-description={
+                  ghost ? 'the agent offered this reply; press Tab to take it' : undefined
+                }
+                value={reply}
+                onChange={(e) => setReply(e.target.value)}
+                onBlur={() => {
+                  if (!reply.trim()) setReplyOpen(false)
+                }}
+                onKeyDown={(e) => {
+                  if (takesOffer(e)) {
+                    e.preventDefault()
+                    setReply(offered!)
+                  } else if (e.key === 'Escape' && !reply.trim()) setReplyOpen(false)
+                  else submitOnCmdEnter(e, () => doReply(true))
+                }}
+              />
+              {ghost && (
+                <button
+                  type="button"
+                  className="thread-offer-kbd thread-ghost-hint"
+                  // Keep the caret in the box: a click here must not blur it shut.
+                  onMouseDown={(e) => e.preventDefault()}
+                  onClick={useOffer}
+                  title="take the suggested reply (Tab)"
+                >
+                  Tab
+                </button>
+              )}
+            </div>
           )}
           {!showStub && !writing && <span className="thread-spacer" />}
           {writing && reply.trim() !== '' && (

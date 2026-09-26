@@ -475,6 +475,89 @@ describe('ThreadCard with an attached agent', () => {
     expect(acts.send).not.toHaveBeenCalled()
   })
 
+  describe('the agent’s offered reply', () => {
+    const offered = () =>
+      thread({
+        state: 'open',
+        messages: [
+          {
+            id: 'm1',
+            author: 'agent',
+            text: 'I can fold these two guards. Want that?',
+            at: '2026-08-03T00:00:00Z',
+            suggestedReply: 'yes, fold them',
+          },
+        ],
+      })
+
+    it('shows on the collapsed stub, marked as the agent’s, then as ghost text in the box', () => {
+      render(<ThreadCard thread={offered()} actions={actions()} agentConnected />)
+      const stub = document.querySelector('.thread-reply-stub')!
+      expect(stub.textContent).toContain('yes, fold them')
+      expect(stub.querySelector('.thread-offer-icon')).toBeTruthy()
+      expect(screen.getByText('Use')).toBeTruthy()
+      const box = openReply('yes, fold them')
+      expect(box.value).toBe('')
+      expect(box.classList.contains('thread-input-ghost')).toBe(true)
+      expect(document.querySelector('.thread-ghost-icon')).toBeTruthy()
+      // Typed words are the reviewer's: the agent's glyph leaves with the ghost.
+      fireEvent.change(box, { target: { value: 'n' } })
+      expect(document.querySelector('.thread-ghost-icon')).toBeNull()
+    })
+
+    it('Use takes it straight into the box, ready to send — nothing sent yet', () => {
+      const acts = actions()
+      render(<ThreadCard thread={offered()} actions={acts} agentConnected />)
+      fireEvent.click(screen.getByText('Use'))
+      const box = screen.getByPlaceholderText('reply…') as HTMLTextAreaElement
+      expect(box.value).toBe('yes, fold them')
+      expect(acts.reply).not.toHaveBeenCalled()
+      expect(screen.getByText('Reply & send')).toBeTruthy()
+    })
+
+    it('the Tab chip answers a click as well', () => {
+      render(<ThreadCard thread={offered()} actions={actions()} agentConnected />)
+      const box = openReply('yes, fold them')
+      fireEvent.click(document.querySelector('.thread-ghost-hint')!)
+      expect(box.value).toBe('yes, fold them')
+    })
+
+    it('Tab takes it into the box — nothing is sent until the reviewer says so', () => {
+      const acts = actions()
+      render(<ThreadCard thread={offered()} actions={acts} agentConnected />)
+      const box = openReply('yes, fold them')
+      fireEvent.keyDown(box, { key: 'Tab' })
+      expect(box.value).toBe('yes, fold them')
+      expect(acts.reply).not.toHaveBeenCalled()
+      expect(box.classList.contains('thread-input-ghost')).toBe(false)
+      expect(document.querySelector('.thread-ghost-hint')).toBeNull()
+      fireEvent.keyDown(box, { key: 'Enter', metaKey: true })
+      expect(acts.reply).toHaveBeenCalledWith('t-1', 'yes, fold them', true)
+    })
+
+    it('→ takes it too; Shift+Tab and typing do not', () => {
+      render(<ThreadCard thread={offered()} actions={actions()} agentConnected />)
+      const box = openReply('yes, fold them')
+      fireEvent.keyDown(box, { key: 'Tab', shiftKey: true })
+      expect(box.value).toBe('')
+      fireEvent.change(box, { target: { value: 'n' } })
+      expect(box.classList.contains('thread-input-ghost')).toBe(false)
+      fireEvent.keyDown(box, { key: 'Tab' })
+      expect(box.value).toBe('n')
+      fireEvent.change(box, { target: { value: '' } })
+      fireEvent.keyDown(box, { key: 'ArrowRight' })
+      expect(box.value).toBe('yes, fold them')
+    })
+
+    it('is withdrawn once the reviewer has the last word', () => {
+      const t = offered()
+      t.messages.push({ id: 'm2', author: 'reviewer', text: 'no', at: '2026-08-03T00:01:00Z' })
+      render(<ThreadCard thread={t} actions={actions()} agentConnected />)
+      expect(document.querySelector('.thread-reply-stub')!.textContent).toBe('Reply…')
+      openReply()
+    })
+  })
+
   it('⌘↵ runs the primary — the reply goes straight to the agent', () => {
     const acts = actions()
     render(<ThreadCard thread={thread({ state: 'sent' })} actions={acts} agentConnected />)

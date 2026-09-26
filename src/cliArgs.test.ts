@@ -109,6 +109,7 @@ describe('parseCliArgs — agent verbs', () => {
       threadId: 't-1',
       message: 'done',
       more: false,
+      suggestReply: null,
     })
     expect(parseCliArgs(['reply', 't-1', '-m', 'done'])).toMatchObject({ message: 'done' })
     expect(parseCliArgs(['reply', 't-1'])).toEqual({
@@ -116,6 +117,7 @@ describe('parseCliArgs — agent verbs', () => {
       threadId: 't-1',
       message: null,
       more: false,
+      suggestReply: null,
     })
     expect(parseCliArgs(['reply'])).toMatchObject({ kind: 'error' })
     expect(parseCliArgs(['reply', 't-1', 'oops'])).toMatchObject({ kind: 'error' })
@@ -130,6 +132,30 @@ describe('parseCliArgs — agent verbs', () => {
     expect(parseCliArgs(['poll', '--more'])).toMatchObject({ kind: 'error' })
   })
 
+  it('reply and comment take --suggest-reply as one non-empty line; other verbs refuse it', () => {
+    expect(
+      parseCliArgs([
+        'reply',
+        't-1',
+        '-m',
+        'want me to extract it?',
+        '--suggest-reply',
+        'yes, extract it',
+      ]),
+    ).toMatchObject({ kind: 'reply', suggestReply: 'yes, extract it' })
+    expect(
+      parseCliArgs(['comment', 'a.ts', '-m', 'fold these?', '--suggest-reply', ' fold them ']),
+    ).toMatchObject({ kind: 'comment', suggestReply: 'fold them' })
+    expect(parseCliArgs(['comment', '-m', 'x', '--suggest-reply', '  '])).toMatchObject({
+      kind: 'error',
+    })
+    expect(parseCliArgs(['reply', 't-1', '-m', 'x', '--suggest-reply', 'a\nb'])).toMatchObject({
+      kind: 'error',
+    })
+    expect(parseCliArgs(['poll', '--suggest-reply', 'x'])).toMatchObject({ kind: 'error' })
+    expect(parseCliArgs(['end', '--suggest-reply', 'x'])).toMatchObject({ kind: 'error' })
+  })
+
   it('comment anchors to a line, a file, or (no file) the changeset', () => {
     expect(parseCliArgs(['comment', 'src/a.ts', '--line', '12', '--message', 'name this'])).toEqual(
       {
@@ -137,6 +163,7 @@ describe('parseCliArgs — agent verbs', () => {
         file: 'src/a.ts',
         line: 12,
         message: 'name this',
+        suggestReply: null,
       },
     )
     expect(parseCliArgs(['comment', 'src/a.ts'])).toEqual({
@@ -144,12 +171,14 @@ describe('parseCliArgs — agent verbs', () => {
       file: 'src/a.ts',
       line: null,
       message: null,
+      suggestReply: null,
     })
     expect(parseCliArgs(['comment', '--message', 'read review.ts first'])).toEqual({
       kind: 'comment',
       file: null,
       line: null,
       message: 'read review.ts first',
+      suggestReply: null,
     })
     // A line with no file has nothing to anchor to.
     expect(parseCliArgs(['comment', '--line', '3', '--message', 'x'])).toMatchObject({

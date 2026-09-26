@@ -107,6 +107,11 @@ The loop:
    plain reply before the next poll.
 7. Comment (sparingly): \`diffo comment [<file>] [--line <n>] -m "<text>"\`
    starts a thread in your voice — a concern, or context that helps the read.
+   When a reply or comment of yours ends in a decision that is the
+   reviewer's ("want me to extract this?"), add \`--suggest-reply "<one
+   line>"\` — it shows as ghost text in their reply box, taken with Tab.
+   Offer the answer you expect, not a menu; skip it on messages that only
+   report.
 8. Poll again only when the whole batch is handled — a new poll tells the
    reviewer you are done with the previous one.
 9. Detach: run \`diffo end\` when the review is over or the user moves on.
@@ -142,7 +147,7 @@ Examples:
   diffo poll`,
   reply: `diffo reply — post a reply to a review thread
 
-Usage: diffo reply <threadId> --message "<text>"
+Usage: diffo reply <threadId> --message "<text>" [--suggest-reply "<one line>"]
        … | diffo reply <threadId>            (long replies: pipe on stdin)
 
 Thread ids arrive in poll payloads. Each run posts one message, so don't
@@ -151,6 +156,11 @@ re-run a reply that succeeded.
 reply on this thread is promised. The reviewer keeps seeing the thread as
 "with the agent" until your next plain reply; going quiet instead marks it
 unanswered.
+--suggest-reply offers the reviewer their answer: one line that appears as
+ghost text in their reply box, taken with Tab, edited or ignored at will.
+Use it when your message ends in a decision that is theirs to make
+("want me to extract this?" → --suggest-reply "yes, extract it"); never
+on a message that only reports.
 Messages render GitHub-flavored markdown; a \`\`\`mermaid fence renders as a
 diagram in the review.
 
@@ -160,7 +170,7 @@ Example:
   diffo reply t-3 --message "fixed — the guard now covers the empty case"`,
   comment: `diffo comment — start a comment thread as the agent
 
-Usage: diffo comment [<file>] [--line <n>] --message "<text>"
+Usage: diffo comment [<file>] [--line <n>] --message "<text>" [--suggest-reply "<one line>"]
        … | diffo comment [<file>] [--line <n>]  (long comments: pipe on stdin)
 
 Anchors to a line (--line), a file, or — with no file — the whole changeset.
@@ -168,13 +178,18 @@ A potential issue, or context that helps the reviewer read: either way it is
 one thread, labeled as yours, and it never counts as the reviewer's feedback
 until they reply into it — then it is theirs to send — or they resolve it.
 Spend these sparingly — an agent that annotates everything gets skimmed.
+--suggest-reply offers the reviewer their answer: one line that appears as
+ghost text in their reply box, taken with Tab, edited or ignored at will.
+Use it when the comment proposes something and the call is theirs; the
+reply they take hands the thread to you like any other.
 Messages render GitHub-flavored markdown; a \`\`\`mermaid fence renders as a
 diagram in the review.
 
 Output: {"ok":true,"threadId":"t-1","next_step":"…"}
 
-Example:
-  diffo comment src/auth.ts --line 42 --message "this branch is unreachable"`,
+Examples:
+  diffo comment src/auth.ts --line 42 --message "this branch is unreachable"
+  diffo comment src/auth.ts --line 42 -m "I can fold these two guards into one. Want that?" --suggest-reply "yes, fold them"`,
   layers: `diffo layers — outline the changeset as steps to read in order
 
 Usage: diffo layers --suggest ["<why, in one line>"]   at open: this read benefits from layers
@@ -262,8 +277,20 @@ export type CliCommand =
       foreground: boolean
     }
   | { kind: 'poll'; title: string | null }
-  | { kind: 'reply'; threadId: string; message: string | null; more: boolean }
-  | { kind: 'comment'; file: string | null; line: number | null; message: string | null }
+  | {
+      kind: 'reply'
+      threadId: string
+      message: string | null
+      more: boolean
+      suggestReply: string | null
+    }
+  | {
+      kind: 'comment'
+      file: string | null
+      line: number | null
+      message: string | null
+      suggestReply: string | null
+    }
   | { kind: 'layers'; source: LayersSource }
   | { kind: 'end' }
   | { kind: 'setup' }
@@ -474,6 +501,7 @@ function parseVerb(verb: string, rest: string[]): CliCommand {
         line: { type: 'string' },
         title: { type: 'string' },
         more: { type: 'boolean' },
+        'suggest-reply': { type: 'string' },
         json: { type: 'boolean' },
         help: { type: 'boolean', short: 'h' },
       },
@@ -481,6 +509,7 @@ function parseVerb(verb: string, rest: string[]): CliCommand {
   )
   if (!parsed.ok) return { kind: 'error', message: parsed.message }
   const { values, positionals } = parsed.value
+  const suggestReply = values['suggest-reply']
 
   // A help request is never an error, whatever else is on the line.
   if (values.help) return { kind: 'help', topic: verb }
@@ -491,6 +520,18 @@ function parseVerb(verb: string, rest: string[]): CliCommand {
 
   if (values.more && verb !== 'reply') {
     return { kind: 'error', message: `'${verb}' takes no --more` }
+  }
+
+  if (suggestReply !== undefined) {
+    if (verb !== 'reply' && verb !== 'comment') {
+      return { kind: 'error', message: `'${verb}' takes no --suggest-reply` }
+    }
+    if (!suggestReply.trim()) {
+      return { kind: 'error', message: '--suggest-reply needs the reply you are offering' }
+    }
+    if (suggestReply.includes('\n')) {
+      return { kind: 'error', message: '--suggest-reply is one line — the reviewer completes it' }
+    }
   }
 
   if (values.title !== undefined && verb !== 'poll') {
@@ -534,7 +575,13 @@ function parseVerb(verb: string, rest: string[]): CliCommand {
     if (values.line !== undefined) {
       return { kind: 'error', message: 'reply takes no --line' }
     }
-    return { kind: 'reply', threadId, message: values.message ?? null, more: values.more === true }
+    return {
+      kind: 'reply',
+      threadId,
+      message: values.message ?? null,
+      more: values.more === true,
+      suggestReply: suggestReply?.trim() ?? null,
+    }
   }
 
   const file = positionals[0] ?? null
@@ -554,5 +601,11 @@ function parseVerb(verb: string, rest: string[]): CliCommand {
   if (line !== null && file === null) {
     return { kind: 'error', message: 'a --line needs a file to anchor to' }
   }
-  return { kind: 'comment', file, line, message: values.message ?? null }
+  return {
+    kind: 'comment',
+    file,
+    line,
+    message: values.message ?? null,
+    suggestReply: suggestReply?.trim() ?? null,
+  }
 }

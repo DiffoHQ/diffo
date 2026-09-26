@@ -4386,6 +4386,88 @@ tr:hover .line-range-glyph {
   border-color: var(--ink-3);
 }
 
+/* ---------- the agent's offered reply: ghost text, Tab takes it ---------- */
+/* Collapsed: the suggestion reads in the stub, marked with the agent's glyph so
+ * it is never mistaken for a draft of the reviewer's own, and a Use button takes
+ * it in one click. Open: the placeholder doubles as the ghost text — it wraps and
+ * sits exactly where the typed reply will — with the glyph beside it and a Tab
+ * chip that also answers a click. Both leave with the ghost: typed words are
+ * the reviewer's, and nothing on the field may say otherwise. */
+.thread-foot .thread-offer {
+  display: flex;
+  flex: 1;
+  min-width: 0;
+  align-items: center;
+  gap: var(--s-2);
+}
+
+.thread-offer-icon {
+  flex: none;
+  color: var(--attn);
+}
+
+.thread-reply-stub-offer .thread-offer-text {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.thread-offer-use {
+  flex: none;
+}
+
+.thread-foot .thread-input-wrap {
+  position: relative;
+  display: flex;
+  flex: 1;
+  min-width: 0;
+}
+
+.thread-input-wrap-ghost .thread-input {
+  padding-left: 30px;
+}
+
+.thread-input-ghost::placeholder {
+  color: var(--ink-3);
+  opacity: 1;
+}
+
+.thread-input-wrap .thread-input-ghost {
+  padding-right: 46px;
+}
+
+.thread-ghost-icon {
+  position: absolute;
+  left: 10px;
+  top: 8px;
+  pointer-events: none;
+}
+
+.thread-offer-kbd {
+  flex: none;
+  padding: 1px 5px;
+  border: 1px solid var(--hair);
+  border-radius: 4px;
+  background: var(--paper);
+  color: var(--ink-3);
+  font-family: var(--mono);
+  font-size: 10.5px;
+  line-height: 1.3;
+}
+
+.thread-ghost-hint {
+  position: absolute;
+  right: 8px;
+  bottom: 7px;
+  cursor: pointer;
+}
+
+.thread-ghost-hint:hover {
+  border-color: var(--ink-3);
+  color: var(--ink-2);
+}
+
 .thread-context-wrap {
   border-bottom: 1px solid var(--border);
   background: var(--bg-subtle);
