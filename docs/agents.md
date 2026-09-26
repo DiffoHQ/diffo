@@ -34,7 +34,7 @@ agent's behalf. Three things follow from it.
 | Step | What the agent runs | Why it matters |
 | --- | --- | --- |
 | 1. Open | `diffo --no-open` | Starts the review and prints the URL. `--no-open` because an agent should never throw a browser window at someone; it hands over the URL instead — immediately, before anything else |
-| 2. Guide | `diffo comment -m "…"` | One orientation comment, only when the changeset needs it, written while the reviewer is opening the page. See [the guide comment](#the-guide-comment) |
+| 2. Guide | `diffo comment -m "…"` | One comment on the whole changeset — a map of the change, not a reading order — only when the changeset needs it, written while the reviewer is opening the page. See [the guide comment](#the-guide-comment) |
 | 2b. Layers | `diffo layers --suggest "…"` | Optional: a flag that this read benefits from an ordered outline. The outline itself is posted only when the reviewer asks. See [layers](#layers) |
 | 3. Attach | `diffo poll --title "…"` | Blocks until the reviewer acts, then prints one payload. The title becomes the reviewer's browser tab name — see [the tab title](#the-tab-title) |
 | 4. Act | (edits, and `diffo reply`) | Work the threads the payload named, and answer each one |
@@ -167,14 +167,27 @@ teaches it, so all of them say the same thing:
 | | |
 | --- | --- |
 | **When** | Multi-file, structural, or subtle. Skipped when the diff explains itself |
-| **What** | One sentence on what the change does, plus a small ```` ```mermaid ```` diagram if a picture explains the shape better than words |
+| **What** | A map of the change, not a tour of it: what it does and why, in a sentence; how the changed pieces talk to each other, as a small ```` ```mermaid ```` diagram of the runtime flow when a picture beats words; what has to stay true, as checks for the reviewer to run (an invariant the change must keep, a judgment call it made, a shortcoming it knows about); and what they can skip. Ingredients, not sections: a rename needs no diagram, a one-file change needs no checks |
+| **Not in it** | A reading order or a file list. [Layers](#layers) and the Files tab own those; a change that reads better in order gets `diffo layers --suggest`, not a numbered guide |
+| **How much** | About a hundred words of prose plus the diagram, one screen |
+| **The legend** | In the diagram, new code is tagged `:::new` and changed code `:::changed`, with two `classDef` lines `diffo help guide` prints verbatim; a plain node is existing code the change now leans on. A reviewer sees the seam where new meets old by color, in the same visual language on every review |
 | **The line it must not cross** | Orient reading, never pre-review: no verdicts, nothing is "fine" |
 | **When it goes stale** | The agent replies to its own guide thread with a short update, rather than posting a second guide |
 
-That last constraint is the point of the whole step. A guide that says the change
-is correct has pre-reviewed the code for the person whose independent judgment is
-the reason Diffo exists. If a takeover happens, the new agent inherits the existing
+The reason it is a map: every other tool infers a summary by reading the diff
+back. The session that wrote the change still holds what no diff shows — the
+invariant it had to respect, the seam it chose, the alternative it rejected, what
+it left alone on purpose — and that is what a reviewer cannot get anywhere else.
+Pre-review is the one thing it may not add: a guide that says the change is
+correct has judged the code for the person whose independent judgment is the
+reason Diffo exists. If a takeover happens, the new agent inherits the existing
 guide and updates it in place, so the reviewer never ends up with two.
+
+The map is also navigation. A file the guide names — as `` `path` `` or
+`` `path:line` `` in prose, or in a diagram node — becomes a jump to that file
+in the review, the same way a layer summary's references do. `diffo help guide`
+carries the whole doctrine and one worked example, labelled as one shape that
+works rather than the shape.
 
 ## Layers
 

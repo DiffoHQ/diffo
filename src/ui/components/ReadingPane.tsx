@@ -15,7 +15,7 @@ import {
   NO_EXPANSION,
 } from '../gaps.js'
 import { fileAnchor } from '../hooks.js'
-import { linkPaths, parseLayerLink } from '../layers.js'
+import { linkPaths, type RefLinks, refClickTarget } from '../layers.js'
 import { EMPTY_DELTA, type LiveDelta } from '../liveDelta.js'
 import type { ThreadPartition } from '../reviewPlacement.js'
 import { GapBand, type GapControls, HunkCard } from './HunkCard.js'
@@ -108,9 +108,7 @@ function LayerHead({
 }) {
   const summary = layer.summary ? linkPaths(layer.summary, layer.knownPaths) : null
   const onClick = (e: React.MouseEvent) => {
-    const a = (e.target as Element).closest('a')
-    if (!a) return
-    const ref = parseLayerLink(a.getAttribute('href') ?? '')
+    const ref = refClickTarget(e.target as Element)
     if (!ref) return
     e.preventDefault()
     layer.onJump(ref.path, ref.line)
@@ -135,7 +133,11 @@ function LayerHead({
         // biome-ignore lint/a11y/noStaticElementInteractions: click delegation for the links inside rendered markdown
         // biome-ignore lint/a11y/useKeyWithClickEvents: the links themselves are focusable and keyboard-activated
         <div onClick={onClick}>
-          <Markdown text={summary} className="cmt-body markdown ch-summary" />
+          <Markdown
+            text={summary}
+            className="cmt-body markdown ch-summary"
+            paths={layer.knownPaths}
+          />
         </div>
       )}
       {layer.missing.length > 0 && (
@@ -181,6 +183,9 @@ export interface ReviewComments {
   changesetComposerOpen?: boolean
   onOpenChangesetComposer?: () => void
   onCloseChangesetComposer?: () => void
+  /** Turns file references in the changeset threads — the guide above all —
+   * into jumps: the map of the change doubles as its navigation. */
+  links?: RefLinks
 }
 
 export interface ReviewHandlers {
@@ -861,6 +866,7 @@ export function ReadingPane({
               agentConnected={comments.agentConnected}
               workingOn={comments.workingOn}
               queuedOn={comments.queuedOn}
+              links={comments.links}
             />
             {comments.changesetComposerOpen ? (
               <CommentBox

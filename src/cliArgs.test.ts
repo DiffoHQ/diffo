@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { HELP_TEXT, helpFor, parseCliArgs } from './cliArgs.js'
+import { GUIDE, GUIDE_CLASSDEFS } from './server/prompt.js'
 
 describe('parseCliArgs', () => {
   it('defaults to working tree, auto port, open browser, background server', () => {
@@ -221,6 +222,31 @@ describe('parseCliArgs — help is never an error', () => {
     expect(page).toMatch(/share the printed URL instead, the moment it\s+prints/)
     expect(page).toMatch(/Right after sharing the URL, while the reviewer opens the page/)
     expect(page).not.toMatch(/Before sharing the URL/)
+  })
+
+  it('help agent teaches the guide as a map — no reading order, one screen, a legend', () => {
+    const page = helpFor('agent')
+    expect(page).toContain(GUIDE.what)
+    expect(page).toContain(GUIDE.order)
+    expect(page).toContain(GUIDE.budget)
+    expect(page).toContain(GUIDE.legend)
+    expect(page).toContain('diffo help guide')
+  })
+
+  it('help guide is a topic of its own, with the classDef lines and one example', () => {
+    expect(parseCliArgs(['help', 'guide'])).toEqual({ kind: 'help', topic: 'guide' })
+    const page = helpFor('guide')
+    for (const line of GUIDE_CLASSDEFS) expect(page).toContain(line)
+    expect(page).toContain(':::new')
+    expect(page).toContain(':::changed')
+    // The example is one shape, not the shape — the page says so.
+    expect(page).toMatch(/not THE shape/)
+    // Every rule the doctrine carries reaches the page that shows the example.
+    expect(page).toContain(GUIDE.when)
+    expect(page).toContain(GUIDE.order)
+    expect(page).toContain(GUIDE.stance)
+    expect(page).toContain(GUIDE.update)
+    expect(HELP_TEXT).toContain('help guide')
   })
 })
 

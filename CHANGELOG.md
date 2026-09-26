@@ -7,6 +7,27 @@ Until 1.0, minor versions may break things. When they do, the entry says how to 
 
 ## [Unreleased]
 
+### Changed
+
+- **The guide is a map, not a tour.** Since layers took over the reading
+  order, the agent's opening comment kept writing one anyway — 24 of the last
+  30 guides did. The doctrine now asks for what only the author knows: what
+  the change does and why, how the changed pieces talk to each other as a
+  runtime-flow diagram, what has to stay true (an invariant, a judgment call,
+  a known shortcoming) as checks for the reviewer to run, and what to skip.
+  No reading order, no file list, about a hundred words plus the diagram.
+  Diagrams tag new code `:::new` and changed code `:::changed` with two
+  `classDef` lines, so the seam where new meets old reads the same on every
+  review. `diffo help guide` carries the doctrine and one worked example;
+  `help agent`, the open-time nudge, and the cleared-round payload restate it.
+
+### Added
+
+- **The map is navigation.** In the changeset threads — the guide above all —
+  a file named as `` `path` `` or `` `path:line` `` in prose, or in a diagram
+  node, is now a jump to that file in the review, the same way a layer
+  summary's references already were. Layer-card diagrams get the same.
+
 ### Fixed
 
 - **Hide tests** now catches Cypress (`.cy.ts`, `cypress/`), e2e layouts

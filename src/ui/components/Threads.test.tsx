@@ -413,6 +413,49 @@ describe('ThreadCard', () => {
     expect(document.contains(figure)).toBe(true)
   })
 
+  it('with links, a file named in a message is a jump into the review — the guide is a map', () => {
+    const onJump = vi.fn()
+    render(
+      <ThreadCard
+        thread={thread({
+          anchor: { kind: 'changeset' },
+          messages: [
+            {
+              id: 'g1',
+              author: 'agent',
+              text: 'Start at `b.ts:2`, then `src/b.ts`. Not `zzz.ts`.',
+              at: '2026-08-03T00:00:00Z',
+            },
+          ],
+        })}
+        actions={actions()}
+        links={{ paths: ['src/b.ts'], onJump }}
+      />,
+    )
+    const links = Array.from(document.querySelectorAll('.cmt-body a'))
+    expect(links.map((a) => a.textContent)).toEqual(['b.ts:2', 'src/b.ts'])
+    fireEvent.click(links[0]!.querySelector('code')!)
+    expect(onJump).toHaveBeenCalledWith('src/b.ts', 2)
+    fireEvent.click(links[1]!)
+    expect(onJump).toHaveBeenLastCalledWith('src/b.ts', null)
+    // The unknown file stays plain code.
+    expect(document.querySelector('.cmt-body')!.textContent).toContain('zzz.ts')
+  })
+
+  it('without links a message body is left exactly as written', () => {
+    render(
+      <ThreadCard
+        thread={thread({
+          messages: [
+            { id: 'g1', author: 'agent', text: 'see `src/b.ts`', at: '2026-08-03T00:00:00Z' },
+          ],
+        })}
+        actions={actions()}
+      />,
+    )
+    expect(document.querySelector('.cmt-body a')).toBeNull()
+  })
+
   it('an agent reply shows how long the run took', () => {
     render(
       <ThreadCard

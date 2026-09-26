@@ -176,20 +176,43 @@ export const ACK_NEXT_STEP = {
 /**
  * The guide doctrine — the one agent comment that orients a cold reader.
  * Stated once and interpolated into every surface that teaches it (the skill,
- * `help agent`, the open-time nudge below), the same way POLL_STANCE keeps the
- * poll rules aligned: the surfaces phrase it at different lengths, but these
- * invariants cannot drift apart.
+ * `help agent`, `help guide`, the open-time nudge below), the same way
+ * POLL_STANCE keeps the poll rules aligned: the surfaces phrase it at different
+ * lengths, but these invariants cannot drift apart.
+ *
+ * It is a map, not a tour. Every other tool infers a summary by reading the
+ * diff back; the session that wrote the change still holds what no diff shows
+ * — the invariant it had to respect, the seam it chose, the alternative it
+ * rejected, what it left alone on purpose — and that is what the reviewer
+ * cannot get anywhere else. Reading order is not on the list: layers own it.
  */
 export const GUIDE = {
   /** When one is warranted — and that silence is a valid outcome. */
   when: 'multi-file, structural, or subtle — skip when the diff explains itself',
-  /** What it contains. */
-  what: 'one sentence on what the change does, plus a small ```mermaid diagram if a picture explains the shape better than words',
+  /** What it contains: ingredients, not sections — use the ones this change needs. */
+  what: 'a map of the change, not a tour of it: what it does and why, in a sentence; how the changed pieces talk to each other, as a small ```mermaid diagram of the runtime flow (functions and modules, not a file list) when a picture beats words; what is worth checking as they read — an invariant the change must keep, a judgment call it made, a shortcoming it knows about — said in plain words, never behind a label of your own; and what is safe to skip',
   /** The line it must not cross. */
   stance: 'Orient reading, never pre-review: no verdicts, nothing is "fine"',
+  /** What layers took over: the guide never orders the read. */
+  order:
+    'no reading order and no file list — layers and the Files tab own those; a change that reads better in order gets a layers suggestion, not a numbered guide',
+  /** How much: one screen, and only the parts that apply. */
+  budget:
+    'about a hundred words of prose plus the diagram — one screen; use only the parts this change needs, in whatever form fits',
+  /** The diagram convention: two tags, and a plain node means existing code. */
+  legend:
+    'in the diagram tag new code `:::new` and changed code `:::changed`, declared by the two classDef lines below; a plain node is existing code the change now leans on',
   /** Staleness: the guide is a thread, so updates land under it. */
   update: 'reply to your own guide thread with a short update',
 } as const
+
+/** The two classDef lines the legend refers to, verbatim — pasted at the foot
+ * of the diagram. Strokes only, in hexes both renderers honour and both themes
+ * read; fills stay the renderer's own, so the diagram still follows the theme. */
+export const GUIDE_CLASSDEFS = [
+  'classDef new stroke:#2e9e4f,stroke-width:2px',
+  'classDef changed stroke:#d99a00,stroke-width:2px',
+] as const
 
 /**
  * The layers doctrine — the agent's reading plan for a changeset with an order
@@ -242,9 +265,9 @@ export function guideNudge(hasGuide: boolean): string | null {
     'share the URL above with the user right now, as a message line, before ' +
     'anything else. Then, while they open it, orient them if this changeset ' +
     `needs it (${GUIDE.when}): post a guide — one comment on the whole changeset: ` +
-    `${GUIDE.what}: \`${CLI_COMMANDS.guide}\` ` +
-    `(no file, so it anchors to the changeset; it appears live at the top of ` +
-    `their review). ${GUIDE.stance}.`
+    `\`${CLI_COMMANDS.guide}\` (no file, so it anchors to the changeset; it appears ` +
+    `live at the top of their review). It is ${GUIDE.what}. Not in it: ${GUIDE.order}. ` +
+    `How much: ${GUIDE.budget}. ${GUIDE.stance}. \`diffo help guide\` has the diagram legend and one example.`
   )
 }
 
@@ -658,7 +681,7 @@ export function buildClearedPrompt(ctx: PromptContext): string {
     `The reviewer cleared the review in \`${ctx.repo.name}\` (branch \`${ctx.repo.branch}\`): the previous round landed, and its threads and guide are gone. What the reviewer sees now is a fresh round.`,
     '',
     ...(ctx.changeset ? [specLine(ctx.changeset), ''] : []),
-    `There is no feedback to act on. But the fresh round has no guide — if this changeset needs one (${GUIDE.when}): post it — one comment on the whole changeset: ${GUIDE.what}: \`${CLI_COMMANDS.guide}\` (no file, so it anchors to the changeset). ${GUIDE.stance}.`,
+    `There is no feedback to act on. But the fresh round has no guide — if this changeset needs one (${GUIDE.when}): post it — one comment on the whole changeset: \`${CLI_COMMANDS.guide}\` (no file, so it anchors to the changeset). It is ${GUIDE.what}. Not in it: ${GUIDE.order}. How much: ${GUIDE.budget}. ${GUIDE.stance}. \`diffo help guide\` has the diagram legend and one example.`,
     '',
     `Then run \`${CLI_COMMANDS.poll}\` again to keep listening (${POLL_STANCE}).`,
     '',

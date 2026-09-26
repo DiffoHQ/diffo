@@ -3484,6 +3484,19 @@ tr:hover .line-range-glyph {
   margin: 0 auto;
 }
 
+/* A diagram node naming a changeset file is a jump (see `linkDiagramRefs`). */
+.markdown .mermaid-figure text.diffo-ref {
+  cursor: pointer;
+  text-decoration: underline;
+  text-decoration-color: var(--ink-3);
+}
+
+.markdown .mermaid-figure text.diffo-ref:hover,
+.markdown .mermaid-figure text.diffo-ref:focus-visible {
+  text-decoration-color: var(--ink);
+  outline: none;
+}
+
 .markdown .mermaid-broken {
   font-size: var(--t-125);
   color: var(--ink-2);

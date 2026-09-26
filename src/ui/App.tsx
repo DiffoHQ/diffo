@@ -48,6 +48,7 @@ import {
   layerByPath,
   layerKey,
   layerProgress,
+  type RefLinks,
   type ResolvedLayer,
   resolveLayers,
   startingLayer,
@@ -884,6 +885,17 @@ function Review() {
     [data, enterLayerFor, revealFile, scrollToFile],
   )
 
+  // The guide is a map; a map you can click is navigation. File references in
+  // the changeset threads jump the same way a layer summary's do.
+  const refLinks = useMemo<RefLinks>(
+    () => ({ paths: allFiles.map((f) => f.path), onJump: jumpTo }),
+    [allFiles, jumpTo],
+  )
+  const paneComments = useMemo<ReviewComments>(
+    () => ({ ...comments, links: refLinks }),
+    [comments, refLinks],
+  )
+
   const markFilesViewed = useCallback(
     (paths: string[]) => {
       markFiles(paths)
@@ -1480,7 +1492,7 @@ function Review() {
           viewMode={viewMode}
           collapsed={collapsed}
           onToggleCollapsed={toggleCollapsed}
-          comments={comments}
+          comments={paneComments}
         />
       </div>
       {finishOpen && (

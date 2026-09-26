@@ -16,6 +16,7 @@ import {
   CLI_COMMANDS,
   captureAnchor,
   GUIDE,
+  GUIDE_CLASSDEFS,
   guideInherit,
   guideNudge,
   INSTALL_SKILL,
@@ -802,6 +803,27 @@ describe('the open-time guide nudge', () => {
     // The judgment stays the agent's, and pre-reviewing stays banned.
     expect(nudge).toContain('skip when the diff explains itself')
     expect(nudge).toContain('never pre-review')
+    // A map, not a tour: layers own the order, and the guide fits one screen.
+    expect(nudge).toContain(GUIDE.order)
+    expect(nudge).toContain(GUIDE.budget)
+    expect(nudge).toContain('no reading order')
+    expect(nudge).toContain('help guide')
+  })
+
+  it('the doctrine names what only the author knows, and never a section list', () => {
+    expect(GUIDE.what).toMatch(/invariant/)
+    expect(GUIDE.what).toMatch(/judgment call/)
+    expect(GUIDE.what).toMatch(/skip/)
+    expect(GUIDE.what).toMatch(/runtime flow/)
+    // Ingredients, not a form: nothing in it is a heading to fill.
+    expect(GUIDE.budget).toMatch(/only the parts this change needs/)
+    // The legend is two tags and two classDef lines, strokes only — the fill
+    // stays the renderer's so the diagram keeps following the theme.
+    expect(GUIDE_CLASSDEFS).toHaveLength(2)
+    for (const line of GUIDE_CLASSDEFS) {
+      expect(line).toMatch(/^classDef (new|changed) stroke:#[0-9a-f]{6},stroke-width:2px$/)
+      expect(line).not.toContain('fill')
+    }
   })
 
   it('goes quiet once the review carries one', () => {
@@ -856,6 +878,7 @@ describe('the cleared payload (reviewer started the review over)', () => {
     // The same doctrine as the open-time nudge: agent judgment, no pre-review.
     expect(prompt).toContain('skip when the diff explains itself')
     expect(prompt).toContain('never pre-review')
+    expect(prompt).toContain(GUIDE.order)
     expect(prompt).toContain(CLI_COMMANDS.guide)
     expect(prompt).not.toContain('[<file>]')
     // It frames the fresh round the reviewer is now looking at.

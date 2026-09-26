@@ -1,4 +1,5 @@
 import DOMPurify from 'dompurify'
+import { layerLinkHref, REF, resolveRef } from './layers.js'
 
 /**
  * Diagrams in comments. The agent writes a ```mermaid fence like any other
@@ -213,5 +214,62 @@ export async function renderMermaidIn(root: HTMLElement | null): Promise<void> {
       watchThemeForStockFigures()
     }
     pre.replaceWith(figure)
+  }
+}
+
+/** A multi-line label (`<br/>` in the source) renders as one `<text>` of
+ * several `<tspan>`s, whose textContent runs the lines together — so the lines
+ * are read one by one, with a space where the break was. */
+function labelText(label: SVGTextElement): string {
+  const lines = Array.from(label.querySelectorAll('tspan'))
+  return lines.length === 0
+    ? (label.textContent ?? '')
+    : lines.map((line) => line.textContent ?? '').join(' ')
+}
+
+/** A label's tokens, in reading order: words split on whitespace and the
+ * separators a node label tends to use (`·`, commas, brackets, quotes). */
+function labelTokens(label: string): string[] {
+  return label.split(/[\s·,;()[\]{}"'«»]+/).filter(Boolean)
+}
+
+/** The first token of a label that names a changeset file, as `path` or
+ * `path:line`, resolved the way a summary's code span is. */
+export function diagramRef(
+  label: string,
+  paths: readonly string[],
+): { path: string; line: number | null } | null {
+  for (const token of labelTokens(label)) {
+    const ref = REF.exec(token)
+    if (!ref) continue
+    const path = resolveRef(ref[1]!, paths)
+    if (path === null) continue
+    return { path, line: ref[2] === undefined ? null : Number.parseInt(ref[2], 10) }
+  }
+  return null
+}
+
+/**
+ * The map as navigation: after a diagram renders, any node whose label names a
+ * changeset file becomes a jump. The label's `<text>` is tagged with the same
+ * `#diffo-file:` reference `linkPaths` writes into prose, so the card's click
+ * resolver reads both alike. Idempotent — a tagged label is skipped — and safe
+ * on a subtree with no diagram at all.
+ */
+export function linkDiagramRefs(root: HTMLElement | null, paths: readonly string[]): void {
+  if (!root || paths.length === 0) return
+  const labels = root.querySelectorAll<SVGTextElement>(
+    '.mermaid-figure text:not([data-diffo-jump]):not([data-diffo-plain])',
+  )
+  for (const label of Array.from(labels)) {
+    const ref = diagramRef(labelText(label), paths)
+    if (!ref) {
+      label.setAttribute('data-diffo-plain', '')
+      continue
+    }
+    label.setAttribute('data-diffo-jump', layerLinkHref(ref.path, ref.line))
+    label.setAttribute('role', 'link')
+    label.setAttribute('tabindex', '0')
+    label.classList.add('diffo-ref')
   }
 }

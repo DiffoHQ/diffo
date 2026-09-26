@@ -5,10 +5,23 @@ A Diffo review is a conversation with the agent that wrote the code.
 ## The agent orients you first
 
 On a change that's multi-file, structural, or just subtle, the agent leaves a
-single guide comment anchored to the whole changeset: one sentence on what the
-change does, plus a small [mermaid](https://mermaid.js.org) diagram when the
-shape is easier to see than to read. It renders in the thread, so the picture is
-where you're already looking.
+single guide comment anchored to the whole changeset: a map of the change. What
+it does and why, in a sentence; how the changed pieces talk to each other, as a
+small [mermaid](https://mermaid.js.org) diagram of the runtime flow when the
+shape is easier to see than to read; what has to stay true, as checks for you to
+run — the invariant the change must keep, a judgment call the agent made, a
+shortcoming it knows about; and what you can skip. It renders in the thread, so
+the picture is where you're already looking, and it fits one screen.
+
+In the diagram, new code and changed code carry their own outline color, and a
+plain node is existing code the change now leans on — so the seam where new
+meets old is visible at a glance, in the same visual language on every review.
+The map is also navigation: a file the guide names, in prose or in a diagram
+node, is a click away.
+
+What the guide is not is a reading order. That is what [layers](#read-it-in-layers)
+are for, and the agent offers them instead when the change reads better in
+order.
 
 The agent hands you the URL first and writes the guide while you open the page,
 so the link never waits on the diagram. The guide sits at the top of the review
