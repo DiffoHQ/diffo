@@ -120,8 +120,9 @@ export function PaneBar({
           <span className="pane-sep" />
         </>
       )}
-      {/* In layer mode the outline is the narrowing: a layer shows all of its
-          files, so the filters have nothing to say and step aside. */}
+      {/* In layer mode the outline is the narrowing, so the filters that narrow
+          — the typed word, since, reviewed — step aside. Hide tests stays: it
+          retires a category of file, which the outline has no opinion on. */}
       {!layer && trimmedQuery !== '' && onClearQuery && (
         <button
           type="button"
@@ -144,7 +145,7 @@ export function PaneBar({
         />
       )}
       {!layer && <Switch on={hideReviewed} onChange={onHideReviewed} label="Hide reviewed" />}
-      {!layer && showTests && (
+      {showTests && (
         <Switch on={hideTests} onChange={onHideTests} label="Hide tests" n={testCount} />
       )}
       <span className="pane-sep" />

@@ -21,7 +21,11 @@ import { FileRow } from './Nav.js'
 const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? '' : 's'}`
 
 function subLine(layer: ResolvedLayer, viewed: ReadonlySet<string>): string {
+  const hidden = layer.hidden ?? 0
   if (layer.files.length === 0) {
+    // Hide tests emptied it, or the changeset did — different reasons, and
+    // the row says which.
+    if (hidden > 0) return `${plural(hidden, 'test')} hidden`
     return layer.missing.length === 0
       ? 'nothing here now'
       : `${plural(layer.missing.length, 'listed file')} not in the changeset`
@@ -30,7 +34,9 @@ function subLine(layer: ResolvedLayer, viewed: ReadonlySet<string>): string {
   // only say what is here and whether it is done.
   const p = layerProgress(layer, viewed)
   const done = p.doneFiles === p.files ? ' · read' : ''
-  return `${plural(p.files, 'file')}${done}${layer.kind === 'mechanical' ? ' · mechanical' : ''}`
+  const mech = layer.kind === 'mechanical' ? ' · mechanical' : ''
+  const off = hidden > 0 ? ` · ${hidden} hidden` : ''
+  return `${plural(p.files, 'file')}${done}${mech}${off}`
 }
 
 function LayerRow({

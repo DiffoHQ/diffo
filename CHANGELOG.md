@@ -23,6 +23,14 @@ Until 1.0, minor versions may break things. When they do, the entry says how to 
 
 ### Added
 
+- **Hide tests works inside layers.** The switch used to step aside with the
+  other filters once an outline was up, so a layer showed its test files
+  whatever you had chosen. It now follows you in: a layer shows its
+  non-test files, the rail counts what it took (`3 files · 1 hidden`), a
+  layer left with nothing says so on its card, and `n`, `]` and the layer's
+  roll-up mark skip what is hidden — excluded, not read, exactly as on the
+  Files tab. The narrowing filters (reviewed, since, the typed word) still
+  step aside there: the outline is the narrowing.
 - **The map is navigation.** In the changeset threads — the guide above all —
   a file named as `` `path` `` or `` `path:line` `` in prose, or in a diagram
   node, is now a jump to that file in the review, the same way a layer

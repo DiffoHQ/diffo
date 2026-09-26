@@ -4,6 +4,7 @@ import type { FileChange, Hunk } from '../shared/types.js'
 import { fileMark } from './fileMarks.js'
 import {
   findGuide,
+  hideLayerFiles,
   layerByPath,
   layerDone,
   layerKey,
@@ -234,6 +235,45 @@ describe('stepLayer / startingLayer', () => {
     expect(startingLayer(out, new Set(['src/parse.ts#1', 'src/parse.ts#2']))).toBe(1)
     const all = new Set(FILES.flatMap((f) => f.hunks.map((h) => h.id)))
     expect(startingLayer(out, all)).toBe(0)
+  })
+})
+
+describe('hideLayerFiles', () => {
+  const resolved = resolveLayers(
+    layers([
+      { id: 'a', title: 'A', files: ['src/parse.ts', 'src/cli.ts'] },
+      { id: 'b', title: 'B', files: ['src/api.ts'], summary: 'the api' },
+    ]),
+    FILES,
+  )
+
+  it('drops the files the filter names, counts them, and leaves the rest of the layer intact', () => {
+    const out = hideLayerFiles(resolved, (f) => f.path === 'src/cli.ts')
+    expect(paths(out[0]!.files)).toEqual(['src/parse.ts'])
+    expect(out[0]!.hidden).toBe(1)
+    expect(out[0]!.title).toBe('A')
+    expect(out[1]!.summary).toBe('the api')
+    // The derived layer is a layer like any other.
+    expect(paths(out[2]!.files)).toEqual(['src/weekday.ts', 'README.md'])
+  })
+
+  it('a layer nothing was taken from is the same object, with no count', () => {
+    const out = hideLayerFiles(resolved, (f) => f.path === 'src/cli.ts')
+    expect(out[1]).toBe(resolved[1])
+    expect(out[1]!.hidden).toBeUndefined()
+    expect(hideLayerFiles(resolved, () => false)).toEqual(resolved)
+  })
+
+  it('a layer emptied by the filter is skipped by the walk and never the start', () => {
+    const out = hideLayerFiles(resolved, (f) => f.path === 'src/api.ts')
+    expect(out[1]!.files).toEqual([])
+    expect(out[1]!.hidden).toBe(1)
+    expect(out[1]!.missing).toEqual([])
+    const emptied = (l: { files: unknown[] }) => l.files.length === 0
+    expect(stepLayer(out, 0, 1, emptied)).toBe(2)
+    expect(startingLayer(out, new Set(['src/parse.ts#1', 'src/parse.ts#2', 'src/cli.ts#1']))).toBe(
+      2,
+    )
   })
 })
 

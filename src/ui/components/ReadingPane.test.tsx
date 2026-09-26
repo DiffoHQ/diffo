@@ -780,6 +780,7 @@ describe('ReadingPane in layer mode', () => {
     summary: 'A bare weekday resolves forward. Read `src/b.ts:9` first.',
     missing: ['src/gone.ts'],
     listed: 1,
+    hidden: 0,
     onJump: vi.fn(),
     notes: new Map([['src/b.ts', 'delegates to resolveWeekday']]),
     knownPaths: ['src/b.ts'],
@@ -871,5 +872,19 @@ describe('ReadingPane in layer mode', () => {
     expect(container.querySelector('.ch-head-empty')?.textContent).toContain(
       'Nothing this layer lists is in the changeset right now',
     )
+  })
+
+  it('a layer Hide tests emptied says so — its files are there, just hidden', () => {
+    const { container } = render(
+      <ReadingPane
+        files={[]}
+        layer={view({ listed: 2, hidden: 2 })}
+        controls={{ ...emptiedControls, hideTests: true, hiddenTests: 2 }}
+      />,
+    )
+    const note = container.querySelector('.ch-head-empty')?.textContent
+    expect(note).toContain('All 2 files in this layer are tests, hidden by Hide tests')
+    expect(note).not.toContain('not in the changeset')
+    expect(container.querySelector('.empty-state')).toBeNull()
   })
 })

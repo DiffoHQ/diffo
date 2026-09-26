@@ -87,8 +87,10 @@ export interface LayerView {
   /** Listed paths the changeset lacks right now — named on the card, since no
    * file header below will. The files it has are the headers themselves. */
   missing: string[]
-  /** How many listed files the changeset has right now. */
+  /** How many listed files the changeset has right now, hidden ones included. */
   listed: number
+  /** Of those, how many `Hide tests` is keeping off the pane. */
+  hidden: number
   /** A `path` / `path:line` reference in the summary was clicked. */
   onJump: (path: string, line: number | null) => void
   /** Per-file notes for the file headers — the agent's, or a site count on a
@@ -158,6 +160,16 @@ function LayerHead({
         <div className="ch-head-empty">
           Nothing this layer lists is in the changeset right now. Move on with{' '}
           <span className="kbd">]</span>.
+        </div>
+      )}
+      {emptied && layer.listed > 0 && layer.hidden === layer.listed && (
+        // Every file here is a test, and Hide tests is on: say so, rather than
+        // let a layer with files look like one without. The switch that undoes
+        // it is on the bar above.
+        <div className="ch-head-empty">
+          {layer.hidden === 1 ? 'The one file' : `All ${layer.hidden} files`} in this layer{' '}
+          {layer.hidden === 1 ? 'is a test' : 'are tests'}, hidden by <b>Hide tests</b> on the bar.
+          Move on with <span className="kbd">]</span>.
         </div>
       )}
     </section>
