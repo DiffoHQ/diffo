@@ -90,8 +90,7 @@ export interface DeliveryResult {
 }
 
 export interface Invite {
-  install: { global: string; project: string }
-  join: string
+  ask: string
 }
 
 export function useInvite(enabled: boolean) {

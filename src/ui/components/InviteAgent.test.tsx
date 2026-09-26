@@ -7,13 +7,7 @@ import { InviteAgent } from './InviteAgent.js'
 
 afterEach(cleanup)
 
-const INVITE = {
-  install: {
-    global: 'npx skills add DiffoHQ/diffo --skill diffo -g',
-    project: 'npx skills add DiffoHQ/diffo --skill diffo',
-  },
-  join: 'join the diffo review',
-}
+const INVITE = { ask: 'connect to the diffo review in ~/code/app' }
 
 const copied: string[] = []
 beforeEach(() => {
@@ -48,49 +42,27 @@ function show(
 }
 
 describe('InviteAgent', () => {
-  it('has one job: install the skill', async () => {
+  it('has one job: hand you the ask that brings your agent in', async () => {
     show()
-    fireEvent.click(await screen.findByText(INVITE.install.global))
-    await waitFor(() => expect(copied).toEqual([INVITE.install.global]))
+    fireEvent.click(await screen.findByText(INVITE.ask))
+    await waitFor(() => expect(copied).toEqual([INVITE.ask]))
     expect(await screen.findByTitle('Copied')).toBeTruthy()
   })
 
-  it('says what you get, not what to do next', async () => {
+  it('installs nothing and teaches no loop — the skill already did both', async () => {
     show()
-    expect(await screen.findByText(/open reviews and act on your comments/)).toBeTruthy()
+    await screen.findByText(INVITE.ask)
+    expect(screen.queryByText(/skills add/)).toBeNull()
+    expect(screen.queryByRole('checkbox')).toBeNull()
+    expect(screen.queryByText(/poll|reply|diffo end/)).toBeNull()
   })
 
-  it("does not teach the loop — that is the skill's job", async () => {
-    show()
-    await screen.findByText(INVITE.install.global)
-    expect(screen.queryByText(/diffo reply/)).toBeNull()
-    expect(screen.queryByText(/diffo end/)).toBeNull()
-    expect(screen.queryByText(/diffo poll/)).toBeNull()
-  })
-
-  it('lets you choose the scope, and defaults to every project', async () => {
-    show()
-    expect(await screen.findByText(INVITE.install.global)).toBeTruthy()
-    const box = screen.getByRole('checkbox')
-    expect((box as HTMLInputElement).checked).toBe(true)
-    fireEvent.click(box)
-    expect(await screen.findByText(INVITE.install.project)).toBeTruthy()
-    fireEvent.click(screen.getByText(INVITE.install.project))
-    await waitFor(() => expect(copied).toEqual([INVITE.install.project]))
-  })
-
-  it('offers no second way in, and no button competing with the two chips', async () => {
-    show()
-    await screen.findByText(INVITE.install.global)
-    expect(screen.queryByText(/Paste an invite instead/)).toBeNull()
-    expect(screen.queryByText('Copy command')).toBeNull()
+  it('offers no second way in, and no button competing with the ask', async () => {
+    const { baseElement } = show()
+    await screen.findByText(INVITE.ask)
+    expect(baseElement.querySelectorAll('.invite-cmd')).toHaveLength(1)
+    expect(screen.queryByText(/Already have it/)).toBeNull()
     expect(screen.queryByText('Close')).toBeNull()
-  })
-
-  it('gives the already-installed reviewer something to paste', async () => {
-    show()
-    fireEvent.click(await screen.findByText(INVITE.join))
-    await waitFor(() => expect(copied).toEqual([INVITE.join]))
   })
 
   it('never claims a copy that did not happen', async () => {
@@ -98,7 +70,7 @@ describe('InviteAgent', () => {
       clipboard: { writeText: vi.fn(async () => Promise.reject(new Error('denied'))) },
     })
     show()
-    fireEvent.click(await screen.findByText(INVITE.install.global))
+    fireEvent.click(await screen.findByText(INVITE.ask))
     expect(await screen.findByText(/Couldn't reach the clipboard/)).toBeTruthy()
     expect(screen.queryByTitle('Copied')).toBeNull()
   })
@@ -116,7 +88,7 @@ describe('InviteAgent', () => {
 describe('InviteAgent handshake', () => {
   it('watches for the agent after a copy, then confirms when it attaches', async () => {
     const view = show('waiting')
-    fireEvent.click(await screen.findByText(INVITE.install.global))
+    fireEvent.click(await screen.findByText(INVITE.ask))
     expect(await screen.findByText(/Listening for your agent/)).toBeTruthy()
 
     view.presence('listening')
@@ -128,8 +100,8 @@ describe('InviteAgent handshake', () => {
     vi.useFakeTimers()
     try {
       show('waiting')
-      await vi.waitFor(() => expect(screen.getByText(INVITE.install.global)).toBeTruthy())
-      fireEvent.click(screen.getByText(INVITE.install.global))
+      await vi.waitFor(() => expect(screen.getByText(INVITE.ask)).toBeTruthy())
+      fireEvent.click(screen.getByText(INVITE.ask))
       await vi.waitFor(() => expect(screen.getByText(/Listening for your agent/)).toBeTruthy())
       act(() => vi.advanceTimersByTime(5000))
       expect(screen.queryByTitle('Copied')).toBeNull()
@@ -146,7 +118,7 @@ describe('InviteAgent handshake', () => {
       const view = show('waiting', () => {
         closed++
       })
-      await vi.waitFor(() => expect(screen.getByText(INVITE.install.global)).toBeTruthy())
+      await vi.waitFor(() => expect(screen.getByText(INVITE.ask)).toBeTruthy())
       view.presence('listening')
       expect(closed).toBe(0)
       vi.advanceTimersByTime(2000)
@@ -161,7 +133,7 @@ describe('InviteAgent handshake', () => {
     expect(await screen.findByText('Agent attached')).toBeTruthy()
     polite.presence('waiting', 'ended')
     expect(await screen.findByText(/left the review/)).toBeTruthy()
-    expect(screen.getByText(INVITE.install.global)).toBeTruthy()
+    expect(screen.getByText(INVITE.ask)).toBeTruthy()
     cleanup()
 
     const dead = show('listening', () => {}, 'polling')

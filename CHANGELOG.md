@@ -20,6 +20,13 @@ Until 1.0, minor versions may break things. When they do, the entry says how to 
 
 ### Changed
 
+- **Connecting an agent is one line to paste.** With no agent attached, the
+  modal used to lead with installing the skill and hid the actual join prompt,
+  seven lines of poll instructions, under "Already have it?". Now it offers a
+  single ask, `connect to the diffo review in <repo>`, which wakes the skill
+  your agent already has. The repo path points it at this review from any
+  session. The install command and the scope checkbox are gone.
+
 - **The guide opens with the problem, and its diagram draws what happens.**
   The map-not-a-tour doctrine still let a guide explain a change through its
   own code names: "what it does" came out as a mechanism line, and "how the

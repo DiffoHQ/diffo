@@ -5734,27 +5734,6 @@ i.q-now {
   font-size: var(--t-12);
 }
 
-.invite-scope {
-  display: flex;
-  align-items: center;
-  gap: var(--s-2);
-  margin-top: var(--s-2);
-  color: var(--ink-2);
-  font-size: var(--t-12);
-  cursor: pointer;
-}
-
-.invite-scope input {
-  margin: 0;
-  cursor: pointer;
-}
-
-.invite-join {
-  margin-top: var(--s-4);
-  padding-top: var(--s-4);
-  border-top: 1px solid var(--hair);
-}
-
 .invite-live {
   display: flex;
   align-items: center;

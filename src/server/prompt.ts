@@ -93,22 +93,26 @@ export function buildCliCommands(cli: string) {
 
 export const CLI_COMMANDS = buildCliCommands(CLI)
 
-/** Drift-tested against package.json's `repository` in prompt.test.ts. */
-export const SKILL_REPO = 'DiffoHQ/diffo'
-
-export function buildInstallSkill(isDev: boolean, checkoutRoot: string, global = true): string {
-  if (isDev) return `cd ${checkoutRoot} && pnpm dev:skill${global ? ' --global' : ''}`
-  return `npx skills add ${SKILL_REPO} --skill diffo${global ? ' -g' : ''}`
+/**
+ * What the reviewer pastes to bring an agent onto an open review. Every agent
+ * here comes through the skill, so the ask only has to wake it: the skill and
+ * the poll payloads carry the loop. The repo path is what makes it *this*
+ * review — the CLI finds its server from the agent's cwd, and the session being
+ * asked may sit anywhere. The dev skill answers only to its own slash command.
+ */
+export function buildConnectAsk(isDev: boolean, repoPath: string, home: string): string {
+  const where =
+    repoPath === home || repoPath.startsWith(`${home}/`)
+      ? `~${repoPath.slice(home.length)}`
+      : repoPath
+  return isDev
+    ? `/diffo-dev connect to the review in ${where}`
+    : `connect to the diffo review in ${where}`
 }
 
-export const INSTALL_SKILL = {
-  global: buildInstallSkill(IS_DEV, CHECKOUT_ROOT, true),
-  project: buildInstallSkill(IS_DEV, CHECKOUT_ROOT, false),
-} as const
-
 /**
- * Payloads must stand alone: agents join without the skill (the invite modal's
- * paste, a fresh session, a compacted context), so every instruction to poll
+ * Payloads must stand alone: an agent can reach a poll without the skill in
+ * context (a fresh session, a compacted context), so every instruction to poll
  * restates how to hold the poll — attended, never detached. Mirrors the skill.
  */
 export const POLL_STANCE =
@@ -137,11 +141,6 @@ export const TAB_TITLE = {
   /** Two to copy the register from — both fit a tab whole. */
   examples: '"tab titles", "flaky upload retries"',
 } as const
-
-export const JOIN_PROMPT =
-  `join the diffo review: run \`${CLI_COMMANDS.firstPoll}\` (${POLL_STANCE}; ` +
-  `the title is ${TAB_TITLE.what} — ${TAB_TITLE.why}) ` +
-  'and follow the JSON payload it prints — each payload carries its own instructions'
 
 export function nextStepFor(
   kind: 'threads' | 'finish' | 'cleared' | 'layers',
