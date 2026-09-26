@@ -92,9 +92,10 @@ async function loadMermaid(): Promise<MermaidApi> {
       securityLevel: 'strict',
       theme,
       // Labels as real SVG <text>, not <foreignObject> HTML — the sanitiser
-      // below strips foreignObject, and rightly so. And no shrink-to-fit:
-      // a wide diagram scrolls inside its figure at readable size rather than
-      // scaling its text away.
+      // below strips foreignObject, and rightly so. useMaxWidth off keeps the
+      // natural width/height on the root <svg> next to its viewBox; the
+      // figure's CSS (max-width: 100%; height: auto) is what fits a wide
+      // diagram to the card, the same way for both renderers.
       htmlLabels: false,
       flowchart: { htmlLabels: false, useMaxWidth: false },
       sequence: { useMaxWidth: false },
@@ -139,6 +140,24 @@ function sanitizeSvg(svg: string): string {
   return svgPurify.sanitize(svg, { USE_PROFILES: { svg: true, svgFilters: true } })
 }
 
+/** The figure's CSS scales a wide diagram down to the card, but only so far:
+ * below this fraction of its natural size the labels stop being readable, so
+ * the drawing keeps that width and the figure scrolls instead. */
+const MIN_SCALE = 0.6
+
+/** Read the natural width off the root <svg> (both renderers write one next
+ * to the viewBox) and pin the floor on it. */
+function pinScaleFloor(figure: HTMLElement): void {
+  const svg = figure.querySelector('svg')
+  if (!svg) return
+  const natural =
+    Number.parseFloat(svg.getAttribute('width') ?? '') ||
+    Number.parseFloat(svg.getAttribute('viewBox')?.split(/\s+/)[2] ?? '')
+  if (Number.isFinite(natural) && natural > 0) {
+    svg.style.minWidth = `${Math.round(natural * MIN_SCALE)}px`
+  }
+}
+
 let watchingTheme = false
 
 /** Stock mermaid bakes its palette in at render time, so a figure it drew goes
@@ -168,6 +187,7 @@ async function rethemeStockFigures(): Promise<void> {
     // under us — keep the stale-themed figure rather than blanking it.
     if (svg === null || !figure.isConnected) continue
     figure.innerHTML = sanitizeSvg(svg)
+    pinScaleFloor(figure)
   }
 }
 
@@ -208,6 +228,7 @@ export async function renderMermaidIn(root: HTMLElement | null): Promise<void> {
     const figure = document.createElement('div')
     figure.className = 'mermaid-figure'
     figure.innerHTML = sanitizeSvg(rendered.svg)
+    pinScaleFloor(figure)
     if (!rendered.live) {
       figure.dataset.mermaidSource = source
       watchThemeForStockFigures()

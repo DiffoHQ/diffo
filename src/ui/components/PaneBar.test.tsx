@@ -149,3 +149,28 @@ describe('the layer pager', () => {
     expect(screen.queryByText('Note')).toBeNull()
   })
 })
+
+describe('coverage and the cursor', () => {
+  it('counts files in words, and fills the bar by hunks when they are known', () => {
+    const { container } = render(bar({ hunksRead: 12, hunksTotal: 40 }))
+    expect(screen.getByText('6 of 9 files')).toBeTruthy()
+    expect((container.querySelector('.prog-track i') as HTMLElement).style.width).toBe('30%')
+  })
+
+  it('fills by files without hunk numbers, and says so when everything is read', () => {
+    const { container } = render(bar())
+    expect(screen.getByText('6 of 9 files')).toBeTruthy()
+    expect((container.querySelector('.prog-track i') as HTMLElement).style.width).toBe('67%')
+    cleanup()
+    render(bar({ left: 0, hunksRead: 40, hunksTotal: 40 }))
+    expect(screen.getByText('all reviewed')).toBeTruthy()
+  })
+
+  it('names the selected hunk’s place, and nothing when none is selected', () => {
+    render(bar({ hunkAt: 3, hunkCount: 40 }))
+    expect(screen.getByText('hunk 3 / 40')).toBeTruthy()
+    cleanup()
+    render(bar({ hunkAt: 0, hunkCount: 40 }))
+    expect(screen.queryByText(/^hunk /)).toBeNull()
+  })
+})

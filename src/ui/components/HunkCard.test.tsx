@@ -46,6 +46,38 @@ function actionsStub(): ReviewActions {
   }
 }
 
+describe('the focused line', () => {
+  it('`c` comments on the line the reviewer clicked, not the hunk’s first change', () => {
+    const actions = actionsStub()
+    const { container, rerender } = render(
+      <HunkCard hunk={WIDE_HUNK} reviewActions={actions} selected />,
+    )
+    const rows = [...container.querySelectorAll('tr.line')]
+    fireEvent.click(rows[3]!.querySelector('.line-code')!)
+    expect(rows[3]!.classList.contains('line-focus')).toBe(true)
+
+    rerender(<HunkCard hunk={WIDE_HUNK} reviewActions={actions} selected composeRequested />)
+    expect(screen.getByText('a.ts:4')).toBeTruthy()
+  })
+
+  it('with no line clicked, `c` falls back to the first changed line', () => {
+    const actions = actionsStub()
+    render(<HunkCard hunk={WIDE_HUNK} reviewActions={actions} selected composeRequested />)
+    expect(screen.getByText('a.ts:2')).toBeTruthy()
+  })
+
+  it('the focus clears when the hunk stops being selected', () => {
+    const actions = actionsStub()
+    const { container, rerender } = render(
+      <HunkCard hunk={WIDE_HUNK} reviewActions={actions} selected />,
+    )
+    fireEvent.click(container.querySelectorAll('tr.line')[2]!.querySelector('.line-code')!)
+    expect(container.querySelector('tr.line-focus')).not.toBeNull()
+    rerender(<HunkCard hunk={WIDE_HUNK} reviewActions={actions} selected={false} />)
+    expect(container.querySelector('tr.line-focus')).toBeNull()
+  })
+})
+
 describe('multi-line comments', () => {
   it('a gutter drag opens the composer on the range, and the anchor carries it', () => {
     const actions = actionsStub()

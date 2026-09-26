@@ -26,7 +26,7 @@ The review UI is keyboard-first. Press `?` in the review for this sheet.
 
 | Key | Action |
 | --- | --- |
-| `c` | Comment on this hunk |
+| `c` | Comment on the clicked line, or on this hunk when no line is clicked |
 | `⌘↵` | Add the comment |
 | `esc` | Close / cancel |
 | `?` | This sheet |

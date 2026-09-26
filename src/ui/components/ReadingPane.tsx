@@ -37,6 +37,11 @@ export interface PaneControls {
   onToggleNav?: () => void
   left: number
   total: number
+  hunksRead?: number
+  hunksTotal?: number
+  /** 1-based position of the selected hunk in reading order; 0 when none. */
+  hunkAt?: number
+  hunkCount?: number
   query: string
   onClearQuery: () => void
   hiddenQuery: number
@@ -279,7 +284,11 @@ function FileHeader({
             {' → '}
           </>
         )}
-        {cut !== -1 && <span className="file-dir">{file.path.slice(0, cut + 1)}</span>}
+        {cut !== -1 && (
+          <span className="file-dir">
+            <bdi>{file.path.slice(0, cut + 1)}</bdi>
+          </span>
+        )}
         <span className="file-base">{file.path.slice(cut + 1)}</span>
       </span>
       {statusWord && <span className={`file-status file-status-${file.status}`}>{statusWord}</span>}
@@ -1103,6 +1112,10 @@ export function ReadingPane({
           onToggleNav={controls.onToggleNav}
           left={controls.left}
           total={controls.total}
+          hunksRead={controls.hunksRead}
+          hunksTotal={controls.hunksTotal}
+          hunkAt={controls.hunkAt}
+          hunkCount={controls.hunkCount}
           query={controls.query}
           onClearQuery={controls.onClearQuery}
           hideReviewed={controls.hideReviewed}

@@ -30,14 +30,42 @@ const TOOLBAR: (ToolbarButton | 'sep')[] = [
   { icon: 'at', label: 'Reference a file', wrap: ['`', '`'] },
 ]
 
-const OPENERS = ['Explain this change', 'What could break?', 'Is it tested?']
+/** The three asks a reviewer of agent code makes most: one question, two
+ * commands. Each fills a whole sentence and picks its kind, then hands the
+ * caret over — the words are a start, not the message. (Excess comments is
+ * the most-cited flaw in agent-written code; redundancy is next.) */
+const OPENERS: { label: string; text: string; intent: ThreadIntent }[] = [
+  {
+    label: 'Explain this',
+    text: 'Explain what this does and why it’s needed.',
+    intent: 'question',
+  },
+  {
+    label: 'Clean up the comments',
+    text: 'Cut comments that narrate the code. Keep the ones that explain why.',
+    intent: 'fix',
+  },
+  {
+    label: 'Simplify this',
+    text: 'Simplify this. Same behavior, less code, no new abstractions.',
+    intent: 'fix',
+  },
+]
 
-const INTENTS: { intent: ThreadIntent; label: string; title: string }[] = [
+/** The three things a comment can declare it wants. The last is the default and
+ * is a real state, not an absence: an unlabeled thread tells the agent to read
+ * the intent from the words — so the control always shows one segment lit. */
+const INTENTS: { intent: ThreadIntent | undefined; label: string; title: string }[] = [
   { intent: 'fix', label: 'Change', title: 'ask the agent to change the code' },
   {
     intent: 'question',
     label: 'Question',
     title: 'ask for an answer — the agent won’t change code',
+  },
+  {
+    intent: undefined,
+    label: 'Agent decides',
+    title: 'no label — the agent reads what you want from your words',
   },
 ]
 
@@ -281,17 +309,18 @@ export function CommentBox({
         <div className="cbox-openers">
           {OPENERS.map((opener) => (
             <button
-              key={opener}
+              key={opener.label}
               type="button"
               className="cbox-opener"
+              title={opener.text}
               onClick={() => {
-                setText(opener)
-                setIntent('question')
+                setText(opener.text)
+                setIntent(opener.intent)
                 setTab('write')
                 box.current?.focus()
               }}
             >
-              {opener}
+              {opener.label}
             </button>
           ))}
         </div>
@@ -308,21 +337,17 @@ export function CommentBox({
         >
           Aa
         </button>
-        <span
-          className="cbox-intent"
-          role="radiogroup"
-          aria-label="What this comment wants — optional; unset, the agent reads it from your words"
-        >
+        <span className="cbox-intent" role="radiogroup" aria-label="What this comment wants">
           {INTENTS.map(({ intent: value, label, title }) => (
             // biome-ignore lint/a11y/useSemanticElements: styled chips; a native radio cannot carry this treatment
             <button
-              key={value}
+              key={label}
               type="button"
               role="radio"
               className="cbox-intent-chip"
               aria-checked={intent === value}
-              title={`${title} — click again to unset`}
-              onClick={() => setIntent(intent === value ? undefined : value)}
+              title={title}
+              onClick={() => setIntent(value)}
             >
               {label}
             </button>

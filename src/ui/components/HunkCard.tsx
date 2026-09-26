@@ -262,6 +262,10 @@ interface LineExtras {
    * range bracket's spine through the card row. */
   extraClass?: (lineIdx: number) => string
   onComment?: (lineIdx: number) => void
+  /** A click anywhere on a line makes it the focused line — the one `c` comments
+   * on. Clearing is the card's job, when the hunk stops being selected. */
+  onRowClick?: (lineIdx: number) => void
+  focusRow?: number | null
   /** Mousedown in a line-number gutter — where a range drag (or a shift-click
    * extension of the open composer) begins. */
   onGutterDown?: (lineIdx: number, shiftKey: boolean) => void
@@ -290,11 +294,13 @@ function RangeGlyph() {
 function rowClass(
   selRows: ReadonlySet<number> | undefined,
   rangeRows: ReadonlySet<number> | undefined,
+  focusRow: number | null | undefined,
   ...idxs: (number | undefined)[]
 ): string {
   const has = (set: ReadonlySet<number> | undefined) =>
     set !== undefined && idxs.some((i) => i !== undefined && set.has(i))
-  return `${has(selRows) ? ' line-sel' : ''}${has(rangeRows) ? ' line-ranged' : ''}`
+  const focused = focusRow != null && idxs.includes(focusRow)
+  return `${has(selRows) ? ' line-sel' : ''}${has(rangeRows) ? ' line-ranged' : ''}${focused ? ' line-focus' : ''}`
 }
 
 /** Left-button gutter presses start a drag; preventDefault keeps the browser from
@@ -337,6 +343,8 @@ function UnifiedLines({
   extraFor,
   extraClass,
   onComment,
+  onRowClick,
+  focusRow,
   onGutterDown,
   onLineEnter,
   selRows,
@@ -355,8 +363,9 @@ function UnifiedLines({
             // biome-ignore lint/suspicious/noArrayIndexKey: the hunk is keyed by content, so its rows never reorder
             <Fragment key={i}>
               <tr
-                className={`line line-${line.kind}${rowClass(selRows, rangeRows, i)}`}
+                className={`line line-${line.kind}${rowClass(selRows, rangeRows, focusRow, i)}`}
                 onMouseEnter={onLineEnter ? () => onLineEnter(i) : undefined}
+                onClick={onRowClick ? () => onRowClick(i) : undefined}
               >
                 <td className="line-no" onMouseDown={down}>
                   {rangeStarts?.has(i) && <RangeGlyph />}
@@ -391,6 +400,8 @@ function SplitLines({
   extraFor,
   extraClass,
   onComment,
+  onRowClick,
+  focusRow,
   onGutterDown,
   onLineEnter,
   selRows,
@@ -399,6 +410,9 @@ function SplitLines({
   boundary,
 }: { lines: DiffLine[]; tokens: (LineTokens | null)[]; boundary?: ReactNode } & LineExtras) {
   const rows = toSplitRows(lines)
+  // Each half is its own line, so a click focuses the half it landed on.
+  const click = (idx: number | undefined) =>
+    onRowClick && idx !== undefined ? () => onRowClick(idx) : undefined
   // Each half of a split row is its own line, so the drag handlers ride the cells
   // rather than the row — crossing onto either half extends to that half's line.
   const enter = (idx: number | undefined) =>
@@ -423,11 +437,14 @@ function SplitLines({
           return (
             // biome-ignore lint/suspicious/noArrayIndexKey: the hunk is keyed by content, so its rows never reorder
             <Fragment key={i}>
-              <tr className={`line${rowClass(selRows, rangeRows, row.left?.idx, row.right?.idx)}`}>
+              <tr
+                className={`line${rowClass(selRows, rangeRows, focusRow, row.left?.idx, row.right?.idx)}`}
+              >
                 <td
                   className="line-no"
                   onMouseDown={row.left ? gutterDown(onGutterDown, row.left.idx) : undefined}
                   onMouseEnter={enter(row.left?.idx)}
+                  onClick={click(row.left?.idx)}
                 >
                   {row.left && rangeStarts?.has(row.left.idx) && <RangeGlyph />}
                   {onComment && row.left && (
@@ -438,6 +455,7 @@ function SplitLines({
                 <td
                   className={`line-half line-half-${row.left?.line.kind ?? 'empty'}`}
                   onMouseEnter={enter(row.left?.idx)}
+                  onClick={click(row.left?.idx)}
                 >
                   {row.left && (
                     <CodeText
@@ -451,6 +469,7 @@ function SplitLines({
                   className="line-no"
                   onMouseDown={row.right ? gutterDown(onGutterDown, row.right.idx) : undefined}
                   onMouseEnter={enter(row.right?.idx)}
+                  onClick={click(row.right?.idx)}
                 >
                   {row.right && rangeStarts?.has(row.right.idx) && <RangeGlyph />}
                   {onComment && row.right && (
@@ -461,6 +480,7 @@ function SplitLines({
                 <td
                   className={`line-half line-half-${row.right?.line.kind ?? 'empty'}`}
                   onMouseEnter={enter(row.right?.idx)}
+                  onClick={click(row.right?.idx)}
                 >
                   {row.right && (
                     <CodeText
@@ -542,6 +562,13 @@ export function HunkCard({
   // keep adjusting relative to the line the reviewer actually chose.
   const [compose, setCompose] = useState<ComposeRange | null>(null)
   const [drag, setDrag] = useState<LineSpan | null>(null)
+  // The line the reviewer last clicked — what `c` comments on. It belongs to
+  // the selected hunk only: once `j`/`k` or a click moves the selection away,
+  // a ring left behind here would say the wrong line is next.
+  const [focusLine, setFocusLine] = useState<number | null>(null)
+  useEffect(() => {
+    if (!selected) setFocusLine(null)
+  }, [selected])
 
   // Memoized so `lines` keeps a stable identity across renders: once expanded, an
   // unmemoized `[...linesAbove, ...hunk.lines]` was a fresh array every render, which
@@ -553,10 +580,12 @@ export function HunkCard({
   const tokens = useLineTokens(lines, hunk.path)
   const ranges = useMemo(() => intralineRanges(lines), [lines])
 
+  // `c` lands on the clicked line when there is one; otherwise on the hunk's
+  // first changed line, which is the best guess for "this hunk".
   // biome-ignore lint/correctness/useExhaustiveDependencies: only a new request may reopen it
   useEffect(() => {
     if (!composeRequested) return
-    const idx = lines.findIndex((l) => l.kind !== 'context')
+    const idx = focusLine ?? lines.findIndex((l) => l.kind !== 'context')
     const at = idx === -1 ? 0 : idx
     setCompose({ at, edge: at })
     onComposeHandled?.()
@@ -756,6 +785,8 @@ export function HunkCard({
           extraFor={extraFor}
           extraClass={extraClass}
           onComment={reviewActions ? (idx) => setCompose({ at: idx, edge: idx }) : undefined}
+          onRowClick={reviewActions ? setFocusLine : undefined}
+          focusRow={focusLine}
           onGutterDown={onGutterDown}
           onLineEnter={onLineEnter}
           selRows={selRows}
@@ -771,6 +802,8 @@ export function HunkCard({
           extraFor={extraFor}
           extraClass={extraClass}
           onComment={reviewActions ? (idx) => setCompose({ at: idx, edge: idx }) : undefined}
+          onRowClick={reviewActions ? setFocusLine : undefined}
+          focusRow={focusLine}
           onGutterDown={onGutterDown}
           onLineEnter={onLineEnter}
           selRows={selRows}

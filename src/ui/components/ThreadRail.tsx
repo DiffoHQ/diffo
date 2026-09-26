@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react'
 import { shortAgo } from '../markdown.js'
 import { bySection, SECTION_LABEL, type Section, type ThreadItem } from '../threads.js'
 import { Icon } from './Icon.js'
-import { formatQueuePlace } from './Threads.js'
+import { formatQueuePlace, INTENT_WORD } from './Threads.js'
 
 /** `src/server/db.ts:295` → `db.ts:295`. The leading directories are the part every
  * row shares; the full path stays on the row's tooltip, which is also what a screen
@@ -56,6 +56,14 @@ function Row({
       >
         <span className="crow-q">{item.question}</span>
         <span className="crow-sub">
+          {item.thread.intent && item.turn !== 'proposed' && (
+            <>
+              <span className={`crow-kind crow-kind-${item.thread.intent}`}>
+                {INTENT_WORD[item.thread.intent]}
+              </span>
+              <span className="crow-sep">·</span>
+            </>
+          )}
           <span className={`crow-where${item.gone ? ' crow-where-gone' : ''}`}>
             {shortAnchor(anchor)}
           </span>
@@ -95,7 +103,7 @@ function stateLine(item: ThreadItem): string {
       if (item.queued !== undefined) return `queued — ${formatQueuePlace(item.queued)}`
       return 'waiting on the agent'
     case 'note':
-      return 'not sent'
+      return 'draft — not sent'
     case 'resolved':
       return item.answer ?? 'resolved'
   }

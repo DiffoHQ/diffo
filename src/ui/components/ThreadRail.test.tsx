@@ -94,6 +94,12 @@ describe('ThreadRail', () => {
     )
   })
 
+  it('a labeled thread says its kind before the anchor', () => {
+    render(<ThreadRail items={threadItems([thread({ intent: 'fix' })])} />)
+    expect(document.querySelector('.crow-kind')!.textContent).toBe('Change')
+    expect(document.querySelector('.crow-sub')!.textContent).toMatch(/^Change·mathx\.js:42/)
+  })
+
   it('the anchor is the basename — the rail is 264px and the directories repeat', () => {
     render(<ThreadRail items={threadItems([thread()])} />)
     expect(document.querySelector('.crow-where')!.textContent).toBe('mathx.js:42')
@@ -111,7 +117,7 @@ describe('ThreadRail', () => {
         ])}
       />,
     )
-    expect(sections()).toEqual(['Your turn 1', 'Waiting on the agent 1', 'Not sent 1', 'Settled 1'])
+    expect(sections()).toEqual(['Your turn 1', 'Waiting on the agent 1', 'Drafts 1', 'Settled 1'])
     expect(rows()).toHaveLength(3)
     fireEvent.click(screen.getByText(/Settled/))
     expect(rows()).toHaveLength(4)
@@ -128,7 +134,7 @@ describe('ThreadRail', () => {
       <ThreadRail items={threadItems([thread({ id: 'a' }), thread({ id: 'b', state: 'open' })])} />,
     )
     expect(screen.getByText('waiting on the agent')).toBeTruthy()
-    expect(screen.getByText('not sent')).toBeTruthy()
+    expect(screen.getByText('draft — not sent')).toBeTruthy()
   })
 
   it('the right slot is the time, and nothing else — never the queue place', () => {

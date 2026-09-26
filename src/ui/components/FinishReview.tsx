@@ -340,7 +340,7 @@ function CheckOffRow({
           disabled={busy || !onReopen}
           title={
             item.gone
-              ? 'reopen it — it lands in Not sent, and Send on the thread hands it over; the finish batch is scoped to the changeset'
+              ? 'reopen it — it lands in Drafts, and Send on the thread hands it over; the finish batch is scoped to the changeset'
               : 'reopen it — it goes out again in this batch'
           }
           onClick={() => act(onReopen)}

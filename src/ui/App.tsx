@@ -76,6 +76,8 @@ import { loadViewed, storageKey } from './viewedStore.js'
 const queryClient = new QueryClient()
 
 const RAIL_DEFAULT = 264
+/** Below this the rail starts folded — half of a laptop screen, roughly. */
+const NARROW_WINDOW = 800
 const RAIL_MIN = 200
 const RAIL_MAX = 520
 const clampRail = (w: number) => Math.min(RAIL_MAX, Math.max(RAIL_MIN, w))
@@ -274,9 +276,14 @@ function Review() {
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [focusPath, setFocusPath] = useState<string | null>(null)
   const [collapsed, setCollapsed] = useState<ReadonlySet<string>>(new Set())
-  const [navHidden, setNavHidden] = useState(
-    () => localStorage.getItem('diffo:ui:navHidden') === '1',
-  )
+  // The reviewer's own choice wins; before they make one, a narrow window (a
+  // review docked beside a terminal) starts with the rail folded so the diff
+  // gets the width. The bar's first button and `b` bring it back.
+  const [navHidden, setNavHidden] = useState(() => {
+    const stored = localStorage.getItem('diffo:ui:navHidden')
+    if (stored !== null) return stored === '1'
+    return window.innerWidth < NARROW_WINDOW
+  })
   const [railWidth, setRailWidth] = useState(() => {
     const stored = Number(localStorage.getItem('diffo:ui:railWidth'))
     return stored > 0 ? clampRail(stored) : RAIL_DEFAULT
@@ -739,11 +746,17 @@ function Review() {
 
   const resetRailWidth = useCallback(() => commitRailWidth(RAIL_DEFAULT), [commitRailWidth])
 
-  const toggleNav = useCallback(() => setNavHidden((prev) => !prev), [])
+  // Only a choice the reviewer made is remembered: the narrow-window default
+  // must not become a stored preference that hides the rail on a wide screen.
+  const navChosen = useRef(localStorage.getItem('diffo:ui:navHidden') !== null)
+  const toggleNav = useCallback(() => {
+    navChosen.current = true
+    setNavHidden((prev) => !prev)
+  }, [])
   // Persist in an effect, not inside the setState updater — updaters must be pure
   // (StrictMode double-invokes them).
   useEffect(() => {
-    localStorage.setItem('diffo:ui:navHidden', navHidden ? '1' : '0')
+    if (navChosen.current) localStorage.setItem('diffo:ui:navHidden', navHidden ? '1' : '0')
   }, [navHidden])
 
   // Reviewed files arrive folded, seeded once when the marks finish loading: the
@@ -1436,6 +1449,10 @@ function Review() {
             onToggleNav: toggleNav,
             left: fileProgress.total - fileProgress.viewed,
             total: fileProgress.total,
+            hunksRead: progress.viewed,
+            hunksTotal: progress.total,
+            hunkAt: selectedId ? hunkOrder.findIndex((h) => h.id === selectedId) + 1 : 0,
+            hunkCount: hunkOrder.length,
             query: filter.query,
             onClearQuery: () => filter.setQuery(''),
             hiddenQuery: filter.hiddenQuery,

@@ -183,7 +183,7 @@ describe('ThreadCard', () => {
     render(<ThreadCard thread={thread()} actions={actions()} />)
     expect(screen.getByText('why this?')).toBeTruthy()
     expect(screen.getByText('because Y')).toBeTruthy()
-    expect(screen.getByText('Open')).toBeTruthy()
+    expect(screen.getByText('Draft')).toBeTruthy()
     expect(openReply()).toBeTruthy()
     expect(screen.getByText('You')).toBeTruthy()
     expect(screen.queryByText('reviewer')).toBeNull()
@@ -243,7 +243,7 @@ describe('ThreadCard', () => {
       ],
     })
     render(<ThreadCard thread={held} actions={acts} />)
-    expect(screen.getByText('Not sent')).toBeTruthy()
+    expect(screen.getByText('Draft')).toBeTruthy()
     expect(screen.queryByText('Sent')).toBeNull()
     expect(screen.getByText(/your reply is held here/)).toBeTruthy()
     fireEvent.click(screen.getByText('Send'))
@@ -548,9 +548,9 @@ describe('CommentBox', () => {
 
   it('the openers leave once you have started — they exist to start you', () => {
     render(<CommentBox title="t" placeholder="say…" onSubmit={vi.fn()} onCancel={vi.fn()} />)
-    expect(screen.getByText('Is it tested?')).toBeTruthy()
+    expect(screen.getByText('Clean up the comments')).toBeTruthy()
     fireEvent.change(box(), { target: { value: 'this hunk' } })
-    expect(screen.queryByText('Is it tested?')).toBeNull()
+    expect(screen.queryByText('Clean up the comments')).toBeNull()
   })
 
   it('switches to Preview, which renders the real textarea content', () => {
@@ -582,8 +582,10 @@ describe('CommentBox', () => {
         onCancel={vi.fn()}
       />,
     )
-    fireEvent.click(screen.getByText('What could break?'))
-    expect((box() as HTMLTextAreaElement).value).toBe('What could break?')
+    fireEvent.click(screen.getByText('Simplify this'))
+    expect((box() as HTMLTextAreaElement).value).toBe(
+      'Simplify this. Same behavior, less code, no new abstractions.',
+    )
     expect(onSend).not.toHaveBeenCalled()
   })
 
@@ -658,29 +660,73 @@ describe('CommentBox', () => {
     expect(onSend).not.toHaveBeenCalled()
   })
 
-  it('intent starts unset; a chip forces it, and clicking it again lets go', () => {
+  it('intent starts on "Agent decides", visibly; a segment picks one, the last segment lets go', () => {
     const onSubmit = vi.fn()
     render(<CommentBox title="t" placeholder="say…" onSubmit={onSubmit} onCancel={vi.fn()} />)
     expect(screen.getByText('Change')).toBeTruthy()
     expect(screen.queryByText('Nit')).toBeNull()
-    expect(document.querySelector('.cbox-intent-chip[aria-checked="true"]')).toBeNull()
+    expect(document.querySelector('.cbox-intent-chip[aria-checked="true"]')!.textContent).toBe(
+      'Agent decides',
+    )
     fireEvent.click(screen.getByText('Question'))
+    expect(document.querySelector('.cbox-intent-chip[aria-checked="true"]')!.textContent).toBe(
+      'Question',
+    )
     fireEvent.change(box(), { target: { value: 'why a set?' } })
     fireEvent.click(screen.getByText('Add comment'))
     expect(onSubmit).toHaveBeenCalledWith('why a set?', false, 'question')
 
-    fireEvent.click(screen.getByText('Question'))
+    fireEvent.click(screen.getByText('Agent decides'))
     fireEvent.change(box(), { target: { value: 'and this one, you decide' } })
     fireEvent.click(screen.getByText('Add comment'))
     expect(onSubmit).toHaveBeenCalledWith('and this one, you decide', false, undefined)
   })
 
-  it('an opener is a question — the chip follows it', () => {
+  it('an addressed Change reads Addressed; an addressed Question reads Answered', () => {
+    const { unmount } = render(
+      <ThreadCard thread={thread({ state: 'addressed', intent: 'fix' })} actions={actions()} />,
+    )
+    expect(screen.getByText('Addressed')).toBeTruthy()
+    unmount()
+    render(<ThreadCard thread={thread({ state: 'addressed' })} actions={actions()} />)
+    expect(screen.getByText('Answered')).toBeTruthy()
+  })
+
+  it('the card wears the kind the reviewer picked; an unlabeled thread wears nothing', () => {
+    const { unmount } = render(
+      <ThreadCard thread={thread({ intent: 'question' })} actions={actions()} />,
+    )
+    expect(document.querySelector('.thread-badge-kind')!.textContent).toBe('Question')
+    unmount()
+    render(<ThreadCard thread={thread()} actions={actions()} />)
+    expect(document.querySelector('.thread-badge-kind')).toBeNull()
+  })
+
+  it('an opener fills a whole sentence and picks its kind — a question stays a question', () => {
     const onSubmit = vi.fn()
     render(<CommentBox title="t" placeholder="say…" onSubmit={onSubmit} onCancel={vi.fn()} />)
-    fireEvent.click(screen.getByText('Is it tested?'))
+    fireEvent.click(screen.getByText('Explain this'))
+    expect(document.querySelector('.cbox-intent-chip[aria-checked="true"]')!.textContent).toBe(
+      'Question',
+    )
     fireEvent.click(screen.getByText('Add comment'))
-    expect(onSubmit).toHaveBeenCalledWith('Is it tested?', false, 'question')
+    expect(onSubmit).toHaveBeenCalledWith(
+      'Explain what this does and why it’s needed.',
+      false,
+      'question',
+    )
+  })
+
+  it('a command opener asks for a change, and the words stay editable', () => {
+    const onSubmit = vi.fn()
+    render(<CommentBox title="t" placeholder="say…" onSubmit={onSubmit} onCancel={vi.fn()} />)
+    fireEvent.click(screen.getByText('Clean up the comments'))
+    expect(document.querySelector('.cbox-intent-chip[aria-checked="true"]')!.textContent).toBe(
+      'Change',
+    )
+    fireEvent.change(box(), { target: { value: 'Remove the comments in migrate() only.' } })
+    fireEvent.click(screen.getByText('Add comment'))
+    expect(onSubmit).toHaveBeenCalledWith('Remove the comments in migrate() only.', false, 'fix')
   })
 
   it('Add comment is the primary button; Send to agent is the second choice', () => {

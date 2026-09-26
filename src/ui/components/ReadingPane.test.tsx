@@ -371,7 +371,7 @@ describe('ReadingPane — the pane bar', () => {
 
   it('counts down, and offers the filters as switches rather than tick-boxes', () => {
     const { container } = render(<ReadingPane files={[FILES[0]!]} controls={controls()} />)
-    expect(screen.getByText('12 left')).toBeTruthy()
+    expect(screen.getByText('18 of 30 files')).toBeTruthy()
     const switches = [...container.querySelectorAll('.pane-bar [role="switch"]')]
     expect(switches.map((s) => s.textContent)).toEqual(['Hide reviewed', 'Hide tests8'])
     expect(container.querySelector('.pane-bar [role="checkbox"]')).toBeNull()
@@ -573,7 +573,8 @@ describe('ReadingPane — the pane bar', () => {
       )
       expect(screen.getByText("That's everything you asked to see")).toBeTruthy()
       expect(screen.queryByText(/all read/)).toBeNull()
-      expect(screen.getByText(/12 of 16/)).toBeTruthy()
+      // The bar says it too now ("12 of 16 files"); the payoff card is the one under test.
+      expect(screen.getByText(/12 of 16/, { selector: '.done-stats *' })).toBeTruthy()
       expect(screen.getByText(/4 test files were hidden — nobody reviewed them/)).toBeTruthy()
     })
 

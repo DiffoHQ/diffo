@@ -158,4 +158,23 @@ describe('renderMermaidIn', () => {
     await new Promise((r) => setTimeout(r, 20))
     expect(figure.innerHTML).toBe(before)
   })
+  it('pins a floor at 60% of natural width, so a wide diagram scrolls before its labels shrink away', async () => {
+    const root = fence(
+      'flowchart LR\n  a[db.ts] --> b[routes.ts] --> c[App.tsx] --> d[FileRow.tsx]',
+    )
+    await renderMermaidIn(root)
+    const svg = root.querySelector<SVGElement>('.mermaid-figure svg')
+    expect(svg).not.toBeNull()
+    const natural = Number.parseFloat(svg?.getAttribute('width') ?? '')
+    expect(natural).toBeGreaterThan(0)
+    expect(Number.parseFloat(svg?.style.minWidth ?? '')).toBe(Math.round(natural * 0.6))
+  })
+
+  it('leaves the floor unset when the SVG carries no natural width', async () => {
+    const root = fence('gantt\n  parses')
+    await renderMermaidIn(root)
+    const svg = root.querySelector<SVGElement>('.mermaid-figure svg')
+    expect(svg).not.toBeNull()
+    expect(svg?.style.minWidth).toBe('')
+  })
 })
