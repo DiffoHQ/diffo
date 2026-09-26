@@ -7,6 +7,10 @@ Until 1.0, minor versions may break things. When they do, the entry says how to 
 
 ## [Unreleased]
 
+Nothing yet.
+
+## [0.6.0] — 2026-09-26
+
 ### Added
 
 - **Edit your comments.** Hover one of your messages and click the pencil. If
@@ -337,7 +341,8 @@ shipped in it, written as a starting point rather than a history.
 - **Guided reading** — splitting a large change into an ordered sequence of small,
   reviewable sections — is designed but not built.
 
-[Unreleased]: https://github.com/DiffoHQ/diffo/compare/v0.5.0...HEAD
+[Unreleased]: https://github.com/DiffoHQ/diffo/compare/v0.6.0...HEAD
+[0.6.0]: https://github.com/DiffoHQ/diffo/compare/v0.5.0...v0.6.0
 [0.5.0]: https://github.com/DiffoHQ/diffo/compare/v0.4.1...v0.5.0
 [0.4.1]: https://github.com/DiffoHQ/diffo/compare/v0.4.0...v0.4.1
 [0.4.0]: https://github.com/DiffoHQ/diffo/compare/v0.3.0...v0.4.0
