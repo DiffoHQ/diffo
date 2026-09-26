@@ -3,7 +3,7 @@ import { cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { Layers, ReviewThread } from '../../shared/review.js'
 import type { FileChange, Hunk } from '../../shared/types.js'
-import { resolveLayers } from '../layers.js'
+import { hideLayerFiles, resolveLayers } from '../layers.js'
 import { LayerRail } from './LayerRail.js'
 
 afterEach(cleanup)
@@ -95,6 +95,32 @@ describe('LayerRail', () => {
     )
     const bar = rows()[1]!.querySelector<HTMLElement>('.prog-track i')!
     expect(bar.style.width).toBe('40%')
+  })
+
+  it('a hidden file is counted under the title, and a layer left with none says why', () => {
+    const shown = hideLayerFiles(
+      resolved,
+      (f) => f.path === 'src/dates.ts' || f.path === 'src/cli.ts',
+    )
+    const onMarkFiles = vi.fn()
+    render(
+      <LayerRail
+        layers={shown}
+        activeIndex={-1}
+        onPick={() => {}}
+        viewed={new Set()}
+        onMarkFiles={onMarkFiles}
+      />,
+    )
+    expect(subOf(rows()[1]!)).toBe('1 file · 1 hidden')
+    // Emptied by the switch, not by the changeset: a different sentence, and
+    // nothing to mark or unfold.
+    expect(subOf(rows()[2]!)).toBe('1 test hidden')
+    expect(rows()[2]!.querySelector('[role="checkbox"]')?.hasAttribute('disabled')).toBe(true)
+    expect(rows()[2]!.querySelector('.ch-fold')).toBeNull()
+    // The roll-up marks what is shown; a hidden file is excluded, not read.
+    fireEvent.click(rows()[1]!.querySelector('[role="checkbox"]')!)
+    expect(onMarkFiles).toHaveBeenCalledWith(['src/weekday.ts'])
   })
 
   it('the leading mark is the directory control: mark what is unread, clear when all read', () => {

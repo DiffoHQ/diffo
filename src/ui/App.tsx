@@ -45,6 +45,7 @@ import { fileAnchor, glideTo } from './hooks.js'
 import { actionForKey, isTypingTarget } from './keyboard.js'
 import {
   findGuide,
+  hideLayerFiles,
   layerByPath,
   layerKey,
   layerProgress,
@@ -55,7 +56,7 @@ import {
   stepLayer,
 } from './layers.js'
 import { computeDelta, EMPTY_DELTA } from './liveDelta.js'
-import { useReviewFilter } from './reviewFilter.js'
+import { isTestFile, useReviewFilter } from './reviewFilter.js'
 import { partitionThreads, threadsByFile } from './reviewPlacement.js'
 import { computeSinceLastReview } from './sinceLastReview.js'
 import { useTheme } from './theme.js'
@@ -337,6 +338,20 @@ function Review() {
   )
   const layerMode = resolvedLayers.length > 0
   const layersByPath = useMemo(() => layerByPath(resolvedLayers), [resolvedLayers])
+  // `Hide tests` follows the reviewer into the outline — the one filter that
+  // does. It retires a category of file, which the outline's narrowing has no
+  // opinion on; the others (reviewed, since, the typed word) step aside here.
+  // A pin wins as it does on the flat list, so a jump to a hidden test still
+  // lands. Everything that reads a layer's files reads `shownLayers`;
+  // `layersByPath` and the reveal keep the full outline, so a hidden file still
+  // knows which layer it lives in.
+  const shownLayers = useMemo(
+    () =>
+      filter.hideTests
+        ? hideLayerFiles(resolvedLayers, (f) => isTestFile(f.path) && !filter.pinned.has(f.path))
+        : resolvedLayers,
+    [resolvedLayers, filter.hideTests, filter.pinned],
+  )
   // The active layer is remembered by key — its stored id, which a re-post keeps
   // for a matching title — so a re-post never moves the reviewer. Until the
   // marks have loaded (or when the remembered layer is gone) the outline opens
@@ -358,9 +373,13 @@ function Review() {
     : onOverview
       ? -1
       : foundLayer === -1
-        ? startingLayer(resolvedLayers, viewed)
+        ? startingLayer(shownLayers, viewed)
         : foundLayer
   const activeLayer: ResolvedLayer | undefined =
+    layerMode && activeIndex >= 0 ? shownLayers[activeIndex] : undefined
+  // The same layer with nothing hidden — for membership, where a hidden file
+  // still belongs.
+  const activeLayerFull: ResolvedLayer | undefined =
     layerMode && activeIndex >= 0 ? resolvedLayers[activeIndex] : undefined
   // The pane reads one layer at a time only while the Layers tab is up. On
   // Files or Threads it is the flat list it always was — the outline is a lens
@@ -434,11 +453,11 @@ function Review() {
   const enterLayerFor = useCallback(
     (path: string) => {
       if (!inLayers) return
-      if (activeLayer?.files.some((f) => f.file.path === path)) return
+      if (activeLayerFull?.files.some((f) => f.file.path === path)) return
       const target = layersByPath.get(path)
       if (target) goLayer(resolvedLayers.indexOf(target))
     },
-    [inLayers, activeLayer, layersByPath, resolvedLayers, goLayer],
+    [inLayers, activeLayerFull, layersByPath, resolvedLayers, goLayer],
   )
 
   // A mechanical layer's files arrive folded — fold, never hide — each time the
@@ -476,8 +495,8 @@ function Review() {
     (path: string) => {
       filter.pin(path)
       const layer = inLayers
-        ? activeLayer?.files.some((f) => f.file.path === path)
-          ? activeLayer
+        ? activeLayerFull?.files.some((f) => f.file.path === path)
+          ? activeLayerFull
           : layersByPath.get(path)
         : undefined
       const idx = layer
@@ -485,7 +504,7 @@ function Review() {
         : allFiles.findIndex((f) => f.path === path)
       if (idx >= 0) setVisibleCount((c) => Math.max(c, idx + 1))
     },
-    [allFiles, filter.pin, inLayers, activeLayer, layersByPath],
+    [allFiles, filter.pin, inLayers, activeLayerFull, layersByPath],
   )
   const visibleFiles = useMemo(() => paneOrder.slice(0, visibleCount), [paneOrder, visibleCount])
 
@@ -926,12 +945,12 @@ function Review() {
     if (inLayers) {
       // From the Overview the plan starts at layer 1.
       const from = Math.max(activeIndex, 0)
-      const walk = [...resolvedLayers.slice(from), ...resolvedLayers.slice(0, from)]
+      const walk = [...shownLayers.slice(from), ...shownLayers.slice(0, from)]
       for (const layer of walk) {
         const hit = layer.files.map((f) => f.file).find(unread)
         if (hit) {
           file = hit
-          if (layer !== activeLayer) goLayer(resolvedLayers.indexOf(layer))
+          if (layer !== activeLayer) goLayer(shownLayers.indexOf(layer))
           break
         }
       }
@@ -956,7 +975,7 @@ function Review() {
     inLayers,
     activeIndex,
     activeLayer,
-    resolvedLayers,
+    shownLayers,
     goLayer,
     scrollToFile,
   ])
@@ -1124,7 +1143,7 @@ function Review() {
       } else if (action === 'next-layer' || action === 'prev-layer') {
         if (!inLayers) return
         const to = stepLayer(
-          resolvedLayers,
+          shownLayers,
           activeIndex,
           action === 'next-layer' ? 1 : -1,
           layerEmptied,
@@ -1150,7 +1169,7 @@ function Review() {
     filter.hideReviewed,
     filter.setHideReviewed,
     inLayers,
-    resolvedLayers,
+    shownLayers,
     activeIndex,
     layerEmptied,
     goLayer,
@@ -1186,14 +1205,15 @@ function Review() {
           ? { summary: activeLayer.summary }
           : {}),
       missing: activeLayer.missing,
-      listed: activeLayer.files.length,
+      listed: activeLayer.files.length + (activeLayer.hidden ?? 0),
+      hidden: activeLayer.hidden ?? 0,
       onJump: jumpTo,
       notes,
       knownPaths: allFiles.map((f) => f.path),
     }
   }, [paneLayerActive, layerCount, jumpTo, allFiles])
   const paneLayer = useMemo(() => {
-    const step = (dir: 1 | -1) => stepLayer(resolvedLayers, activeIndex, dir, layerEmptied)
+    const step = (dir: 1 | -1) => stepLayer(shownLayers, activeIndex, dir, layerEmptied)
     const to = (i: number | null) =>
       i === null ? null : { title: resolvedLayers[i]!.title, onGo: () => goLayer(i) }
     if (inLayers && onOverview) {
@@ -1231,6 +1251,7 @@ function Review() {
     paneLayerActive,
     viewed,
     resolvedLayers,
+    shownLayers,
     activeIndex,
     layerEmptied,
     layerCount,
@@ -1327,7 +1348,7 @@ function Review() {
           layers={
             layerMode ? (
               <LayerRail
-                layers={resolvedLayers}
+                layers={shownLayers}
                 activeIndex={activeIndex}
                 onPick={goLayer}
                 viewed={viewed}
@@ -1450,7 +1471,7 @@ function Review() {
             total: fileProgress.total,
             query: filter.query,
             onClearQuery: () => filter.setQuery(''),
-            hiddenQuery: filter.hiddenQuery,
+            hiddenQuery: inLayers ? 0 : filter.hiddenQuery,
             hideReviewed: filter.hideReviewed,
             onHideReviewed: filter.setHideReviewed,
             hideTests: filter.hideTests,
@@ -1459,9 +1480,12 @@ function Review() {
             onlyChanged: filter.onlyChanged,
             onOnlyChanged: filter.setOnlyChanged,
             changedCount: filter.changedCount,
-            hiddenTests: filter.hiddenTests,
-            hiddenReviewed: filter.hiddenReviewed,
-            hiddenUnchanged: filter.hiddenUnchanged,
+            // In layer mode the pane is the layer, and only Hide tests reaches
+            // it — so the foot of the pane counts that layer's hidden tests
+            // and nothing the flat list would have hidden.
+            hiddenTests: inLayers ? (paneLayerActive?.hidden ?? 0) : filter.hiddenTests,
+            hiddenReviewed: inLayers ? 0 : filter.hiddenReviewed,
+            hiddenUnchanged: inLayers ? 0 : filter.hiddenUnchanged,
             pinned: filter.pinned,
             onSweep: filter.unpin,
             onShowAll: filter.showAll,

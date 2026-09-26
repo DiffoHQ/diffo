@@ -36,6 +36,9 @@ export interface ResolvedLayer {
   missing: string[]
   /** The trailing layer the UI derives for files no layer lists. */
   derived: boolean
+  /** Listed files the reviewer's filter took out of `files` — still in the
+   * changeset, not shown (see `hideLayerFiles`). Absent when nothing was. */
+  hidden?: number
 }
 
 /**
@@ -96,6 +99,25 @@ export function resolveLayers(
     })
   }
   return resolved
+}
+
+/**
+ * The outline with a filter applied: each layer keeps the files `hide` lets
+ * through, and counts the rest as `hidden`. `Hide tests` is the one filter that
+ * follows the reviewer into layer mode — it retires a category of file, which
+ * the outline's narrowing has nothing to say about — and the count is what
+ * lets the rail and the layer card say so instead of quietly showing less.
+ * A layer nothing was taken from is returned as is.
+ */
+export function hideLayerFiles(
+  resolved: readonly ResolvedLayer[],
+  hide: (file: FileChange) => boolean,
+): ResolvedLayer[] {
+  return resolved.map((layer) => {
+    const files = layer.files.filter((f) => !hide(f.file))
+    const hidden = layer.files.length - files.length
+    return hidden === 0 ? layer : { ...layer, files, hidden }
+  })
 }
 
 /** What the UI remembers the active layer by: the stored id, which a re-post

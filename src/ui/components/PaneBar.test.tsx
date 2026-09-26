@@ -126,26 +126,46 @@ describe('the layer pager', () => {
     expect(container.querySelector<HTMLElement>('.prog-track i')?.style.width).toBe('100%')
   })
 
-  it('the filters step aside in layer mode — a layer shows all of its files', () => {
+  it('the narrowing filters step aside in layer mode; Hide tests stays', () => {
     const { container, unmount } = render(
-      bar({ testCount: 3, query: 'x', onClearQuery: () => {}, onAddNote: () => {} }),
-    )
-    expect(container.querySelectorAll('[role="switch"]').length).toBeGreaterThan(0)
-    expect(container.querySelector('.pane-q')).toBeTruthy()
-    expect(screen.getByText('Note')).toBeTruthy()
-    unmount()
-    const { container: c2 } = render(
       bar({
-        layer: layer(),
         testCount: 3,
+        changedCount: 2,
         query: 'x',
         onClearQuery: () => {},
         onAddNote: () => {},
       }),
     )
-    expect(c2.querySelectorAll('[role="switch"]')).toHaveLength(0)
+    expect(container.querySelectorAll('[role="switch"]')).toHaveLength(3)
+    expect(container.querySelector('.pane-q')).toBeTruthy()
+    expect(screen.getByText('Note')).toBeTruthy()
+    unmount()
+    const onHideTests = vi.fn()
+    const { container: c2 } = render(
+      bar({
+        layer: layer(),
+        testCount: 3,
+        changedCount: 2,
+        onHideTests,
+        query: 'x',
+        onClearQuery: () => {},
+        onAddNote: () => {},
+      }),
+    )
+    const switches = [...c2.querySelectorAll('[role="switch"]')]
+    expect(switches.map((s) => s.textContent)).toEqual(['Hide tests3'])
+    fireEvent.click(switches[0]!)
+    expect(onHideTests).toHaveBeenCalledWith(true)
     expect(c2.querySelector('.pane-q')).toBeNull()
     // The Overview's strip carries the changeset note in layer mode.
     expect(screen.queryByText('Note')).toBeNull()
+  })
+
+  it('in layer mode too, Hide tests is hidden with nothing to say, and shown once on', () => {
+    const { container, unmount } = render(bar({ layer: layer(), testCount: 0 }))
+    expect(container.querySelectorAll('[role="switch"]')).toHaveLength(0)
+    unmount()
+    const { container: c2 } = render(bar({ layer: layer(), testCount: 0, hideTests: true }))
+    expect(c2.querySelectorAll('[role="switch"]')).toHaveLength(1)
   })
 })
