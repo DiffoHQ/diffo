@@ -33,10 +33,10 @@ agent's behalf. Three things follow from it.
 
 | Step | What the agent runs | Why it matters |
 | --- | --- | --- |
-| 1. Open | `diffo --no-open` | Starts the review and prints the URL. `--no-open` because an agent should never throw a browser window at someone; it hands over the URL instead — immediately, before anything else |
-| 2. Guide | `diffo comment -m "…"` | One comment on the whole changeset — a map of the change, not a reading order — only when the changeset needs it, written while the reviewer is opening the page. See [the guide comment](#the-guide-comment) |
+| 1. Open | `diffo --no-open` | Starts the review and prints the URL. `--no-open` because an agent should never throw a browser window at someone; it hands over the URL instead, immediately, before anything else |
+| 2. Guide | `diffo comment -m "…"` | One comment on the whole changeset (a map of the change, not a reading order), only when the changeset needs it, written while the reviewer is opening the page. See [the guide comment](#the-guide-comment) |
 | 2b. Layers | `diffo layers --suggest "…"` | Optional: a flag that this read benefits from an ordered outline. The outline itself is posted only when the reviewer asks. See [layers](#layers) |
-| 3. Attach | `diffo poll --title "…"` | Blocks until the reviewer acts, then prints one payload. The title becomes the reviewer's browser tab name — see [the tab title](#the-tab-title) |
+| 3. Attach | `diffo poll --title "…"` | Blocks until the reviewer acts, then prints one payload. The title becomes the reviewer's browser tab name; see [the tab title](#the-tab-title) |
 | 4. Act | (edits, and `diffo reply`) | Work the threads the payload named, and answer each one |
 | 5. Re-attach | `diffo poll` | Also a statement: see [re-polling closes the batch](#re-polling-closes-the-batch) |
 | 6. Detach | `diffo end` | When the review is over |
@@ -48,7 +48,7 @@ and not something the agent waits on. Only the poll blocks.
 
 Every Diffo tab is titled "Diffo", which is fine until the reviewer has three
 of them open. The poll that attaches carries `--title "<the change, in 2-3
-words>"`, and that becomes the tab's whole name — `tab titles`, not
+words>"`, and that becomes the tab's whole name: `tab titles`, not
 `tab titles · Diffo`.
 
 Two or three words is not a style preference. A tab in a crowded strip shows
@@ -66,10 +66,10 @@ the changeset is at the moment it starts listening. The rules:
 - Until some poll sends one, the tab reads "Diffo" exactly as it always did.
 - A review served from a source checkout reads `dev · <title>`, so a dev review
   is never mistaken for a shipped one at a glance.
-- Anything over 40 characters is cut with an ellipsis — a backstop against an
+- Anything over 40 characters is cut with an ellipsis, a backstop against an
   essay, not a target.
 - The title is part of the review state: it survives a reload and a server
-  restart, and it is dropped when the reviewer clears the review — that round
+  restart, and it is dropped when the reviewer clears the review; that round
   is over, and the poll woken by the clear names the next one.
 
 ## What a poll payload carries
@@ -218,7 +218,7 @@ A layer:
 {
   "title": "Weekday resolution",
   "summary": "A bare weekday resolves to the *next* occurrence. Read `weekday.ts` first.",
-  "kind": "mechanical",            // optional — only when nothing changes behaviour
+  "kind": "mechanical",            // optional, only when nothing changes behaviour
   "files": [
     "src/weekday.ts",
     { "path": "src/dates.ts", "note": "delegates to resolveWeekday; the old arithmetic goes" }
@@ -277,8 +277,8 @@ same prompt the poll would have delivered, ready to paste into any agent.
 
 Each `diffo poll` identifies its session by walking up the process tree for a
 recognisable coding-agent process (`claude`, `cursor`, `codex`, `copilot`, and
-friends), skipping shell processes on the way, and sends that pid as
-`x-diffo-session-pid`.
+friends), skipping shell processes and the wrappers that only exist to run the
+CLI (`npx`, `tsx`) on the way, and sends that pid as `x-diffo-session-pid`.
 
 The **newest poll wins**. When a second session polls a repo another session already
 holds:
@@ -310,6 +310,33 @@ review rather than in any process:
 
 The cost of at-least-once is the occasional duplicate, which is why `finish`
 re-ships answered threads and the prompt tells the agent to leave them alone.
+
+## Reviewing a pull request
+
+When the target is a pull request (`diffo <PR URL>`), the agent is a copilot
+for code it did not write, and the protocol bends in four places, all of them
+carried by the open output and the payloads, as usual:
+
+- **Where to work.** The open prints the worktree Diffo checked the PR out in.
+  The agent runs its investigation there (tests, grep, the code) and leaves the
+  worktree as it found it: an uncommitted edit would show in the reviewer's
+  diff as if the pull request had it. It never commits or pushes.
+- **What it is told about trust.** The PR description, its commits and every
+  GitHub comment are third-party text. Payloads frame them as information to
+  weigh, never as instructions.
+- **What reaches it.** Only the reviewer's private threads, and none of them
+  carries an intent label: a pull request's composer has no Change / Question
+  chips, so the agent reads what is wanted from the words. Public review
+  comments are drafted for GitHub and post when the reviewer finishes; the
+  agent never sees them as feedback and never posts to GitHub. When the answer
+  is a fix, it goes in a ```suggestion block in the reply, not an edit to the
+  worktree; the reviewer can turn that reply into a public draft.
+- **How it ends.** Finish submits the review on GitHub and hands the private
+  threads to the agent as always. A poll then returns a `"kind": "submitted"`
+  notice (the verdict, the comment count, the body), which is context, not work.
+
+The guide and layers work as on any review, built from the description, the
+commits and the diff; the guide is skipped when the description already orients.
 
 ## Where the agent's instructions live
 

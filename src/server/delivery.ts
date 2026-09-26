@@ -57,6 +57,16 @@ export type Snapshot =
   | { kind: 'finish'; coverage: Coverage; absorbedThreadIds: string[] }
   | { kind: 'layers' }
   | { kind: 'cleared' }
+  | { kind: 'submitted'; submitted: Submitted }
+
+/** The reviewer submitted the pull-request review: context for the agent, no
+ * work owed. */
+export interface Submitted {
+  event: string
+  comments: number
+  body: string
+  url?: string
+}
 
 /** Where the reviewer's request for layers stands: parked for the next poll,
  * in the agent's hands, or nowhere. */
@@ -72,6 +82,8 @@ interface ScopePending {
   /** The reviewer asked for the outline (or a fresh one). A boolean like
    * `cleared`: two clicks before a poll are one request. */
   layers: boolean
+  /** The reviewer submitted the PR review — one notice, the newest wins. */
+  submitted: Submitted | null
   /** The request was delivered and the outline is owed: epoch ms of the
    * delivery, or null. Per scope like the request itself — a branch switch
    * must not carry "outlining" to a review nobody asked about. No batch and no
@@ -221,6 +233,7 @@ export class DeliveryQueue {
         cleared: false,
         layers: false,
         outlining: null,
+        submitted: null,
       }
       this.buckets.set(this.scope, bucket)
     }
@@ -389,6 +402,15 @@ export class DeliveryQueue {
     if (queued) this.notify()
   }
 
+  /** The reviewer submitted the PR review. A notice, not feedback: it rides
+   * behind everything else and owes the agent no reply. */
+  enqueueSubmitted(submitted: Submitted): void {
+    this.bucket().submitted = submitted
+    const queued = this.waiter === null
+    this.wake()
+    if (queued) this.notify()
+  }
+
   /** The reviewer asked for layers — the outline, or a fresh one. Rides like
    * the cleared heads-up: a boolean per scope, surfaced once real feedback is
    * answered. */
@@ -504,7 +526,11 @@ export class DeliveryQueue {
     const bucket = this.buckets.get(this.scope)
     return (
       bucket !== undefined &&
-      (bucket.threads.size > 0 || bucket.finish !== null || bucket.cleared || bucket.layers)
+      (bucket.threads.size > 0 ||
+        bucket.finish !== null ||
+        bucket.cleared ||
+        bucket.layers ||
+        bucket.submitted !== null)
     )
   }
 
@@ -534,6 +560,7 @@ export class DeliveryQueue {
     // Real feedback outranks the heads-up: a cleared notice only surfaces once
     // nothing else is owed, and survives in the bucket until then.
     if (bucket.cleared) return { kind: 'cleared' }
+    if (bucket.submitted !== null) return { kind: 'submitted', submitted: bucket.submitted }
     return null
   }
 
@@ -552,6 +579,13 @@ export class DeliveryQueue {
       // is what the grace window already models.
       const bucket = this.buckets.get(this.scope)
       if (bucket) bucket.cleared = false
+      this.armGrace()
+      this.notify()
+      return
+    }
+    if (snapshot.kind === 'submitted') {
+      const bucket = this.buckets.get(this.scope)
+      if (bucket && bucket.submitted === snapshot.submitted) bucket.submitted = null
       this.armGrace()
       this.notify()
       return

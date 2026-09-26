@@ -3,6 +3,7 @@ import {
   CLI_COMMANDS,
   GUIDE,
   GUIDE_CLASSDEFS,
+  HELP_AGENT_PR,
   LAYERS,
   POLL_STANCE,
   TAB_TITLE,
@@ -11,16 +12,27 @@ import { parseSuggestReason } from './shared/layers.js'
 import { normalizeTitle } from './shared/review.js'
 import type { ChangesetSpec } from './shared/types.js'
 
-export const HELP_TEXT = `diffo — review a changeset the way you'd read a book
+export const HELP_TEXT = `diffo: review a changeset the way you'd read a book
 
 Usage: diffo [options]          open (or resume) the review for this repo
+       diffo <target> [options] review against a branch, or review a pull request
        diffo <command> [...]    manage the server, or talk to the review
        diffo help [command]     show help for a command
 
+The target:
+  <branch>           everything since forking from that branch (same as --base)
+  <PR URL>           a GitHub pull request (also owner/repo#N, #N, or N)
+                     (the short forms resolve against this repo's origin)
+
 For the reviewer:
+  pr <target>        Review a pull request (the same as \`diffo <target>\`;
+                     help pr explains the flow)
   status             Show this repo's review server, if one is running
                      (--json for a machine-readable answer)
   stop               Stop this repo's review server
+  clean              Remove the worktrees diffo made for pull requests whose
+                     review is over (--force takes dirty ones, and ones a
+                     running server still serves; --all takes every one)
   setup              Register diffo with the coding agents on this machine
                      (Claude Code, Cursor, VS Code, Copilot, and the shared
                      ~/.agents skills dir read by Codex, Gemini, Amp, Goose, …)
@@ -32,7 +44,7 @@ For the agent (the AI that wrote the change):
                      the reviewer's browser tab)
   reply <threadId>   Post a reply to a review thread
                      (--message "<text>", or pipe the text on stdin)
-  comment [<file>]   Start a comment thread as the agent — on a line (--line),
+  comment [<file>]   Start a comment thread as the agent: on a line (--line),
                      a file, or (with no file) the whole changeset; the
                      reviewer replies to take it up, or resolves it
   layers             Outline the changeset as steps to read in order
@@ -55,7 +67,9 @@ Options (for opening the review):
 
 Examples:
   diffo                        open the review for this repo in the browser
-  diffo --base main            review everything since forking from main
+  diffo main                   review everything since forking from main
+  diffo https://github.com/o/r/pull/482
+                               review pull request #482 with your agent as copilot
   diffo status                 is a server running here, and where?
   diffo reply t-3 -m "fixed"   answer a review thread (agent side)
 
@@ -63,24 +77,24 @@ Feedback lives in the review, not in any process: diffo, poll, status, stop,
 and setup are all safe to re-run after an interruption.`
 
 const VERB_HELP: Record<string, string> = {
-  agent: `diffo help agent — the agent's whole protocol on one page
+  agent: `diffo help agent: the agent's whole protocol on one page
 
 You are the agent that wrote the change; a human reads it live in their
 browser. Diffo carries their feedback to you and your replies back inline.
-Poll payloads carry their own instructions — this page is the map that
+Poll payloads carry their own instructions; this page is the map that
 survives when context does not.
 
 The loop:
 
 1. Open: run \`diffo --no-open\` from inside the repo. It returns straight
    away, leaving a background server watching the working tree. Never open a
-   browser at the reviewer — share the printed URL instead, the moment it
+   browser at the reviewer; share the printed URL instead, the moment it
    prints: a message line right after this command, before the guide, the
    poll, or anything else. Then end your message with it too, and keep
    ending every message with it while you stay attached.
    Attached without ever seeing the URL (a takeover, a fresh session)?
    \`diffo status\` prints it.
-2. Guide — post one only when the changeset needs orientation:
+2. Guide: post one only when the changeset needs orientation:
    ${GUIDE.when}.
    Right after sharing the URL, while the reviewer opens the page, post ONE
    comment on the whole changeset (\`diffo comment -m "…"\`, no file). It is
@@ -88,58 +102,60 @@ The loop:
    Not in it: ${GUIDE.order}.
    How much: ${GUIDE.budget}.
    ${GUIDE.stance}.
-   Legend: ${GUIDE.legend} — \`diffo help guide\` has them, and one example.
-   It lands live at the top of their review — never hold the URL back for it.
+   Legend: ${GUIDE.legend}; \`diffo help guide\` has them, and one example.
+   It lands live at the top of their review; never hold the URL back for it.
    If the changeset later shifts under the guide, ${GUIDE.update}.
-3. Layers — offer them when the changeset reads better in order:
+3. Layers: offer them when the changeset reads better in order:
    ${LAYERS.suggest}.
    Flag it at open with \`diffo layers --suggest "<why, in one line>"\` and
    say so in your handoff ("say layers and I'll outline it"). Post the
-   outline only when the reviewer asks — in chat, or through the poll as a
+   outline only when the reviewer asks, in chat or through the poll as a
    \`"kind": "layers"\` payload: \`diffo layers --json '<Layer[]>'\`
    (or pipe it to \`diffo layers --stdin\`). Each layer is ${LAYERS.what}.
    Summary: ${LAYERS.summary}. Diagram: ${LAYERS.diagram}.
    Order: ${LAYERS.order}. ${LAYERS.mechanical}. ${LAYERS.stance}.
    ${LAYERS.replace}. \`diffo help layers\` has the shape.
-4. Listen: run \`${CLI_COMMANDS.firstPoll}\` — it blocks until the reviewer
+4. Listen: run \`${CLI_COMMANDS.firstPoll}\`; it blocks until the reviewer
    acts, then prints one JSON payload naming the threads to act on. Run it
    attended: ${POLL_STANCE}.
    The title is ${TAB_TITLE.what}: ${TAB_TITLE.why}. Write it the way it is
-   read — ${TAB_TITLE.shape} (${TAB_TITLE.examples}). Send it ${TAB_TITLE.when};
+   read: ${TAB_TITLE.shape} (${TAB_TITLE.examples}). Send it ${TAB_TITLE.when};
    every other poll is a plain \`diffo poll\`.
    Killed or timed out? Re-run it; feedback is held in the review, not the
    poll.
 5. Act: \`[issue]\` threads want a code change; \`[question]\` threads want an
    answer in the reply and no edit. Your edits reach the reviewer live.
 6. Reply: \`diffo reply <threadId> --message "<text>"\` (pipe long replies on
-   stdin) — concise, addressed to the reviewer. Markdown renders; a
+   stdin), concise, addressed to the reviewer. Markdown renders; a
    \`\`\`mermaid fence draws a diagram. A reply that only promises a
-   follow-up ("I'll investigate and report back") goes out with \`--more\` —
-   the reviewer keeps seeing you at work — and the real answer follows as a
+   follow-up ("I'll investigate and report back") goes out with \`--more\`, so
+   the reviewer keeps seeing you at work, and the real answer follows as a
    plain reply before the next poll.
 7. Comment (sparingly): \`diffo comment [<file>] [--line <n>] -m "<text>"\`
-   starts a thread in your voice — a concern, or context that helps the read.
+   starts a thread in your voice: a concern, or context that helps the read.
    When a reply or comment of yours ends in a decision that is the
    reviewer's ("want me to extract this?"), add \`--suggest-reply "<one
-   line>"\` — it shows as ghost text in their reply box, taken with Tab.
+   line>"\`; it shows as ghost text in their reply box, taken with Tab.
    Offer the answer you expect, not a menu; skip it on messages that only
    report.
-8. Poll again only when the whole batch is handled — a new poll tells the
+8. Poll again only when the whole batch is handled; a new poll tells the
    reviewer you are done with the previous one.
 9. Detach: run \`diffo end\` when the review is over or the user moves on.
 
 Rules:
-- Change only what the threads ask about — the reviewer is mid-read, and an
+- Change only what the threads ask about; the reviewer is mid-read, and an
   unrelated edit moves the diff under them.
 - One attached agent at a time: the newest poll carries the review; don't
-  re-poll to take it back from another session — tell the user instead. When
+  re-poll to take it back from another session; tell the user instead. When
   a poll says it took the review over, or returns status "superseded", say so
   to the user: their feedback moved with it.
-- Resolving a thread is the reviewer's call, never yours.`,
-  guide: `diffo help guide — the map an agent posts on the whole changeset
+- Resolving a thread is the reviewer's call, never yours.
+
+${HELP_AGENT_PR}`,
+  guide: `diffo help guide: the map an agent posts on the whole changeset
 
 Posted with \`diffo comment -m "…"\` (no file, so it anchors to the changeset)
-right after sharing the URL, while the reviewer opens the page — and only
+right after sharing the URL, while the reviewer opens the page, and only
 when the changeset needs orientation: ${GUIDE.when}.
 
 It is ${GUIDE.what}.
@@ -151,15 +167,15 @@ Legend: ${GUIDE.legend}:
   ${GUIDE_CLASSDEFS[0]}
   ${GUIDE_CLASSDEFS[1]}
 
-A file named as \`path\` or \`path:line\` — in backticks, or in a diagram
-node — becomes a jump into the review, so the map is navigation too.
+A file named as \`path\` or \`path:line\`, in backticks or in a diagram
+node, becomes a jump into the review, so the map is navigation too.
 If the changeset later shifts under the guide, ${GUIDE.update}.
 
-Say each part in plain words a reader meets cold — "worth checking as you
-read", "safe to skip" — never a label of your own like "Hold:" that they
+Say each part in plain words a reader meets cold, "worth checking as you
+read", "safe to skip", never a label of your own like "Hold:" that they
 would have to decode.
 
-One shape that works — not THE shape: a rename needs no diagram, a one-file
+One shape that works, not THE shape: a rename needs no diagram, a one-file
 change needs no checks, and headings are optional.
 
   A huge tool result could overflow the model's context. This caps it at the
@@ -178,24 +194,59 @@ change needs no checks, and headings are optional.
   \`\`\`
 
   Worth checking as you read: the capper and the reader must agree, byte for
-  byte, on one string — \`canonicalToolText\` is the only definition both use.
+  byte, on one string: \`canonicalToolText\` is the only definition both use.
   And the reader re-runs each tool's own \`toModelOutput\`, which assumes every
   converter is pure.
 
   Safe to skip: four \`tool-*\` display components moved only because a prop
   went dead.`,
-  poll: `diffo poll — wait for the reviewer's feedback
+  pr: `diffo pr: review a GitHub pull request
+
+Usage: diffo <PR URL | owner/repo#N | #N | N> [--no-open] [--foreground] [-p <port>]
+       diffo pr <the same>                        (the explicit spelling)
+
+Fetches the pull request's head into a worktree diffo owns
+(~/.diffo/worktrees/<repo>-<hash>/pr-<N>, on branch diffo/pr-<N>) and opens the
+ordinary review there: your checkout is never touched. The PR's description,
+reviews and comments are imported as threads; the agent you invite is a
+copilot for code it did not write. Your public comments post to GitHub as one
+review when you finish; nothing leaves before that.
+
+Needs the GitHub CLI signed in: gh auth login --hostname <host>. Every GitHub
+call goes through your own gh; diffo holds no token.
+
+The worktree lives as long as the review: it is removed when the review is
+pruned (60 days untouched), when the PR is merged or closed and you dismiss the
+offer, or by diffo clean.
+
+Examples:
+  diffo https://github.com/acme/widgets/pull/482
+  diffo acme/widgets#482
+  diffo 482                    (in a clone of acme/widgets)`,
+  clean: `diffo clean: remove the worktrees diffo made for pull requests
+
+Usage: diffo clean [--force] [--all]
+
+Lists every worktree diffo owns and removes the ones whose review is over: the
+pull request was merged or closed, the review was pruned, or the directory is
+gone. A worktree with uncommitted changes is kept and named; --force takes it
+too. --all removes every diffo worktree, review or not (their reviews go with
+them on the next open).
+
+Example:
+  diffo clean`,
+  poll: `diffo poll: wait for the reviewer's feedback
 
 Usage: diffo poll [--title "<what the change is>"]
 
 Blocks (streaming whitespace heartbeats) until the reviewer acts, then prints
 one JSON payload naming the review threads to act on, and exits. Run it
-attended — a tracked background task or the foreground, never detached: a
+attended, a tracked background task or the foreground, never detached: a
 payload that reaches a process nobody is listening to never reaches you.
 Safe to re-run any time: feedback is held in the review itself, so
-nothing is lost when a poll is killed or times out — the next poll gets it.
+nothing is lost when a poll is killed or times out; the next poll gets it.
 
---title is ${TAB_TITLE.what}: ${TAB_TITLE.why}. Write it the way it is read —
+--title is ${TAB_TITLE.what}: ${TAB_TITLE.why}. Write it the way it is read:
 ${TAB_TITLE.shape} (${TAB_TITLE.examples}). Send it ${TAB_TITLE.when}; the
 newest title wins, and a poll without one leaves the name it finds alone.
 
@@ -205,7 +256,7 @@ Output: one JSON object, e.g.
 Examples:
   diffo poll --title "tab titles from the agent"
   diffo poll`,
-  reply: `diffo reply — post a reply to a review thread
+  reply: `diffo reply: post a reply to a review thread
 
 Usage: diffo reply <threadId> --message "<text>" [--suggest-reply "<one line>"]
        … | diffo reply <threadId>            (long replies: pipe on stdin)
@@ -227,17 +278,17 @@ diagram in the review.
 Output: {"ok":true,"threadId":"t-3","state":"…","next_step":"…"}
 
 Example:
-  diffo reply t-3 --message "fixed — the guard now covers the empty case"`,
-  comment: `diffo comment — start a comment thread as the agent
+  diffo reply t-3 --message "fixed: the guard now covers the empty case"`,
+  comment: `diffo comment: start a comment thread as the agent
 
 Usage: diffo comment [<file>] [--line <n>] --message "<text>" [--suggest-reply "<one line>"]
        … | diffo comment [<file>] [--line <n>]  (long comments: pipe on stdin)
 
-Anchors to a line (--line), a file, or — with no file — the whole changeset.
+Anchors to a line (--line), a file, or, with no file, the whole changeset.
 A potential issue, or context that helps the reviewer read: either way it is
 one thread, labeled as yours, and it never counts as the reviewer's feedback
-until they reply into it — then it is theirs to send — or they resolve it.
-Spend these sparingly — an agent that annotates everything gets skimmed.
+until they reply into it (then it is theirs to send) or resolve it.
+Spend these sparingly; an agent that annotates everything gets skimmed.
 --suggest-reply offers the reviewer their answer: one line that appears as
 ghost text in their reply box, taken with Tab, edited or ignored at will.
 Use it when the comment proposes something and the call is theirs; the
@@ -250,7 +301,7 @@ Output: {"ok":true,"threadId":"t-1","next_step":"…"}
 Examples:
   diffo comment src/auth.ts --line 42 --message "this branch is unreachable"
   diffo comment src/auth.ts --line 42 -m "I can fold these two guards into one. Want that?" --suggest-reply "yes, fold them"`,
-  layers: `diffo layers — outline the changeset as steps to read in order
+  layers: `diffo layers: outline the changeset as steps to read in order
 
 Usage: diffo layers --suggest ["<why, in one line>"]   at open: this read benefits from layers
        diffo layers --json '<Layer[]>'                 post the outline, replacing the last one
@@ -279,7 +330,7 @@ Output: {"ok":true,"layers":4,"next_step":"…"}
 Examples:
   diffo layers --suggest "the parser change explains the rest"
   diffo layers --json '[{"title":"Parser contract","summary":"The contract the rest of the change leans on: bad input now comes back as null, not an exception.","files":["src/parse.ts"]},{"title":"Callers adapted","kind":"mechanical","summary":"Call sites following the new return type.","files":["src/cli.ts","src/api.ts"]}]'`,
-  end: `diffo end — detach from the review politely
+  end: `diffo end: detach from the review politely
 
 Usage: diffo end
 
@@ -290,7 +341,7 @@ Output: {"ok":true,"next_step":"…"}
 
 Example:
   diffo end`,
-  status: `diffo status — show this repo's review server, if one is running
+  status: `diffo status: show this repo's review server, if one is running
 
 Usage: diffo status [--json]
 
@@ -303,23 +354,23 @@ URL. Exits 0 when a server is running, 1 when none is. Safe to re-run.
 
 Example:
   diffo status --json`,
-  stop: `diffo stop — stop this repo's review server
+  stop: `diffo stop: stop this repo's review server
 
 Usage: diffo stop
 
 Asks the server to shut down cleanly (falling back to a signal if it lingers)
 and clears its registration. Safe to re-run: stopping nothing is a success,
-and the review itself survives — the next \`diffo\` picks it back up.
+and the review itself survives; the next \`diffo\` picks it back up.
 
 Example:
   diffo stop`,
-  setup: `diffo setup — register diffo with the coding agents on this machine
+  setup: `diffo setup: register diffo with the coding agents on this machine
 
 Usage: diffo setup
 
 Detects Claude Code, Cursor, VS Code, and Copilot CLI, and registers diffo
 with each so they know when and how to open a review. Also installs into
-~/.agents/skills — the cross-tool skills directory read by Codex, Gemini CLI,
+~/.agents/skills, the cross-tool skills directory read by Codex, Gemini CLI,
 Amp, Goose, OpenCode, and others. Safe to re-run: already-registered clients
 are left as they are, and opening a review keeps installed skills fresh
 automatically after upgrades.
@@ -338,10 +389,15 @@ export type CliCommand =
   | {
       kind: 'run'
       spec: ChangesetSpec
+      /** The positional, verbatim: a branch or a pull-request reference. The
+       * CLI resolves it against the repo; `spec` is what it means when it is a
+       * branch, and a placeholder until then when it may be a PR. */
+      target?: string
       port: number | undefined
       open: boolean
       foreground: boolean
     }
+  | { kind: 'clean'; force: boolean; all: boolean }
   | { kind: 'poll'; title: string | null }
   | {
       kind: 'reply'
@@ -370,7 +426,18 @@ export type LayersSource =
   | { kind: 'stdin' }
   | { kind: 'suggest'; reason: string | null }
 
-const VERBS = new Set(['poll', 'reply', 'comment', 'layers', 'end', 'setup', 'status', 'stop'])
+const VERBS = new Set([
+  'poll',
+  'reply',
+  'comment',
+  'layers',
+  'end',
+  'setup',
+  'status',
+  'stop',
+  'clean',
+  'pr',
+])
 
 function editDistance(a: string, b: string): number {
   const dp = Array.from({ length: b.length + 1 }, (_, i) => i)
@@ -394,7 +461,9 @@ function editDistance(a: string, b: string): number {
 function nearestVerb(input: string): string | null {
   let best: string | null = null
   let bestDistance = 3
-  for (const verb of [...VERBS, 'help']) {
+  // `pr` is two letters: every short word is two edits from it, so it never
+  // counts as a typo target — `diffo x` is a branch, not a mistyped `pr`.
+  for (const verb of [...VERBS, 'help'].filter((v) => v !== 'pr')) {
     const distance = editDistance(input.toLowerCase(), verb)
     if (distance < bestDistance) {
       bestDistance = distance
@@ -408,7 +477,7 @@ function unknownCommand(input: string): CliCommand {
   const suggestion = nearestVerb(input)
   return {
     kind: 'error',
-    message: `unknown command '${input}'${suggestion ? ` — did you mean '${suggestion}'?` : ''}`,
+    message: `unknown command '${input}'${suggestion ? `. Did you mean '${suggestion}'?` : ''}`,
   }
 }
 
@@ -448,16 +517,39 @@ function tryParse<T>(run: () => T): { ok: true; value: T } | { ok: false; messag
   }
 }
 
+/** A word that can only be a pull request, whatever verbs it resembles. */
+function looksLikePr(word: string): boolean {
+  return /^(https?:\/\/|#?\d+$|[\w.-]+\/[\w.-]+#\d+$)/.test(word)
+}
+
 export function parseCliArgs(argv: string[]): CliCommand {
+  let target: string | undefined
+  let rest = argv
   if (argv[0] !== undefined && !argv[0].startsWith('-')) {
     if (argv[0] === 'help') return parseHelp(argv.slice(1))
-    if (VERBS.has(argv[0])) return parseVerb(argv[0], argv.slice(1))
-    return unknownCommand(argv[0])
+    if (argv[0] === 'pr') {
+      // The explicit spelling: `diffo pr <target> …` is `diffo <target> …`.
+      if (argv[1] === undefined || argv[1].startsWith('-')) {
+        return argv[1] === '--help' || argv[1] === '-h'
+          ? { kind: 'help', topic: 'pr' }
+          : { kind: 'error', message: 'pr needs a pull request: a URL, owner/repo#N, #N, or N' }
+      }
+      target = argv[1]
+      rest = argv.slice(2)
+    } else if (VERBS.has(argv[0])) {
+      return parseVerb(argv[0], argv.slice(1))
+    } else {
+      // A bare word is a target — a branch, or a pull request — unless it is one
+      // typo away from a command, which is what a reviewer typing fast meant.
+      if (!looksLikePr(argv[0]) && nearestVerb(argv[0]) !== null) return unknownCommand(argv[0])
+      target = argv[0]
+      rest = argv.slice(1)
+    }
   }
 
   const parsed = tryParse(() =>
     parseArgs({
-      args: argv,
+      args: rest,
       options: {
         port: { type: 'string', short: 'p' },
         base: { type: 'string' },
@@ -490,12 +582,25 @@ export function parseCliArgs(argv: string[]): CliCommand {
     return { kind: 'error', message: `'${values.base}' is not a valid branch name` }
   }
 
+  if (target !== undefined) {
+    if (target.trim() === '') return { kind: 'error', message: 'the target is empty' }
+    if (!looksLikePr(target) && isInvalidBranchName(target)) {
+      return { kind: 'error', message: `'${target}' is not a valid branch name` }
+    }
+    if (values.base !== undefined && !looksLikePr(target)) {
+      return { kind: 'error', message: 'pass the branch once, as the target or with --base' }
+    }
+  }
+
   const spec: ChangesetSpec = values.base
     ? { kind: 'branch', base: values.base }
-    : { kind: 'working-tree' }
+    : target !== undefined && !looksLikePr(target)
+      ? { kind: 'branch', base: target }
+      : { kind: 'working-tree' }
   return {
     kind: 'run',
     spec,
+    ...(target !== undefined ? { target } : {}),
     port,
     open: !values['no-open'],
     foreground: values.foreground === true,
@@ -533,7 +638,7 @@ function parseLayersVerb(rest: string[]): CliCommand {
   }
   if (values.suggest) {
     if (positionals.length > 1) {
-      return { kind: 'error', message: '--suggest takes at most one reason — quote it' }
+      return { kind: 'error', message: '--suggest takes at most one reason; quote it' }
     }
     return {
       kind: 'layers',
@@ -550,14 +655,35 @@ function parseLayersVerb(rest: string[]): CliCommand {
   if (values.json!.trim() === '') {
     return {
       kind: 'error',
-      message: '--json needs a JSON array of layers — see `diffo help layers`',
+      message: '--json needs a JSON array of layers; see `diffo help layers`',
     }
   }
   return { kind: 'layers', source: { kind: 'json', text: values.json! } }
 }
 
+function parseCleanVerb(rest: string[]): CliCommand {
+  const parsed = tryParse(() =>
+    parseArgs({
+      args: rest,
+      options: {
+        force: { type: 'boolean' },
+        all: { type: 'boolean' },
+        help: { type: 'boolean', short: 'h' },
+      },
+    }),
+  )
+  if (!parsed.ok) return { kind: 'error', message: parsed.message }
+  if (parsed.value.values.help) return { kind: 'help', topic: 'clean' }
+  return {
+    kind: 'clean',
+    force: parsed.value.values.force === true,
+    all: parsed.value.values.all === true,
+  }
+}
+
 function parseVerb(verb: string, rest: string[]): CliCommand {
   if (verb === 'layers') return parseLayersVerb(rest)
+  if (verb === 'clean') return parseCleanVerb(rest)
   const parsed = tryParse(() =>
     parseArgs({
       args: rest,

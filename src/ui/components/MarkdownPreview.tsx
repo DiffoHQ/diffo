@@ -34,7 +34,7 @@ export function MarkdownPreview({ path, onClose }: { path: string; onClose: () =
   return (
     <Modal title={path} className="md-preview" onClose={onClose}>
       {failed ? (
-        <div className="file-stub">couldn't read this file — it may have just changed on disk</div>
+        <div className="file-stub">couldn't read this file; it may have just changed on disk</div>
       ) : text === null ? (
         <div aria-hidden="true">
           <div className="shimmer" />

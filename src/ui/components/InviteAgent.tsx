@@ -71,12 +71,12 @@ export function InviteAgent({
           <div>
             {reason === 'ended' ? (
               <>
-                <b>Your agent left the review</b> — it detached on purpose. Bring it back whenever
+                <b>Your agent left the review</b>: it detached on purpose. Bring it back whenever
                 you like.
               </>
             ) : (
               <>
-                <b>Your agent disconnected</b> — its poll died without detaching.
+                <b>Your agent disconnected</b>: its poll died without detaching.
               </>
             )}
           </div>
@@ -112,7 +112,7 @@ export function InviteAgent({
             <div className="warn">
               <Icon name="alert" size="sm" />
               <div>
-                <b>Couldn't reach the clipboard</b> — this browser blocked it. Select the text and
+                <b>Couldn't reach the clipboard</b>: this browser blocked it. Select the text and
                 copy it by hand.
               </div>
             </div>

@@ -222,7 +222,7 @@ export async function renderMermaidIn(root: HTMLElement | null): Promise<void> {
     if (rendered === null) {
       const note = document.createElement('div')
       note.className = 'mermaid-broken'
-      note.textContent = "diagram didn't parse — showing its source"
+      note.textContent = "diagram didn't parse, showing its source"
       pre.before(note)
       continue
     }

@@ -56,4 +56,59 @@ export interface Changeset {
   repo: { path: string; name: string; branch: string; worktree: string | null }
   files: FileChange[]
   stats: ChangesetStats
+  /**
+   * Present only when the server was opened on a pull request. The diff itself
+   * is an ordinary branch diff inside a Diffo-owned worktree; this block is what
+   * the UI and the prompts add on top. Refreshed by the forge puller, never by
+   * the fs watcher.
+   */
+  pr?: PrInfo
+}
+
+export interface GhUser {
+  login: string
+  avatarUrl: string
+}
+
+export interface PrCommit {
+  sha: string
+  subject: string
+  author: GhUser | null
+  at: string
+}
+
+export type PrCheckState = 'pending' | 'success' | 'failure' | 'none'
+
+export interface PrReviewEvent {
+  /** GraphQL node id — what replies and resolves address. */
+  id: string
+  author: GhUser
+  state: 'APPROVED' | 'CHANGES_REQUESTED' | 'COMMENTED' | 'DISMISSED' | 'PENDING'
+  at: string
+  hasBody: boolean
+}
+
+export interface PrInfo {
+  host: string
+  owner: string
+  repo: string
+  number: number
+  /** GraphQL node id of the pull request — the subject for a general comment
+   * and the anchor for a new review. */
+  nodeId: string
+  url: string
+  title: string
+  body: string
+  author: GhUser
+  state: 'open' | 'closed' | 'merged'
+  draft: boolean
+  base: { ref: string; sha: string }
+  head: { ref: string; sha: string }
+  commits: PrCommit[]
+  checks: { state: PrCheckState; url?: string }
+  reviews: PrReviewEvent[]
+  approvals: number
+  changesRequested: number
+  viewer: { login: string; isAuthor: boolean; pendingReviewId: string | null }
+  fetchedAt: string
 }

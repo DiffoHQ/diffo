@@ -9,12 +9,18 @@ import {
   useRef,
   useState,
 } from 'react'
-import { type Coverage, threadsInChangeset, untouchedAgentVoice } from '../shared/review.js'
+import {
+  type Coverage,
+  isDraft,
+  threadsInChangeset,
+  untouchedAgentVoice,
+} from '../shared/review.js'
 import type { Changeset, FileChange } from '../shared/types.js'
 import {
   type LayersRequest,
   type Presence,
   type PresenceReason,
+  type ReviewEvent,
   reviewApi,
   useChangeset,
   useReview,
@@ -38,12 +44,14 @@ import {
   type ViewMode,
 } from './components/ReadingPane.js'
 import { Shortcuts } from './components/Shortcuts.js'
+import { SubmitReview } from './components/SubmitReview.js'
 import { ThreadRail } from './components/ThreadRail.js'
 import type { ReviewActions } from './components/Threads.js'
 import { isFileViewed } from './fileMarks.js'
 import { fileAnchor, glideTo } from './hooks.js'
 import { actionForKey, isTypingTarget } from './keyboard.js'
 import {
+  findDescription,
   findGuide,
   hideLayerFiles,
   layerByPath,
@@ -56,6 +64,7 @@ import {
   stepLayer,
 } from './layers.js'
 import { computeDelta, EMPTY_DELTA } from './liveDelta.js'
+import { PrContext } from './prMode.js'
 import { isTestFile, useReviewFilter } from './reviewFilter.js'
 import { partitionThreads, threadsByFile } from './reviewPlacement.js'
 import { computeSinceLastReview } from './sinceLastReview.js'
@@ -231,8 +240,8 @@ function useReviewActions(): ReviewActions {
   return useMemo(() => {
     const refresh = () => client.invalidateQueries({ queryKey: ['review'] })
     return {
-      create: async (anchor, text, intent) => {
-        const thread = await reviewApi.createThread(anchor, text, intent)
+      create: async (anchor, text, intent, options) => {
+        const thread = await reviewApi.createThread(anchor, text, intent, options)
         await refresh()
         return thread
       },
@@ -315,6 +324,9 @@ function Review() {
   const [theme, setTheme] = useTheme()
   const [panel, setPanel] = useState<PanelTab>('files')
   const [searchFocusTick, setSearchFocusTick] = useState(0)
+  // The pull request under review, when there is one (see prMode.ts). Null is
+  // the ordinary local review, and nothing below changes for it.
+  const pr = data?.pr ?? null
 
   const agentAttached = presence !== 'waiting'
 
@@ -367,9 +379,17 @@ function Review() {
   // on the first layer with something unread.
   const [activeLayerKey, setActiveLayerKey] = useState<string | null>(null)
   const guide = useMemo(() => findGuide(review?.threads ?? []), [review?.threads])
+  // On a pull request the author's description is the overview whether or not
+  // the agent has posted a guide: it is the map the author drew.
+  const description = useMemo(
+    () => (pr ? findDescription(review?.threads ?? []) : undefined),
+    [pr, review?.threads],
+  )
+  const hasOverview = guide !== undefined || description !== undefined
   // Row 0. Standing on it, the pane shows the guide and the other changeset
-  // threads — the orientation — and no layer's files. Only exists with a guide.
-  const onOverview = layerMode && activeLayerKey === OVERVIEW_KEY && guide !== undefined
+  // threads — the orientation — and no layer's files. Only exists with a guide
+  // or a description.
+  const onOverview = layerMode && activeLayerKey === OVERVIEW_KEY && hasOverview
   const foundLayer = resolvedLayers.findIndex((l) => layerKey(l) === activeLayerKey)
   // A fresh outline with nothing read yet opens on the Overview; otherwise on
   // the first layer with something unread.
@@ -399,7 +419,7 @@ function Review() {
     if (!layerMode || !viewedLoaded || foundLayer !== -1 || onOverview) return
     // Pin the derived start once, so a later mark cannot slide the reviewer on.
     setActiveLayerKey(
-      guide && untouched && activeLayerKey === null
+      hasOverview && untouched && activeLayerKey === null
         ? OVERVIEW_KEY
         : layerKey(resolvedLayers[activeIndex]!),
     )
@@ -410,7 +430,7 @@ function Review() {
     onOverview,
     resolvedLayers,
     activeIndex,
-    guide,
+    hasOverview,
     untouched,
     activeLayerKey,
   ])
@@ -517,10 +537,18 @@ function Review() {
   )
   const visibleFiles = useMemo(() => paneOrder.slice(0, visibleCount), [paneOrder, visibleCount])
 
-  const { active: activeThreads, past: pastThreads } = useMemo(
-    () => threadsInChangeset(data?.files ?? [], review?.threads ?? []),
-    [data, review],
-  )
+  const { active: activeThreads, past: pastThreads } = useMemo(() => {
+    const split = threadsInChangeset(data?.files ?? [], review?.threads ?? [])
+    // A GitHub thread whose line left the diff is outdated by GitHub's word or
+    // ours: it has no line to sit under, so it reads with the threads the
+    // changeset left behind rather than at the top of its file.
+    const outdated = split.active.filter((t) => t.github?.outdated === true)
+    if (outdated.length === 0) return split
+    return {
+      active: split.active.filter((t) => t.github?.outdated !== true),
+      past: [...split.past, ...outdated],
+    }
+  }, [data, review])
   const partition = useMemo(
     () => partitionThreads(data?.files ?? [], activeThreads),
     [data, activeThreads],
@@ -573,6 +601,7 @@ function Review() {
   const settledThreads = items.length + pastItems.length - liveThreads
   const [revealNotesTick, setRevealNotesTick] = useState(0)
   const [revealPastTick, setRevealPastTick] = useState(0)
+  const [revealThreadId, setRevealThreadId] = useState<string | null>(null)
   const [openThreadId, setOpenThreadId] = useState<string | null>(null)
   const comments: ReviewComments = useMemo(
     () => ({
@@ -591,6 +620,7 @@ function Review() {
       onCloseChangesetComposer: () => setNoteComposerOpen(false),
       revealNotesTick,
       revealPastTick,
+      revealThreadId,
     }),
     [
       partition,
@@ -604,6 +634,7 @@ function Review() {
       noteComposerOpen,
       revealNotesTick,
       revealPastTick,
+      revealThreadId,
     ],
   )
   const openComments = useMemo(() => {
@@ -611,6 +642,12 @@ function Review() {
     for (const t of activeThreads) if (isUnsent(t)) n++
     return n
   }, [activeThreads])
+  // Past threads count too: a draft whose line went outdated after a push is
+  // still in the server's pending list, so the header's number must match.
+  const publicDrafts = useMemo(
+    () => activeThreads.filter(isDraft).length + pastThreads.filter(isDraft).length,
+    [activeThreads, pastThreads],
+  )
 
   const [movedPaths, setMovedPaths] = useState<ReadonlySet<string>>(new Set())
 
@@ -704,16 +741,26 @@ function Review() {
   )
 
   const finishReview = useCallback(
-    async (deliver: boolean, closing?: { note: string }) => {
+    async (deliver: boolean, closing?: { note: string; event?: ReviewEvent }) => {
       const payload: Coverage = {
         ...coverage,
         ...(closing && closing.note.trim() !== '' ? { note: closing.note.trim() } : {}),
       }
-      const { prompt, delivered, presence: at } = await reviewApi.finish(payload, deliver)
+      const {
+        prompt,
+        delivered,
+        presence: at,
+        public: outcome,
+      } = await reviewApi.finish(payload, deliver, closing?.event)
       await queryClient.invalidateQueries({ queryKey: ['review'] })
+      await queryClient.invalidateQueries({ queryKey: ['changeset'] })
+      // The pending list too: after a GitHub leg that stopped midway, what
+      // posted before the stop is no longer pending, and the dialog still open
+      // on top of this must not offer it again.
+      await queryClient.invalidateQueries({ queryKey: ['finish-preview'] })
       const handedOver = delivered || at !== 'waiting'
-      if (deliver && handedOver && openComments > 0) setMonitorOpen(true)
-      return { prompt, delivered: handedOver }
+      if (deliver && handedOver && openComments > 0 && !outcome?.failed) setMonitorOpen(true)
+      return { prompt, delivered: handedOver, ...(outcome ? { public: outcome } : {}) }
     },
     [coverage, openComments],
   )
@@ -1012,6 +1059,7 @@ function Review() {
           return next
         })
       } else {
+        setRevealThreadId(item.threadId)
         setRevealNotesTick((t) => t + 1)
       }
       // The expanded body renders whenever React commits, so one frame is a race.
@@ -1165,7 +1213,7 @@ function Review() {
         )
         // `[` off the front of the outline lands on the Overview, when there is one.
         if (to !== null) goLayer(to)
-        else if (action === 'prev-layer' && guide && !onOverview) goOverview()
+        else if (action === 'prev-layer' && hasOverview && !onOverview) goOverview()
       } else {
         moveSelection(action)
       }
@@ -1214,7 +1262,7 @@ function Review() {
       ...(activeLayer.derived
         ? {
             summary:
-              'Files no layer lists — touched after the outline was posted, or left out of it. The agent absorbs them by re-posting.',
+              'Files no layer lists: touched after the outline was posted, or left out of it. The agent absorbs them by re-posting.',
           }
         : activeLayer.summary
           ? { summary: activeLayer.summary }
@@ -1233,8 +1281,10 @@ function Review() {
       i === null ? null : { title: resolvedLayers[i]!.title, onGo: () => goLayer(i) }
     if (inLayers && onOverview) {
       return {
-        text: 'overview · the guide',
-        title: 'the agent’s orientation to this change; ] enters the first layer',
+        text: description ? 'overview · the description' : 'overview · the guide',
+        title: description
+          ? 'the author’s description of this change; ] enters the first layer'
+          : 'the agent’s orientation to this change; ] enters the first layer',
         progress: 0,
         prev: null,
         next: to(step(1)),
@@ -1257,7 +1307,7 @@ function Review() {
       text: `${label} · ${p.files} ${p.files === 1 ? 'file' : 'files'} · ${left}`,
       title: `${p.doneFiles} of ${p.files} files in this layer marked reviewed`,
       progress: p.marks === 0 ? 0 : p.doneMarks / p.marks,
-      prev: prev !== null ? to(prev) : guide ? { title: 'Overview', onGo: goOverview } : null,
+      prev: prev !== null ? to(prev) : hasOverview ? { title: 'Overview', onGo: goOverview } : null,
       next: to(step(1)),
     }
   }, [
@@ -1272,7 +1322,8 @@ function Review() {
     layerCount,
     goLayer,
     goOverview,
-    guide,
+    description,
+    hasOverview,
   ])
   // Nobody attached wins: a request parked for a poll nobody is running is not
   // "outlining", and the honest thing to offer is Invite.
@@ -1303,272 +1354,292 @@ function Review() {
   }
   if (!data) return null
   return (
-    <div className="layout">
-      <Header
-        changeset={data}
-        agent={{
-          presence,
-          since: presenceSince,
-          activity,
-          onInvite: () => setInviteOpen(true),
-          batch: batchForBadge,
-          suggestion:
-            !layerMode && layersRequest === null && review?.layersSuggested
-              ? { reason: review.layersSuggested.reason, onOutline: requestLayers }
-              : undefined,
-          monitorOpen,
-          onOpenMonitor: setMonitorOpen,
-          monitorPanel: (
-            <Monitor
-              stillTo={batch.stillTo}
-              back={batch.back}
-              onOpen={(item) => {
-                setMonitorOpen(false)
-                openThread({ threadId: item.thread.id, path: item.path })
-              }}
-              onClose={() => setMonitorOpen(false)}
-            />
-          ),
-        }}
-        review={{
-          openComments,
-          onFinishReview: () => setFinishOpen(true),
-        }}
-        settings={{
-          theme,
-          onSetTheme: setTheme,
-          onShowShortcuts: () => setShortcutsOpen(true),
-        }}
-      />
-      <div
-        ref={bodyRef}
-        className={`body${navHidden ? ' nav-hidden' : ''}${railDragging ? ' rail-dragging' : ''}`}
-        style={{ '--rail-w': `${railWidthRef.current}px` } as CSSProperties}
-      >
-        <LeftPanel
-          tab={panel}
-          onSetTab={setPanel}
-          fileCount={data.files.length}
-          wantsYou={wantsYou}
-          threadCount={liveThreads}
-          settledCount={settledThreads}
-          layerCount={layerMode ? layerCount : null}
-          layersSuggested={review?.layersSuggested !== undefined}
-          layers={
-            layerMode ? (
-              <LayerRail
-                layers={shownLayers}
-                activeIndex={activeIndex}
-                onPick={goLayer}
+    <PrContext.Provider value={pr}>
+      <div className="layout">
+        <Header
+          changeset={data}
+          agent={{
+            presence,
+            since: presenceSince,
+            activity,
+            onInvite: () => setInviteOpen(true),
+            batch: batchForBadge,
+            suggestion:
+              !layerMode && layersRequest === null && review?.layersSuggested
+                ? { reason: review.layersSuggested.reason, onOutline: requestLayers }
+                : undefined,
+            monitorOpen,
+            onOpenMonitor: setMonitorOpen,
+            monitorPanel: (
+              <Monitor
+                stillTo={batch.stillTo}
+                back={batch.back}
+                onOpen={(item) => {
+                  setMonitorOpen(false)
+                  openThread({ threadId: item.thread.id, path: item.path })
+                }}
+                onClose={() => setMonitorOpen(false)}
+              />
+            ),
+          }}
+          review={{
+            openComments,
+            publicDrafts,
+            onFinishReview: () => setFinishOpen(true),
+          }}
+          settings={{
+            theme,
+            onSetTheme: setTheme,
+            onShowShortcuts: () => setShortcutsOpen(true),
+          }}
+        />
+        <div
+          ref={bodyRef}
+          className={`body${navHidden ? ' nav-hidden' : ''}${railDragging ? ' rail-dragging' : ''}`}
+          style={{ '--rail-w': `${railWidthRef.current}px` } as CSSProperties}
+        >
+          <LeftPanel
+            tab={panel}
+            onSetTab={setPanel}
+            fileCount={data.files.length}
+            wantsYou={wantsYou}
+            threadCount={liveThreads}
+            settledCount={settledThreads}
+            layerCount={layerMode ? layerCount : null}
+            layersSuggested={review?.layersSuggested !== undefined}
+            layers={
+              layerMode ? (
+                <LayerRail
+                  layers={shownLayers}
+                  activeIndex={activeIndex}
+                  onPick={goLayer}
+                  viewed={viewed}
+                  guide={guide}
+                  description={description}
+                  overviewActive={onOverview}
+                  onOpenGuide={hasOverview ? goOverview : undefined}
+                  threads={fileThreads}
+                  attention={fileAttention}
+                  changed={sinceLastReview.changed}
+                  selectedPath={selectedPath}
+                  onPickFile={pickFile}
+                  onToggleFileViewed={toggleFileViewed}
+                  onMarkFiles={markFilesViewed}
+                  onClearFiles={clearFilesViewed}
+                  onAskFile={(path) => {
+                    revealFile(path)
+                    setComposeFilePath(path)
+                  }}
+                  onRefresh={agentAttached ? requestLayers : undefined}
+                  request={agentAttached ? layersRequest : null}
+                />
+              ) : (
+                <LayersEmpty
+                  state={layersEmptyState}
+                  onOutline={requestLayers}
+                  onInvite={() => setInviteOpen(true)}
+                />
+              )
+            }
+            files={
+              <Nav
+                files={allFiles}
                 viewed={viewed}
-                guide={guide}
-                overviewActive={onOverview}
-                onOpenGuide={guide ? goOverview : undefined}
-                threads={fileThreads}
-                attention={fileAttention}
-                changed={sinceLastReview.changed}
                 selectedPath={selectedPath}
                 onPickFile={pickFile}
                 onToggleFileViewed={toggleFileViewed}
                 onMarkFiles={markFilesViewed}
                 onClearFiles={clearFilesViewed}
                 onAskFile={(path) => {
+                  // The composer renders inside the file body, so the file must be in
+                  // the rendering window first.
                   revealFile(path)
                   setComposeFilePath(path)
                 }}
-                onRefresh={agentAttached ? requestLayers : undefined}
-                request={agentAttached ? layersRequest : null}
+                threads={fileThreads}
+                attention={fileAttention}
+                changed={sinceLastReview.changed}
+                query={filter.query}
+                onQuery={filter.setQuery}
+                focusTick={searchFocusTick}
+                hideReviewed={filter.hideReviewed}
+                onHideReviewed={filter.setHideReviewed}
+                hideTests={filter.hideTests}
+                onHideTests={filter.setHideTests}
+                onlyChanged={onlyChanged}
+                onOnlyChanged={setOnlyChanged}
               />
-            ) : (
-              <LayersEmpty
-                state={layersEmptyState}
-                onOutline={requestLayers}
-                onInvite={() => setInviteOpen(true)}
-              />
-            )
-          }
-          files={
-            <Nav
-              files={allFiles}
-              viewed={viewed}
-              selectedPath={selectedPath}
-              onPickFile={pickFile}
-              onToggleFileViewed={toggleFileViewed}
-              onMarkFiles={markFilesViewed}
-              onClearFiles={clearFilesViewed}
-              onAskFile={(path) => {
-                // The composer renders inside the file body, so the file must be in
-                // the rendering window first.
-                revealFile(path)
-                setComposeFilePath(path)
-              }}
-              threads={fileThreads}
-              attention={fileAttention}
-              changed={sinceLastReview.changed}
-              query={filter.query}
-              onQuery={filter.setQuery}
-              focusTick={searchFocusTick}
-              hideReviewed={filter.hideReviewed}
-              onHideReviewed={filter.setHideReviewed}
-              hideTests={filter.hideTests}
-              onHideTests={filter.setHideTests}
-              onlyChanged={onlyChanged}
-              onOnlyChanged={setOnlyChanged}
-            />
-          }
-          threads={
-            <ThreadRail
-              items={items}
-              pastItems={pastItems}
-              selectedThreadId={openThreadId}
-              totalThreads={review?.threads.length ?? 0}
-              onOpen={(item) =>
-                openThread({
-                  threadId: item.thread.id,
-                  path: item.path,
-                  gone: item.gone === true,
-                })
-              }
-              onResolve={reviewActions.resolve}
-              onReopen={reviewActions.reopen}
-              onDelete={reviewActions.remove}
-              onClearAll={() => setClearOpen(true)}
-            />
-          }
-        />
-        {/* biome-ignore lint/a11y/useSemanticElements: a splitter is role=separator with aria-valuenow; an hr element cannot be one */}
-        <div
-          className="rail-resize"
-          role="separator"
-          aria-orientation="vertical"
-          aria-label="Resize file list"
-          aria-valuemin={RAIL_MIN}
-          aria-valuemax={RAIL_MAX}
-          aria-valuenow={railWidth}
-          tabIndex={0}
-          data-tip="Drag to resize · double-click (or Home) to reset"
-          onPointerDown={beginRailResize}
-          onDoubleClick={resetRailWidth}
-          onKeyDown={(e) => {
-            if (e.key === 'ArrowLeft') {
-              e.preventDefault()
-              commitRailWidth(railWidthRef.current - 16)
-            } else if (e.key === 'ArrowRight') {
-              e.preventDefault()
-              commitRailWidth(railWidthRef.current + 16)
-            } else if (e.key === 'Home' || e.key === 'Enter') {
-              e.preventDefault()
-              resetRailWidth()
             }
-          }}
+            threads={
+              <ThreadRail
+                items={items}
+                pastItems={pastItems}
+                pr={pr !== null}
+                selectedThreadId={openThreadId}
+                totalThreads={review?.threads.length ?? 0}
+                onOpen={(item) =>
+                  openThread({
+                    threadId: item.thread.id,
+                    path: item.path,
+                    gone: item.gone === true,
+                  })
+                }
+                onResolve={reviewActions.resolve}
+                onReopen={reviewActions.reopen}
+                onDelete={reviewActions.remove}
+                onClearAll={() => setClearOpen(true)}
+              />
+            }
+          />
+          {/* biome-ignore lint/a11y/useSemanticElements: a splitter is role=separator with aria-valuenow; an hr element cannot be one */}
+          <div
+            className="rail-resize"
+            role="separator"
+            aria-orientation="vertical"
+            aria-label="Resize file list"
+            aria-valuemin={RAIL_MIN}
+            aria-valuemax={RAIL_MAX}
+            aria-valuenow={railWidth}
+            tabIndex={0}
+            data-tip="Drag to resize · double-click (or Home) to reset"
+            onPointerDown={beginRailResize}
+            onDoubleClick={resetRailWidth}
+            onKeyDown={(e) => {
+              if (e.key === 'ArrowLeft') {
+                e.preventDefault()
+                commitRailWidth(railWidthRef.current - 16)
+              } else if (e.key === 'ArrowRight') {
+                e.preventDefault()
+                commitRailWidth(railWidthRef.current + 16)
+              } else if (e.key === 'Home' || e.key === 'Enter') {
+                e.preventDefault()
+                resetRailWidth()
+              }
+            }}
+          />
+          <ReadingPane
+            files={visibleFiles}
+            delta={delta}
+            landed={landedNotice}
+            sinceReview={sinceLastReview.changedHunkIds}
+            hasMore={visibleCount < paneOrder.length}
+            onLoadMore={loadMoreFiles}
+            layer={layerView}
+            overview={inLayers && onOverview}
+            controls={{
+              layer: paneLayer,
+              navHidden,
+              onToggleNav: toggleNav,
+              left: fileProgress.total - fileProgress.viewed,
+              total: fileProgress.total,
+              hunksRead: progress.viewed,
+              hunksTotal: progress.total,
+              hunkAt: selectedId ? hunkOrder.findIndex((h) => h.id === selectedId) + 1 : 0,
+              hunkCount: hunkOrder.length,
+              query: filter.query,
+              onClearQuery: () => filter.setQuery(''),
+              hiddenQuery: inLayers ? 0 : filter.hiddenQuery,
+              hideReviewed: filter.hideReviewed,
+              onHideReviewed: filter.setHideReviewed,
+              hideTests: filter.hideTests,
+              onHideTests: filter.setHideTests,
+              testCount: filter.testCount,
+              onlyChanged: filter.onlyChanged,
+              onOnlyChanged: filter.setOnlyChanged,
+              changedCount: filter.changedCount,
+              // In layer mode the pane is the layer, and only Hide tests reaches
+              // it — so the foot of the pane counts that layer's hidden tests
+              // and nothing the flat list would have hidden.
+              hiddenTests: inLayers ? (paneLayerActive?.hidden ?? 0) : filter.hiddenTests,
+              hiddenReviewed: inLayers ? 0 : filter.hiddenReviewed,
+              hiddenUnchanged: inLayers ? 0 : filter.hiddenUnchanged,
+              pinned: filter.pinned,
+              onSweep: filter.unpin,
+              onShowAll: filter.showAll,
+              scopeLeft: filter.scope.left,
+              scopeTotal: filter.scope.total,
+              excludedTests: filter.scope.excludedTests,
+              excludedUnchanged: filter.scope.excludedUnchanged,
+              onIncludeExcluded: () => {
+                if (filter.scope.excludedTests > 0) filter.setHideTests(false)
+                if (filter.scope.excludedUnchanged > 0) setOnlyChanged(false)
+              },
+              onFinish: () => setFinishOpen(true),
+              stats: data.stats,
+              unsent: openComments,
+              viewMode,
+              onSetViewMode: setViewMode,
+              allCollapsed: collapsed.size >= data.files.length && data.files.length > 0,
+              onToggleCollapseAll: () =>
+                setCollapsed((prev) =>
+                  prev.size >= data.files.length
+                    ? new Set()
+                    : new Set(data.files.map((f) => f.path)),
+                ),
+              onAddNote: () => setNoteComposerOpen((v) => !v),
+            }}
+            viewed={viewed}
+            onToggleFileViewed={toggleFileViewed}
+            selectedId={selectedId}
+            onSelect={setSelectedId}
+            viewMode={viewMode}
+            collapsed={collapsed}
+            onToggleCollapsed={toggleCollapsed}
+            comments={paneComments}
+          />
+        </div>
+        {finishOpen &&
+          (data.pr ? (
+            <SubmitReview
+              coverage={coverage}
+              presence={presence}
+              onFinish={finishReview}
+              onInvite={() => {
+                setFinishOpen(false)
+                setInviteOpen(true)
+              }}
+              onClose={() => setFinishOpen(false)}
+            />
+          ) : (
+            <FinishReview
+              coverage={coverage}
+              presence={presence}
+              checkOff={checkOff}
+              onResolve={settleThread}
+              onReopen={pushBackThread}
+              onFinish={finishReview}
+              onInvite={() => {
+                setFinishOpen(false)
+                setInviteOpen(true)
+              }}
+              onClose={() => setFinishOpen(false)}
+            />
+          ))}
+        {clearOpen && (
+          <ClearThreads
+            total={review?.threads.length ?? 0}
+            past={pastThreads.length}
+            outdated={pastThreads.filter((t) => t.github?.outdated === true).length}
+            onClear={clearThreads}
+            onClose={() => setClearOpen(false)}
+          />
+        )}
+        <AgentBanner
+          notices={banner.notices}
+          onOpen={banner.open}
+          onClear={banner.clear}
+          onOpenMonitor={() => setMonitorOpen(true)}
         />
-        <ReadingPane
-          files={visibleFiles}
-          delta={delta}
-          landed={landedNotice}
-          sinceReview={sinceLastReview.changedHunkIds}
-          hasMore={visibleCount < paneOrder.length}
-          onLoadMore={loadMoreFiles}
-          layer={layerView}
-          overview={inLayers && onOverview}
-          controls={{
-            layer: paneLayer,
-            navHidden,
-            onToggleNav: toggleNav,
-            left: fileProgress.total - fileProgress.viewed,
-            total: fileProgress.total,
-            hunksRead: progress.viewed,
-            hunksTotal: progress.total,
-            hunkAt: selectedId ? hunkOrder.findIndex((h) => h.id === selectedId) + 1 : 0,
-            hunkCount: hunkOrder.length,
-            query: filter.query,
-            onClearQuery: () => filter.setQuery(''),
-            hiddenQuery: inLayers ? 0 : filter.hiddenQuery,
-            hideReviewed: filter.hideReviewed,
-            onHideReviewed: filter.setHideReviewed,
-            hideTests: filter.hideTests,
-            onHideTests: filter.setHideTests,
-            testCount: filter.testCount,
-            onlyChanged: filter.onlyChanged,
-            onOnlyChanged: filter.setOnlyChanged,
-            changedCount: filter.changedCount,
-            // In layer mode the pane is the layer, and only Hide tests reaches
-            // it — so the foot of the pane counts that layer's hidden tests
-            // and nothing the flat list would have hidden.
-            hiddenTests: inLayers ? (paneLayerActive?.hidden ?? 0) : filter.hiddenTests,
-            hiddenReviewed: inLayers ? 0 : filter.hiddenReviewed,
-            hiddenUnchanged: inLayers ? 0 : filter.hiddenUnchanged,
-            pinned: filter.pinned,
-            onSweep: filter.unpin,
-            onShowAll: filter.showAll,
-            scopeLeft: filter.scope.left,
-            scopeTotal: filter.scope.total,
-            excludedTests: filter.scope.excludedTests,
-            excludedUnchanged: filter.scope.excludedUnchanged,
-            onIncludeExcluded: () => {
-              if (filter.scope.excludedTests > 0) filter.setHideTests(false)
-              if (filter.scope.excludedUnchanged > 0) setOnlyChanged(false)
-            },
-            onFinish: () => setFinishOpen(true),
-            stats: data.stats,
-            unsent: openComments,
-            viewMode,
-            onSetViewMode: setViewMode,
-            allCollapsed: collapsed.size >= data.files.length && data.files.length > 0,
-            onToggleCollapseAll: () =>
-              setCollapsed((prev) =>
-                prev.size >= data.files.length ? new Set() : new Set(data.files.map((f) => f.path)),
-              ),
-            onAddNote: () => setNoteComposerOpen((v) => !v),
-          }}
-          viewed={viewed}
-          onToggleFileViewed={toggleFileViewed}
-          selectedId={selectedId}
-          onSelect={setSelectedId}
-          viewMode={viewMode}
-          collapsed={collapsed}
-          onToggleCollapsed={toggleCollapsed}
-          comments={paneComments}
-        />
+        {shortcutsOpen && <Shortcuts onClose={() => setShortcutsOpen(false)} />}
+        {inviteOpen && (
+          <InviteAgent
+            presence={presence}
+            reason={presenceReason}
+            onClose={() => setInviteOpen(false)}
+          />
+        )}
       </div>
-      {finishOpen && (
-        <FinishReview
-          coverage={coverage}
-          presence={presence}
-          checkOff={checkOff}
-          onResolve={settleThread}
-          onReopen={pushBackThread}
-          onFinish={finishReview}
-          onInvite={() => {
-            setFinishOpen(false)
-            setInviteOpen(true)
-          }}
-          onClose={() => setFinishOpen(false)}
-        />
-      )}
-      {clearOpen && (
-        <ClearThreads
-          total={review?.threads.length ?? 0}
-          past={pastThreads.length}
-          onClear={clearThreads}
-          onClose={() => setClearOpen(false)}
-        />
-      )}
-      <AgentBanner
-        notices={banner.notices}
-        onOpen={banner.open}
-        onClear={banner.clear}
-        onOpenMonitor={() => setMonitorOpen(true)}
-      />
-      {shortcutsOpen && <Shortcuts onClose={() => setShortcutsOpen(false)} />}
-      {inviteOpen && (
-        <InviteAgent
-          presence={presence}
-          reason={presenceReason}
-          onClose={() => setInviteOpen(false)}
-        />
-      )}
-    </div>
+    </PrContext.Provider>
   )
 }
 

@@ -32,9 +32,9 @@ come back as fixes.
 <!-- Light-theme only. The clip opens once the session has finished writing the change:
      waiting on the agent is fast-forwarded — the badge in the session's corner says so
      while it runs — and nothing else is cut. -->
-<img alt="One take of the whole loop. A Claude Code session has just written natural-language due dates into a todo app; the reviewer types /diffo, and the session opens a live review and hands over its localhost URL, which opens beside the session. The reviewer leaves a question on the weekday line — a bare weekday always lands next week, should it mean today? — and the agent's answer appears in the thread while they watch." src="docs/assets/loop.gif" width="100%">
+<img alt="One take of the whole loop. A Claude Code session has just written natural-language due dates into a todo app; the reviewer types /diffo, and the session opens a live review and hands over its localhost URL, which opens beside the session. The reviewer leaves a question on the weekday line (a bare weekday always lands next week, should it mean today?) and the agent's answer appears in the thread while they watch." src="docs/assets/loop.gif" width="100%">
 
-<p align="center"><sub>The whole loop in one take: type <code>/diffo</code>, read the diff, ask on the line — and the answer comes back in the thread. Left is a real Claude Code session, right is the real review it opened. Nothing here is a mock-up; the only edit is that waiting on the agent runs fast.</sub></p>
+<p align="center"><sub>The whole loop in one take: type <code>/diffo</code>, read the diff, ask on the line, and the answer comes back in the thread. Left is a real Claude Code session, right is the real review it opened. Nothing here is a mock-up; the only edit is that waiting on the agent runs fast.</sub></p>
 
 ---
 
@@ -192,6 +192,11 @@ So they stack rather than compete: iterate here until the diff reads clean, then
 pull request you actually want reviewed. Your judgement is the scarce resource, and this is
 the stage where spending it changes the outcome.
 
+And when a pull request lands on *your* desk, Diffo reads that too: `/diffo <PR link>`
+opens it in a worktree of its own, imports its conversation, puts your agent beside you as
+a copilot for code it did not write, and submits your review to GitHub when you finish.
+[Reviewing a pull request](https://diffohq.github.io/diffo/guide/pr-review) has the loop.
+
 ---
 
 ## How it works
@@ -231,7 +236,8 @@ cheapest to change.
 TypeScript on Node >= 24: a [Hono](https://hono.dev) server over loopback serving a React 19
 UI, live updates over server-sent events from one recursive filesystem watch, and state in a
 single SQLite file at `~/.diffo/diffo.db` through the runtime's built-in `node:sqlite`, so
-there is no database to install. **Zero network calls.** 1,143 tests across 63 files.
+there is no database to install. **No network calls of its own**: a pull request review
+talks to GitHub only through your `gh`. 1,307 tests across 70 files.
 
 Reviews are scoped per repo **and branch**, and the server is loopback-only, rejecting
 non-loopback `Host` and `Origin` headers so a web page can't reach into your repo through
@@ -266,14 +272,15 @@ we commit to: **anything that runs on your machine for one reviewer is core.**
 
 ## Status
 
-Diffo is pre-1.0: the loop below works end to end — this repo is reviewed with it
-daily — and the edges are still moving. What works today:
+Diffo is pre-1.0: the loop below works end to end (this repo is reviewed with it
+daily) and the edges are still moving. What works today:
 
 - [x] [Live review of any changeset](https://diffohq.github.io/diffo/guide/how-it-works): the working tree, or anything since `--base`.
 - [x] [The comment loop](https://diffohq.github.io/diffo/guide/the-loop): threads that reach the session that wrote the code.
 - [x] [Layers](https://diffohq.github.io/diffo/guide/the-loop#read-it-in-layers): the agent's reading plan, one ordered step at a time.
 - [x] [One setup, every agent](https://diffohq.github.io/diffo/guide/getting-started): Claude Code, Codex, Cursor, VS Code, Copilot CLI, Gemini CLI, Amp, Goose, OpenCode.
 - [x] [Reading tools](https://diffohq.github.io/diffo/reference/keyboard-shortcuts): unified and split diffs, word-level marks, coverage tracking.
+- [x] [Pull request review](https://diffohq.github.io/diffo/guide/pr-review): `diffo <PR URL>` reviews a GitHub PR in a worktree of its own, with the conversation imported and your review submitted from Diffo.
 
 ## Contributing
 
@@ -286,7 +293,7 @@ pnpm typecheck && pnpm test && pnpm build && pnpm lint && pnpm docs:build
 Local development is `pnpm dev` (server and client together). One hard rule:
 **`skills/diffo/SKILL.md` is generated.** Edit [`src/skill.ts`](src/skill.ts) and run
 `pnpm build:skill`; a test fails if the committed file drifts. That rewrites the repo
-file, not the skill your own agent runs — `pnpm dev:skill --global` installs a separate
+file, not the skill your own agent runs; `pnpm dev:skill --global` installs a separate
 `/diffo-dev` that drives your checkout, alongside the shipped `/diffo`.
 
 Details in [CONTRIBUTING.md](CONTRIBUTING.md), plus a [Code of Conduct](CODE_OF_CONDUCT.md)

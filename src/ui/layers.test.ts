@@ -3,6 +3,7 @@ import type { Layers, ReviewThread } from '../shared/review.js'
 import type { FileChange, Hunk } from '../shared/types.js'
 import { fileMark } from './fileMarks.js'
 import {
+  findDescription,
   findGuide,
   hideLayerFiles,
   layerByPath,
@@ -364,5 +365,34 @@ describe('summary references', () => {
     expect(linkPaths(`${linked} and \`weekday.ts\``, known)).toContain(
       `${linked} and [\`weekday.ts\`](${layerLinkHref('src/weekday.ts', null)})`,
     )
+  })
+})
+
+describe('findDescription', () => {
+  it('is the thread GitHub imported as the pull request description', () => {
+    const at = '2026-09-20T00:00:00Z'
+    const base = {
+      anchor: { kind: 'changeset' as const },
+      state: 'open' as const,
+      codeContext: null,
+      codeChanged: false,
+      messages: [{ id: 'm', author: 'github' as const, text: 'What this does', at }],
+      createdAt: at,
+      updatedAt: at,
+      audience: 'pr' as const,
+    }
+    const comment: ReviewThread = {
+      ...base,
+      id: 'c',
+      github: { threadId: 'c', kind: 'comment', resolved: false, outdated: false },
+    }
+    const description: ReviewThread = {
+      ...base,
+      id: 'd',
+      github: { threadId: 'description', kind: 'description', resolved: false, outdated: false },
+    }
+    expect(findDescription([])).toBeUndefined()
+    expect(findDescription([comment])).toBeUndefined()
+    expect(findDescription([comment, description])).toBe(description)
   })
 })

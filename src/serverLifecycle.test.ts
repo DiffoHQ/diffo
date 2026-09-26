@@ -111,6 +111,12 @@ describe('serverSpawnArgs', () => {
     ])
     expect(serverSpawnArgs('/x/cli.mjs', [], undefined, 'main')).toContain('--base')
   })
+
+  it('a pull-request target rides first, as the positional it is', () => {
+    expect(serverSpawnArgs('/x/cli.mjs', [], undefined, 'origin/main', 'acme/widgets#482')).toEqual(
+      ['/x/cli.mjs', 'acme/widgets#482', '--no-open', '--foreground', '--base', 'origin/main'],
+    )
+  })
 })
 
 async function fakeServer(opts: {

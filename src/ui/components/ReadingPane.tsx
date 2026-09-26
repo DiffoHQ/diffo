@@ -1,5 +1,5 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
-import type { ReviewThread } from '../../shared/review.js'
+import { isPublic, type ReviewThread } from '../../shared/review.js'
 import type { DiffLine, FileChange, Hunk } from '../../shared/types.js'
 import { copyText } from '../clipboard.js'
 import { changedLineCount, type StubReason, stubReason } from '../diffStub.js'
@@ -17,7 +17,9 @@ import {
 import { fileAnchor } from '../hooks.js'
 import { linkPaths, type RefLinks, refClickTarget } from '../layers.js'
 import { EMPTY_DELTA, type LiveDelta } from '../liveDelta.js'
+import { usePr } from '../prMode.js'
 import type { ThreadPartition } from '../reviewPlacement.js'
+import { involves } from '../threads.js'
 import { GapBand, type GapControls, HunkCard } from './HunkCard.js'
 import { Icon } from './Icon.js'
 import { ImageDiff } from './ImageDiff.js'
@@ -130,7 +132,7 @@ function LayerHead({
         {layer.mechanical && (
           <span
             className="ch-kind"
-            title="changes no behaviour — files are folded, expand one to check"
+            title="changes no behaviour; files are folded, expand one to check"
           >
             mechanical
           </span>
@@ -154,7 +156,7 @@ function LayerHead({
             <span
               key={path}
               className="ch-chip ch-chip-done"
-              title={`${path} — not in the changeset now`}
+              title={`${path}, not in the changeset now`}
             >
               {path}
             </span>
@@ -193,6 +195,9 @@ export interface ReviewComments {
   queuedOn?: ReadonlyMap<string, number>
   revealNotesTick?: number
   revealPastTick?: number
+  /** The thread a reveal is for: one folded behind "more from others" on a pull
+   * request has to be unfolded before it can be scrolled to. */
+  revealThreadId?: string | null
   composeHunkId?: string | null
   onComposeHandled?: () => void
   composeFilePath?: string | null
@@ -310,7 +315,7 @@ function FileHeader({
       </span>
       {statusWord && <span className={`file-status file-status-${file.status}`}>{statusWord}</span>}
       {sinceCount > 0 && (
-        <span className="file-since" title="since your last review — reading it settles it">
+        <span className="file-since" title="since your last review; reading it settles it">
           the agent changed{' '}
           {sinceCount === file.hunks.length
             ? 'this'
@@ -594,8 +599,10 @@ export function FileBody({
           placeholder="Leave a comment…"
           scope={{ label: base, canWiden: true }}
           agentConnected={comments.agentConnected}
-          onSubmit={(text, wide, intent) => {
-            void comments.actions.create(fileAnchorFor(wide), text, intent)
+          onSubmit={(text, wide, intent, audience) => {
+            void (audience
+              ? comments.actions.create(fileAnchorFor(wide), text, intent, { audience })
+              : comments.actions.create(fileAnchorFor(wide), text, intent))
             onCloseComposer?.()
           }}
           onSend={(text, wide, intent) => {
@@ -616,8 +623,8 @@ export function FileBody({
         <div className="file-stub file-stub-large">
           <span>
             {stub === 'generated'
-              ? 'Generated file — not rendered by default.'
-              : `Large diff (${changedLineCount(file)} changed lines) — not rendered by default.`}
+              ? 'Generated file, not rendered by default.'
+              : `Large diff (${changedLineCount(file)} changed lines), not rendered by default.`}
           </span>
           <button type="button" className="btn btn-ghost btn-sm" onClick={onLoadDiff}>
             Load diff
@@ -861,7 +868,27 @@ export function ReadingPane({
     if (pastTick > 0) setPastOpen(true)
   }, [pastTick])
 
+  const pr = usePr()
   const noteCount = comments?.partition.changeset.length ?? 0
+  // On a pull request the strip leads with what is yours: the description, the
+  // private threads, and the GitHub threads you are part of. The rest of the
+  // conversation — bots, mostly — waits behind one line, the rail's rule.
+  const login = pr?.viewer.login ?? null
+  const changesetThreads = comments?.partition.changeset
+  const { lead, others } = useMemo(() => {
+    const all = changesetThreads ?? []
+    if (!pr) return { lead: all, others: [] as ReviewThread[] }
+    const mine = (t: ReviewThread) =>
+      t.github?.kind === 'description' || !isPublic(t) || involves(t, login)
+    return { lead: all.filter(mine), others: all.filter((t) => !mine(t)) }
+  }, [changesetThreads, pr, login])
+  const [othersOpen, setOthersOpen] = useState(false)
+  const revealId = comments?.revealThreadId ?? null
+  useEffect(() => {
+    if (revealTick > 0 && revealId !== null && others.some((t) => t.id === revealId)) {
+      setOthersOpen(true)
+    }
+  }, [revealTick, revealId, others])
   const changesetSection = comments &&
     stripShown &&
     (noteCount > 0 || comments.changesetComposerOpen || overview) && (
@@ -875,13 +902,13 @@ export function ReadingPane({
           <span className={`file-chevron chevron${notesExpanded ? '' : ' chevron-shut'}`}>
             <Icon name="chev" />
           </span>
-          On the changeset
+          {pr ? 'On the pull request' : 'On the changeset'}
           <span className="strip-n">{noteCount}</span>
         </button>
         {notesExpanded && (
           <div className="strip-body">
             <ThreadList
-              threads={comments.partition.changeset}
+              threads={lead}
               actions={comments.actions}
               showContext
               agentConnected={comments.agentConnected}
@@ -889,14 +916,37 @@ export function ReadingPane({
               queuedOn={comments.queuedOn}
               links={comments.links}
             />
+            {others.length > 0 && (
+              <button
+                type="button"
+                className="strip-more"
+                aria-expanded={othersOpen}
+                onClick={() => setOthersOpen(!othersOpen)}
+              >
+                {othersOpen ? 'Only mine' : `${others.length} more from others`}
+              </button>
+            )}
+            {othersOpen && others.length > 0 && (
+              <ThreadList
+                threads={others}
+                actions={comments.actions}
+                showContext
+                agentConnected={comments.agentConnected}
+                workingOn={comments.workingOn}
+                queuedOn={comments.queuedOn}
+                links={comments.links}
+              />
+            )}
             {comments.changesetComposerOpen ? (
               <CommentBox
                 title="Note on the whole changeset"
                 placeholder="Leave a note…"
                 scope={{ label: 'the whole changeset', canWiden: false }}
                 agentConnected={comments.agentConnected}
-                onSubmit={(text, _wide, intent) => {
-                  void comments.actions.create({ kind: 'changeset' }, text, intent)
+                onSubmit={(text, _wide, intent, audience) => {
+                  void (audience
+                    ? comments.actions.create({ kind: 'changeset' }, text, intent, { audience })
+                    : comments.actions.create({ kind: 'changeset' }, text, intent))
                   comments.onCloseChangesetComposer?.()
                 }}
                 onSend={(text, _wide, intent) => {
@@ -914,7 +964,7 @@ export function ReadingPane({
                   className="strip-add"
                   onClick={comments.onOpenChangesetComposer}
                 >
-                  + Note on the changeset
+                  {pr ? '+ Comment on the pull request' : '+ Note on the changeset'}
                 </button>
               )
             )}
@@ -924,6 +974,15 @@ export function ReadingPane({
     )
 
   const past = comments?.past ?? []
+  // Two ways here: the file or hunk left the changeset, or GitHub marked the
+  // line outdated while the file stayed. The hint says which, or both.
+  const outdated = past.filter((t) => t.github?.outdated === true).length
+  const pastWhy =
+    outdated === past.length
+      ? `${past.length === 1 ? 'This one is' : 'These are'} outdated on GitHub: the line ${past.length === 1 ? 'it hangs' : 'they hang'} off left the diff, though the file is still in it.`
+      : outdated > 0
+        ? `The file or change these hang off is no longer in the diff: reverted, deleted, or stashed; ${outdated} ${outdated === 1 ? 'is' : 'are'} outdated on GitHub instead, the line left the diff.`
+        : 'The file or change these hang off is no longer in the diff: reverted, deleted, or stashed.'
   const pastSection = comments && past.length > 0 && (
     <section className="file-section past-threads">
       <button
@@ -944,8 +1003,7 @@ export function ReadingPane({
       {pastOpen && (
         <div className="file-threads">
           <div className="past-hint">
-            The file or change these hang off is no longer in the diff — reverted, deleted, or
-            stashed. The conversation is intact, and the snapshot inside each one is the code you
+            {pastWhy} The conversation is intact, and the snapshot inside each one is the code you
             commented on.
           </div>
           <ThreadList
@@ -998,7 +1056,7 @@ export function ReadingPane({
         <Icon name="book" size="lg" />
         <h2>Nothing to review</h2>
         <p>
-          The working tree is clean. Diffo is watching — start your agent and changes appear here as
+          The working tree is clean. Diffo is watching; start your agent and changes appear here as
           they land.
         </p>
       </div>

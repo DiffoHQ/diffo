@@ -163,6 +163,7 @@ export function LayerRail({
   onPick,
   viewed,
   guide,
+  description,
   overviewActive = false,
   onOpenGuide,
   threads,
@@ -184,6 +185,9 @@ export function LayerRail({
   /** The guide comment, folded in as row 0 — one outline, not two agent
    * artifacts in two places. Not markable: it is not code. */
   guide?: ReviewThread
+  /** On a pull request, the description: the author's map of the change, which
+   * makes an Overview with or without a guide. */
+  description?: ReviewThread
   /** The reviewer is standing on the Overview: the pane shows the guide and the
    * other changeset threads instead of a layer's files. */
   overviewActive?: boolean
@@ -220,7 +224,7 @@ export function LayerRail({
     })
   return (
     <div className="rail-scroll">
-      {guide && (
+      {(guide || description) && (
         // biome-ignore lint/a11y/noStaticElementInteractions: the pick button inside is the keyboard path; the row widens the mouse target
         // biome-ignore lint/a11y/useKeyWithClickEvents: same
         <div
@@ -234,7 +238,13 @@ export function LayerRail({
           <button
             type="button"
             className="row-pick"
-            title="The agent’s guide to this change"
+            title={
+              description && guide
+                ? 'The pull request description, and the agent’s guide to this change'
+                : description
+                  ? 'The pull request description'
+                  : 'The agent’s guide to this change'
+            }
             onClick={(e) => {
               e.stopPropagation()
               onOpenGuide?.()
@@ -242,6 +252,17 @@ export function LayerRail({
           >
             <span className="row-name">
               <span className="row-base">Overview</span>
+            </span>
+            {/* The count line the layers carry, in words: a row that looks like
+                the others reads as one of them, not as a heading over them. */}
+            <span className="ch-sub">
+              <span>
+                {description && guide
+                  ? 'the description, and the agent’s guide'
+                  : description
+                    ? 'the pull request description'
+                    : 'the agent’s guide'}
+              </span>
             </span>
           </button>
           <span className="row-right" />

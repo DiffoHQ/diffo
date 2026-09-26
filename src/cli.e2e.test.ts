@@ -390,13 +390,13 @@ describe.skipIf(!existsSync(cliPath))('diffo binary (e2e smoke)', () => {
     expect(version.code).toBe(0)
     expect(version.stdout.trim()).toMatch(/^\d+\.\d+\.\d+/)
 
-    const unknown = await run(['frobnicate'])
+    const unknown = await run(['statuss'])
     expect(unknown.code).toBe(1)
-    expect(unknown.stderr).toContain("unknown command 'frobnicate'")
+    expect(unknown.stderr).toContain("unknown command 'statuss'")
 
     const typo = await run(['staus'])
     expect(typo.code).toBe(1)
-    expect(typo.stderr).toContain("did you mean 'status'")
+    expect(typo.stderr).toContain("Did you mean 'status'")
   })
 
   it('an empty piped message fails fast — before any daemon is spawned', async () => {

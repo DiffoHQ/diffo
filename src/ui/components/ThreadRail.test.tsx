@@ -67,6 +67,26 @@ describe('ThreadRail — threads the changeset left behind', () => {
     expect(document.querySelector('.crow-where-gone')).toBeNull()
   })
 
+  it('a GitHub thread whose line went outdated names that reason, not a departed file', () => {
+    render(
+      <ThreadRail
+        items={[]}
+        pastItems={threadItems([
+          thread({
+            id: 't-outdated',
+            audience: 'pr',
+            github: { threadId: 'x', kind: 'inline', resolved: false, outdated: true },
+          }),
+          thread({ id: 't-gone' }),
+        ])}
+      />,
+    )
+    const tip = (id: string) =>
+      document.querySelector(`[data-thread="${id}"] .crow-pick`)!.getAttribute('title')
+    expect(tip('t-outdated')).toBe('src/mathx.js:42, outdated on GitHub: the line left the diff')
+    expect(tip('t-gone')).toBe('src/mathx.js:42, this file left the changeset')
+  })
+
   it('departed threads alone are still a list, not an empty state', () => {
     render(<ThreadRail items={[]} pastItems={threadItems([thread({ id: 't-gone' })])} />)
     expect(screen.queryByText(/No threads yet/)).toBeNull()
@@ -126,7 +146,7 @@ describe('ThreadRail', () => {
   it('a thread the agent walked away from is your move, not settled history', () => {
     render(<ThreadRail items={threadItems([thread({ id: 'a', unanswered: true })])} />)
     expect(sections()).toEqual(['Your turn 1'])
-    expect(screen.getByText('no answer — the agent moved on')).toBeTruthy()
+    expect(screen.getByText('no answer, the agent moved on')).toBeTruthy()
   })
 
   it('states what is pending, not just what happened', () => {
@@ -134,14 +154,14 @@ describe('ThreadRail', () => {
       <ThreadRail items={threadItems([thread({ id: 'a' }), thread({ id: 'b', state: 'open' })])} />,
     )
     expect(screen.getByText('waiting on the agent')).toBeTruthy()
-    expect(screen.getByText('draft — not sent')).toBeTruthy()
+    expect(screen.getByText('draft, not sent')).toBeTruthy()
   })
 
   it('the right slot is the time, and nothing else — never the queue place', () => {
     render(
       <ThreadRail items={threadItems([thread({ id: 'a' })], new Set(), new Map([['a', 2]]))} />,
     )
-    expect(screen.getByText('queued — #2 in line')).toBeTruthy()
+    expect(screen.getByText('queued, #2 in line')).toBeTruthy()
     expect(document.querySelector('.crow-when')!.textContent).not.toContain('line')
   })
 
@@ -195,7 +215,7 @@ describe('ThreadRail', () => {
       <ThreadRail items={threadItems([thread({ id: 'a' })])} onResolve={vi.fn()} />,
     )
     expect(screen.getByLabelText('Resolve thread').getAttribute('data-tip')).toBe(
-      'Resolve — moves to Settled',
+      'Resolve: moves to Settled',
     )
     unmount()
     render(
@@ -206,7 +226,7 @@ describe('ThreadRail', () => {
     )
     fireEvent.click(screen.getByText(/Settled/))
     expect(screen.getByLabelText('Reopen thread').getAttribute('data-tip')).toBe(
-      'Reopen — moves back to its turn',
+      'Reopen: moves back to its turn',
     )
   })
 

@@ -217,7 +217,7 @@ so testing one never uninstalls the other. Only `diffo-dev` sets
 `disable-model-invocation`, which keeps an ordinary "open a code review" on the released
 CLI rather than making it a coin flip between the two.
 
-A server started with `ENV=development` marks the page it serves — `markDevIndex` rewrites
+A server started with `ENV=development` marks the page it serves: `markDevIndex` rewrites
 `index.html` on the way out, giving the tab the title `diffo-dev` and the header a badge.
 Nothing else distinguishes the two: same UI, same repo, same diff.
 
@@ -237,7 +237,7 @@ versions of each other, since a wrong word-diff reads worse than none), `splitRo
 
 ## Tests
 
-859 tests across 54 files, all three layers:
+1,307 tests across 70 files, all three layers:
 
 - **Unit**: the pure modules, both sides of the wire.
 - **Integration**: against real git repositories created in temp dirs, because a diff

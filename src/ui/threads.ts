@@ -1,9 +1,12 @@
-import { anchorSpan, type ReviewThread, untouchedAgentVoice } from '../shared/review.js'
+import { anchorSpan, isPublic, type ReviewThread, untouchedAgentVoice } from '../shared/review.js'
 
-export type Turn = 'yours' | 'unanswered' | 'proposed' | 'agent' | 'note' | 'resolved'
+export type Turn = 'yours' | 'unanswered' | 'proposed' | 'agent' | 'note' | 'posted' | 'resolved'
 
 export function threadTurn(thread: ReviewThread): Turn {
   if (thread.state === 'resolved') return 'resolved'
+  // A public thread has two lives: a draft here, and a thread on GitHub. Neither
+  // is anyone's turn in the agent sense — the conversation is with the PR.
+  if (isPublic(thread)) return thread.state === 'open' && !thread.github ? 'note' : 'posted'
   // A fresh agent thread is the agent speaking, not a draft of yours. Once you
   // reply into it, it carries your words and falls through to the normal turns.
   if (untouchedAgentVoice(thread) && thread.state === 'open') return 'proposed'
@@ -21,9 +24,14 @@ export function threadTurn(thread: ReviewThread): Turn {
 
 /** A comment of the reviewer's that hasn't been handed over. An untouched agent
  * thread is never this — until the reviewer replies into it, there is nothing
- * of theirs to send. */
+ * of theirs to send. Nor is a public thread: a GitHub draft is pending for the
+ * PR, never for the agent. */
 export function isUnsent(thread: ReviewThread): boolean {
-  return (thread.state === 'open' || thread.withheld === true) && !untouchedAgentVoice(thread)
+  return (
+    (thread.state === 'open' || thread.withheld === true) &&
+    !untouchedAgentVoice(thread) &&
+    !isPublic(thread)
+  )
 }
 
 export const TURN_ORDER: readonly Turn[] = [
@@ -32,6 +40,7 @@ export const TURN_ORDER: readonly Turn[] = [
   'proposed',
   'agent',
   'note',
+  'posted',
   'resolved',
 ]
 
@@ -41,18 +50,27 @@ export const TURN_LABEL: Record<Turn, string> = {
   proposed: 'From the agent',
   agent: 'Waiting on agent',
   note: 'Draft',
+  posted: 'On GitHub',
   resolved: 'Resolved',
 }
 
-export type Section = 'yours' | 'proposed' | 'agent' | 'note' | 'settled'
+export type Section = 'yours' | 'proposed' | 'agent' | 'note' | 'posted' | 'settled'
 
-export const SECTION_ORDER: readonly Section[] = ['yours', 'proposed', 'agent', 'note', 'settled']
+export const SECTION_ORDER: readonly Section[] = [
+  'yours',
+  'proposed',
+  'agent',
+  'note',
+  'posted',
+  'settled',
+]
 
 export const SECTION_LABEL: Record<Section, string> = {
   yours: 'Your turn',
   proposed: 'From the agent',
   agent: 'Waiting on the agent',
   note: 'Drafts',
+  posted: 'On GitHub',
   settled: 'Settled',
 }
 
@@ -67,6 +85,8 @@ export function sectionOf(turn: Turn): Section {
       return 'agent'
     case 'note':
       return 'note'
+    case 'posted':
+      return 'posted'
     case 'resolved':
       return 'settled'
   }
@@ -75,7 +95,7 @@ export function sectionOf(turn: Turn): Section {
 export type Outcome = 'fixed' | 'answered' | 'changed' | 'no-answer' | 'waiting'
 
 export function threadOutcome(thread: ReviewThread): Outcome | null {
-  if (thread.state === 'open' || thread.state === 'resolved') return null
+  if (thread.state === 'open' || thread.state === 'resolved' || isPublic(thread)) return null
   // An interim (`--more`) reply doesn't count as replied — a follow-up is owed.
   const replied = thread.messages.at(-1)?.author === 'agent' && thread.awaitingFollowUp !== true
   // `addressed` means reconcile saw the commented hunk's content-addressed id
@@ -101,13 +121,25 @@ export interface ThreadItem {
    * a pending send with nobody attached is a copied prompt, not a queue position. */
   queued?: number
   gone?: boolean
+  /** GitHub's word: the commented line left the diff, though the file is still
+   * in it. Reads with the departed threads, but for a different reason than
+   * `gone`, and the wording says which. */
+  outdated?: boolean
 }
 
 /** The rail's three lists. Layers is always present — with layers it is the
  * default and carries a count; without, its body offers to outline. */
 export type PanelTab = 'layers' | 'files' | 'threads'
 
-const firstLine = (text: string) => text.split('\n', 1)[0]!.trim()
+/** The first non-blank line, trimmed: what a collapsed card or rail row shows
+ * for a body that may run to paragraphs (a bot's review comment, say). */
+export function firstLine(text: string): string {
+  for (const line of text.split('\n')) {
+    const t = line.trim()
+    if (t !== '') return t
+  }
+  return ''
+}
 
 function describe(thread: ReviewThread): { anchor: string | null; path: string | null } {
   const a = thread.anchor
@@ -116,13 +148,44 @@ function describe(thread: ReviewThread): { anchor: string | null; path: string |
   return { anchor: `${a.path}:${anchorSpan(a)}`, path: a.path }
 }
 
+/** The two sides of a pull request review: threads for GitHub, threads for
+ * the agent. On a PR the rail groups by side and only orders by turn inside a
+ * group, so a row's side is never something to work out from its section. */
+export type Side = 'github' | 'agent'
+
+/** A GitHub thread is yours when you started it here, replied in it, spoke in
+ * it on GitHub, or are @mentioned in it. Everything else on the PR, bots
+ * included, is someone else's conversation and folds behind one line. */
+export function involves(thread: ReviewThread, login: string | null): boolean {
+  if (thread.messages.some((m) => m.author === 'reviewer')) return true
+  if (!login) return false
+  const at = new RegExp(`@${login}(?![\\w-])`, 'i')
+  return thread.messages.some(
+    (m) => m.author === 'github' && (m.github?.user.login === login || at.test(m.text)),
+  )
+}
+
+export function bySide(items: readonly ThreadItem[]): Record<Side, ThreadItem[]> {
+  const rank = (i: ThreadItem) => TURN_ORDER.indexOf(i.turn)
+  const hottestFirst = (xs: ThreadItem[]) =>
+    xs.sort((a, b) => rank(a) - rank(b) || b.updatedAt.localeCompare(a.updatedAt))
+  return {
+    github: hottestFirst(items.filter((i) => isPublic(i.thread))),
+    agent: hottestFirst(items.filter((i) => !isPublic(i.thread))),
+  }
+}
+
 export function threadItems(
   threads: readonly ReviewThread[],
   working: ReadonlySet<string> = new Set(),
   queued: ReadonlyMap<string, number> = new Map(),
 ): ThreadItem[] {
   return threads.map((thread) => {
-    const lastAgent = [...thread.messages].reverse().find((m) => m.author === 'agent')
+    // The last word from the other side: the agent on a private thread, the
+    // last GitHub voice on a public one.
+    const lastAgent = [...thread.messages]
+      .reverse()
+      .find((m) => (isPublic(thread) ? m.author === 'github' : m.author === 'agent'))
     const place = queued.get(thread.id)
     const outcome = threadOutcome(thread)
     return {
@@ -133,6 +196,7 @@ export function threadItems(
       // Working outranks queued: a follow-up can re-queue a thread the agent already
       // holds, and "on it" is the truer of the two.
       ...(place !== undefined && !working.has(thread.id) ? { queued: place } : {}),
+      ...(thread.github?.outdated === true ? { outdated: true } : {}),
       question: firstLine(thread.messages[0]?.text ?? ''),
       answer: lastAgent ? firstLine(lastAgent.text) : null,
       ...describe(thread),

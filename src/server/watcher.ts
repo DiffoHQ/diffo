@@ -79,7 +79,7 @@ export function watchRepo(
     watcher.close()
     watcher = null
     console.error(
-      `[diffo] live updates off — file watcher failed: ${(err as Error).message}\n` +
+      `[diffo] live updates off, file watcher failed: ${(err as Error).message}\n` +
         '[diffo] the review still serves; reload after a change to see it.',
     )
   }

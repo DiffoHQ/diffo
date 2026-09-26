@@ -53,6 +53,9 @@ export type IconName =
   | 'display'
   | 'branch'
   | 'worktree'
+  | 'pr'
+  | 'globe'
+  | 'lock'
   | 'trash'
   | 'folder'
   | 'filter'
@@ -95,6 +98,44 @@ export function IconSprite() {
           <circle cx="4.5" cy="12.5" r="1.75" />
           <circle cx="11.5" cy="5" r="1.75" />
           <path d="M4.5 5.25v5.5M11.5 6.75c0 2.5-2 3.4-4.2 3.9" />
+        </g>
+      </symbol>
+      <symbol id="i-pr" viewBox="0 0 16 16">
+        <g
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="1.5"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        >
+          <circle cx="4" cy="3.5" r="1.8" />
+          <circle cx="4" cy="12.5" r="1.8" />
+          <circle cx="12" cy="12.5" r="1.8" />
+          <path d="M4 5.3v5.4M12 10.7V7.2a2 2 0 0 0-2-2H8.2M10 3.2l-2 2 2 2" />
+        </g>
+      </symbol>
+      <symbol id="i-globe" viewBox="0 0 16 16">
+        <g
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="1.5"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        >
+          <circle cx="8" cy="8" r="6.2" />
+          <path d="M1.8 8h12.4M8 1.8c2 2 2.6 4 2.6 6.2S10 12.4 8 14.2M8 1.8C6 3.8 5.4 5.8 5.4 8S6 12.4 8 14.2" />
+        </g>
+      </symbol>
+      <symbol id="i-lock" viewBox="0 0 16 16">
+        <g
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="1.5"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        >
+          <rect x="3" y="7" width="10" height="7" rx="1.5" />
+          <path d="M5.2 7V5a2.8 2.8 0 0 1 5.6 0v2" />
         </g>
       </symbol>
       <symbol id="i-worktree" viewBox="0 0 16 16">

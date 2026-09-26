@@ -1,9 +1,22 @@
 import { useRef, useState } from 'react'
-import type { ThreadIntent } from '../../shared/review.js'
+import type { Audience, ThreadIntent } from '../../shared/review.js'
+import type { GhUser } from '../../shared/types.js'
+import { usePr } from '../prMode.js'
 import { Icon, type IconName } from './Icon.js'
 import { Markdown } from './Markdown.js'
 
-export function Avatar({ who }: { who: 'you' | 'agent' }) {
+/** `github` is a person on the pull request: their avatar when GitHub gave one,
+ * the first letter of their login otherwise. */
+export function Avatar({ who, user }: { who: 'you' | 'agent' | 'github'; user?: GhUser }) {
+  if (who === 'github') {
+    return user?.avatarUrl ? (
+      <img className="avatar avatar-github" src={user.avatarUrl} alt="" aria-hidden="true" />
+    ) : (
+      <span className="avatar avatar-github" aria-hidden="true">
+        {(user?.login ?? '?').slice(0, 1).toUpperCase()}
+      </span>
+    )
+  }
   return (
     <span className={`avatar avatar-${who}`} aria-hidden="true">
       <Icon name={who === 'you' ? 'user' : 'sparkle'} size="sm" />
@@ -11,14 +24,53 @@ export function Avatar({ who }: { who: 'you' | 'agent' }) {
   )
 }
 
-interface ToolbarButton {
+/** The composer's audience switch, on a pull request: two tabs along the
+ * composer's top edge, the live one filled in its side's color with the
+ * consequence written into it. It is the loudest thing in the composer on
+ * purpose — it decides whether the words leave the machine. */
+export function AudienceTabs({
+  value,
+  onChange,
+}: {
+  value: Audience
+  onChange: (next: Audience) => void
+}) {
+  return (
+    <div className="aud-tabs" role="radiogroup" aria-label="Who this comment is for">
+      {/* biome-ignore lint/a11y/useSemanticElements: styled tabs; a native radio cannot carry this treatment */}
+      <button
+        type="button"
+        role="radio"
+        aria-checked={value === 'pr'}
+        className={`aud-tab aud-tab-pr${value === 'pr' ? ' aud-tab-on' : ''}`}
+        title="a review comment: drafted here, posted to GitHub when you submit (⌘. flips)"
+        onClick={() => onChange('pr')}
+      >
+        <Icon name="globe" size="sm" /> Comment on PR
+      </button>
+      {/* biome-ignore lint/a11y/useSemanticElements: styled tabs; a native radio cannot carry this treatment */}
+      <button
+        type="button"
+        role="radio"
+        aria-checked={value === 'agent'}
+        className={`aud-tab aud-tab-agent${value === 'agent' ? ' aud-tab-on' : ''}`}
+        title="a private question for your agent: never leaves this machine (⌘. flips)"
+        onClick={() => onChange('agent')}
+      >
+        <Icon name="lock" size="sm" /> Ask agent
+      </button>
+    </div>
+  )
+}
+
+export interface ToolbarButton {
   icon: IconName
   label: string
   wrap?: [string, string]
   prefix?: string
 }
 
-const TOOLBAR: (ToolbarButton | 'sep')[] = [
+export const TOOLBAR: (ToolbarButton | 'sep')[] = [
   { icon: 'bold', label: 'Bold', wrap: ['**', '**'] },
   { icon: 'italic', label: 'Italic', wrap: ['_', '_'] },
   { icon: 'code', label: 'Code', wrap: ['`', '`'] },
@@ -60,7 +112,7 @@ const INTENTS: { intent: ThreadIntent | undefined; label: string; title: string 
   {
     intent: 'question',
     label: 'Question',
-    title: 'ask for an answer — the agent won’t change code',
+    title: 'ask for an answer; the agent won’t change code',
   },
   {
     intent: undefined,
@@ -69,7 +121,7 @@ const INTENTS: { intent: ThreadIntent | undefined; label: string; title: string 
   },
 ]
 
-function applyToolbar(
+export function applyToolbar(
   el: HTMLTextAreaElement,
   action: ToolbarButton,
   setText: (next: string) => void,
@@ -132,15 +184,23 @@ export function CommentBox({
   onDraft,
   draftIntent,
   onDraftIntent,
+  initialText,
+  fixedAudience,
 }: {
   title: string
   placeholder: string
   scope?: CommentBoxScope
-  onSubmit: (text: string, wide: boolean, intent?: ThreadIntent) => void
+  /** `audience` is set only on a pull request: 'pr' for a review comment, 'agent'
+   * for a private thread. Off a PR it is undefined and nothing changes. */
+  onSubmit: (text: string, wide: boolean, intent?: ThreadIntent, audience?: Audience) => void
   onSend?: (text: string, wide: boolean, intent?: ThreadIntent) => void
   onCancel: () => void
   agentConnected?: boolean
   autoFocus?: boolean
+  /** Words to start from — "Post as PR comment" hands the agent's suggestion over. */
+  initialText?: string
+  /** No segment: this composer can only write for one side (a private aside). */
+  fixedAudience?: Audience
   /** Controlled draft. A range composer's row moves with the range's last line,
    * which re-mounts this component — the owner holds the words (and the intent)
    * so growing the range can never eat a half-typed comment. */
@@ -149,9 +209,21 @@ export function CommentBox({
   draftIntent?: ThreadIntent
   onDraftIntent?: (intent: ThreadIntent | undefined) => void
 }) {
-  const [ownText, setOwnText] = useState('')
+  const [ownText, setOwnText] = useState(initialText ?? '')
   const [tab, setTab] = useState<'write' | 'preview'>('write')
   const [wide, setWide] = useState(false)
+  // The public side exists only on a pull request. There, a comment is for
+  // GitHub unless the reviewer flips it; off a PR the segment never renders and
+  // the composer is exactly what it was.
+  const pr = usePr()
+  const [ownAudience, setOwnAudience] = useState<Audience>('pr')
+  const audience: Audience | undefined = pr === null ? undefined : (fixedAudience ?? ownAudience)
+  const forGithub = audience === 'pr'
+  const switchable = audience !== undefined && fixedAudience === undefined
+  // On a pull request the private side is a question for the agent, and asking
+  // is sending: one button, no intent chips — the words carry the intent, and
+  // the agent is told to read unlabeled threads from the text.
+  const askOnly = audience === 'agent' && onSend !== undefined
   // Unset by default: most comments say what they want on their own, and the agent
   // is told to judge unlabeled threads from the text. The chips force a reading
   // only when the words alone could be taken either way.
@@ -165,8 +237,14 @@ export function CommentBox({
   const ready = text.trim().length > 0
 
   const submit = () => {
-    if (ready) onSubmit(text, wide, intent)
+    if (!ready) return
+    // Off a pull request the call is exactly what it always was — three
+    // arguments — so nothing that listens to it has to learn a fourth.
+    if (audience === undefined) onSubmit(text, wide, intent)
+    else if (askOnly) onSend(text, wide, undefined)
+    else onSubmit(text, wide, undefined, audience)
   }
+  const flip = () => setOwnAudience((a) => (a === 'pr' ? 'agent' : 'pr'))
 
   const toggleRich = () => {
     setRich((on) => !on)
@@ -174,70 +252,95 @@ export function CommentBox({
     setTab('write')
   }
 
+  const scopeBits = (
+    <>
+      {scope && (
+        <>
+          <span className="scope-chip">
+            <Icon name={wide ? 'cmp' : 'unified'} size="sm" />
+            {wide ? 'the whole changeset' : scope.label}
+            {!wide && scope.adjust && (
+              <span className="scope-chip-steppers">
+                <button
+                  type="button"
+                  className="scope-chip-step"
+                  disabled={!scope.adjust.up}
+                  data-tip="walk the range's edge one line up; the line you started on stays put"
+                  aria-label="range edge one line up"
+                  onClick={scope.adjust.up}
+                >
+                  <Icon name="up" size="sm" />
+                </button>
+                <button
+                  type="button"
+                  className="scope-chip-step"
+                  disabled={!scope.adjust.down}
+                  data-tip="walk the range's edge one line down; the line you started on stays put"
+                  aria-label="range edge one line down"
+                  onClick={scope.adjust.down}
+                >
+                  <Icon name="down" size="sm" />
+                </button>
+              </span>
+            )}
+            {wide && scope.canWiden && (
+              <button
+                type="button"
+                className="scope-chip-x"
+                data-tip="Narrow the scope back"
+                aria-label="Narrow the scope back"
+                onClick={() => setWide(false)}
+              >
+                <Icon name="x" size="sm" />
+              </button>
+            )}
+          </span>
+          {!wide && scope.canWiden && (
+            <button type="button" className="cbox-widen" onClick={() => setWide(true)}>
+              + whole changeset
+            </button>
+          )}
+        </>
+      )}
+    </>
+  )
+  const closeButton = (
+    <button
+      type="button"
+      className="cbox-close"
+      data-tip="Close (Esc)"
+      aria-label="Close"
+      onClick={onCancel}
+    >
+      <Icon name="x" size="sm" />
+    </button>
+  )
+
   return (
     // biome-ignore lint/a11y/noStaticElementInteractions: the handler only contains a mouse click
     // biome-ignore lint/a11y/useKeyWithClickEvents: the handler only contains a mouse click
-    <div className="cbox thread-composer" onClick={(e) => e.stopPropagation()}>
-      <div className="cbox-head">
-        <Avatar who="you" />
-        <span className="cbox-title">{scope ? 'Comment on' : title}</span>
-        {scope && (
+    <div
+      className={`cbox thread-composer${audience ? ` cbox-${audience}` : ''}`}
+      onClick={(e) => e.stopPropagation()}
+    >
+      <div className={`cbox-head${switchable ? ' cbox-head-aud' : ''}`}>
+        {switchable ? (
           <>
-            <span className="scope-chip">
-              <Icon name={wide ? 'cmp' : 'unified'} size="sm" />
-              {wide ? 'the whole changeset' : scope.label}
-              {!wide && scope.adjust && (
-                <span className="scope-chip-steppers">
-                  <button
-                    type="button"
-                    className="scope-chip-step"
-                    disabled={!scope.adjust.up}
-                    data-tip="walk the range's edge one line up — the line you started on stays put"
-                    aria-label="range edge one line up"
-                    onClick={scope.adjust.up}
-                  >
-                    <Icon name="up" size="sm" />
-                  </button>
-                  <button
-                    type="button"
-                    className="scope-chip-step"
-                    disabled={!scope.adjust.down}
-                    data-tip="walk the range's edge one line down — the line you started on stays put"
-                    aria-label="range edge one line down"
-                    onClick={scope.adjust.down}
-                  >
-                    <Icon name="down" size="sm" />
-                  </button>
-                </span>
-              )}
-              {wide && scope.canWiden && (
-                <button
-                  type="button"
-                  className="scope-chip-x"
-                  data-tip="Narrow the scope back"
-                  aria-label="Narrow the scope back"
-                  onClick={() => setWide(false)}
-                >
-                  <Icon name="x" size="sm" />
-                </button>
-              )}
+            <AudienceTabs value={audience} onChange={setOwnAudience} />
+            <span className="cbox-head-right">
+              {scopeBits}
+              {closeButton}
             </span>
-            {!wide && scope.canWiden && (
-              <button type="button" className="cbox-widen" onClick={() => setWide(true)}>
-                + whole changeset
-              </button>
-            )}
+          </>
+        ) : (
+          <>
+            <span className="cbox-title">
+              {fixedAudience === 'agent' ? 'Ask your agent' : scope ? 'Comment on' : title}
+            </span>
+            {scopeBits}
+            {closeButton}
           </>
         )}
-        <button
-          type="button"
-          className="cbox-close"
-          data-tip="Close (Esc)"
-          aria-label="Close"
-          onClick={onCancel}
-        >
-          <Icon name="x" size="sm" />
-        </button>
       </div>
 
       {rich && (
@@ -295,6 +398,9 @@ export function CommentBox({
               else if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') {
                 e.preventDefault()
                 submit()
+              } else if ((e.metaKey || e.ctrlKey) && e.key === '.' && switchable) {
+                e.preventDefault()
+                flip()
               }
             }}
           />
@@ -305,7 +411,7 @@ export function CommentBox({
         )}
       </div>
 
-      {!ready && (
+      {!ready && !forGithub && (
         <div className="cbox-openers">
           {OPENERS.map((opener) => (
             <button
@@ -337,22 +443,28 @@ export function CommentBox({
         >
           Aa
         </button>
-        <span className="cbox-intent" role="radiogroup" aria-label="What this comment wants">
-          {INTENTS.map(({ intent: value, label, title }) => (
-            // biome-ignore lint/a11y/useSemanticElements: styled chips; a native radio cannot carry this treatment
-            <button
-              key={label}
-              type="button"
-              role="radio"
-              className="cbox-intent-chip"
-              aria-checked={intent === value}
-              title={title}
-              onClick={() => setIntent(value)}
-            >
-              {label}
-            </button>
-          ))}
-        </span>
+        {audience === 'pr' && (
+          <span className="cbox-hint">Posts to GitHub when you submit the review</span>
+        )}
+        {audience === 'agent' && <span className="cbox-hint">Private, stays on this machine</span>}
+        {audience === undefined && (
+          <span className="cbox-intent" role="radiogroup" aria-label="What this comment wants">
+            {INTENTS.map(({ intent: value, label, title }) => (
+              // biome-ignore lint/a11y/useSemanticElements: styled chips; a native radio cannot carry this treatment
+              <button
+                key={label}
+                type="button"
+                role="radio"
+                className="cbox-intent-chip"
+                aria-checked={intent === value}
+                title={title}
+                onClick={() => setIntent(value)}
+              >
+                {label}
+              </button>
+            ))}
+          </span>
+        )}
         {rich && (
           <span className="cbox-attach">
             <Icon name="attach" size="sm" /> Markdown supported
@@ -362,7 +474,7 @@ export function CommentBox({
           <button type="button" className="btn btn-sm btn-ghost" onClick={onCancel}>
             Close
           </button>
-          {onSend && (
+          {onSend && !forGithub && !askOnly && (
             <button
               type="button"
               className="btn btn-sm btn-outline"
@@ -382,9 +494,18 @@ export function CommentBox({
             className="btn btn-sm btn-primary"
             disabled={!ready}
             onClick={submit}
-            title="leave this comment on the review"
+            title={
+              forGithub
+                ? 'add this to your review; it posts to GitHub when you submit'
+                : askOnly
+                  ? agentConnected
+                    ? 'send this to your agent; it never leaves this machine'
+                    : 'add this and copy its prompt for your agent'
+                  : 'leave this comment on the review'
+            }
           >
-            Add comment
+            {askOnly && <Icon name="send" size="sm" />}
+            {forGithub ? 'Add to review' : askOnly ? 'Send to agent' : 'Add comment'}
             <span className="btn-kbd">⌘↵</span>
           </button>
         </span>

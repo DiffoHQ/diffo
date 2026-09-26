@@ -143,7 +143,7 @@ export function PaneBar({
         <button
           type="button"
           className="pane-q"
-          title={`Showing only files matching “${trimmedQuery}” — click to clear`}
+          title={`Showing only files matching “${trimmedQuery}”; click to clear`}
           aria-label={`Clear the file filter “${trimmedQuery}”`}
           onClick={onClearQuery}
         >

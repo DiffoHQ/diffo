@@ -47,13 +47,16 @@ working; failing that, the first free one.
 
 ## The changeset is the unit of review
 
-Not a pull request. Whatever the agent actually produced:
+Whatever the agent actually produced, or whatever someone else is asking you to
+read:
 
 - **the working tree vs `HEAD`**: the default, and the case that matters most,
   because it's where agent output lives before anyone has decided it's good
-- **a branch or commit range**: `--base main` reviews everything since the fork
-  point
-- **pull requests**: on the roadmap, not here yet
+- **a branch or commit range**: `diffo main` (or `--base main`) reviews
+  everything since the fork point
+- **a pull request**: `diffo <PR URL>` fetches it into a worktree Diffo owns and
+  reviews it there, with the PR's conversation imported and your review going
+  back to GitHub when you finish; see [Reviewing a pull request](/guide/pr-review)
 
 Untracked files are included, so brand-new agent output shows up as an addition
 rather than not at all. Staged and unstaged changes are both in, and which is which

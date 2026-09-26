@@ -141,13 +141,13 @@ describe('ThreadCard', () => {
     const { unmount } = render(
       <ThreadCard thread={thread({ state: 'sent' })} actions={actions()} queuePosition={2} />,
     )
-    expect(screen.getByText('queued — #2 in line')).toBeTruthy()
+    expect(screen.getByText('queued, #2 in line')).toBeTruthy()
     unmount()
     render(<ThreadCard thread={thread({ state: 'sent' })} actions={actions()} queuePosition={1} />)
-    expect(screen.getByText('queued — next in line')).toBeTruthy()
+    expect(screen.getByText('queued, next in line')).toBeTruthy()
   })
 
-  it('held outranks queued — a re-queued follow-up is still over there', () => {
+  it('held outranks queued, a re-queued follow-up is still over there', () => {
     render(
       <ThreadCard
         thread={thread({ state: 'sent' })}
@@ -162,7 +162,7 @@ describe('ThreadCard', () => {
 
   it('a thread the agent walked away from says so, and stops waiting', () => {
     render(<ThreadCard thread={thread({ state: 'sent', unanswered: true })} actions={actions()} />)
-    expect(screen.getByText(/no answer — the agent moved on/)).toBeTruthy()
+    expect(screen.getByText(/no answer, the agent moved on/)).toBeTruthy()
     expect(screen.getByText(/Send it again, or resolve it/)).toBeTruthy()
     expect(document.querySelector('.pending-dots')).toBeNull()
   })
@@ -175,7 +175,7 @@ describe('ThreadCard', () => {
         queuePosition={1}
       />,
     )
-    expect(screen.getByText('queued — next in line')).toBeTruthy()
+    expect(screen.getByText('queued, next in line')).toBeTruthy()
     expect(screen.queryByText(/no answer/)).toBeNull()
   })
 
@@ -342,6 +342,41 @@ describe('ThreadCard', () => {
     expect(screen.getByText('code changed since this comment')).toBeTruthy()
     expect(screen.queryByPlaceholderText('reply…')).toBeNull()
     expect(document.querySelector('.thread-reply-stub')).toBeNull()
+  })
+
+  it('a collapsed thread shows only the first line of a long body', () => {
+    // A bot's review comment runs to paragraphs; the collapsed summary is one
+    // nowrap line, and a whole body there would set the diff table's width.
+    const body =
+      '\n### Update cards show untitled fallback\n\n**Medium Severity**\n\n<!-- x -->\nThe card uses `args.title`.'
+    render(
+      <ThreadCard
+        thread={thread({
+          state: 'resolved',
+          messages: [{ id: 'm1', author: 'reviewer', text: body, at: '2026-08-03T00:00:00Z' }],
+        })}
+        actions={actions()}
+      />,
+    )
+    const text = document.querySelector('.thread-collapsed-text')
+    expect(text?.textContent).toBe('### Update cards show untitled fallback')
+  })
+
+  it('a folded open thread peeks only the first line, for the same reason', () => {
+    const body =
+      '\n### Update cards show untitled fallback\n\n**Medium Severity**\n\nThe card uses `args.title`.'
+    render(
+      <ThreadCard
+        thread={thread({
+          messages: [{ id: 'm1', author: 'reviewer', text: body, at: '2026-08-03T00:00:00Z' }],
+        })}
+        actions={actions()}
+      />,
+    )
+    fireEvent.click(screen.getByRole('button', { name: 'collapse this thread' }))
+    expect(document.querySelector('.thread-shut-peek')!.textContent).toBe(
+      '### Update cards show untitled fallback',
+    )
   })
 
   it('reply sends the text and clears the box once it has landed', async () => {
@@ -1171,6 +1206,28 @@ describe('threads the changeset left behind', () => {
     expect(card.querySelector('.thread-where')!.textContent).toBe('src/deleted.ts:52')
     expect(card.querySelector('.thread-where-gone')).toBeTruthy()
     expect(card.textContent).toContain('the commented change')
+  })
+
+  it('a GitHub thread whose line went outdated says so, not that the file left', () => {
+    const outdated = thread({
+      id: 't-outdated',
+      audience: 'pr',
+      state: 'sent',
+      github: { threadId: 'x', kind: 'inline', resolved: false, outdated: true },
+    })
+    const { container } = render(
+      <ReadingPane
+        files={[FILE]}
+        comments={{ partition: partitionThreads([FILE], []), past: [outdated], actions: actions() }}
+      />,
+    )
+    const section = container.querySelector('.past-threads')!
+    fireEvent.click(section.querySelector('.file-header')!)
+    const hint = section.querySelector('.past-hint')!.textContent!
+    expect(hint).toContain('outdated on GitHub: the line it hangs off left the diff')
+    expect(hint).not.toContain('reverted, deleted, or stashed')
+    const where = section.querySelector('[data-thread-id="t-outdated"] .thread-where')!
+    expect(where.getAttribute('title')).toBe('outdated on GitHub: the line left the diff')
   })
 
   it('the rail can open one — the reveal tick unfolds the section', () => {

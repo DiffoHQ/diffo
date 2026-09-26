@@ -201,24 +201,14 @@ describe('ReviewStore', () => {
   it("an offered reply rides the agent message, never the reviewer's, and survives a reload", () => {
     const root = tempRoot()
     const store = makeStore(root)
-    const opened = store.createThread(
-      hunkAnchor('h1'),
-      'fold these?',
-      null,
-      undefined,
-      'agent',
-      'fold them',
-    )
+    const opened = store.createThread(hunkAnchor('h1'), 'fold these?', null, undefined, 'agent', {
+      suggestedReply: 'fold them',
+    })
     expect(opened.messages[0]).toMatchObject({ author: 'agent', suggestedReply: 'fold them' })
 
-    const asked = store.createThread(
-      hunkAnchor('h2'),
-      'why?',
-      null,
-      undefined,
-      'reviewer',
-      'ignored',
-    )
+    const asked = store.createThread(hunkAnchor('h2'), 'why?', null, undefined, 'reviewer', {
+      suggestedReply: 'ignored',
+    })
     expect(asked.messages[0]!.suggestedReply).toBeUndefined()
 
     store.addMessage(

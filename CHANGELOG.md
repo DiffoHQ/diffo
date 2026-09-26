@@ -7,7 +7,134 @@ Until 1.0, minor versions may break things. When they do, the entry says how to 
 
 ## [Unreleased]
 
-Nothing yet.
+### Added
+
+- **Pull request review: `diffo <PR URL>`** (also `owner/repo#N`, `#N`, or
+  `N` from a clone; `/diffo <PR link>` from your agent). The PR is fetched into
+  a worktree Diffo owns (`~/.diffo/worktrees/<repo>-<hash>/pr-<N>`, on branch
+  `diffo/pr-<N>`) and reviewed there as an ordinary branch review, so your
+  checkout is never touched. The description, reviews and conversation comments
+  come in as threads at the top; inline GitHub threads sit at their lines with
+  real logins and avatars. The header carries the PR title and one status chip
+  (merged, changes requested, CI failing, draft, or CI running, by priority);
+  click the title for author, branches, checks, reviews and the GitHub link. A
+  push moves the worktree and the diff updates like
+  any edit, read marks included. Every composer gains two tabs in its head and
+  wears the side you pick as a stripe down its edge: **Comment on PR** drafts a
+  review comment for GitHub (blue), **Ask agent** sends a private thread (amber
+  dashed, one button, no intent chips). Public drafts, replies and resolves post as one
+  review when you **Submit review**: GitHub's own dialog, body first, then the
+  verdict (Comment / Approve / Request changes) with what each means, and every
+  pending comment listed in full above the button; nothing leaves before then,
+  and a failure midway never posts twice. The Threads list
+  groups by side, GitHub then Private, each striped in its color with one
+  badge (drafts pending, or threads on your turn), so a row's side is never
+  in doubt; GitHub lists the threads you are part of, and the rest of the
+  conversation folds behind "N from others". A public card
+  offers nothing that reaches the agent; under a private one, **Post as PR
+  comment** turns the agent's answer (or its ```suggestion block) into an
+  editable draft. The agent works from the worktree as a copilot for
+  code it did not write, never posts to GitHub, and gets a `submitted` notice
+  when you finish. Needs the GitHub CLI signed in: every GitHub call is your
+  own `gh`, and Diffo holds no token.
+- **A positional target.** `diffo main` reviews against `main` (same as
+  `--base main`); a pull-request reference is a target too. `diffo pr <ref>`
+  is the explicit spelling.
+- **`diffo clean`** lists the worktrees Diffo made and removes the ones whose
+  review is over (merged or closed, pruned, or gone); `--force` takes dirty
+  ones, `--all` every one.
+
+
+### Changed
+
+- **The pull request description is the Overview.** Row 0 of Layers on a PR is
+  the author's description, the way the agent's guide is on a local review; a
+  guide the agent posts sits under it. A fresh PR review opens there.
+- **Other people's conversation comments start folded.** On the pull request,
+  the pane leads with what is yours: the description, your private threads,
+  and the GitHub conversations you started, replied to, spoke in, or are
+  @mentioned in. The rest, bots included, waits behind "N more from others",
+  the rule the Threads list already applied; picking one of them from the list
+  unfolds it.
+- **The network claim.** Diffo still makes no network calls of its own; a
+  pull-request review is the one case where it talks to GitHub, and only
+  through your `gh`. README, FAQ and the security page say so.
+- A bare word that is not a typo of a command is now a branch to review
+  against, not an "unknown command".
+
+
+### Fixed
+
+- **The agent's `diffo poll` from your checkout reaches the pull request's
+  review.** Every command except a plain open now follows a live PR server into
+  its worktree when the checkout has no review of its own; before, it started a
+  second, plain review of the checkout and listened there.
+- **A submit of only resolves no longer fails.** A pending review is opened and
+  submitted only when something needs one (a line comment, an inline reply, a
+  body, or a verdict); GitHub refuses an empty review, and used to leave one
+  dangling.
+- **Session detection no longer mistakes the CLI's own launcher for the agent.**
+  A `tsx` or `npx` wrapper carrying a repo path with a harness word in it (a
+  checkout under `.claude/worktrees/…`, a project called `example`) could pass
+  for the session; it dies the moment `diffo poll` returns, so five seconds
+  after every delivery the review showed "no agent" and marked the thread
+  "the agent moved on" while the agent was still working. The walk now skips
+  processes that carry the CLI's own invocation, and a harness name only counts
+  at the start of a path segment.
+- **A collapsed resolved thread no longer stretches the diff it sits in.** The
+  one-line summary carried the whole first message; a bot's review comment
+  running to paragraphs made the code table thousands of pixels wide. The
+  summary is now the first line, and it can no longer size the table.
+- **Opening a second pull request no longer removes the first one's checkout
+  while you are still reading it.** The sweep that runs at every open treated a
+  merged or closed PR as done the moment GitHub said so; it now leaves a
+  worktree alone while a Diffo server is reviewing in it. `diffo clean --force`
+  is the one thing that removes such a worktree, and it says so.
+- **A pull request is fetched from the remote that names its repository.** In
+  a clone of a fork, `origin` is the fork; the PR's head and base now come from
+  the remote whose URL matches the PR, and Diffo refuses to guess when none does.
+- **A failed submit never reaches the agent.** A submit that GitHub refused
+  outright (approving your own PR, say) still ran the agent's leg when it
+  carried no drafts, so the agent heard a finish that did not happen and a
+  second one on the retry.
+- **Resolving the description, a review body, or a conversation comment no
+  longer breaks the submit.** Only inline threads resolve on GitHub; the other
+  kinds now resolve locally instead of queueing a call GitHub rejects at every
+  retry.
+- **A pending review you submitted or discarded on github.com no longer
+  blocks every later submit.** Diffo now trusts what GitHub reports as pending
+  at submit time and starts a fresh review when the stored one is gone.
+- **A draft written as several messages posts once.** Every message of the
+  draft now counts as posted; before, the ones after the first went out again
+  as replies at the next submit.
+- **Reviews and conversation comments are paginated.** A PR with more than a
+  hundred of either lost the rest: a pending review beyond the first page went
+  unseen (and the submit then tried to create a second one), approval counts
+  were short, and imported comments stopped at a hundred.
+- **The pull request is fetched only when its head moved**, not at every
+  45-second poll, and a fetch that keeps failing is logged once.
+- **A reply on a conversation comment no longer comes back as a second
+  thread** when GitHub's copy is imported.
+- **Removing a worktree by hand no longer leaks its branch and ref**: the next
+  sweep still cleans the git side.
+- **A URL that is not a pull request is an error**, not a silent review of the
+  working tree.
+- **`diffo clean` says when it could not check a worktree**, and a worktree git
+  failed to remove stays listed instead of being reported as removed.
+- **The Submit review dialog's pending list refreshes after a partial GitHub
+  failure**, so it lists only what is still to post; it also submits when the
+  preview itself failed to load, and a verdict that became blocked mid-dialog
+  falls back to Comment.
+- **Public drafts no longer count as comments waiting for the agent**, in the
+  finish summary or the monitor.
+- **A queued resolve or reopen stays visible** on a collapsed card and in its
+  rail row ("resolves when you submit").
+- **A GitHub thread whose line went outdated says so** ("outdated on GitHub:
+  the line left the diff") instead of claiming the file left the changeset.
+- **The rail's mark on a public draft discards it**, the way the card does,
+  instead of resolving it out of the submit while it still read as settled.
+- **"Only mine" and "N resolved" folds honour a click** even while the selected
+  thread sits inside the fold.
 
 ## [0.6.0] — 2026-09-26
 

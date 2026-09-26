@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto'
-import type { Changeset, ChangesetSpec } from '../shared/types.js'
+import type { Changeset, ChangesetSpec, PrInfo } from '../shared/types.js'
 import { buildChangesetFromRaw } from './changeset.js'
 import {
   getBranchName,
@@ -15,6 +15,9 @@ export class ChangesetStore {
   private hash: string | null = null
   private changeset!: Changeset
   private listeners = new Set<(changeset: Changeset) => void>()
+  /** The pull request this diff belongs to, when there is one. Set by the forge
+   * puller, carried onto every recompute, never part of the diff hash. */
+  private pr: PrInfo | undefined
 
   constructor(
     private root: string,
@@ -67,9 +70,24 @@ export class ChangesetStore {
     if (newHash === this.hash) return false
     this.hash = newHash
     this.version++
-    this.changeset = buildChangesetFromRaw(this.root, this.spec, raw, this.version)
+    this.changeset = {
+      ...buildChangesetFromRaw(this.root, this.spec, raw, this.version),
+      ...(this.pr ? { pr: this.pr } : {}),
+    }
     for (const listener of this.listeners) listener(this.changeset)
     return true
+  }
+
+  /**
+   * The PR block moved (a push, a review, a check): publish it as a new version
+   * so the browser refetches, without touching the diff hash — the files did not
+   * change, only what is known about them.
+   */
+  setPr(pr: PrInfo): void {
+    this.pr = pr
+    this.version++
+    this.changeset = { ...this.changeset, version: this.version, pr }
+    for (const listener of this.listeners) listener(this.changeset)
   }
 
   get(): Changeset {
