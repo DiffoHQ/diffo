@@ -66,6 +66,65 @@ describe('isTestFile', () => {
     expect(isTestFile('app/parser.py')).toBe(false)
   })
 
+  it('catches Cypress, Playwright and other e2e layouts', () => {
+    expect(isTestFile('cypress/e2e/login.cy.ts')).toBe(true)
+    expect(isTestFile('src/components/Button.cy.tsx')).toBe(true)
+    expect(isTestFile('e2e/checkout.e2e.ts')).toBe(true)
+    expect(isTestFile('e2e/home.ts')).toBe(true)
+    expect(isTestFile('apps/web-e2e/src/app.ts')).toBe(true)
+    expect(isTestFile('playwright/fixtures.ts')).toBe(true)
+    expect(isTestFile('src/e2ee/crypto.ts')).toBe(false)
+  })
+
+  it('catches JS test support: mocks, snapshots, helpers and runner config', () => {
+    expect(isTestFile('src/__mocks__/api.ts')).toBe(true)
+    expect(isTestFile('src/mocks/handlers.ts')).toBe(true)
+    expect(isTestFile('src/__snapshots__/a.test.ts.snap')).toBe(true)
+    expect(isTestFile('src/test-utils.tsx')).toBe(true)
+    expect(isTestFile('src/testHelpers.ts')).toBe(true)
+    expect(isTestFile('test-utils/render.tsx')).toBe(true)
+    expect(isTestFile('vitest.config.ts')).toBe(true)
+    expect(isTestFile('jest.setup.js')).toBe(true)
+    expect(isTestFile('playwright.config.ts')).toBe(true)
+    expect(isTestFile('vite.config.ts')).toBe(false)
+  })
+
+  it('catches JVM source sets, integration tests and Spec suffixes', () => {
+    expect(isTestFile('src/androidTest/java/Helper.kt')).toBe(true)
+    expect(isTestFile('src/integrationTest/kotlin/Db.kt')).toBe(true)
+    expect(isTestFile('src/testFixtures/java/Fixture.java')).toBe(true)
+    expect(isTestFile('src/FooIT.java')).toBe(true)
+    expect(isTestFile('src/UserSpec.kt')).toBe(true)
+    expect(isTestFile('src/Circuit.java')).toBe(false)
+    expect(isTestFile('src/OpenApiSpec.ts')).toBe(false)
+  })
+
+  it('catches pytest, RSpec, PHPUnit and Go test support', () => {
+    expect(isTestFile('conftest.py')).toBe(true)
+    expect(isTestFile('app/tests.py')).toBe(true)
+    expect(isTestFile('spec/spec_helper.rb')).toBe(true)
+    expect(isTestFile('spec/support/helpers.rb')).toBe(true)
+    expect(isTestFile('phpunit.xml.dist')).toBe(true)
+    expect(isTestFile('pkg/testdata/golden.json')).toBe(true)
+    expect(isTestFile('internal/mock_store.go')).toBe(true)
+    expect(isTestFile('internal/store_mock.go')).toBe(true)
+    // A spec/ directory also holds API specs; only Ruby files in it are RSpec.
+    expect(isTestFile('spec/openapi.yaml')).toBe(false)
+  })
+
+  it('catches BDD feature files and step definitions', () => {
+    expect(isTestFile('features/login.feature')).toBe(true)
+    expect(isTestFile('features/step_definitions/login.js')).toBe(true)
+    expect(isTestFile('acceptance/login.robot')).toBe(true)
+    expect(isTestFile('docs/features.md')).toBe(false)
+  })
+
+  it('catches any .NET test project suffix', () => {
+    expect(isTestFile('MyApp.UnitTests/Order.cs')).toBe(true)
+    expect(isTestFile('MyApp.IntegrationTests/Db.cs')).toBe(true)
+    expect(isTestFile('src/MyApp.Latest/Foo.cs')).toBe(false)
+  })
+
   it('leaves source alone when a word merely ends in test', () => {
     expect(isTestFile('src/Latest.cs')).toBe(false)
     expect(isTestFile('src/Contest.cs')).toBe(false)

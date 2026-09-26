@@ -7,7 +7,15 @@ Until 1.0, minor versions may break things. When they do, the entry says how to 
 
 ## [Unreleased]
 
-Nothing yet.
+### Fixed
+
+- **Hide tests** now catches Cypress (`.cy.ts`, `cypress/`), e2e layouts
+  (`.e2e.ts`, `e2e/`, Nx `*-e2e/`), test support (`__mocks__`, snapshots,
+  `test-utils`, runner configs like `vitest.config.ts`), Gradle source sets
+  (`androidTest/`, `integrationTest/`, `testFixtures/`), `*IT.java`,
+  Kotest/Spock `*Spec`, pytest `conftest.py`, RSpec `spec/**/*.rb`, Go
+  `testdata/` and mocks, Gherkin `.feature` files, and any `.NET`
+  `*.UnitTests/`-style project.
 
 ## [0.4.1] — 2026-09-24
 
