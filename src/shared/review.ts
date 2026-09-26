@@ -51,6 +51,9 @@ export interface ReviewMessage {
    * shows it as ghost text while the reviewer has typed nothing; Tab takes it.
    * Never sent on its own — the reviewer still presses send. */
   suggestedReply?: string
+  /** ISO, stamped when the reviewer rewrites a message the agent had already
+   * seen. An edit to words the agent never saw is just a draft fixed in place. */
+  editedAt?: string
 }
 
 /** Ghost text has one line and little room: collapse whitespace and cap it. */
@@ -98,6 +101,10 @@ export interface ReviewThread {
    * draws its typing indicator there rather than under words the agent has
    * never seen. */
   deliveredThrough?: string
+  /** The reviewer rewrote a message the agent had seen and everything after it
+   * was cut. The agent's session still remembers the cut replies, so the next
+   * delivery has to say they are withdrawn; that delivery clears the flag. */
+  rewound?: true
   messages: ReviewMessage[]
   createdAt: string
   updatedAt: string
@@ -117,6 +124,19 @@ export interface LegacySuggestion {
  * Drives rendering — avatar, head label — and never changes. */
 export function startedByAgent(thread: ReviewThread): boolean {
   return thread.messages[0]?.author === 'agent'
+}
+
+/** The agent has this message: it replied after it, or a delivery carried it.
+ * Decides what an edit is — a draft fixed in place, or a change of mind the
+ * agent has to be told about. */
+export function seenByAgent(thread: ReviewThread, index: number): boolean {
+  const message = thread.messages[index]
+  if (!message) return false
+  if (thread.messages.slice(index + 1).some((m) => m.author === 'agent')) return true
+  return (
+    thread.deliveredThrough !== undefined &&
+    Date.parse(message.at) <= Date.parse(thread.deliveredThrough)
+  )
 }
 
 /** Agent-started with nothing of the reviewer's in it. Only these are excluded

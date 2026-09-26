@@ -1615,3 +1615,124 @@ describe('the layers request loop', () => {
     await reader.cancel()
   })
 })
+
+describe('editing a message', () => {
+  const agentPoll = async (app: ReturnType<typeof setup>['app']) =>
+    pollResult(await app.request('/api/agent/poll', { headers: { 'x-diffo-agent': 'cli' } }))
+  const edit = (
+    app: ReturnType<typeof setup>['app'],
+    threadId: string,
+    messageId: string,
+    body: unknown,
+  ) =>
+    app.request(`/api/review/threads/${threadId}/messages/${messageId}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    })
+
+  /** A sent thread the agent has taken and answered once. */
+  async function answered(app: ReturnType<typeof setup>['app']): Promise<ReviewThread> {
+    const created = await post(app, '/api/review/threads', {
+      anchor: { kind: 'changeset' },
+      text: 'cache this',
+    })
+    const thread = (await created.json()) as ReviewThread
+    await post(app, `/api/review/threads/${thread.id}/send`)
+    await agentPoll(app)
+    await post(app, `/api/review/threads/${thread.id}/messages`, {
+      author: 'agent',
+      text: 'added an LRU cache',
+    })
+    return thread
+  }
+
+  it('a rewind cuts the answer and re-delivers, telling the agent its reply is withdrawn', async () => {
+    const { app, review } = setup()
+    const thread = await answered(app)
+
+    const res = await edit(app, thread.id, thread.messages[0]!.id, {
+      text: 'memoize per request instead',
+    })
+    expect(res.status).toBe(200)
+    const body = (await res.json()) as { thread: ReviewThread }
+    expect(body.thread.messages.map((m) => m.text)).toEqual(['memoize per request instead'])
+    expect(body.thread.rewound).toBe(true)
+
+    const redelivered = await agentPoll(app)
+    expect(redelivered.threadIds).toEqual([thread.id])
+    const prompt = String(redelivered.prompt)
+    expect(prompt).toContain('EDITED:')
+    expect(prompt).toContain('- reviewer (edited): memoize per request instead')
+    expect(prompt).not.toContain('added an LRU cache')
+    // Said once: the delivery that carried it clears it.
+    expect(review.get().threads[0]!.rewound).toBeUndefined()
+  })
+
+  it('refuses while the agent is answering — its reply would land under words it never read', async () => {
+    const { app, review } = setup()
+    const created = await post(app, '/api/review/threads', {
+      anchor: { kind: 'changeset' },
+      text: 'why?',
+    })
+    const thread = (await created.json()) as ReviewThread
+    await post(app, `/api/review/threads/${thread.id}/send`)
+    await agentPoll(app)
+
+    const res = await edit(app, thread.id, thread.messages[0]!.id, { text: 'why, really?' })
+    expect(res.status).toBe(409)
+    expect(((await res.json()) as { error: string }).error).toContain('the agent is answering')
+    expect(review.get().threads[0]!.messages[0]!.text).toBe('why?')
+  })
+
+  it('deliver:false holds a rewind — written and withheld, nothing queued', async () => {
+    const { app, review, queue } = setup()
+    const thread = await answered(app)
+
+    const res = await edit(app, thread.id, thread.messages[0]!.id, {
+      text: 'memoize instead',
+      deliver: false,
+    })
+    const body = (await res.json()) as { thread: ReviewThread; delivered: boolean }
+    expect(body.delivered).toBe(false)
+    expect(body.thread.withheld).toBe(true)
+    expect(queue.take()).toBeNull()
+    // Send releases it, with the withdrawal note still owed.
+    await post(app, `/api/review/threads/${thread.id}/send`)
+    expect(String((await agentPoll(app)).prompt)).toContain('EDITED:')
+    expect(review.get().threads[0]!.withheld).toBeUndefined()
+  })
+
+  it('a draft is fixed in place and sends nothing', async () => {
+    const { app, queue } = setup()
+    const created = await post(app, '/api/review/threads', {
+      anchor: { kind: 'changeset' },
+      text: 'rename ths',
+    })
+    const thread = (await created.json()) as ReviewThread
+
+    const res = await edit(app, thread.id, thread.messages[0]!.id, { text: 'rename this' })
+    const body = (await res.json()) as { thread: ReviewThread }
+    expect(body.thread.messages[0]!.text).toBe('rename this')
+    expect(body.thread.messages[0]!.editedAt).toBeUndefined()
+    expect(body.thread.state).toBe('open')
+    expect(queue.take()).toBeNull()
+  })
+
+  it("refuses the agent's words, a resolved thread, blank text, and unknown ids", async () => {
+    const { app, review } = setup()
+    const thread = await answered(app)
+    const agentMessage = review.get().threads[0]!.messages[1]!
+
+    expect((await edit(app, thread.id, agentMessage.id, { text: 'x' })).status).toBe(400)
+    expect((await edit(app, thread.id, thread.messages[0]!.id, { text: '  ' })).status).toBe(400)
+    expect((await edit(app, thread.id, 'nope', { text: 'x' })).status).toBe(404)
+    expect((await edit(app, 'nope', thread.messages[0]!.id, { text: 'x' })).status).toBe(404)
+    review.setState(thread.id, 'resolved')
+    expect((await edit(app, thread.id, thread.messages[0]!.id, { text: 'x' })).status).toBe(409)
+    expect(review.get().threads[0]!.messages.map((m) => m.text)).toEqual([
+      'cache this',
+      'added an LRU cache',
+    ])
+  })
+})

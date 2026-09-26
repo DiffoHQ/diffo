@@ -615,8 +615,17 @@ function threadBlock(thread: ReviewThread, index: number): string {
     `id: ${thread.id}`,
     ...anchorNote(thread),
     ...snapshotBlock(thread),
+    // The thread was cut back, but the agent's session still holds the replies
+    // that were cut — without this it would answer on top of them.
+    ...(thread.rewound
+      ? [
+          'EDITED: the reviewer rewrote the message marked (edited) and withdrew everything after it, your earlier replies included. Answer the edited version. Code you changed for the withdrawn replies is still in the tree: keep it or revert it as the new message implies, and say which.',
+        ]
+      : []),
     'Messages:',
-    ...thread.messages.map((m) => `- ${m.author}: ${m.text.replace(/\n/g, '\n  ')}`),
+    ...thread.messages.map(
+      (m) => `- ${m.author}${m.editedAt ? ' (edited)' : ''}: ${m.text.replace(/\n/g, '\n  ')}`,
+    ),
   ].join('\n')
 }
 

@@ -1,7 +1,9 @@
 import { Fragment, useEffect, useRef, useState } from 'react'
 import {
   anchorSpan,
+  type ReviewMessage,
   type ReviewThread,
+  seenByAgent,
   startedByAgent,
   type ThreadIntent,
   type ThreadState,
@@ -21,6 +23,8 @@ export interface ReviewActions {
     intent?: import('../../shared/review.js').ThreadIntent,
   ) => Promise<ReviewThread>
   reply: (threadId: string, text: string, deliver?: boolean) => Promise<unknown>
+  /** Rewrite one of the reviewer's own messages; see `ReviewStore.editMessage`. */
+  edit?: (threadId: string, messageId: string, text: string, deliver?: boolean) => Promise<unknown>
   send: (threadId: string) => Promise<{ delivered: boolean; copied?: boolean; prompt?: string }>
   resolve: (threadId: string) => Promise<unknown>
   reopen: (threadId: string) => Promise<unknown>
@@ -212,6 +216,11 @@ export function ThreadCard({
   const [replyOpen, setReplyOpen] = useState(false)
   const [expanded, setExpanded] = useState(false)
   const [shut, setShut] = useState(false)
+  // The message being rewritten and its draft. One at a time: the editor takes
+  // that message's body in place, and the error is the server's own words — a
+  // refusal ("the agent is answering") must not read as a dropped connection.
+  const [editing, setEditing] = useState<{ id: string; draft: string } | null>(null)
+  const [editError, setEditError] = useState<string | null>(null)
   const card = useRef<HTMLDivElement>(null)
   const box = useRef<HTMLTextAreaElement>(null)
   // A live update can unmount this card before the "copied" flag times out.
@@ -227,6 +236,42 @@ export function ThreadCard({
       .reply(thread.id, reply, deliver)
       .then(() => setReply(''))
       .catch(() => setActionFailed(true))
+  }
+  const editIndex = editing ? thread.messages.findIndex((m) => m.id === editing.id) : -1
+  // Everything below the edited message goes when it is saved — struck through
+  // while the editor is open, so the rewind is visible before it happens.
+  const cutCount = editIndex === -1 ? 0 : thread.messages.length - 1 - editIndex
+  const editSeen = editIndex !== -1 && seenByAgent(thread, editIndex)
+  // Resend is a choice only when the rewrite reaches a live agent; otherwise
+  // Save does what Reply does and the thread waits in the queue.
+  const editDispatches =
+    editSeen && agentConnected && (thread.state === 'sent' || thread.state === 'addressed')
+  const canEdit = (m: ReviewMessage) =>
+    actions.edit !== undefined && m.author === 'reviewer' && thread.state !== 'resolved'
+  const startEdit = (m: ReviewMessage) => {
+    setEditError(null)
+    setEditing({ id: m.id, draft: m.text })
+  }
+  const cancelEdit = () => {
+    setEditing(null)
+    setEditError(null)
+  }
+  // Close the editor only once the edit has landed — a refused save keeps the draft.
+  const doEdit = (deliver = true) => {
+    if (!editing || editIndex === -1) return
+    const text = editing.draft.trim()
+    if (!text) return
+    if (text === thread.messages[editIndex]!.text.trim()) return cancelEdit()
+    setEditError(null)
+    actions.edit!(thread.id, editing.id, text, deliver)
+      .then(cancelEdit)
+      .catch((err: unknown) =>
+        setEditError(
+          err instanceof Error && err.message
+            ? err.message
+            : "couldn't reach the diffo server — your text is still here; try again",
+        ),
+      )
   }
   const doSend = () => {
     setActionFailed(false)
@@ -344,6 +389,8 @@ export function ThreadCard({
       ? -1
       : thread.messages.findIndex((m) => m.author === 'reviewer' && Date.parse(m.at) > seenThrough)
   const pendingAt = racedAt === -1 ? thread.messages.length : racedAt
+  // A rewind in the editor is about to cut the turn the indicator stands for.
+  const pending = cutCount > 0 ? null : pendingReply
 
   const resolveButton =
     thread.state === 'resolved' ? (
@@ -492,8 +539,12 @@ export function ThreadCard({
           <div className="thread-messages">
             {thread.messages.map((m, i) => (
               <Fragment key={m.id}>
-                {i === pendingAt && pendingReply}
-                <div className={`cmt thread-message thread-message-${m.author}`}>
+                {i === pendingAt && pending}
+                <div
+                  className={`cmt thread-message thread-message-${m.author}${
+                    i === editIndex ? ' thread-message-editing' : ''
+                  }${editIndex !== -1 && i > editIndex ? ' thread-message-cut' : ''}`}
+                >
                   <div className="cmt-head">
                     <Avatar who={m.author === 'reviewer' ? 'you' : 'agent'} />
                     <span className={`cmt-who cmt-who-${m.author}`}>
@@ -503,13 +554,115 @@ export function ThreadCard({
                       {m.author === 'agent' && m.durationMs !== undefined
                         ? `answered in ${formatAgentDuration(m.durationMs)}`
                         : `${verbFor(m.author, i)} ${timeAgo(m.at)}`}
+                      {m.editedAt && ' · edited'}
+                    </span>
+                    {canEdit(m) && editing?.id !== m.id && (
+                      <button
+                        type="button"
+                        className="btn btn-ghost btn-icon btn-sm cmt-edit"
+                        aria-label="edit this message"
+                        // Not `disabled`: a disabled button shows no tooltip, and
+                        // the tooltip is the only place that says why.
+                        aria-disabled={working || undefined}
+                        data-tip={
+                          working
+                            ? 'the agent is answering — edit after it replies'
+                            : 'edit this message'
+                        }
+                        onClick={() => {
+                          if (!working) startEdit(m)
+                        }}
+                      >
+                        <Icon name="edit" size="sm" />
+                      </button>
+                    )}
+                  </div>
+                  {editing?.id === m.id ? (
+                    <div className="cmt-edit-box">
+                      <textarea
+                        // biome-ignore lint/a11y/noAutofocus: the editor is opened by an explicit click
+                        autoFocus
+                        className="cmt-edit-input"
+                        aria-label="edit your message"
+                        value={editing.draft}
+                        onFocus={(e) =>
+                          e.currentTarget.setSelectionRange(
+                            e.currentTarget.value.length,
+                            e.currentTarget.value.length,
+                          )
+                        }
+                        onChange={(e) => setEditing({ id: m.id, draft: e.target.value })}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Escape') {
+                            e.preventDefault()
+                            cancelEdit()
+                          } else submitOnCmdEnter(e, () => doEdit(true))
+                        }}
+                      />
+                      {editError && (
+                        <div className="cmt-edit-error" role="alert">
+                          {editError}
+                        </div>
+                      )}
+                      <div className="cmt-edit-foot">
+                        <button type="button" className="btn btn-ghost btn-sm" onClick={cancelEdit}>
+                          Cancel
+                        </button>
+                        {editDispatches && (
+                          <button
+                            type="button"
+                            className="btn btn-ghost btn-sm"
+                            onClick={() => doEdit(false)}
+                            title={
+                              gone
+                                ? 'save it without handing it over — Send takes it; the finish batch will not'
+                                : 'save it without handing it over — Send or Finish takes it'
+                            }
+                          >
+                            Save
+                          </button>
+                        )}
+                        <button
+                          type="button"
+                          className="btn btn-primary btn-sm"
+                          onClick={() => doEdit(true)}
+                          title={
+                            editDispatches
+                              ? 'save the edit and hand the thread back to your agent — its withdrawn replies are named, and code it changed for them stays until it says otherwise'
+                              : editSeen
+                                ? 'save the edit — the thread waits for the agent, which is told its earlier replies were withdrawn'
+                                : 'save the edit'
+                          }
+                        >
+                          {editDispatches ? (
+                            <>
+                              <Icon name="send" size="sm" /> Save &amp; resend
+                            </>
+                          ) : (
+                            'Save'
+                          )}
+                          <span className="btn-kbd">⌘↵</span>
+                        </button>
+                      </div>
+                    </div>
+                  ) : (
+                    <Body text={m.text} links={links} />
+                  )}
+                </div>
+                {/* The rewind point: a rule across the thread where the cut
+                    happens, so "everything below goes" is a place, not a sentence.
+                    Short enough to stay one line; the rest rides the Save tooltip. */}
+                {i === editIndex && cutCount > 0 && (
+                  <div className="cmt-cut" role="note">
+                    <span>
+                      {`Saving removes the ${cutCount === 1 ? 'message' : `${cutCount} messages`} below`}
+                      {editSeen && ' · the agent answers again'}
                     </span>
                   </div>
-                  <Body text={m.text} links={links} />
-                </div>
+                )}
               </Fragment>
             ))}
-            {pendingAt >= thread.messages.length && pendingReply}
+            {pendingAt >= thread.messages.length && pending}
           </div>
           {actionFailed && (
             <div className="thread-hint thread-hint-error">
@@ -527,7 +680,9 @@ export function ThreadCard({
           )}
         </>
       )}
-      {!shut && (
+      {/* One composer at a time: while a message is rewritten, the reply bar and
+          the close-out buttons wait. */}
+      {!shut && editIndex === -1 && (
         <div className={`thread-foot${showStub || writing ? '' : ' thread-foot-bare'}`}>
           {showStub && offered !== null && (
             <div className="thread-offer replybar">

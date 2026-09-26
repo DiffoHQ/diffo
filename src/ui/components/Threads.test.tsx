@@ -625,6 +625,123 @@ describe('ThreadCard with an attached agent', () => {
   })
 })
 
+describe('ThreadCard editing a message', () => {
+  const pencil = () => screen.getByRole('button', { name: 'edit this message' })
+  const editor = () => screen.getByLabelText('edit your message') as HTMLTextAreaElement
+  const withEdit = (over: Partial<ReviewActions> = {}) =>
+    actions({ edit: vi.fn(async () => {}), ...over })
+
+  it('offers the pencil on your messages only, and never on a resolved thread', () => {
+    const { rerender } = render(<ThreadCard thread={thread()} actions={withEdit()} />)
+    expect(screen.getAllByRole('button', { name: 'edit this message' })).toHaveLength(1)
+    rerender(<ThreadCard thread={thread({ state: 'resolved' })} actions={withEdit()} />)
+    fireEvent.click(screen.getByTitle('expand this resolved thread'))
+    expect(screen.queryByRole('button', { name: 'edit this message' })).toBeNull()
+  })
+
+  it('offers no pencil when the action is unavailable', () => {
+    render(<ThreadCard thread={thread()} actions={actions()} />)
+    expect(screen.queryByRole('button', { name: 'edit this message' })).toBeNull()
+  })
+
+  it('editing an answered message strikes through what the rewind will cut, and says so', () => {
+    const { container } = render(
+      <ThreadCard thread={thread({ state: 'sent' })} actions={withEdit()} agentConnected />,
+    )
+    fireEvent.click(pencil())
+    expect(editor().value).toBe('why this?')
+    const cut = container.querySelectorAll('.thread-message-cut')
+    expect(cut).toHaveLength(1)
+    expect(cut[0]!.textContent).toContain('because Y')
+    // The cut is a place, not a sentence: one line where the thread splits,
+    // and no reply bar competing with the editor.
+    expect(container.querySelector('.cmt-cut')!.textContent).toBe(
+      'Saving removes the message below · the agent answers again',
+    )
+    expect(container.querySelector('.thread-foot')).toBeNull()
+  })
+
+  it('Save & resend hands the rewrite back; the ghost Save holds it', () => {
+    const acts = withEdit()
+    render(<ThreadCard thread={thread({ state: 'sent' })} actions={acts} agentConnected />)
+    fireEvent.click(pencil())
+    fireEvent.change(editor(), { target: { value: 'why this, really?' } })
+    fireEvent.click(screen.getByText('Save & resend'))
+    expect(acts.edit).toHaveBeenCalledWith('t-1', 'm1', 'why this, really?', true)
+
+    cleanup()
+    const held = withEdit()
+    render(<ThreadCard thread={thread({ state: 'sent' })} actions={held} agentConnected />)
+    fireEvent.click(pencil())
+    fireEvent.change(editor(), { target: { value: 'why this, really?' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }))
+    expect(held.edit).toHaveBeenCalledWith('t-1', 'm1', 'why this, really?', false)
+  })
+
+  it('a draft nobody answered is plain Save, with nothing to warn about', () => {
+    const acts = withEdit()
+    const draft = thread({
+      messages: [{ id: 'm1', author: 'reviewer', text: 'rename ths', at: '' }],
+    })
+    const { container } = render(<ThreadCard thread={draft} actions={acts} agentConnected />)
+    fireEvent.click(pencil())
+    expect(container.querySelector('.cmt-cut')).toBeNull()
+    expect(screen.queryByText('Save & resend')).toBeNull()
+    fireEvent.change(editor(), { target: { value: 'rename this' } })
+    fireEvent.keyDown(editor(), { key: 'Enter', metaKey: true })
+    expect(acts.edit).toHaveBeenCalledWith('t-1', 'm1', 'rename this', true)
+  })
+
+  it('Escape and an unchanged save both leave without a request', () => {
+    const acts = withEdit()
+    render(<ThreadCard thread={thread()} actions={acts} />)
+    fireEvent.click(pencil())
+    fireEvent.change(editor(), { target: { value: 'something else' } })
+    fireEvent.keyDown(editor(), { key: 'Escape' })
+    expect(screen.queryByLabelText('edit your message')).toBeNull()
+    expect(screen.getByText('why this?')).toBeTruthy()
+
+    fireEvent.click(pencil())
+    fireEvent.click(screen.getByRole('button', { name: /^Save/ }))
+    expect(screen.queryByLabelText('edit your message')).toBeNull()
+    expect(acts.edit).not.toHaveBeenCalled()
+  })
+
+  it('while the agent is answering the pencil says why, and does nothing', () => {
+    render(<ThreadCard thread={thread({ state: 'sent' })} actions={withEdit()} working />)
+    expect(pencil().getAttribute('aria-disabled')).toBe('true')
+    expect(pencil().getAttribute('data-tip')).toContain('the agent is answering')
+    fireEvent.click(pencil())
+    expect(screen.queryByLabelText('edit your message')).toBeNull()
+  })
+
+  it("a refused save shows the server's reason and keeps the draft", async () => {
+    const acts = withEdit({
+      edit: vi.fn(async () => {
+        throw new Error('the agent is answering this thread — edit after it replies')
+      }),
+    })
+    render(<ThreadCard thread={thread()} actions={acts} />)
+    fireEvent.click(pencil())
+    fireEvent.change(editor(), { target: { value: 'why, really?' } })
+    fireEvent.keyDown(editor(), { key: 'Enter', metaKey: true })
+    await waitFor(() =>
+      expect(screen.getByRole('alert').textContent).toContain('edit after it replies'),
+    )
+    expect(editor().value).toBe('why, really?')
+  })
+
+  it('a message the agent saw before the edit is marked edited', () => {
+    const edited = thread({
+      messages: [
+        { id: 'm1', author: 'reviewer', text: 'why?', at: '', editedAt: '2026-08-03T00:05:00Z' },
+      ],
+    })
+    const { container } = render(<ThreadCard thread={edited} actions={withEdit()} />)
+    expect(container.querySelector('.cmt-when')!.textContent).toContain('· edited')
+  })
+})
+
 describe('CommentBox', () => {
   const box = () => screen.getByPlaceholderText('say…')
   const openFormatting = () => fireEvent.click(screen.getByLabelText('Formatting and preview'))

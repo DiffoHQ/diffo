@@ -12,6 +12,7 @@ import {
   type OutgoingThread,
   parseSuggestedReply,
   type ReviewThread,
+  seenByAgent,
   startedByAgent,
   THREAD_INTENTS,
   type ThreadIntent,
@@ -374,6 +375,41 @@ export function createApp(
       delivered,
       presence: queue?.presence() ?? 'waiting',
     })
+  })
+
+  // The reviewer rewrites one of their own messages (see `ReviewStore.editMessage`).
+  // A rewrite the agent must hear about rides the same hand-over as a reply;
+  // `deliver: false` holds it. Refused while the agent is answering the thread:
+  // its reply would land under words it never read.
+  app.patch('/api/review/threads/:id/messages/:messageId', async (c) => {
+    if (!review) return c.json({ error: 'review unavailable' }, 503)
+    const body = await c.req.json().catch(() => null)
+    const text = typeof body?.text === 'string' ? body.text.trim() : ''
+    if (!text) return c.json({ error: 'need {text}' }, 400)
+    const id = c.req.param('id')
+    const messageId = c.req.param('messageId')
+    const current = review.get().threads.find((t) => t.id === id)
+    const index = current?.messages.findIndex((m) => m.id === messageId) ?? -1
+    if (!current || index === -1) return c.json({ error: 'no such message' }, 404)
+    if (current.messages[index]!.author !== 'reviewer') {
+      return c.json({ error: 'only your own messages can be edited' }, 400)
+    }
+    if (current.state === 'resolved') {
+      return c.json({ error: 'reopen the thread to edit it' }, 409)
+    }
+    if (queue?.deliveredThreadIds().includes(id)) {
+      return c.json({ error: 'the agent is answering this thread — edit after it replies' }, 409)
+    }
+    const seen = seenByAgent(current, index)
+    const deliver = body?.deliver !== false
+    let thread = review.editMessage(id, messageId, text, !deliver)!
+    let delivered = false
+    if (seen && deliver && (thread.state === 'sent' || thread.state === 'addressed')) {
+      delivered = deliverThreads([id])
+      review.clearWithheld([id])
+      thread = review.get().threads.find((t) => t.id === id) ?? thread
+    }
+    return c.json({ thread, delivered, presence: queue?.presence() ?? 'waiting' })
   })
 
   app.post('/api/review/threads/:id/state', async (c) => {
