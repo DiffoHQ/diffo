@@ -2,9 +2,14 @@
 
 ### Does any of my code leave my machine?
 
-No. Diffo makes zero network calls. One process on your machine, bound to loopback, state
-in a single SQLite file at `~/.diffo/diffo.db`. No account, no telemetry, no model API: it
-holds no keys because it calls no models.
+No, unless you point it at a pull request. Diffo makes no network calls of its own: one
+process on your machine, bound to loopback, state under `~/.diffo`: a single SQLite file
+at `~/.diffo/diffo.db`, a log per repo, and a checkout per pull request you review. No
+account, no telemetry, no model API: it holds no keys because it calls no models.
+Reviewing a pull request is the one exception, and even then Diffo talks only to that
+PR's GitHub host, only through your own `gh`, and still holds no token. To remove
+everything, run `diffo clean --all` before deleting `~/.diffo`, so the branches and refs a
+pull-request checkout adds to your clone go with it.
 
 ### Is this an AI code reviewer?
 
@@ -31,9 +36,11 @@ first, and the PR is still there to open when you're done.
 
 ### Can I review a pull request with it?
 
-Not yet, but it's planned — the [Status section](https://github.com/DiffoHQ/diffo#status)
-tracks what works today. For now the changeset is your working tree (the default) or
-everything since a fork point (`--base main`).
+Yes: `diffo <PR URL>` (or `/diffo <PR URL>` from your agent). The PR is fetched into a
+worktree Diffo owns, so your checkout is untouched; its description, reviews and comments
+come in as threads; your agent is a copilot for code it did not write; and your public
+comments post to GitHub as one review when you finish. It needs the GitHub CLI signed in.
+The whole flow is in [Reviewing a pull request](/guide/pr-review).
 
 ### Why Node 24?
 

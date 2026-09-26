@@ -440,3 +440,170 @@ export function resolveBaseRef(root: string, spec: ChangesetSpec): string {
     throw new MissingBaseError(spec.base)
   }
 }
+
+// ---------- pull requests: refs, worktrees ----------
+
+/**
+ * The main checkout a path belongs to: itself for an ordinary repo, the repo
+ * a linked worktree hangs off otherwise. `--git-common-dir` is the shared
+ * `.git`, whose parent is that checkout.
+ */
+export function mainRepoOf(root: string): string {
+  try {
+    const common = git(root, ['rev-parse', '--path-format=absolute', '--git-common-dir']).trim()
+    if (common.endsWith(`${sep}.git`) || common.endsWith('/.git')) return resolve(common, '..')
+    return resolve(root)
+  } catch {
+    return resolve(root)
+  }
+}
+
+/** The `origin` URL, or null when the repo has no such remote. */
+export function getRemoteUrl(root: string, remote = 'origin'): string | null {
+  try {
+    const url = git(root, ['remote', 'get-url', remote]).trim()
+    return url === '' ? null : url
+  } catch {
+    return null
+  }
+}
+
+/** Every remote and the URL as configured — not the `insteadOf`-rewritten one
+ * `get-url` reports, which is what git will talk to, not what it names. */
+export function listRemotes(root: string): { name: string; url: string }[] {
+  let out: string
+  try {
+    out = git(root, ['config', '--get-regexp', String.raw`^remote\..*\.url$`])
+  } catch {
+    return [] // no remotes at all: git exits 1 with nothing to say
+  }
+  const remotes: { name: string; url: string }[] = []
+  for (const line of out.split('\n')) {
+    const match = /^remote\.(.+)\.url (.+)$/.exec(line.trim())
+    if (match) remotes.push({ name: match[1]!, url: match[2]! })
+  }
+  return remotes
+}
+
+/** Where a pull request's head lands locally: a Diffo-owned ref, never a branch
+ * of the user's. */
+export function prHeadRef(number: number): string {
+  return `refs/diffo/pr/${number}`
+}
+
+/** Fetch `refs/pull/N/head` into {@link prHeadRef}. Forced: a force-push to
+ * the PR must move the ref. Fully qualified on purpose — an unqualified
+ * `pull/N/head` goes through git's ref guessing, which on a repeat fetch into an
+ * existing destination resolves to nothing and deletes the local ref. */
+/** A fetch talks to the network, and a network that answers nothing must not
+ * hold a process forever: git itself has no timeout on a stalled transport, so
+ * the child is killed after this long and the call fails like any other. No
+ * prompt either — a daemon has no terminal to type a passphrase into. */
+const FETCH_TIMEOUT_MS = 60_000
+const FETCH_ENV = { ...process.env, GIT_TERMINAL_PROMPT: '0' }
+
+function fetchSync(root: string, args: string[]): void {
+  execFileSync('git', ['fetch', '--quiet', ...args], {
+    cwd: root,
+    encoding: 'utf-8',
+    stdio: ['ignore', 'pipe', 'pipe'],
+    maxBuffer: MAX_BUFFER,
+    timeout: FETCH_TIMEOUT_MS,
+    env: FETCH_ENV,
+  })
+}
+
+/** Opening a pull request fetches before anything is served — blocking is
+ * free there. The daemon's periodic fetch is `fetchPrHeadAsync`: a sync fetch
+ * on a stalled network once froze a server for twenty hours, tab and all. */
+export function fetchPrHead(root: string, number: number, remote = 'origin'): void {
+  fetchSync(root, [remote, `+refs/pull/${number}/head:${prHeadRef(number)}`])
+}
+
+export async function fetchPrHeadAsync(
+  root: string,
+  number: number,
+  remote = 'origin',
+): Promise<void> {
+  await execFileAsync(
+    'git',
+    ['fetch', '--quiet', remote, `+refs/pull/${number}/head:${prHeadRef(number)}`],
+    {
+      cwd: root,
+      encoding: 'utf-8',
+      maxBuffer: MAX_BUFFER,
+      timeout: FETCH_TIMEOUT_MS,
+      env: FETCH_ENV,
+    },
+  )
+}
+
+/** Refresh `origin/<branch>` so the merge-base is against the remote's truth. */
+export function fetchBranch(root: string, branch: string, remote = 'origin'): void {
+  fetchSync(root, [remote, branch])
+}
+
+export function revParse(root: string, ref: string): string | null {
+  try {
+    return git(root, ['rev-parse', '--verify', '--quiet', ref]).trim() || null
+  } catch {
+    return null
+  }
+}
+
+/** `git worktree add -B <branch> <path> <ref>`: a fresh branch at the ref, or
+ * the existing one reset there. */
+export function worktreeAdd(root: string, path: string, branch: string, ref: string): void {
+  git(root, ['worktree', 'add', '--quiet', '-B', branch, path, ref])
+}
+
+/** Remove a linked worktree. `force` discards uncommitted changes; without it a
+ * dirty worktree makes git refuse, and this returns false. */
+export function worktreeRemove(root: string, path: string, force: boolean): boolean {
+  try {
+    git(root, ['worktree', 'remove', ...(force ? ['--force'] : []), path])
+    return true
+  } catch {
+    return false
+  }
+}
+
+export function worktreePrune(root: string): void {
+  try {
+    git(root, ['worktree', 'prune'])
+  } catch {
+    // nothing to prune, or not a repo any more — either way nothing is owed
+  }
+}
+
+/** Drop a Diffo-owned ref (`refs/diffo/pr/N`) once its worktree is gone. */
+export function deleteRef(root: string, ref: string): void {
+  try {
+    git(root, ['update-ref', '-d', ref])
+  } catch {
+    // already gone — nothing owed
+  }
+}
+
+export function deleteBranch(root: string, branch: string): void {
+  try {
+    git(root, ['branch', '-D', '--quiet', branch])
+  } catch {
+    // already gone, or checked out elsewhere — the worktree removal is what mattered
+  }
+}
+
+/** No uncommitted changes and no untracked files: safe to move HEAD under.
+ * Null when git cannot say (the main repo is gone, the path is not a
+ * worktree): not clean, but not known dirty either. */
+export function isWorktreeClean(path: string): boolean | null {
+  try {
+    return git(path, ['status', '--porcelain']).trim() === ''
+  } catch {
+    return null
+  }
+}
+
+export function resetHard(path: string, ref: string): void {
+  git(path, ['reset', '--hard', '--quiet', ref])
+}

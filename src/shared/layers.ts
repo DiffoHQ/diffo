@@ -28,7 +28,7 @@ const REPO_PATH = /^[^\0]+$/
 function badPath(path: string): string | null {
   if (path === '' || !REPO_PATH.test(path)) return 'is empty'
   if (path.startsWith('/') || /^[a-zA-Z]:[\\/]/.test(path))
-    return 'is absolute — use a repo-relative path'
+    return 'is absolute; use a repo-relative path'
   if (path.split('/').some((seg) => seg === '..')) return 'escapes the repo with `..`'
   return null
 }
@@ -116,7 +116,7 @@ export function parseLayersInput(raw: unknown): LayersParse {
     if (l.kind !== undefined && l.kind !== 'mechanical') {
       return {
         ok: false,
-        error: `${where} ("${title}"): "kind" can only be "mechanical" — leave it out otherwise`,
+        error: `${where} ("${title}"): "kind" can only be "mechanical"; leave it out otherwise`,
       }
     }
     items.push({

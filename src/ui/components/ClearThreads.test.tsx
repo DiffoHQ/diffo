@@ -20,6 +20,14 @@ describe('ClearThreads', () => {
     expect(onClear).toHaveBeenCalled()
   })
 
+  it('an outdated GitHub thread is hidden for its own reason, not a changeset behind you', () => {
+    render(<ClearThreads total={4} past={2} outdated={1} onClear={vi.fn()} onClose={() => {}} />)
+    const body = document.querySelector('.modal-body')!.textContent!
+    expect(body).toContain('1 of which is hidden because its changeset is behind you')
+    expect(body).toContain('1 is outdated on GitHub: the line left the diff')
+    expect(body).toContain('2 still on the current changeset')
+  })
+
   it('a failed clear keeps the dialog open and says nothing was deleted', async () => {
     const onClose = vi.fn()
     render(

@@ -87,7 +87,7 @@ export function ReviewDone({
             round
           </>
         )}
-        {' — nobody reviewed '}
+        {'; nobody reviewed '}
         {excluded === 1 ? 'it' : 'them'}.
       </span>
       {onIncludeExcluded && (

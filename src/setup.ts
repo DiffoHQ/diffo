@@ -82,7 +82,7 @@ function installSkillCopy(ctx: SetupContext, client: string, targetDir: string):
       return {
         client,
         status: 'manual',
-        detail: `a different skill lives at ${collapse(target, home)} — remove it and re-run \`diffo setup\``,
+        detail: `a different skill lives at ${collapse(target, home)}; remove it and re-run \`diffo setup\``,
       }
     }
     writeFileSync(target, content)
@@ -182,7 +182,7 @@ function registerCursor(ctx: SetupContext): SetupOutcome {
     return {
       client,
       status: 'manual',
-      detail: `${collapse(target, home)} exists and is not a symlink — remove it and re-run \`diffo setup\``,
+      detail: `${collapse(target, home)} exists and is not a symlink; remove it and re-run \`diffo setup\``,
     }
   }
   if (existing) {
@@ -203,7 +203,7 @@ function registerCursor(ctx: SetupContext): SetupOutcome {
       return {
         client,
         status: 'manual',
-        detail: `cannot link ${collapse(target, home)} (${(error as Error).message}) — link it to ${ctx.packageRoot} manually`,
+        detail: `cannot link ${collapse(target, home)} (${(error as Error).message}); link it to ${ctx.packageRoot} manually`,
       }
     }
     return { client, status: 'registered', detail: collapse(target, home) }
@@ -216,7 +216,7 @@ function registerCursor(ctx: SetupContext): SetupOutcome {
     return {
       client,
       status: 'manual',
-      detail: `cannot link ${collapse(target, home)} (${(error as Error).message}) — link it to ${ctx.packageRoot} manually`,
+      detail: `cannot link ${collapse(target, home)} (${(error as Error).message}); link it to ${ctx.packageRoot} manually`,
     }
   }
   return { client, status: 'registered', detail: collapse(target, home) }

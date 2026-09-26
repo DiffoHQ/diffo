@@ -4,9 +4,11 @@ import { type LayerInput, parseLayersInput, parseSuggestReason } from '../shared
 import {
   type Anchor,
   type AnchoredLines,
+  type Audience,
   type Author,
   type Coverage,
   EMPTY_REVIEW,
+  type GithubThread,
   type Landed,
   type LastFinish,
   type Layers,
@@ -82,14 +84,16 @@ export class ReviewStore {
     capture: ThreadCapture | null,
     intent?: ThreadIntent,
     author: Author = 'reviewer',
-    suggestedReply?: string,
+    options: { audience?: Audience; parentId?: string; suggestedReply?: string } = {},
   ): ReviewThread {
     const now = new Date().toISOString()
     return this.insert({
       id: randomUUID(),
       anchor,
       state: 'open',
-      ...(intent ? { intent } : {}),
+      // A public draft has no intent: it is a review comment, not an ask of the agent.
+      ...(options.audience === 'pr' ? { audience: 'pr' as const } : intent ? { intent } : {}),
+      ...(options.parentId ? { parentId: options.parentId } : {}),
       codeContext: capture?.codeContext ?? null,
       ...(capture?.anchored ? { anchored: capture.anchored } : {}),
       codeChanged: false,
@@ -99,7 +103,9 @@ export class ReviewStore {
           author,
           text,
           at: now,
-          ...(author === 'agent' && suggestedReply ? { suggestedReply } : {}),
+          ...(author === 'agent' && options.suggestedReply
+            ? { suggestedReply: options.suggestedReply }
+            : {}),
         },
       ],
       createdAt: now,
@@ -486,6 +492,137 @@ export class ReviewStore {
     this.commit()
   }
 
+  /**
+   * The pull request's conversation, as the forge sees it now. An upsert: a
+   * thread already here (by id, or by the GitHub thread a local draft became)
+   * takes the incoming messages it lacks and GitHub's resolution; a new one is
+   * inserted — the description ahead of everything, so it reads first.
+   * Threads that came from GitHub take GitHub's fresh anchor too (it re-maps
+   * lines after a push); a thread the reviewer wrote here keeps its own
+   * content-addressed one. Local state the reviewer is still holding — a
+   * queued resolve, an unposted reply — is never overwritten.
+   */
+  importGithubThreads(incoming: readonly ReviewThread[]): { added: number; updated: number } {
+    let added = 0
+    let updated = 0
+    let threads = this.state.threads
+    const front: ReviewThread[] = []
+    // A reply the reviewer posted on a conversation thread is a new issue
+    // comment to GitHub; it comes back as a thread of its own, but its id is
+    // already on the message it came from. That one stays where it is.
+    const known = new Set(
+      threads.flatMap((t) => t.messages.flatMap((m) => (m.github ? [m.github.id] : []))),
+    )
+    for (const next of incoming) {
+      const key = next.github?.threadId
+      const index = threads.findIndex(
+        (t) => t.id === next.id || (key !== undefined && t.github?.threadId === key),
+      )
+      if (index === -1) {
+        if (next.messages.every((m) => m.github !== undefined && known.has(m.github.id))) continue
+        added++
+        if (next.github?.kind === 'description') front.push(next)
+        else threads = [...threads, next]
+        continue
+      }
+      const current = threads[index]!
+      const merged = mergeImported(current, next)
+      if (merged !== current) {
+        updated++
+        threads = [...threads.slice(0, index), merged, ...threads.slice(index + 1)]
+      }
+    }
+    if (added === 0 && updated === 0) return { added, updated }
+    this.state = { ...this.state, threads: [...front, ...threads] }
+    this.commit()
+    return { added, updated }
+  }
+
+  /**
+   * Resolve (or reopen) a public thread locally and queue the change for Finish
+   * — nothing reaches GitHub before then. Toggling back clears the queue entry.
+   * A thread GitHub has not seen yet just changes state; there is nothing to
+   * queue about it.
+   */
+  queueResolve(threadId: string, resolve: boolean): ReviewThread | null {
+    return this.update(threadId, ({ queued: _queued, ...thread }) => {
+      const state = resolve ? ('resolved' as const) : ('sent' as const)
+      if (!thread.github) return { ...thread, state }
+      const wasResolvedOnGithub = thread.github.resolved
+      const queued =
+        resolve === wasResolvedOnGithub
+          ? undefined
+          : resolve
+            ? { resolve: true as const }
+            : { unresolve: true as const }
+      return {
+        ...thread,
+        state,
+        ...(queued ? { queued } : {}),
+        // Resolving locally drops the snapshot like any resolve; reopening does
+        // not bring it back (see setState).
+        ...(resolve ? { codeContext: null } : {}),
+      }
+    })
+  }
+
+  /**
+   * GitHub accepted these: a posted draft gains its thread id and moves to
+   * `sent`; a posted reply gains its comment id; a posted resolve clears its
+   * queue entry. Each is one thread, one commit at the end.
+   */
+  markPosted(
+    posted: readonly {
+      threadId: string
+      github?: GithubThread
+      messages?: Record<string, NonNullable<ReviewMessage['github']>>
+      /** The messages above went to GitHub as this one body: keep the first,
+       * with this text, and drop the rest. */
+      collapse?: string
+      resolveDone?: boolean
+    }[],
+  ): void {
+    if (posted.length === 0) return
+    const byId = new Map(posted.map((p) => [p.threadId, p]))
+    const now = new Date().toISOString()
+    let changed = false
+    const threads = this.state.threads.map((thread) => {
+      const p = byId.get(thread.id)
+      if (!p) return thread
+      changed = true
+      const { queued, ...rest } = thread
+      let messages = p.messages
+        ? thread.messages.map((m) => (p.messages![m.id] ? { ...m, github: p.messages![m.id]! } : m))
+        : thread.messages
+      if (p.collapse !== undefined && p.messages) {
+        let kept = false
+        messages = messages.flatMap((m) => {
+          if (!p.messages![m.id]) return [m]
+          if (kept) return []
+          kept = true
+          return [{ ...m, text: p.collapse! }]
+        })
+      }
+      return {
+        ...rest,
+        ...(p.github ? { github: p.github } : {}),
+        ...(p.github && thread.state === 'open' ? { state: 'sent' as const, sentAt: now } : {}),
+        ...(queued && !p.resolveDone ? { queued } : {}),
+        messages,
+        updatedAt: now,
+      }
+    })
+    if (!changed) return
+    this.state = { ...this.state, threads }
+    this.commit()
+  }
+
+  /** Pull-request bookkeeping: the pending review being filled, submissions made. */
+  setPr(pr: NonNullable<ReviewState['pr']>): void {
+    this.state = { ...this.state, pr }
+    this.commit()
+  }
+
   private update(
     threadId: string,
     change: (thread: ReviewThread) => ReviewThread,
@@ -503,6 +640,61 @@ export class ReviewStore {
   private commit(): void {
     this.db.setReview(this.key, JSON.stringify(this.state))
     for (const listener of this.listeners) listener(this.state)
+  }
+}
+
+/** One thread's upsert (see `importGithubThreads`). Returns the same object
+ * when nothing changed, so the caller can count real updates. */
+function mergeImported(current: ReviewThread, next: ReviewThread): ReviewThread {
+  const fromGithub = current.id.startsWith('gh:')
+  let messages = current.messages
+  let changed = false
+  for (const m of next.messages) {
+    const ghId = m.github?.id
+    const index = ghId === undefined ? -1 : messages.findIndex((c) => c.github?.id === ghId)
+    if (index === -1) {
+      messages = [...messages, m]
+      changed = true
+    } else if (messages[index]!.text !== m.text) {
+      // Edited on GitHub: the words move, the authorship stays local.
+      messages = messages.map((c, i) => (i === index ? { ...c, text: m.text } : c))
+      changed = true
+    }
+  }
+  if (changed) messages = [...messages].sort((a, b) => a.at.localeCompare(b.at))
+  const github: GithubThread | undefined =
+    current.github && next.github
+      ? {
+          ...current.github,
+          resolved: next.github.resolved,
+          outdated: next.github.outdated,
+          ...(next.github.line !== undefined ? { line: next.github.line } : {}),
+          ...(next.github.startLine !== undefined ? { startLine: next.github.startLine } : {}),
+          ...(next.github.side !== undefined ? { side: next.github.side } : {}),
+          ...(next.github.url !== undefined ? { url: next.github.url } : {}),
+          ...(next.github.reviewState !== undefined
+            ? { reviewState: next.github.reviewState }
+            : {}),
+        }
+      : (next.github ?? current.github)
+  if (JSON.stringify(github) !== JSON.stringify(current.github)) changed = true
+  // GitHub's resolution wins unless the reviewer is holding a change of their own.
+  let state = current.state
+  if (!current.queued && next.github) {
+    if (next.github.resolved && state !== 'resolved') state = 'resolved'
+    else if (!next.github.resolved && state === 'resolved') state = 'sent'
+  }
+  if (state !== current.state) changed = true
+  const anchor = fromGithub ? next.anchor : current.anchor
+  if (JSON.stringify(anchor) !== JSON.stringify(current.anchor)) changed = true
+  if (!changed) return current
+  return {
+    ...current,
+    anchor,
+    state,
+    ...(github ? { github } : {}),
+    messages,
+    updatedAt: messages.at(-1)?.at ?? current.updatedAt,
   }
 }
 
@@ -538,9 +730,11 @@ export function parseReview(raw: string): ReviewState | null {
   const title = normalizeTitle(parsed.title)
   const layers = normalizeLayers(parsed.layers, now)
   const layersSuggested = normalizeSuggested(parsed.layersSuggested)
+  const pr = normalizePr(parsed.pr)
   return {
     version: 1,
     threads: [...valid, ...migrated],
+    ...(pr ? { pr } : {}),
     ...(title ? { title } : {}),
     ...(lastFinish ? { lastFinish } : {}),
     ...(typeof parsed.seenHead === 'string' && parsed.seenHead !== ''
@@ -699,7 +893,10 @@ function normalizeThread(value: unknown, now: string): ReviewThread | null {
     if (typeof m !== 'object' || m === null) return null
     const msg = m as Record<string, unknown>
     if (typeof msg.text !== 'string') return null
-    if (msg.author !== 'reviewer' && msg.author !== 'agent') return null
+    if (msg.author !== 'reviewer' && msg.author !== 'agent' && msg.author !== 'github') return null
+    const github = normalizeMessageGithub(msg.github)
+    // A GitHub-authored message with no GitHub identity is nobody's — drop the thread.
+    if (msg.author === 'github' && !github) return null
     messages.push({
       id: typeof msg.id === 'string' ? msg.id : randomUUID(),
       author: msg.author,
@@ -710,12 +907,19 @@ function normalizeThread(value: unknown, now: string): ReviewThread | null {
         ? { suggestedReply: msg.suggestedReply }
         : {}),
       ...(typeof msg.editedAt === 'string' ? { editedAt: msg.editedAt } : {}),
+      ...(github ? { github } : {}),
     })
   }
+  const github = normalizeThreadGithub(t.github)
+  const queued = normalizeQueued(t.queued)
   return {
     id: t.id,
     anchor,
     state: t.state as ThreadState,
+    ...(t.audience === 'pr' ? { audience: 'pr' as const } : {}),
+    ...(typeof t.parentId === 'string' && t.parentId !== '' ? { parentId: t.parentId } : {}),
+    ...(github ? { github } : {}),
+    ...(queued ? { queued } : {}),
     ...(THREAD_INTENTS.includes(t.intent as ThreadIntent)
       ? { intent: t.intent as ThreadIntent }
       : {}),
@@ -735,5 +939,81 @@ function normalizeThread(value: unknown, now: string): ReviewThread | null {
     messages,
     createdAt: typeof t.createdAt === 'string' ? t.createdAt : now,
     updatedAt: typeof t.updatedAt === 'string' ? t.updatedAt : now,
+  }
+}
+
+const GITHUB_KINDS = new Set(['inline', 'review', 'comment', 'description'])
+const REVIEW_STATES = new Set(['APPROVED', 'CHANGES_REQUESTED', 'COMMENTED', 'DISMISSED'])
+
+function normalizeUser(value: unknown): { login: string; avatarUrl: string } | null {
+  if (typeof value !== 'object' || value === null) return null
+  const u = value as Record<string, unknown>
+  if (typeof u.login !== 'string' || u.login === '') return null
+  return { login: u.login, avatarUrl: typeof u.avatarUrl === 'string' ? u.avatarUrl : '' }
+}
+
+function normalizeMessageGithub(value: unknown): ReviewMessage['github'] | null {
+  if (typeof value !== 'object' || value === null) return null
+  const g = value as Record<string, unknown>
+  const user = normalizeUser(g.user)
+  if (typeof g.id !== 'string' || !user) return null
+  return { id: g.id, user, ...(typeof g.url === 'string' ? { url: g.url } : {}) }
+}
+
+function normalizeThreadGithub(value: unknown): GithubThread | null {
+  if (typeof value !== 'object' || value === null) return null
+  const g = value as Record<string, unknown>
+  if (typeof g.threadId !== 'string' || !GITHUB_KINDS.has(g.kind as string)) return null
+  const lineOf = (v: unknown): number | null | undefined =>
+    v === null ? null : typeof v === 'number' && Number.isInteger(v) ? v : undefined
+  const line = lineOf(g.line)
+  const startLine = lineOf(g.startLine)
+  return {
+    threadId: g.threadId,
+    kind: g.kind as GithubThread['kind'],
+    resolved: g.resolved === true,
+    outdated: g.outdated === true,
+    ...(REVIEW_STATES.has(g.reviewState as string)
+      ? { reviewState: g.reviewState as GithubThread['reviewState'] }
+      : {}),
+    ...(line !== undefined ? { line } : {}),
+    ...(startLine !== undefined ? { startLine } : {}),
+    ...(g.side === 'LEFT' || g.side === 'RIGHT' ? { side: g.side } : {}),
+    ...(typeof g.url === 'string' ? { url: g.url } : {}),
+  }
+}
+
+function normalizeQueued(value: unknown): ReviewThread['queued'] | null {
+  if (typeof value !== 'object' || value === null) return null
+  const q = value as Record<string, unknown>
+  if (q.resolve === true) return { resolve: true }
+  if (q.unresolve === true) return { unresolve: true }
+  return null
+}
+
+function normalizePr(value: unknown): ReviewState['pr'] | null {
+  if (typeof value !== 'object' || value === null) return null
+  const p = value as Record<string, unknown>
+  const submissions = Array.isArray(p.submissions)
+    ? p.submissions.flatMap((s: unknown) => {
+        if (typeof s !== 'object' || s === null) return []
+        const x = s as Record<string, unknown>
+        if (
+          typeof x.at !== 'string' ||
+          typeof x.event !== 'string' ||
+          typeof x.reviewId !== 'string'
+        ) {
+          return []
+        }
+        return [
+          { at: x.at, event: x.event, reviewId: x.reviewId, comments: Number(x.comments) || 0 },
+        ]
+      })
+    : []
+  return {
+    ...(typeof p.pendingReviewId === 'string' && p.pendingReviewId !== ''
+      ? { pendingReviewId: p.pendingReviewId }
+      : {}),
+    submissions,
   }
 }

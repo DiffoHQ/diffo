@@ -384,6 +384,12 @@ body {
   height: 12px;
 }
 
+.cmp-size {
+  font-family: var(--mono);
+  font-size: 11.5px;
+  font-variant-numeric: tabular-nums;
+}
+
 .cmp-n {
   font-family: var(--mono);
   font-size: 11.5px;
@@ -1998,6 +2004,87 @@ body {
   color: var(--ink);
 }
 
+/* A pull request that ended, over the diff it shipped: one line in the state's
+ * color (the header chip's purple or red), not a card with a seal. */
+.landed-strip {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: var(--s-4);
+  margin-bottom: var(--s-6);
+  padding: 7px var(--s-5);
+  border: 1px solid;
+  border-radius: var(--r-sm);
+  font-size: var(--t-13);
+  color: var(--ink-2);
+}
+
+.landed-strip-merged {
+  color: var(--ink-2);
+  border-color: rgba(130, 80, 223, 0.3);
+  background: rgba(130, 80, 223, 0.08);
+}
+
+.landed-strip-merged > svg,
+.landed-strip-merged b {
+  color: #8250df;
+}
+
+.landed-strip-closed {
+  border-color: rgba(207, 34, 46, 0.3);
+  background: var(--del-tint);
+}
+
+.landed-strip-closed > svg,
+.landed-strip-closed b {
+  color: var(--del);
+}
+
+.landed-strip > svg {
+  flex: none;
+}
+
+.landed-strip b {
+  font-weight: 600;
+}
+
+.landed-strip-text {
+  flex: 1;
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.landed-strip-act {
+  flex: none;
+  border: 0;
+  background: none;
+  font: inherit;
+  font-size: var(--t-125);
+  color: var(--ink-2);
+  padding: 0;
+  cursor: pointer;
+  text-decoration: underline dotted;
+  text-underline-offset: 3px;
+  white-space: nowrap;
+}
+
+.landed-strip-act:hover:not(:disabled) {
+  color: var(--danger);
+}
+
+.landed-strip-act:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.landed-strip-err {
+  flex: none;
+  font-size: var(--t-12);
+  color: var(--danger);
+}
+
 .landed-full .landed-sha,
 .landed-full .landed-subject {
   color: var(--ink-2);
@@ -3239,6 +3326,9 @@ tr:hover .line-range-glyph {
   overflow: hidden;
   text-overflow: ellipsis;
   cursor: pointer;
+  /* Same table cell as `.thread-collapsed-text`: nowrap text is the cell's
+   * min-content width, so the peek is contained or it widens the diff. */
+  contain: inline-size;
 }
 
 .thread-shut-peek:hover {
@@ -3741,6 +3831,8 @@ tr:hover .line-range-glyph {
   overflow: hidden;
   margin: var(--s-4) 0;
   max-width: var(--conv);
+  /* The box opens inside the diff table: prose controls, not code. */
+  font-family: var(--sans);
 }
 
 .cbox:focus-within {
@@ -4502,6 +4594,10 @@ tr:hover .line-range-glyph {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  /* The card sits in a table cell, and a cell never shrinks below its content's
+   * min-content width — for nowrap text, the whole line. Size containment keeps a
+   * long summary from widening the diff table it is anchored in. */
+  contain: inline-size;
 }
 
 .thread-collapsed-count {
@@ -6247,4 +6343,1039 @@ i.q-now {
 .ch-head-empty {
   font-size: var(--t-12);
   color: var(--ink-3);
+}
+
+/* ---------- pull requests ----------
+   Two sides to one review: public threads (GitHub, blue) and private ones (the
+   agent, amber). Everything here is additive — off a pull request none of these
+   classes render. `--gh` is GitHub's blue, distinct from the accent so a public
+   card never reads as selection. */
+:root,
+:root[data-theme="light"] {
+  --gh: #0969da;
+  --gh-wash: #ddf4ff;
+  --gh-line: #b6d9fb;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --gh: #58a6ff;
+    --gh-wash: rgba(56, 139, 253, 0.16);
+    --gh-line: rgba(56, 139, 253, 0.45);
+  }
+}
+
+:root[data-theme="dark"] {
+  --gh: #58a6ff;
+  --gh-wash: rgba(56, 139, 253, 0.16);
+  --gh-line: rgba(56, 139, 253, 0.45);
+}
+
+.chip-pr {
+  color: var(--gh);
+  background: var(--gh-wash);
+}
+
+/* A card wears its side the way the composer does: a stripe down the left
+   edge, a tinted head, and a tag that names it. */
+.thread-public {
+  border-color: var(--gh-line);
+  border-left: 3px solid var(--gh);
+}
+
+.thread-public > .thread-head {
+  background: var(--gh-wash);
+}
+
+.thread-private {
+  border-style: dashed;
+  border-color: var(--attn-line);
+  border-left: 3px solid var(--attn);
+}
+
+.thread-private > .thread-head {
+  background: var(--attn-wash);
+}
+
+.thread-side {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  flex: 0 0 auto;
+  padding: 2px 7px 2px 5px;
+  border: 1px solid transparent;
+  border-radius: var(--r-pill);
+  background: var(--paper);
+  font-size: var(--t-11);
+  font-weight: 600;
+  letter-spacing: 0.01em;
+}
+
+.thread-side-pr {
+  color: var(--gh);
+  border-color: var(--gh-line);
+}
+
+.thread-side-agent {
+  color: var(--attn);
+  border-color: var(--attn-line);
+}
+
+.thread-aside {
+  margin: var(--s-3) 0 0;
+}
+
+.thread-asides {
+  margin: 0 var(--s-5) var(--s-4) var(--s-8);
+  border-left: 2px solid var(--attn-line);
+  padding-left: var(--s-4);
+}
+
+.thread-aside-compose {
+  padding: 0 var(--s-5) var(--s-4);
+}
+
+.thread-badge-pr {
+  color: var(--gh);
+  background: var(--gh-wash);
+}
+
+.thread-badge-approved {
+  color: var(--add);
+  background: var(--add-tint);
+}
+
+.thread-badge-changes_requested {
+  color: var(--del);
+  background: var(--del-tint);
+}
+
+.thread-badge-link {
+  text-decoration: none;
+  color: var(--ink-3);
+}
+
+.thread-badge-link:hover {
+  color: var(--gh);
+}
+
+.cmt-who-github {
+  color: var(--gh);
+}
+
+.avatar-github {
+  background: var(--gh-wash);
+  color: var(--gh);
+  font-size: var(--t-11);
+  font-weight: 700;
+  object-fit: cover;
+  box-shadow: inset 0 0 0 1px var(--gh-line);
+}
+
+/* The composer's audience switch: two tabs along the top edge, the live one
+ * filled in its side's color. The whole composer then wears that side — blue
+ * solid for GitHub, amber dashed for the agent — the same language as the
+ * cards it creates, so "am I public?" is answered by the frame before any
+ * label is read. */
+/* The head on a switchable composer: white, text tabs with a colored
+   underline (the box's Write / Preview idiom), scope and close on the right. */
+.cbox-head-aud {
+  padding: 0 var(--s-4) 0 var(--s-3);
+  min-height: 36px;
+  background: var(--paper);
+}
+
+.cbox-head-right {
+  display: inline-flex;
+  align-items: center;
+  gap: 9px;
+  min-width: 0;
+  margin-left: auto;
+}
+
+.aud-tabs {
+  display: inline-flex;
+  align-self: stretch;
+  gap: 2px;
+}
+
+.aud-tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 8px;
+  margin-bottom: -1px;
+  border: 0;
+  border-bottom: 2px solid transparent;
+  background: transparent;
+  color: var(--ink-3);
+  font: inherit;
+  font-size: var(--t-125);
+  font-weight: 500;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.aud-tab:hover {
+  color: var(--ink);
+}
+
+.aud-tab:focus-visible {
+  outline: 2px solid var(--acc);
+  outline-offset: -2px;
+}
+
+.aud-tab-pr.aud-tab-on,
+.aud-tab-pr.aud-tab-on:hover {
+  color: var(--gh);
+  border-bottom-color: var(--gh);
+  font-weight: 600;
+}
+
+.aud-tab-agent.aud-tab-on,
+.aud-tab-agent.aud-tab-on:hover {
+  color: var(--attn);
+  border-bottom-color: var(--attn);
+  font-weight: 600;
+}
+
+/* The side, worn by the whole box: a stripe down the left edge, the footer's
+   wash, the hint's color, the button's color. */
+.cbox-pr,
+.cbox-pr:focus-within {
+  border-color: var(--gh-line);
+  border-left: 3px solid var(--gh);
+}
+
+.cbox-pr .cbox-foot {
+  border-top-color: var(--gh-line);
+  background: color-mix(in srgb, var(--gh-wash) 40%, var(--paper));
+}
+
+.cbox-pr .cbox-hint {
+  color: var(--gh);
+}
+
+.cbox-pr .btn-primary {
+  background: var(--gh);
+}
+
+.cbox-agent,
+.cbox-agent:focus-within {
+  border-style: dashed;
+  border-color: var(--attn-line);
+  border-left: 3px solid var(--attn);
+}
+
+.cbox-agent .cbox-foot {
+  border-top-color: var(--attn-line);
+  background: color-mix(in srgb, var(--attn-wash) 45%, var(--paper));
+}
+
+.cbox-agent .cbox-hint {
+  color: var(--attn);
+}
+
+.cbox-agent .btn-primary {
+  background: var(--attn);
+}
+
+.cbox-hint {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 11.5px;
+  color: var(--ink-3);
+}
+
+/* Header chips. The title owns the row: it is the one thing the reviewer
+   needs at every glance, so it takes the room and the rest waits in the card. */
+.pr-chips {
+  gap: var(--s-3);
+  min-width: 0;
+  flex: 0 1 auto;
+}
+
+.pr-title {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  min-width: 0;
+  padding: 3px 6px;
+  margin: 0 -6px;
+  border: 0;
+  border-radius: var(--r-sm);
+  background: transparent;
+  color: var(--ink);
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.pr-title:hover,
+.pr-title[aria-expanded="true"] {
+  background: var(--fill);
+}
+
+.pr-title svg {
+  color: var(--gh);
+  flex: 0 0 auto;
+}
+
+.pr-number {
+  color: var(--ink-3);
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+}
+
+.pr-title-text {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pr-avatar {
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+}
+
+.pr-check-failure {
+  color: var(--del);
+  background: var(--del-tint);
+}
+
+.pr-check-pending {
+  color: var(--attn);
+  background: var(--attn-wash);
+}
+
+.pr-state-merged {
+  color: #8250df;
+  background: rgba(130, 80, 223, 0.1);
+}
+
+.pr-state-closed {
+  color: var(--del);
+  background: var(--del-tint);
+}
+
+/* The card: what the header used to spell out, one click away. Who, from
+   where, how it stands, what was pushed, then the door to GitHub. It never
+   repeats the title. Three bands: a washed head for the person, the facts,
+   and the footer link. */
+.pr-card {
+  width: 360px;
+  padding: 0;
+  gap: 0;
+  overflow: hidden;
+  white-space: normal;
+  font-size: var(--t-125);
+  animation: pr-card-in 0.16s var(--ease-out);
+  transform-origin: top left;
+}
+
+@keyframes pr-card-in {
+  from {
+    opacity: 0;
+    transform: translateY(-4px) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+.pr-card-who {
+  display: flex;
+  align-items: center;
+  gap: var(--s-4);
+  min-width: 0;
+  padding: var(--s-4) var(--s-5);
+  background: var(--fill);
+  border-bottom: 1px solid var(--hair);
+}
+
+.pr-avatar-lg {
+  width: 36px;
+  height: 36px;
+  flex: none;
+  box-shadow: 0 0 0 2px var(--paper);
+}
+
+.pr-avatar-none {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--fill-2);
+  color: var(--ink-3);
+}
+
+.pr-card-who-text {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+  line-height: 1.3;
+}
+
+.pr-card-login {
+  font-weight: 600;
+  color: var(--ink);
+}
+
+.pr-card-where {
+  font-size: var(--t-12);
+  color: var(--ink-3);
+  font-variant-numeric: tabular-nums;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pr-card-body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-4);
+  padding: var(--s-4) var(--s-5);
+}
+
+/* Both refs on one line, always. The base keeps its width; the head takes
+   whatever is left and clips. The full pair is the row's tooltip. */
+.pr-card-refs {
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+  min-width: 0;
+  white-space: nowrap;
+}
+
+.pr-card-refs .cmp-arrow {
+  flex: none;
+}
+
+.pr-ref {
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  padding: 3px 8px;
+  border-radius: var(--r-sm);
+  background: var(--fill);
+  color: var(--ink);
+  font-family: var(--mono);
+  font-size: var(--t-12);
+}
+
+.pr-ref-base {
+  flex: none;
+  max-width: 45%;
+  color: var(--ink-2);
+}
+
+.pr-card-facts {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-3);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.pr-fact {
+  display: flex;
+  align-items: center;
+  gap: var(--s-3);
+  min-width: 0;
+  color: var(--ink-2);
+}
+
+.pr-fact svg,
+.pr-fact-dot {
+  flex: none;
+}
+
+.pr-fact a {
+  color: inherit;
+  text-decoration: none;
+}
+
+.pr-fact a:hover {
+  text-decoration: underline;
+}
+
+.pr-fact-dot {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  border: 1.5px solid var(--ink-3);
+  box-sizing: border-box;
+}
+
+.pr-fact-success .pr-fact-dot {
+  border-color: var(--add);
+  background: var(--add);
+}
+
+.pr-fact-failure .pr-fact-dot {
+  border-color: var(--del);
+  background: var(--del);
+}
+
+.pr-fact-pending .pr-fact-dot {
+  border-color: var(--attn);
+  border-style: dashed;
+}
+
+.pr-fact-ok svg {
+  color: var(--add);
+}
+
+.pr-fact-attn svg {
+  color: var(--attn);
+}
+
+.pr-fact-mute {
+  color: var(--ink-3);
+}
+
+/* The commits: a disclosure, shut by default, newest first when open. */
+.pr-commits {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-2);
+  margin-top: calc(var(--s-1) * -1);
+}
+
+.pr-commits-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s-2);
+  align-self: flex-start;
+  margin-left: -3px;
+  padding: 2px 6px 2px 3px;
+  border: 0;
+  border-radius: var(--r-sm);
+  background: transparent;
+  color: var(--ink-2);
+  font: inherit;
+  cursor: pointer;
+}
+
+.pr-commits-toggle:hover {
+  background: var(--fill);
+  color: var(--ink);
+}
+
+.pr-commit-list {
+  display: flex;
+  flex-direction: column;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  border-left: 2px solid var(--hair);
+  margin-left: 5px;
+  padding-left: var(--s-3);
+}
+
+.pr-commit {
+  display: flex;
+  align-items: baseline;
+  gap: var(--s-3);
+  min-width: 0;
+  padding: 4px 6px;
+  margin: 0 -6px;
+  border-radius: var(--r-sm);
+  color: var(--ink-2);
+  text-decoration: none;
+}
+
+.pr-commit:hover {
+  background: var(--fill);
+  color: var(--ink);
+}
+
+.pr-commit-sha {
+  flex: none;
+  font-family: var(--mono);
+  font-size: var(--t-12);
+  color: var(--ink-3);
+}
+
+.pr-commit-subject {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pr-commit-ago {
+  flex: none;
+  font-size: var(--t-12);
+  color: var(--ink-3);
+  font-variant-numeric: tabular-nums;
+}
+
+.pr-card-link {
+  justify-content: center;
+  height: 32px;
+  border-top: 1px solid var(--hair);
+  border-radius: 0;
+  color: var(--gh);
+  text-decoration: none;
+}
+
+.pr-card-link:hover {
+  color: var(--gh);
+}
+
+/* The rail on a pull request: two groups, GitHub and Private, each a bracket in
+ * its side's color with the same stripe the cards and composer wear. Folding a
+ * group is the filter; the header badge is the one number that matters per side. */
+.side {
+  border-left: 3px solid var(--gh);
+  margin-top: var(--s-2);
+}
+
+.side-agent {
+  border-left-color: var(--attn);
+}
+
+.side-head {
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+  width: 100%;
+  padding: 7px var(--s-5) 7px 9px;
+  border: 0;
+  font: inherit;
+  font-size: var(--t-125);
+  font-weight: 600;
+  text-align: left;
+  color: var(--gh);
+  background: var(--gh-wash);
+  cursor: pointer;
+}
+
+.side-agent .side-head {
+  color: var(--attn);
+  background: var(--attn-wash);
+}
+
+.side-head .chevron {
+  color: inherit;
+  opacity: 0.7;
+}
+
+.side-head:focus-visible {
+  outline: 2px solid var(--acc);
+  outline-offset: -2px;
+}
+
+.side-n {
+  font-size: var(--t-11);
+  font-weight: 500;
+  opacity: 0.75;
+  font-variant-numeric: tabular-nums;
+}
+
+.side-badge {
+  margin-left: auto;
+  font-size: var(--t-11);
+  font-weight: 600;
+  line-height: 17px;
+  padding: 0 7px;
+  border-radius: var(--r-pill);
+  background: var(--paper);
+  border: 1px solid var(--gh-line);
+  white-space: nowrap;
+}
+
+.side-agent .side-badge {
+  border-color: var(--attn-line);
+}
+
+.side-badge-hot {
+  background: var(--attn);
+  border-color: var(--attn);
+  color: #fff;
+}
+
+.side-empty {
+  padding: var(--s-2) var(--s-5) var(--s-3) 21px;
+  font-size: var(--t-12);
+  color: var(--ink-3);
+}
+
+.side-tail {
+  display: flex;
+  gap: var(--s-4);
+  padding: 4px var(--s-5) 8px 21px;
+}
+
+.side-more,
+.strip-more {
+  border: 0;
+  background: none;
+  font: inherit;
+  font-size: 11.5px;
+  color: var(--ink-3);
+  padding: 0;
+  cursor: pointer;
+  text-decoration: underline dotted;
+  text-underline-offset: 3px;
+}
+
+.side-more:hover,
+.strip-more:hover {
+  color: var(--ink-2);
+}
+
+/* The fold in the changeset strip sits between the threads that are yours and
+ * everyone else's; a little air keeps it from reading as part of a card. */
+.strip-more {
+  align-self: flex-start;
+  padding: var(--s-1) 0;
+}
+
+/* A public draft's state, in the sub-line: the pill is the one word GitHub
+ * would use for a comment that has not posted. */
+.crow-pill {
+  display: inline-block;
+  font-size: 10.5px;
+  font-weight: 600;
+  line-height: 15px;
+  padding: 0 5px;
+  margin-right: 3px;
+  border-radius: var(--r-pill);
+  color: var(--gh);
+  background: var(--gh-wash);
+  vertical-align: 1px;
+}
+
+/* The submit dialog's note on a pending row. */
+.fin-row-note {
+  font-size: var(--t-11);
+  color: var(--attn);
+}
+
+/* ---------- submit review: GitHub's dialog, with the pending list ---------- */
+
+.sub-where {
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+  min-width: 0;
+  margin-top: calc(var(--s-3) * -1);
+  font-size: var(--t-12);
+  color: var(--ink-3);
+}
+
+.sub-where svg {
+  color: var(--gh);
+  flex: none;
+}
+
+.sub-where-repo {
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.sub-where-title {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--ink-2);
+}
+
+.sub-editor {
+  border: 1px solid var(--hair);
+  border-radius: var(--r);
+  overflow: hidden;
+}
+
+.sub-editor:focus-within {
+  border-color: var(--gh);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--gh) 18%, transparent);
+}
+
+.sub-editor-bar {
+  display: flex;
+  align-items: flex-end;
+  background: var(--fill);
+  border-bottom: 1px solid var(--hair);
+}
+
+.sub-tabs {
+  border-bottom: 0;
+  background: transparent;
+}
+
+.sub-tools {
+  display: flex;
+  align-items: center;
+  gap: 1px;
+  margin-left: auto;
+  padding: 0 7px 4px;
+}
+
+.sub-body {
+  display: block;
+  width: 100%;
+  box-sizing: border-box;
+  min-height: 96px;
+  padding: var(--s-3) var(--s-4);
+  border: 0;
+  background: var(--paper);
+  color: var(--ink);
+  font: inherit;
+  font-size: var(--t-14);
+  line-height: 1.5;
+  resize: vertical;
+}
+
+.sub-body:focus {
+  outline: none;
+}
+
+.sub-preview {
+  min-height: 96px;
+  padding: var(--s-3) var(--s-4);
+  font-size: var(--t-14);
+  line-height: 1.6;
+}
+
+.sub-preview-empty {
+  color: var(--ink-3);
+}
+
+.sub-verdicts {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-3);
+}
+
+.sub-verdict {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--s-3);
+  cursor: pointer;
+}
+
+.sub-verdict input {
+  margin: 3px 0 0;
+  accent-color: var(--gh);
+  flex: none;
+}
+
+.sub-verdict-text {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  line-height: 1.35;
+}
+
+.sub-verdict-text b {
+  font-weight: 600;
+  font-size: var(--t-14);
+}
+
+.sub-verdict-text small {
+  font-size: var(--t-125);
+  color: var(--ink-3);
+}
+
+.sub-verdict-off {
+  cursor: default;
+  opacity: 0.6;
+}
+
+.sub-verdict-why {
+  color: var(--attn);
+}
+
+.sub-pending {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  border: 1px solid var(--gh-line);
+  border-left: 3px solid var(--gh);
+  border-radius: var(--r);
+  overflow: hidden;
+}
+
+.sub-pending-row {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 9px var(--s-4);
+}
+
+.sub-pending-row + .sub-pending-row {
+  border-top: 1px solid var(--hair);
+}
+
+.sub-pending-at {
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+  min-width: 0;
+  font-family: var(--mono);
+  font-size: var(--t-11);
+  color: var(--ink-3);
+}
+
+.sub-pending-kind {
+  font-family: var(--sans);
+  font-size: var(--t-11);
+  font-weight: 600;
+  color: var(--gh);
+  background: var(--gh-wash);
+  border-radius: var(--r-pill);
+  padding: 1px 7px;
+  white-space: nowrap;
+}
+
+.sub-pending-anchor {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sub-pending-text {
+  font-size: var(--t-13);
+  color: var(--ink);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.sub-agent {
+  display: inline-flex;
+  align-items: flex-start;
+  gap: 6px;
+  min-width: 0;
+  flex: 1 1 200px;
+  font-size: var(--t-12);
+  color: var(--attn);
+}
+
+.sub-agent svg {
+  flex: none;
+  margin-top: 2px;
+}
+
+.sub-agent .fin-link {
+  color: inherit;
+}
+
+.sub-agent-off {
+  color: var(--ink-2);
+}
+
+.btn-gh {
+  background: var(--gh);
+  color: #fff;
+}
+
+.btn-gh:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--gh) 88%, black);
+}
+
+.sub-kbd {
+  font-family: inherit;
+  font-size: var(--t-11);
+  opacity: 0.7;
+  font-weight: 500;
+}
+
+.sub-done {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-4);
+}
+
+.sub-done-card {
+  display: flex;
+  align-items: center;
+  gap: var(--s-4);
+  padding: var(--s-4) var(--s-5);
+  border: 1px solid var(--add);
+  border-left: 3px solid var(--add);
+  border-radius: var(--r);
+  background: var(--add-tint);
+}
+
+.sub-done-mark {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  flex: none;
+  border-radius: 50%;
+  background: var(--add);
+  color: #fff;
+}
+
+.sub-done-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  flex: 1;
+}
+
+.sub-done-text b {
+  font-size: var(--t-14);
+  font-weight: 600;
+  color: var(--ink);
+}
+
+.sub-done-detail {
+  font-size: var(--t-125);
+  color: var(--ink-2);
+}
+
+.sub-done-card .btn {
+  flex: none;
+  text-decoration: none;
+}
+
+.sub-done-agent {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  margin: 0;
+  font-size: var(--t-125);
+  color: var(--attn);
+}
+
+.sub-done-agent svg {
+  flex: none;
+  margin-top: 2px;
+}
+
+/* A working button: the spinner takes the icon's slot, the label says what
+   is happening, and Cancel waits. */
+.btn-busy {
+  cursor: progress;
+}
+
+.spin {
+  display: inline-block;
+  width: 12px;
+  height: 12px;
+  border: 2px solid currentcolor;
+  border-right-color: transparent;
+  border-radius: 50%;
+  animation: spin 0.7s linear infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
 }

@@ -1,7 +1,8 @@
 import { type ReactNode, useEffect, useRef, useState } from 'react'
-import type { Changeset } from '../../shared/types.js'
+import type { Changeset, PrInfo } from '../../shared/types.js'
 import type { Presence } from '../api.js'
 import { isDevServer } from '../devMode.js'
+import { shortAgo } from '../markdown.js'
 import type { Theme } from '../theme.js'
 import { Icon } from './Icon.js'
 import { Menu, MenuItem, MenuLabel, MenuSep } from './Menu.js'
@@ -9,10 +10,25 @@ import { Menu, MenuItem, MenuLabel, MenuSep } from './Menu.js'
 const n = (x: number) => x.toLocaleString('en-US')
 
 function Comparison({ changeset }: { changeset: Changeset }) {
-  const { spec, stats, repo } = changeset
+  const { spec, stats, repo, pr } = changeset
   const working = spec.kind === 'working-tree'
-  const from = working ? 'working tree' : repo.branch || 'HEAD'
-  const to = working ? 'HEAD' : spec.base
+  const from = pr ? pr.head.ref : working ? 'working tree' : repo.branch || 'HEAD'
+  const to = pr ? pr.base.ref : working ? 'HEAD' : spec.base
+  const size = (
+    <>
+      <span className="stat-add">+{n(stats.additions)}</span>{' '}
+      <span className="stat-del">−{n(stats.deletions)}</span>
+    </>
+  )
+  // On a pull request the branches are one click away in the PR card; the
+  // header keeps only the size, so the title gets the room.
+  if (pr) {
+    return (
+      <span className="cmp cmp-size" title={`${from} against ${to}`}>
+        {size}
+      </span>
+    )
+  }
   return (
     <span
       className="cmp"
@@ -26,10 +42,190 @@ function Comparison({ changeset }: { changeset: Changeset }) {
       <span className="cmp-side">{from}</span>
       <Icon name="arrow" size="sm" className="cmp-arrow" />
       <span className="cmp-side cmp-side-base">{to}</span>
-      <span className="cmp-n">
-        <span className="stat-add">+{n(stats.additions)}</span>{' '}
-        <span className="stat-del">−{n(stats.deletions)}</span>
-      </span>
+      <span className="cmp-n">{size}</span>
+    </span>
+  )
+}
+
+const CHECK_LABEL: Record<PrInfo['checks']['state'], string> = {
+  success: 'CI passing',
+  failure: 'CI failing',
+  pending: 'CI running',
+  none: 'no checks',
+}
+
+/** The one chip the header shows beside the title: the most decision-relevant
+ * state, by priority. Everything else is in the card. */
+function prStatus(pr: PrInfo): { label: string; className: string } | null {
+  if (pr.state !== 'open')
+    return { label: pr.state, className: `chip-mute pr-state pr-state-${pr.state}` }
+  if (pr.changesRequested > 0) return { label: 'changes requested', className: 'chip-attn' }
+  if (pr.checks.state === 'failure') return { label: 'CI failing', className: 'pr-check-failure' }
+  if (pr.draft) return { label: 'draft', className: 'chip-mute pr-state pr-state-draft' }
+  if (pr.checks.state === 'pending') return { label: 'CI running', className: 'pr-check-pending' }
+  return null
+}
+
+function Avatar({ user, large = false }: { user: PrInfo['author']; large?: boolean }) {
+  const cls = large ? 'pr-avatar pr-avatar-lg' : 'pr-avatar'
+  return user.avatarUrl ? (
+    <img className={cls} src={user.avatarUrl} alt="" />
+  ) : (
+    <span className={`${cls} pr-avatar-none`}>
+      <Icon name="user" size={large ? 'md' : 'sm'} />
+    </span>
+  )
+}
+
+const ago = (iso: string) => {
+  const t = shortAgo(iso)
+  return /^\d/.test(t) ? `${t} ago` : t
+}
+
+/** Everything about the pull request that is not glance-time: who, from where,
+ * how it stands, what was pushed, and the way to GitHub. Opens from the title
+ * chip and adds to it, never repeats it. */
+function PrCard({ pr }: { pr: PrInfo }) {
+  const [commitsOpen, setCommitsOpen] = useState(false)
+  const last = pr.commits.at(-1)
+  const checks = [CHECK_LABEL[pr.checks.state], last ? `pushed ${ago(last.at)}` : '']
+    .filter(Boolean)
+    .join(' · ')
+  const reviews =
+    pr.approvals === 0 && pr.changesRequested === 0
+      ? { text: 'no reviews yet', tone: 'mute' }
+      : pr.changesRequested > 0
+        ? {
+            text: `changes requested${pr.approvals > 0 ? ` · ${pr.approvals} ${pr.approvals === 1 ? 'approval' : 'approvals'}` : ''}`,
+            tone: 'attn',
+          }
+        : { text: `${pr.approvals} ${pr.approvals === 1 ? 'approval' : 'approvals'}`, tone: 'ok' }
+  const n = pr.commits.length
+  const commitUrl = (sha: string) =>
+    `https://${pr.host}/${pr.owner}/${pr.repo}/pull/${pr.number}/commits/${sha}`
+  return (
+    <section className="menu-panel menu-panel-left pr-card" aria-label="pull request details">
+      <div className="pr-card-who">
+        <Avatar user={pr.author} large />
+        <span className="pr-card-who-text">
+          <span className="pr-card-login">{pr.author.login}</span>
+          <span className="pr-card-where">
+            {pr.owner}/{pr.repo} #{pr.number}
+          </span>
+        </span>
+      </div>
+      <div className="pr-card-body">
+        <div className="pr-card-refs" title={`${pr.head.ref} into ${pr.base.ref}`}>
+          <code className="pr-ref">{pr.head.ref}</code>
+          <Icon name="arrow" size="sm" className="cmp-arrow" />
+          <code className="pr-ref pr-ref-base">{pr.base.ref}</code>
+        </div>
+        <ul className="pr-card-facts">
+          <li className={`pr-fact pr-fact-${pr.checks.state}`}>
+            <i className="pr-fact-dot" aria-hidden="true" />
+            {pr.checks.url ? (
+              <a href={pr.checks.url} target="_blank" rel="noreferrer">
+                {checks}
+              </a>
+            ) : (
+              checks
+            )}
+          </li>
+          <li className={`pr-fact pr-fact-${reviews.tone}`}>
+            <Icon
+              name={reviews.tone === 'ok' ? 'check' : reviews.tone === 'attn' ? 'alert' : 'chat'}
+              size="sm"
+            />
+            {reviews.text}
+          </li>
+        </ul>
+        {n > 0 && (
+          <div className="pr-commits">
+            <button
+              type="button"
+              className="pr-commits-toggle"
+              aria-expanded={commitsOpen}
+              onClick={() => setCommitsOpen((v) => !v)}
+            >
+              <span className={`chevron${commitsOpen ? '' : ' chevron-shut'}`}>
+                <Icon name="chev" size="sm" />
+              </span>
+              {n} {n === 1 ? 'commit' : 'commits'}
+            </button>
+            {commitsOpen && (
+              <ol className="pr-commit-list">
+                {[...pr.commits].reverse().map((c) => (
+                  <li key={c.sha}>
+                    <a
+                      className="pr-commit"
+                      href={commitUrl(c.sha)}
+                      target="_blank"
+                      rel="noreferrer"
+                      title={`${c.subject}${c.author ? `, by ${c.author.login}` : ''}, opens on GitHub`}
+                    >
+                      <code className="pr-commit-sha">{c.sha.slice(0, 7)}</code>
+                      <span className="pr-commit-subject">{c.subject}</span>
+                      <span className="pr-commit-ago">{shortAgo(c.at)}</span>
+                    </a>
+                  </li>
+                ))}
+              </ol>
+            )}
+          </div>
+        )}
+      </div>
+      <a className="btn btn-ghost pr-card-link" href={pr.url} target="_blank" rel="noreferrer">
+        Open on GitHub
+        <Icon name="link" size="sm" />
+      </a>
+    </section>
+  )
+}
+
+/** The pull request's chips: the title owns the row, one status chip beside it,
+ * and the card behind the title holds the rest. */
+function PrChips({ pr }: { pr: PrInfo }) {
+  const [open, setOpen] = useState(false)
+  const wrap = useRef<HTMLSpanElement>(null)
+  useEffect(() => {
+    if (!open) return
+    const onDown = (e: MouseEvent) => {
+      if (!wrap.current?.contains(e.target as Node)) setOpen(false)
+    }
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        e.stopPropagation()
+        setOpen(false)
+      }
+    }
+    document.addEventListener('mousedown', onDown)
+    document.addEventListener('keydown', onKey, true)
+    return () => {
+      document.removeEventListener('mousedown', onDown)
+      document.removeEventListener('keydown', onKey, true)
+    }
+  }, [open])
+  const status = prStatus(pr)
+  return (
+    <span className="where pr-chips menu" ref={wrap}>
+      <button
+        type="button"
+        className="pr-title"
+        aria-haspopup="dialog"
+        aria-expanded={open}
+        onClick={() => setOpen((v) => !v)}
+        title={
+          open
+            ? undefined
+            : `${pr.owner}/${pr.repo}#${pr.number}: author, branches, checks, reviews`
+        }
+      >
+        <Icon name="pr" size="sm" />
+        <span className="pr-number">#{pr.number}</span>
+        <span className="pr-title-text">{pr.title}</span>
+      </button>
+      {status && <span className={`chip ${status.className}`}>{status.label}</span>}
+      {open && <PrCard pr={pr} />}
     </span>
   )
 }
@@ -62,8 +258,8 @@ const PRESENCE_LABEL: Record<Presence, string> = {
 
 const PRESENCE_TITLE: Record<Presence, string> = {
   waiting:
-    'no agent is attached — sends queue for the next poll, and the prompt is copied so you can paste it yourself',
-  listening: 'an agent is polling — a send is delivered to it immediately',
+    'no agent is attached; sends queue for the next poll, and the prompt is copied so you can paste it yourself',
+  listening: 'an agent is polling; a send is delivered to it immediately',
   working: 'the agent received feedback and is working on it',
 }
 
@@ -194,7 +390,7 @@ function PresenceChip({
         aria-haspopup="dialog"
         aria-expanded={monitorOpen}
         onClick={() => onOpenMonitor(!monitorOpen)}
-        title={`${PRESENCE_TITLE[presence]} — ${batch!.done} of ${total} answered; click to watch the queue`}
+        title={`${PRESENCE_TITLE[presence]}. ${batch!.done} of ${total} answered; click to watch the queue`}
       >
         {body}
         <span className="presence-qbar" aria-hidden>
@@ -228,6 +424,8 @@ export interface HeaderAgent {
 
 export interface HeaderReview {
   openComments?: number
+  /** Public drafts among them: Finish also submits to GitHub. */
+  publicDrafts?: number
   onFinishReview?: () => void
 }
 
@@ -248,7 +446,7 @@ export function Header({
   review?: HeaderReview
   settings?: HeaderSettings
 }) {
-  const { openComments = 0, onFinishReview } = review
+  const { openComments = 0, publicDrafts = 0, onFinishReview } = review
   const { theme, onSetTheme, onShowShortcuts } = settings
   return (
     <header className="top">
@@ -264,7 +462,7 @@ export function Header({
           </span>
         )}
       </span>
-      <Where repo={changeset.repo} />
+      {changeset.pr ? <PrChips pr={changeset.pr} /> : <Where repo={changeset.repo} />}
       <Comparison changeset={changeset} />
       <span className="grow" />
       {agent.presence && (
@@ -285,9 +483,22 @@ export function Header({
           type="button"
           className="btn btn-primary"
           onClick={onFinishReview}
-          title="finish review: send open comments + coverage to your agent"
+          title={
+            changeset.pr
+              ? publicDrafts > 0
+                ? `submit your review on GitHub with ${publicDrafts} pending ${publicDrafts === 1 ? 'comment' : 'comments'}; private threads go to your agent`
+                : 'submit your review on GitHub; private threads and coverage go to your agent'
+              : 'finish review: send open comments + coverage to your agent'
+          }
         >
-          Finish review{openComments > 0 ? ` (${openComments})` : ''}
+          {changeset.pr ? (
+            <>
+              <Icon name="globe" size="sm" /> Submit review
+              {publicDrafts > 0 ? ` (${publicDrafts})` : ''}
+            </>
+          ) : (
+            `Finish review${openComments > 0 ? ` (${openComments})` : ''}`
+          )}
         </button>
       )}
       <Menu label="Settings" triggerClassName="btn btn-ghost btn-icon">

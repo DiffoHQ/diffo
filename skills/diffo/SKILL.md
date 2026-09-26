@@ -1,10 +1,10 @@
 ---
 name: diffo
-description: Open a Diffo code review of the current git changeset in the reviewer's browser and drive the feedback loop from this session, using the diffo CLI. Use when the user wants to review your changes, asks to open a code review, or when you finish a large or multi-file change worth a human read before it lands.
+description: Open a Diffo code review of the current git changeset, or of a GitHub pull request the user links, in the reviewer's browser and drive the feedback loop from this session, using the diffo CLI. Use when the user wants to review your changes, asks to open a code review, hands you a PR to review with them, or when you finish a large or multi-file change worth a human read before it lands.
 license: Apache-2.0
 metadata:
   author: DiffoHQ
-  argument-hint: <what to review — empty means the working tree>
+  argument-hint: <what to review — a branch, a pull request link, or empty for the working tree>
 ---
 
 # Diffo review
@@ -28,8 +28,11 @@ opaquely, use an already-installed copy directly:
 $ARGUMENTS
 
 If the request above is non-empty, the user invoked `/diffo` explicitly —
-open the review now, following the steps below (a branch name means review
-against that base: `npx -y @diffohq/diffo --base <branch>`).
+open the review now, following the steps below, with the request as the CLI's
+target: `npx -y @diffohq/diffo <request> --no-open`. A branch name reviews against it; a
+pull request (URL, `owner/repo#N`, `#N`, or just `N`) is checked out in a worktree
+diffo owns and reviewed there, with you as copilot for code you did not
+write — the printed next steps say how. The CLI decides which it is, not you.
 If it is empty, review the changeset this conversation just produced.
 
 ## When to use

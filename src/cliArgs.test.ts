@@ -294,23 +294,71 @@ describe('parseCliArgs — unknown commands', () => {
   it('suggests the nearest command for a typo', () => {
     expect(parseCliArgs(['staus'])).toMatchObject({
       kind: 'error',
-      message: expect.stringContaining("did you mean 'status'"),
+      message: expect.stringContaining("Did you mean 'status'"),
     })
     expect(parseCliArgs(['pol'])).toMatchObject({
       kind: 'error',
-      message: expect.stringContaining("did you mean 'poll'"),
+      message: expect.stringContaining("Did you mean 'poll'"),
     })
     expect(parseCliArgs(['help', 'staus'])).toMatchObject({
       kind: 'error',
-      message: expect.stringContaining("did you mean 'status'"),
+      message: expect.stringContaining("Did you mean 'status'"),
     })
   })
 
-  it('names the unknown command without a far-fetched suggestion', () => {
-    const result = parseCliArgs(['frobnicate'])
-    expect(result).toMatchObject({ kind: 'error' })
-    expect((result as { message: string }).message).toContain("unknown command 'frobnicate'")
-    expect((result as { message: string }).message).not.toContain('did you mean')
+  it('a word that is not a typo of a command is a target — a branch to review against', () => {
+    expect(parseCliArgs(['frobnicate'])).toMatchObject({
+      kind: 'run',
+      target: 'frobnicate',
+      spec: { kind: 'branch', base: 'frobnicate' },
+    })
+  })
+
+  it('a pull request reference is a target whatever it resembles', () => {
+    for (const raw of [
+      'https://github.com/acme/widgets/pull/482',
+      'acme/widgets#482',
+      '#482',
+      '482',
+    ]) {
+      const result = parseCliArgs([raw, '--no-open'])
+      expect(result).toMatchObject({
+        kind: 'run',
+        target: raw,
+        spec: { kind: 'working-tree' },
+        open: false,
+      })
+    }
+    expect(parseCliArgs(['pr', 'acme/widgets#482'])).toMatchObject({
+      kind: 'run',
+      target: 'acme/widgets#482',
+    })
+    expect(parseCliArgs(['pr'])).toMatchObject({ kind: 'error' })
+    // Any URL rides through as a target — never as a branch name — so the CLI
+    // can refuse a non-PR one by name instead of reviewing the working tree.
+    expect(parseCliArgs(['https://github.com/acme/widgets'])).toMatchObject({
+      kind: 'run',
+      target: 'https://github.com/acme/widgets',
+      spec: { kind: 'working-tree' },
+    })
+  })
+
+  it('the main help lists pr next to the other reviewer commands', () => {
+    expect(HELP_TEXT).toMatch(/\n {2}pr <target> {8}Review a pull request/)
+    expect(HELP_TEXT.indexOf('  pr <target>')).toBeLessThan(HELP_TEXT.indexOf('  status '))
+  })
+
+  it('a branch target and --base together is one branch too many', () => {
+    expect(parseCliArgs(['main', '--base', 'dev'])).toMatchObject({ kind: 'error' })
+  })
+
+  it('clean takes --force and --all', () => {
+    expect(parseCliArgs(['clean'])).toEqual({ kind: 'clean', force: false, all: false })
+    expect(parseCliArgs(['clean', '--force', '--all'])).toEqual({
+      kind: 'clean',
+      force: true,
+      all: true,
+    })
   })
 })
 

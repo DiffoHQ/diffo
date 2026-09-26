@@ -49,8 +49,17 @@ export function serverSpawnArgs(
   execArgv: string[],
   port?: number,
   base?: string,
+  target?: string,
 ): string[] {
-  const args = [...execArgv, entry, '--no-open', '--foreground']
+  // A pull-request target rides first, as the positional it is: the daemon
+  // re-resolves it (cheap, idempotent) and knows it serves a PR.
+  const args = [
+    ...execArgv,
+    entry,
+    ...(target !== undefined ? [target] : []),
+    '--no-open',
+    '--foreground',
+  ]
   // An explicit `--port` is a promise to the caller, so it has to survive the
   // hand-off. Omitted, the daemon prefers the repo's last port.
   if (port !== undefined) args.push('-p', String(port))
@@ -153,14 +162,14 @@ export async function settleExistingServer(
   if (verdict === 'replace') {
     onStatus(
       health?.version === version
-        ? `replacing the dev server — the checkout's source changed since it started`
+        ? `replacing the dev server: the checkout's source changed since it started`
         : `replacing the diffo server from another build (${health?.version ?? 'pre-handshake'} → ${version})`,
     )
     if (!(await retireServer(record.port, record.pid ?? null, health?.pid ?? null))) {
       throw new Error(
         `a diffo server from another build is stuck on port ${record.port}` +
           (record.pid ? ` (pid ${record.pid})` : '') +
-          ` and would not step aside — stop it, then re-run`,
+          ` and would not step aside; stop it, then re-run`,
       )
     }
   }
@@ -177,6 +186,8 @@ export interface EnsureServerOptions {
   logPath: string
   port?: number
   base?: string
+  /** The positional the daemon should re-open: a pull-request reference. */
+  target?: string
   env?: NodeJS.ProcessEnv
   dbPath?: string
   spawnTimeoutMs?: number
@@ -238,7 +249,7 @@ function spawnDaemonProcess(opts: EnsureServerOptions): void {
   const logFd = openSync(opts.logPath, 'a')
   const child = spawn(
     opts.execPath,
-    serverSpawnArgs(opts.entry, opts.execArgv, opts.port, opts.base),
+    serverSpawnArgs(opts.entry, opts.execArgv, opts.port, opts.base, opts.target),
     {
       cwd: opts.repoPath,
       detached: true,
@@ -265,7 +276,7 @@ export async function ensureServer(
     )
     if (existing) return existing.port
 
-    status('no diffo server for this repo — starting one')
+    status('no diffo server for this repo, starting one')
     // Rotate before measuring: anything past this offset is what THIS daemon
     // said, so a failed handshake below can quote the actual reason.
     mkdirSync(dirname(opts.logPath), { recursive: true })
@@ -292,7 +303,7 @@ export async function ensureServer(
       throw new Error(
         complaint
           ? `the diffo server did not start: ${complaint} (log: ${opts.logPath})`
-          : `the diffo server did not start — see ${opts.logPath}`,
+          : `the diffo server did not start; see ${opts.logPath}`,
       )
     }
     return port

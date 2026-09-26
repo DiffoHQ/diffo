@@ -55,7 +55,7 @@ The bar above the diff counts down as you mark files reviewed: `12 left`, then
 last unread file into the next.
 
 To comment, press `c` on a hunk, or hover any line and click the button in the gutter.
-For several lines at once, drag down the line numbers and release — the composer opens
+For several lines at once, drag down the line numbers and release; the composer opens
 on the range, and the ▲/▼ on its chip (or a shift-click) adjust the edge one line at a
 time without losing what you've typed.
 
@@ -88,7 +88,7 @@ its reply comes back into the same thread.
 When you're done reading, hit **Finish review** in the header.
 
 A preview shows exactly what will be sent: every thread, plus your coverage
-(`38/42 hunks read, 2 files skipped`). Add a closing note if you want — it goes out as a
+(`38/42 hunks read, 2 files skipped`). Add a closing note if you want; it goes out as a
 thread on the whole changeset, leading the batch, and the agent replies to it there.
 
 After you send:

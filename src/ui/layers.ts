@@ -133,6 +133,12 @@ export function findGuide(threads: readonly ReviewThread[]): ReviewThread | unde
   return threads.filter((t) => t.anchor.kind === 'changeset' && startedByAgent(t)).at(-1)
 }
 
+/** The pull request's description, imported as a thread: the author's own map
+ * of the change, and the Overview of a PR whether or not the agent adds a guide. */
+export function findDescription(threads: readonly ReviewThread[]): ReviewThread | undefined {
+  return threads.find((t) => t.github?.kind === 'description')
+}
+
 /** The layer each file belongs to — the first one that lists it — for the Files
  * tab's index numbers and for opening a file inside its layer. */
 export function layerByPath(resolved: readonly ResolvedLayer[]): Map<string, ResolvedLayer> {

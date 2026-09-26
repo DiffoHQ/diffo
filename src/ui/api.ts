@@ -1,6 +1,8 @@
 import { useQuery } from '@tanstack/react-query'
+import type { ReviewEvent } from '../forge/types.js'
 import type {
   Anchor,
+  Audience,
   Coverage,
   OutgoingThread,
   ReviewState,
@@ -8,6 +10,8 @@ import type {
   ThreadIntent,
 } from '../shared/review.js'
 import type { Changeset } from '../shared/types.js'
+
+export type { ReviewEvent }
 
 export type Presence = 'waiting' | 'listening' | 'working'
 
@@ -105,9 +109,34 @@ export function useInvite(enabled: boolean) {
   })
 }
 
+/** What Finish will post to GitHub, in words — present only on a pull request. */
+export interface PublicPreview {
+  drafts: { id: string; anchor: string; text: string; downgraded: boolean; conversation: boolean }[]
+  replies: { id: string; anchor: string; count: number; text: string }[]
+  resolves: { id: string; anchor: string; resolve: boolean }[]
+  canApprove: boolean
+  pendingReview: boolean
+}
+
 export interface FinishPreview {
   outgoing: OutgoingThread[]
   prompt: string
+  public?: PublicPreview
+}
+
+/** How the GitHub leg went: what posted, and where it stopped if it did. */
+export interface PublicOutcome {
+  posted: number
+  resolved: number
+  submitted: boolean
+  reviewId: string | null
+  url?: string
+  failed?: { step: string; message: string }
+}
+
+export interface CreateThreadOptions {
+  audience?: Audience
+  parentId?: string
 }
 
 export function useFinishPreview(enabled: boolean, coverage: Coverage) {
@@ -121,8 +150,12 @@ export function useFinishPreview(enabled: boolean, coverage: Coverage) {
 }
 
 export const reviewApi = {
-  createThread: (anchor: Anchor, text: string, intent?: ThreadIntent) =>
-    post<ReviewThread>('/api/review/threads', { anchor, text, intent }),
+  createThread: (
+    anchor: Anchor,
+    text: string,
+    intent?: ThreadIntent,
+    options?: CreateThreadOptions,
+  ) => post<ReviewThread>('/api/review/threads', { anchor, text, intent, ...options }),
   reply: (threadId: string, text: string, deliver = true) =>
     post<{ thread: ReviewThread } & DeliveryResult>(`/api/review/threads/${threadId}/messages`, {
       text,
@@ -141,11 +174,11 @@ export const reviewApi = {
     post<{ thread: ReviewThread; prompt: string } & DeliveryResult>(
       `/api/review/threads/${threadId}/send`,
     ),
-  finish: (coverage: Coverage, deliver: boolean) =>
-    post<{ threads: ReviewThread[]; prompt: string } & DeliveryResult>('/api/review/finish', {
-      coverage,
-      deliver,
-    }),
+  finish: (coverage: Coverage, deliver: boolean, event?: ReviewEvent) =>
+    post<{ threads: ReviewThread[]; prompt: string; public?: PublicOutcome } & DeliveryResult>(
+      '/api/review/finish',
+      { coverage, deliver, ...(event ? { event } : {}) },
+    ),
   remove: (threadId: string) => del<{ removed: boolean }>(`/api/review/threads/${threadId}`),
   clear: () => del<{ removed: number }>('/api/review/threads'),
   /** Outline, or refresh: the click rides to the agent's next poll. */

@@ -9,9 +9,9 @@ import { buildCliCommands, NPX, PACKAGE_NAME, POLL_STANCE, TAB_TITLE } from './s
 // values, and no `version`.
 
 export const SKILL_DESCRIPTION =
-  "Open a Diffo code review of the current git changeset in the reviewer's " +
+  "Open a Diffo code review of the current git changeset, or of a GitHub pull request the user links, in the reviewer's " +
   'browser and drive the feedback loop from this session, using the diffo CLI. ' +
-  'Use when the user wants to review your changes, asks to open a code review, or ' +
+  'Use when the user wants to review your changes, asks to open a code review, hands you a PR to review with them, or ' +
   'when you finish a large or multi-file change worth a human read before it lands.'
 
 export const SKILL_NAME = 'diffo'
@@ -65,7 +65,7 @@ description: ${isDev ? DEV_SKILL_DESCRIPTION : SKILL_DESCRIPTION}
 license: Apache-2.0
 ${isDev ? 'disable-model-invocation: true\n' : ''}metadata:
   author: DiffoHQ
-  argument-hint: <what to review — empty means the working tree>
+  argument-hint: <what to review — a branch, a pull request link, or empty for the working tree>
 ---
 
 # Diffo review
@@ -83,8 +83,11 @@ ${invocation}
 $ARGUMENTS
 
 If the request above is non-empty, the user invoked \`/${name}\` explicitly —
-open the review now, following the steps below (a branch name means review
-against that base: \`${cli} --base <branch>\`).
+open the review now, following the steps below, with the request as the CLI's
+target: \`${cli} <request> --no-open\`. A branch name reviews against it; a
+pull request (URL, \`owner/repo#N\`, \`#N\`, or just \`N\`) is checked out in a worktree
+diffo owns and reviewed there, with you as copilot for code you did not
+write — the printed next steps say how. The CLI decides which it is, not you.
 If it is empty, review the changeset this conversation just produced.
 
 ## When to use

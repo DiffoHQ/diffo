@@ -28,6 +28,7 @@ The review UI is keyboard-first. Press `?` in the review for this sheet.
 | --- | --- |
 | `c` | Comment on the clicked line, or on this hunk when no line is clicked |
 | `⌘↵` | Add the comment |
+| `⌘.` | On a pull request, flip the composer between **Comment on PR** and **Ask agent** |
 | `esc` | Close / cancel |
 | `?` | This sheet |
 
@@ -41,10 +42,12 @@ two different claims, and Finish review sends both.
 
 `⌘↵` **adds** the comment and leaves it in your review; it does not send it to
 the agent. Sending is **Send to agent** on a single thread, or **Finish review**
-for the batch.
+for the batch. On a pull request `⌘.` picks the side first: a comment for
+GitHub, or a private question for the agent (see
+[Two kinds of comment](/guide/pr-review#two-kinds-of-comment)).
 
 Multi-line comments are mouse grammar rather than keys: **drag** down the line
 numbers to select a range, **shift-click** a line number to move the open
 composer's free edge there, and the **▲/▼** on the composer's chip walk that
-edge one line at a time — through the starting line and out the other side, so
+edge one line at a time, through the starting line and out the other side, so
 a run of ▼ reads "this line as top, N lines down". Every press is reversible.

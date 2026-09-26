@@ -8,16 +8,34 @@ import { fileURLToPath } from 'node:url'
 import { detectSessionPid } from './agentSession.js'
 import { helpFor, parseCliArgs } from './cliArgs.js'
 import { SRC_STAMP } from './devStamp.js'
+import { GhClient } from './forge/github/gh.js'
+import { parseTarget, prUrl } from './forge/target.js'
+import type { PrRef } from './forge/types.js'
 import { DiffoDb } from './server/db.js'
-import { findRepoRoot, MissingBaseError, suggestedBase } from './server/git.js'
-import { RepoAlreadyServedError, startServer } from './server/index.js'
+import {
+  findRepoRoot,
+  getRemoteUrl,
+  MissingBaseError,
+  mainRepoOf,
+  suggestedBase,
+} from './server/git.js'
+import { type PrContext, RepoAlreadyServedError, startServer } from './server/index.js'
+import {
+  type PreparedWorktree,
+  prepareWorktree,
+  servedWorktreeFor,
+  sweepWorktrees,
+  worktreePathFor,
+} from './server/pr/worktree.js'
 import {
   ACK_NEXT_STEP,
   CHECKOUT_ROOT,
   CLI_COMMANDS,
+  doctrineFor,
   guideInherit,
   guideNudge,
   layersNudge,
+  prOpenNote,
   TAB_TITLE,
 } from './server/prompt.js'
 import {
@@ -32,7 +50,7 @@ import { apiUrl, reviewUrl } from './serverUrl.js'
 import { postRegisterHint, refreshInstalledSkills, runSetup } from './setup.js'
 import { parseLayersInput } from './shared/layers.js'
 import type { Layers, ReviewState } from './shared/review.js'
-import type { ChangesetSpec as CliSpec } from './shared/types.js'
+import type { ChangesetSpec as CliSpec, PrInfo } from './shared/types.js'
 import { VERSION } from './version.js'
 
 const command = parseCliArgs(process.argv.slice(2))
@@ -118,21 +136,82 @@ if (command.kind === 'setup') {
   for (const outcome of outcomes) {
     const hint = outcome.status === 'registered' ? postRegisterHint[outcome.client] : undefined
     console.log(
-      `${outcome.client.padEnd(width)}  ${outcome.status.padEnd(10)}  ${outcome.detail}${hint ? ` — ${hint}` : ''}`,
+      `${outcome.client.padEnd(width)}  ${outcome.status.padEnd(10)}  ${outcome.detail}${hint ? ` (${hint})` : ''}`,
     )
   }
   if (outcomes.some((o) => o.status === 'manual')) {
     console.log('rows marked manual need the one step described; re-run `diffo setup` after')
   }
   if (outcomes.every((o) => o.status === 'absent')) {
-    console.log('\nno supported client found — install one, then re-run `diffo setup`')
+    console.log('\nno supported client found. Install one, then re-run `diffo setup`')
   }
   process.exit(outcomes.some((o) => o.status === 'failed') ? 1 : 0)
 }
 
-const root = findRepoRoot(process.cwd())
-if (!root) fail('not inside a git repository')
-const repoPath = resolve(root)
+if (command.kind === 'clean') {
+  const db = new DiffoDb()
+  try {
+    const entries = sweepWorktrees(db, undefined, { force: command.force, all: command.all })
+    if (entries.length === 0) {
+      console.log('no diffo worktrees, nothing to clean')
+      process.exit(0)
+    }
+    const width = Math.max(...entries.map((e) => e.record.prKey.length))
+    for (const { record, reason, outcome } of entries) {
+      const verdict =
+        outcome === null
+          ? reason === 'serving'
+            ? 'kept: a diffo server is still reviewing in it (--force removes it anyway)'
+            : 'kept: review in progress'
+          : outcome === 'removed'
+            ? reason === 'serving'
+              ? 'removed (--force; a diffo server was still reviewing in it)'
+              : `removed (${reason})`
+            : outcome === 'dirty'
+              ? 'kept: uncommitted changes (--force removes it)'
+              : outcome === 'unchecked'
+                ? `kept: could not check for uncommitted changes, is ${record.repoPath} still there? (--force removes it)`
+                : outcome === 'failed'
+                  ? 'not removed: git could not remove it; the directory and its row stay'
+                  : `row dropped (${reason})`
+      console.log(`${record.prKey.padEnd(width)}  ${verdict}  ${record.worktreePath}`)
+    }
+  } finally {
+    db.close()
+  }
+  process.exit(0)
+}
+
+const found = findRepoRoot(process.cwd())
+if (!found) fail('not inside a git repository')
+// Reassigned once when the target is a pull request: the review then runs in
+// the worktree diffo made for it, and everything below — the registry, the
+// server, the URL — is about that path.
+let root: string = found
+let repoPath = resolve(root)
+
+// A command about a running review, sent from the user's checkout while the
+// review runs in a pull-request worktree hanging off it: the agent is invited
+// from the checkout and polls from there. Follow the live server into the
+// worktree rather than start a second, plain review of the checkout. Opening
+// (`diffo` with no target) is not redirected: that asks for the checkout.
+if (command.kind !== 'run') {
+  const db = new DiffoDb()
+  try {
+    if (db.liveServer(repoPath) === null) {
+      const served = servedWorktreeFor(db, repoPath)
+      if (served) {
+        process.stderr.write(
+          `diffo: no server for this checkout; using its pull request review (${served.record.prKey}) at ${served.record.worktreePath}\n`,
+        )
+        root = served.record.worktreePath
+        repoPath = resolve(root)
+      }
+    }
+  } finally {
+    db.close()
+  }
+}
 
 /**
  * Only the open path settles with the source stamp: opening a review is the
@@ -167,11 +246,33 @@ function sessionHeaders(): Record<string, string> {
   }
 }
 
+/**
+ * A worktree Diffo made for a pull request remembers which one: a server that
+ * has to be started from inside it (`diffo poll` after the daemon idled out or
+ * died) reopens the pull request, never a plain review of the checkout.
+ */
+function ownedPullRequest(path: string): { target: string; base: string } | null {
+  const db = new DiffoDb()
+  try {
+    const record = db.getWorktree(resolve(path))
+    if (!record) return null
+    const key = /^([^/]+)\/([^/]+)\/([^/#]+)#(\d+)$/.exec(record.prKey)
+    if (!key) return null
+    const ref = { host: key[1]!, owner: key[2]!, repo: key[3]!, number: Number(key[4]) }
+    return { target: prUrl(ref), base: record.base }
+  } finally {
+    db.close()
+  }
+}
+
 async function requireServer(
   port?: number,
   base?: string,
   srcStamp: string | null = null,
+  target?: string,
 ): Promise<number> {
+  const owned = target === undefined ? ownedPullRequest(repoPath) : null
+  const prTarget = target ?? owned?.target
   try {
     return await ensureServer({
       repoPath,
@@ -180,10 +281,17 @@ async function requireServer(
       execPath: process.execPath,
       execArgv: process.execArgv,
       port,
-      base,
+      base: base ?? owned?.base,
+      target: prTarget,
       srcStamp,
+      // A pull-request daemon re-fetches and re-checks the worktree before it
+      // listens; on a large repo that is well past the 8s an ordinary open needs.
+      ...(prTarget !== undefined ? { spawnTimeoutMs: 90_000 } : {}),
       logPath: process.env.DIFFO_SERVER_LOG || defaultLogPath(repoPath),
-      onStatus: (line) => process.stderr.write(`diffo: ${line}\n`),
+      onStatus: (line) =>
+        process.stderr.write(
+          `diffo: ${owned && line.startsWith('no diffo server') ? `${line}. This checkout is ${owned.target}, reopening the pull request` : line}\n`,
+        ),
     })
   } catch (err) {
     fail((err as Error).message)
@@ -200,7 +308,7 @@ function printBaseHint(spec: CliSpec, files: number): void {
   const hint = suggestedBase(repoPath)
   if (!hint) return
   console.log(
-    `this branch has ${hint.commits} ${hint.commits === 1 ? 'commit' : 'commits'} since ${hint.base} — review them with \`diffo --base ${hint.base}\``,
+    `this branch has ${hint.commits} ${hint.commits === 1 ? 'commit' : 'commits'} since ${hint.base}. Review them with \`diffo --base ${hint.base}\``,
   )
 }
 
@@ -208,6 +316,7 @@ interface ChangesetInfo {
   spec: CliSpec
   stats: { files: number; additions: number; deletions: number }
   repo: { name: string; branch: string }
+  pr?: PrInfo
 }
 
 async function fetchChangesetInfo(port: number): Promise<ChangesetInfo | null> {
@@ -256,12 +365,15 @@ async function printChangesetSummary(port: number): Promise<void> {
   if (!info) return
   const { spec, stats, repo } = info
   console.log(`diffo · ${repo.name}${repo.branch ? ` (${repo.branch})` : ''}`)
+  const watching = info.pr
+    ? `pull request #${info.pr.number} "${info.pr.title}" by @${info.pr.author.login} (${info.pr.base.ref} ← ${info.pr.head.ref})`
+    : specLabel(spec)
   console.log(
     stats.files === 0
-      ? `watching ${specLabel(spec)} · working tree is clean — nothing to review yet`
-      : `watching ${specLabel(spec)} · ${stats.files} ${stats.files === 1 ? 'file' : 'files'} · +${stats.additions} −${stats.deletions}`,
+      ? `watching ${watching} · ${info.pr ? 'no changes' : 'working tree is clean, nothing to review yet'}`
+      : `watching ${watching} · ${stats.files} ${stats.files === 1 ? 'file' : 'files'} · +${stats.additions} −${stats.deletions}`,
   )
-  printBaseHint(spec, stats.files)
+  if (!info.pr) printBaseHint(spec, stats.files)
 }
 
 /**
@@ -276,7 +388,7 @@ async function warnSpecMismatch(port: number, asked: CliSpec): Promise<void> {
   const watching = info.spec
   if (watching.kind === 'branch' && watching.base === asked.base) return
   process.stderr.write(
-    `diffo: this server is watching ${specLabel(watching)}, not vs ${asked.base} — ` +
+    `diffo: this server is watching ${specLabel(watching)}, not vs ${asked.base}; ` +
       `run \`diffo stop\`, then re-run with --base to switch\n`,
   )
 }
@@ -313,7 +425,7 @@ async function postJson(
       signal: AbortSignal.timeout(POST_TIMEOUT_MS),
     })
   } catch {
-    fail('lost connection to the diffo server — re-run the command')
+    fail('lost connection to the diffo server; re-run the command')
   }
   return { status: res.status, body: await res.json().catch(() => null) }
 }
@@ -359,8 +471,8 @@ if (command.kind === 'status') {
     `server: port ${record.port}${pid ? ` · pid ${pid}` : ''} · v${health?.version ?? 'pre-handshake'}` +
       (verdict === 'replace'
         ? health?.version === VERSION
-          ? ` (the checkout's source changed — the next \`diffo\` replaces it)`
-          : ` (this CLI is v${VERSION} — the next \`diffo\` replaces it)`
+          ? ` (the checkout's source changed, the next \`diffo\` replaces it)`
+          : ` (this CLI is v${VERSION}, the next \`diffo\` replaces it)`
         : ''),
   )
   console.log(`→ ${url}`)
@@ -372,20 +484,20 @@ if (command.kind === 'stop') {
   try {
     const record = db.getServer(repoPath)
     if (!record) {
-      console.log('no diffo server is watching this repo — nothing to stop')
+      console.log('no diffo server is watching this repo, nothing to stop')
       process.exit(0)
     }
     const health = await fetchHealth(record.port)
     if (assessRunningServer(health, repoPath, VERSION) === 'foreign') {
       db.removeServer(repoPath, record.port)
-      console.log('no diffo server is watching this repo — cleared a stale registration')
+      console.log('no diffo server is watching this repo; cleared a stale registration')
       process.exit(0)
     }
     if (!(await retireServer(record.port, record.pid ?? null, health?.pid ?? null))) {
       fail(
         `the server on port ${record.port}` +
           (record.pid ? ` (pid ${record.pid})` : '') +
-          ` would not stop — kill it yourself, then re-run \`diffo stop\``,
+          ` would not stop; kill it yourself, then re-run \`diffo stop\``,
       )
     }
     db.removeServer(repoPath, record.port)
@@ -399,9 +511,9 @@ if (command.kind === 'stop') {
 if (command.kind === 'poll') {
   const port = await requireServer()
   process.stderr.write(
-    'diffo: waiting for the reviewer — keep this process attended: a tracked\n' +
+    'diffo: waiting for the reviewer. Keep this process attended: a tracked\n' +
       'background task or the foreground, never detached. If it dies, just\n' +
-      're-run it — feedback is held in the review and survives.\n',
+      're-run it; feedback is held in the review and survives.\n',
   )
   // The response streams whitespace heartbeats until the reviewer acts, then one
   // JSON payload. text() rides the heartbeats out; trim leaves the JSON.
@@ -419,7 +531,7 @@ if (command.kind === 'poll') {
     const tookOverFrom = res.headers.get('x-diffo-took-over-from')
     if (tookOverFrom) {
       process.stderr.write(
-        `diffo: another agent session (pid ${tookOverFrom}) was connected to this review —\n` +
+        `diffo: another agent session (pid ${tookOverFrom}) was connected to this review;\n` +
           `this poll has taken it over, and that session has been told. Mention this to the\n` +
           `user: their feedback now comes here.\n`,
       )
@@ -431,17 +543,17 @@ if (command.kind === 'poll') {
     }
     console.log((await res.text()).trim())
   } catch {
-    fail('lost connection to the diffo server — re-run `poll` to keep listening')
+    fail('lost connection to the diffo server; re-run `poll` to keep listening')
   }
   process.exit(0)
 }
 
 if (command.kind === 'reply') {
   if (command.message === null && process.stdin.isTTY) {
-    fail('reply needs a message — pass --message "<text>" or pipe it on stdin')
+    fail('reply needs a message: pass --message "<text>" or pipe it on stdin')
   }
   const message = (command.message ?? (await readStdin())).trim()
-  if (!message) fail('reply needs a message — pass --message "<text>" or pipe it on stdin')
+  if (!message) fail('reply needs a message: pass --message "<text>" or pipe it on stdin')
   const port = await requireServer()
   const { status, body } = await postJson(
     port,
@@ -469,10 +581,10 @@ if (command.kind === 'reply') {
 
 if (command.kind === 'comment') {
   if (command.message === null && process.stdin.isTTY) {
-    fail('comment needs a message — pass --message "<text>" or pipe it on stdin')
+    fail('comment needs a message: pass --message "<text>" or pipe it on stdin')
   }
   const message = (command.message ?? (await readStdin())).trim()
-  if (!message) fail('comment needs a message — pass --message "<text>" or pipe it on stdin')
+  if (!message) fail('comment needs a message: pass --message "<text>" or pipe it on stdin')
   const port = await requireServer()
   const { status, body } = await postJson(port, '/api/review/threads', {
     author: 'agent',
@@ -496,7 +608,7 @@ if (command.kind === 'comment') {
 if (command.kind === 'layers') {
   const { source } = command
   if (source.kind === 'stdin' && process.stdin.isTTY) {
-    fail('layers --stdin needs the JSON piped on stdin — or pass it with --json')
+    fail('layers --stdin needs the JSON piped on stdin, or pass it with --json')
   }
   const port = await requireServer()
   if (source.kind === 'suggest') {
@@ -522,7 +634,7 @@ if (command.kind === 'layers') {
   try {
     raw = JSON.parse(text)
   } catch (err) {
-    fail(`layers needs a JSON array of layers — ${(err as Error).message}`)
+    fail(`layers needs a JSON array of layers: ${(err as Error).message}`)
   }
   const parsed = parseLayersInput(raw)
   if (!parsed.ok) fail(`layers: ${parsed.error}`)
@@ -548,7 +660,7 @@ if (command.kind === 'end') {
   console.log(
     JSON.stringify(
       result?.ok === false
-        ? { ...result, next_step: 'nothing to do — you were not the attached agent' }
+        ? { ...result, next_step: 'nothing to do: you were not the attached agent' }
         : { ok: true, next_step: ACK_NEXT_STEP.end },
     ),
   )
@@ -566,19 +678,24 @@ if (!process.env.DIFFO_DAEMON) {
 }
 
 /** Agents read piped stdout; a human's terminal never shows these lines. */
-async function printAgentNextStep(port: number): Promise<void> {
+async function printAgentNextStep(port: number, pr?: PrInfo): Promise<void> {
   if (process.stdout.isTTY) return
   // A courtesy that must not block the open: if the review can't be read, the
   // nudge is simply skipped and the base next-step still prints.
   const review = await fetchReviewState(port)
-  const nudge = review ? guideNudge(findGuideThread(review) !== undefined) : null
+  const D = doctrineFor(pr ? { pr } : null)
+  if (pr) console.log(`note: ${prOpenNote(repoPath, pr)}`)
+  const nudge = review ? guideNudge(findGuideThread(review) !== undefined, D) : null
   if (nudge) console.log(`first: ${nudge}`)
-  const layers = review ? layersNudge(review) : null
+  const layers = review ? layersNudge(review, D) : null
   if (layers) console.log(`also: ${layers}`)
   console.log(
-    `next: run \`${CLI_COMMANDS.firstPoll}\` to receive the reviewer's feedback — the ` +
-      `title is ${TAB_TITLE.what} (${TAB_TITLE.examples}): ${TAB_TITLE.why} ` +
-      '(`diffo help agent` prints the whole loop)',
+    pr
+      ? `next: run \`${CLI_COMMANDS.poll}\` to receive the reviewer's private questions; ` +
+          'the pull request already names their tab (`diffo help agent` prints the whole loop)'
+      : `next: run \`${CLI_COMMANDS.firstPoll}\` to receive the reviewer's feedback; the ` +
+          `title is ${TAB_TITLE.what} (${TAB_TITLE.examples}): ${TAB_TITLE.why} ` +
+          '(`diffo help agent` prints the whole loop)',
   )
 }
 
@@ -600,7 +717,7 @@ function rebuildDevClient(foreground: boolean): void {
   } catch {
     // no stamp yet — build below
   }
-  process.stderr.write(`diffo: dev checkout changed — rebuilding the client bundle\n`)
+  process.stderr.write(`diffo: dev checkout changed, rebuilding the client bundle\n`)
   const vite = join(
     CHECKOUT_ROOT,
     'node_modules',
@@ -610,9 +727,84 @@ function rebuildDevClient(foreground: boolean): void {
   const built = spawnSync(vite, ['build'], { cwd: CHECKOUT_ROOT, encoding: 'utf-8' })
   if (built.status !== 0) {
     const said = (built.stderr || built.stdout || String(built.error ?? '')).trim()
-    fail(`the client rebuild failed — fix the build, then re-run\n${said.slice(-2000)}`)
+    fail(`the client rebuild failed. Fix the build, then re-run\n${said.slice(-2000)}`)
   }
   writeFileSync(stampFile, `${SRC_STAMP}\n`)
+}
+
+/**
+ * A pull-request target. Everything the plan calls "the inversion" happens in
+ * these lines: the code is fetched into a worktree diffo owns, the review runs
+ * there as an ordinary branch review, and the forge rides along so the server
+ * can pull the conversation and post the reviewer's comments.
+ */
+async function openPullRequest(
+  ref: PrRef,
+  baseOverride: string | undefined,
+): Promise<{ prepared: PreparedWorktree; pr: PrInfo; context: PrContext }> {
+  const forge = new GhClient()
+  const auth = await forge.authStatus(ref.host)
+  if (!auth.ok) fail(auth.message)
+  let pr: PrInfo
+  try {
+    pr = await forge.getPr(ref)
+  } catch (err) {
+    fail(
+      `could not read pull request #${ref.number} from ${ref.host}/${ref.owner}/${ref.repo}: ${(err as Error).message}`,
+    )
+  }
+  if (pr.state !== 'open') {
+    process.stderr.write(
+      `diffo: pull request #${pr.number} is ${pr.state}, opening it read-mostly\n`,
+    )
+  }
+  const mainRepo = mainRepoOf(repoPath)
+  const db = new DiffoDb()
+  let prepared: PreparedWorktree
+  try {
+    // Reap what is over before making room for what is next — never the one
+    // being opened: the daemon runs this same path from inside it.
+    const own = worktreePathFor(mainRepo, ref.number)
+    for (const entry of sweepWorktrees(db, mainRepo, { except: own })) {
+      if (entry.outcome === 'removed') {
+        process.stderr.write(
+          `diffo: removed the worktree for ${entry.record.prKey} (${entry.reason})\n`,
+        )
+      }
+    }
+    prepared = prepareWorktree(mainRepo, ref, baseOverride ?? pr.base.ref, db)
+  } catch (err) {
+    fail(`could not check the pull request out: ${(err as Error).message}`)
+  } finally {
+    db.close()
+  }
+  if (prepared.keptDirty) {
+    process.stderr.write(
+      `diffo: the worktree at ${prepared.path} has uncommitted changes; left at its current head, not ${prepared.headSha.slice(0, 7)}\n`,
+    )
+  }
+  process.stderr.write(
+    `diffo: pull request #${pr.number} "${pr.title}" by @${pr.author.login}, ${prepared.created ? 'checked out at' : 'worktree at'} ${prepared.path}\n`,
+  )
+  return { prepared, pr, context: { ref, forge, mainRepo } }
+}
+
+// What the server watches. A branch target is a spec; a pull-request target is
+// resolved here, and the spec becomes the worktree's branch review.
+let spec: CliSpec = command.spec
+let prOpen: Awaited<ReturnType<typeof openPullRequest>> | null = null
+if (command.target !== undefined) {
+  const parsed = parseTarget(command.target, getRemoteUrl(repoPath))
+  if (!parsed.ok) fail(parsed.error)
+  if (parsed.target.kind === 'pr') {
+    prOpen = await openPullRequest(
+      parsed.target.ref,
+      command.spec.kind === 'branch' ? command.spec.base.replace(/^origin\//, '') : undefined,
+    )
+    root = prOpen.prepared.path
+    repoPath = resolve(root)
+    spec = { kind: 'branch', base: prOpen.prepared.base }
+  }
 }
 
 rebuildDevClient(command.foreground)
@@ -629,10 +821,12 @@ const takeOverPort =
 
 if (existing !== null && takeOverPort === null) {
   const url = reviewUrl(existing.port)
-  console.log(`diffo is already watching this repo`)
-  await warnSpecMismatch(existing.port, command.spec)
+  console.log(
+    prOpen ? 'diffo is already watching this pull request' : 'diffo is already watching this repo',
+  )
+  await warnSpecMismatch(existing.port, spec)
   console.log(`→ ${url}`)
-  await printAgentNextStep(existing.port)
+  await printAgentNextStep(existing.port, prOpen?.pr)
   process.exit(0)
 }
 
@@ -645,14 +839,14 @@ if (existing !== null && takeOverPort !== null) {
     const code = (err as NodeJS.ErrnoException).code
     fail(
       code === 'EADDRINUSE'
-        ? `port ${takeOverPort} is already in use, so there is nothing to take over to — ` +
+        ? `port ${takeOverPort} is already in use, so there is nothing to take over to; ` +
             `the server on port ${existing.port} is untouched and still watching this repo`
         : `cannot listen on port ${takeOverPort} (${code ?? (err as Error).message})`,
     )
   }
   console.error(`diffo: taking this repo over from the server on port ${existing.port}`)
   if (!(await retireServer(existing.port, existing.pid, existing.pid))) {
-    fail(`the server on port ${existing.port} would not step aside — stop it, then re-run`)
+    fail(`the server on port ${existing.port} would not step aside; stop it, then re-run`)
   }
   const db = new DiffoDb()
   db.removeServer(repoPath, existing.port)
@@ -662,13 +856,14 @@ if (existing !== null && takeOverPort !== null) {
 if (!command.foreground) {
   const daemonPort = await requireServer(
     command.port,
-    command.spec.kind === 'branch' ? command.spec.base : undefined,
+    spec.kind === 'branch' ? spec.base : undefined,
     SRC_STAMP,
+    prOpen ? command.target : undefined,
   )
   const url = reviewUrl(daemonPort)
   await printChangesetSummary(daemonPort)
   console.log(`→ ${url}`)
-  await printAgentNextStep(daemonPort)
+  await printAgentNextStep(daemonPort, prOpen?.pr)
   if (command.open) openBrowser(url)
   process.exit(0)
 }
@@ -681,7 +876,7 @@ try {
   if (command.port === undefined) fail(`no free port available (${code ?? (err as Error).message})`)
   fail(
     code === 'EADDRINUSE'
-      ? `port ${command.port} is already in use — omit --port to take any free one`
+      ? `port ${command.port} is already in use; omit --port to take any free one`
       : `cannot listen on port ${command.port} (${code ?? (err as Error).message})`,
   )
 }
@@ -696,7 +891,13 @@ const clientDir =
 
 let started: ReturnType<typeof startServer>
 try {
-  started = startServer({ port, clientDir, root, spec: command.spec })
+  started = startServer({
+    port,
+    clientDir,
+    root,
+    spec,
+    ...(prOpen ? { pr: { ...prOpen.context, info: prOpen.pr } } : {}),
+  })
 } catch (err) {
   if (err instanceof MissingBaseError) {
     console.error(`diffo: base branch '${err.base}' doesn't exist in this repo`)
@@ -713,17 +914,17 @@ try {
 const changeset = started.store.get()
 const { stats, repo } = changeset
 const url = reviewUrl(port)
-const label = specLabel(command.spec)
+const label = prOpen ? `pull request #${prOpen.pr.number} "${prOpen.pr.title}"` : specLabel(spec)
 
 console.log(`diffo · ${repo.name}${repo.branch ? ` (${repo.branch})` : ''}`)
 if (stats.files === 0) {
-  console.log(`watching ${label} · working tree is clean — nothing to review yet`)
+  console.log(`watching ${label} · working tree is clean, nothing to review yet`)
 } else {
   console.log(
     `watching ${label} · ${stats.files} ${stats.files === 1 ? 'file' : 'files'} · +${stats.additions} −${stats.deletions}`,
   )
 }
-printBaseHint(command.spec, stats.files)
+if (!prOpen) printBaseHint(spec, stats.files)
 console.log(`→ ${url}`)
 
 if (command.open) openBrowser(url)

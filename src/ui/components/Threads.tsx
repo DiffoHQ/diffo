@@ -1,6 +1,9 @@
-import { Fragment, useEffect, useRef, useState } from 'react'
+import { Fragment, type ReactNode, useEffect, useRef, useState } from 'react'
 import {
+  type Audience,
+  type Author,
   anchorSpan,
+  isPublic,
   type ReviewMessage,
   type ReviewThread,
   seenByAgent,
@@ -11,7 +14,8 @@ import {
 } from '../../shared/review.js'
 import { linkPaths, type RefLinks, refClickTarget } from '../layers.js'
 import { timeAgo } from '../markdown.js'
-import { isUnsent, TURN_LABEL } from '../threads.js'
+import { usePr } from '../prMode.js'
+import { firstLine, isUnsent, TURN_LABEL } from '../threads.js'
 import { Avatar, CommentBox } from './CommentBox.js'
 import { Icon } from './Icon.js'
 import { Markdown } from './Markdown.js'
@@ -21,6 +25,7 @@ export interface ReviewActions {
     anchor: import('../../shared/review.js').Anchor,
     text: string,
     intent?: import('../../shared/review.js').ThreadIntent,
+    options?: { audience?: Audience; parentId?: string },
   ) => Promise<ReviewThread>
   reply: (threadId: string, text: string, deliver?: boolean) => Promise<unknown>
   /** Rewrite one of the reviewer's own messages; see `ReviewStore.editMessage`. */
@@ -80,12 +85,12 @@ function PendingReply({
   since?: string
 }) {
   const when = unanswered
-    ? 'no answer — the agent moved on'
+    ? 'no answer, the agent moved on'
     : working
       ? `with the agent${since ? ` · ${timeAgo(since)}` : ''}`
       : followUp
         ? `follow-up on the way${since ? ` · ${timeAgo(since)}` : ''}`
-        : `queued — ${formatQueuePlace(place ?? 1)}`
+        : `queued, ${formatQueuePlace(place ?? 1)}`
   return (
     <div
       className={`cmt thread-message thread-message-agent thread-message-pending${
@@ -149,9 +154,30 @@ function ThreadContext({ code }: { code: string }) {
 }
 
 /** The byline verb: an agent's opening message isn't a reply to anything. */
-function verbFor(author: 'reviewer' | 'agent', index: number): string {
+function verbFor(author: Author, index: number): string {
   if (author === 'reviewer') return 'commented'
   return index === 0 ? 'commented' : 'replied'
+}
+
+const REVIEW_STATE_LABEL = {
+  APPROVED: 'approved',
+  CHANGES_REQUESTED: 'requested changes',
+  COMMENTED: 'reviewed',
+  DISMISSED: 'dismissed',
+} as const
+
+/**
+ * The words an agent reply hands to "Post as PR comment": its ```suggestion
+ * block when it wrote one (GitHub renders that as an applicable change), else
+ * the reply itself; the reviewer's own last words when the agent never spoke.
+ */
+export function promotionText(thread: ReviewThread): string {
+  const agent = [...thread.messages].reverse().find((m) => m.author === 'agent')
+  if (agent) {
+    const block = /```suggestion\n[\s\S]*?```/.exec(agent.text)
+    return block ? block[0] : agent.text
+  }
+  return [...thread.messages].reverse().find((m) => m.author === 'reviewer')?.text ?? ''
 }
 
 function submitOnCmdEnter(e: React.KeyboardEvent, submit: () => void) {
@@ -196,6 +222,7 @@ export function ThreadCard({
   queuePosition,
   gone = false,
   links,
+  asides,
 }: {
   thread: ReviewThread
   actions: ReviewActions
@@ -206,7 +233,18 @@ export function ThreadCard({
   gone?: boolean
   /** File references in the messages become jumps into the review. */
   links?: RefLinks
+  /** Private asides under a public thread, already rendered. */
+  asides?: ReactNode
 }) {
+  // On a pull request every thread has a side. A public one is a review
+  // comment for GitHub — drafted here, posted on Finish; a private one is
+  // today's thread with the agent. Off a PR `pr` is null and none of this shows.
+  const pr = usePr()
+  const publicThread = isPublic(thread)
+  const gh = thread.github
+  const draft = publicThread && thread.state === 'open' && gh === undefined
+  const imported = gh !== undefined && thread.id.startsWith('gh:')
+  const [promote, setPromote] = useState<string | null>(null)
   const [reply, setReply] = useState('')
   const [copied, setCopied] = useState(false)
   // The prompt to show when the clipboard refuses — copying is the whole point of
@@ -246,8 +284,12 @@ export function ThreadCard({
   // Save does what Reply does and the thread waits in the queue.
   const editDispatches =
     editSeen && agentConnected && (thread.state === 'sent' || thread.state === 'addressed')
+  // A message already on GitHub is edited there, not here (see the server's guard).
   const canEdit = (m: ReviewMessage) =>
-    actions.edit !== undefined && m.author === 'reviewer' && thread.state !== 'resolved'
+    actions.edit !== undefined &&
+    m.author === 'reviewer' &&
+    thread.state !== 'resolved' &&
+    m.github === undefined
   const startEdit = (m: ReviewMessage) => {
     setEditError(null)
     setEditing({ id: m.id, draft: m.text })
@@ -295,15 +337,24 @@ export function ThreadCard({
   const withheld = thread.withheld === true
   const unsent = isUnsent(thread)
   const awaitingAgent =
+    !publicThread &&
     !withheld &&
     lastAuthor === 'reviewer' &&
     (thread.state === 'sent' || thread.state === 'addressed')
   const showManualHint = thread.state === 'sent' && awaitingAgent && !agentConnected
+  const unpostedReplies =
+    publicThread && gh
+      ? thread.messages.filter((m) => m.author === 'reviewer' && m.github === undefined).length
+      : 0
   const proposed = untouchedAgentVoice(thread) && thread.state === 'open'
   // Replying to the agent's own comment hands it over too — the server sends
   // the thread on that reply — so the composer offers the one-click primary.
+  // A reply on a public thread is a GitHub reply, posted when the review is
+  // submitted; it never dispatches to the agent, whatever the thread's state.
   const replyDispatches =
-    agentConnected && (thread.state === 'sent' || thread.state === 'addressed' || proposed)
+    !publicThread &&
+    agentConnected &&
+    (thread.state === 'sent' || thread.state === 'addressed' || proposed)
   const composerOpen = replyOpen || reply.trim() !== ''
   // The composer takes the stub's slot in the foot, so writing a reply adds one
   // button to the row it already had rather than a second band of its own.
@@ -337,15 +388,42 @@ export function ThreadCard({
     !e.ctrlKey &&
     !e.altKey
 
-  const status = proposed
-    ? 'From the agent'
-    : withheld
-      ? TURN_LABEL.note
-      : thread.state === 'addressed' && thread.intent === 'fix'
-        ? 'Addressed'
-        : STATE_LABEL[thread.state]
-  const tone: string = proposed || withheld ? 'attn' : STATE_TONE[thread.state]
+  const status = publicThread
+    ? draft
+      ? 'Draft'
+      : thread.state === 'resolved'
+        ? 'Resolved'
+        : 'On GitHub'
+    : proposed
+      ? 'From the agent'
+      : withheld
+        ? TURN_LABEL.note
+        : thread.state === 'addressed' && thread.intent === 'fix'
+          ? 'Addressed'
+          : STATE_LABEL[thread.state]
+  const tone: string = publicThread
+    ? draft
+      ? 'attn'
+      : thread.state === 'resolved'
+        ? 'mute'
+        : 'pr'
+    : proposed || withheld
+      ? 'attn'
+      : STATE_TONE[thread.state]
 
+  // A resolve or reopen queued for the submit: on the open card's marks, and on
+  // the collapsed resolved line too, or a queued resolve reads as one already
+  // on GitHub.
+  const queuedMarks = (
+    <>
+      {thread.queued?.resolve && (
+        <span className="thread-badge thread-badge-pr">resolves when you submit</span>
+      )}
+      {thread.queued?.unresolve && (
+        <span className="thread-badge thread-badge-pr">reopens when you submit</span>
+      )}
+    </>
+  )
   // State and badges ride the first byline rather than a banded header row of their
   // own: on a two-line thread that band was taller than the comment it labelled.
   const marks = (
@@ -356,12 +434,41 @@ export function ThreadCard({
         </span>
       )}
       {thread.closingNote && <span className="thread-badge">closing note</span>}
+      {gh?.reviewState && (
+        <span className={`thread-badge thread-badge-${gh.reviewState.toLowerCase()}`}>
+          {REVIEW_STATE_LABEL[gh.reviewState]}
+        </span>
+      )}
+      {gh?.outdated && (
+        <span className="thread-badge" title="the commented line is no longer in the diff">
+          outdated
+        </span>
+      )}
+      {draft && <span className="thread-badge thread-badge-pr">posts when you submit</span>}
+      {unpostedReplies > 0 && (
+        <span className="thread-badge thread-badge-pr">
+          {unpostedReplies === 1 ? 'reply posts' : `${unpostedReplies} replies post`} when you
+          submit
+        </span>
+      )}
+      {queuedMarks}
+      {gh?.url && (
+        <a
+          className="thread-badge thread-badge-link"
+          href={gh.url}
+          target="_blank"
+          rel="noreferrer"
+          title="open on GitHub"
+        >
+          <Icon name="link" size="sm" /> GitHub
+        </a>
+      )}
       {thread.codeChanged && (
         <span className="thread-badge">
           <Icon name="alert" size="sm" /> code changed since this comment
         </span>
       )}
-      {copied && <span className="thread-badge">prompt copied — paste it to your agent</span>}
+      {copied && <span className="thread-badge">prompt copied, paste it to your agent</span>}
       <span className={`chip chip-${tone}`}>{status}</span>
     </span>
   )
@@ -370,7 +477,7 @@ export function ThreadCard({
   // under the interim answer instead of handing the turn back.
   const followUp = thread.awaitingFollowUp === true
   const pendingReply =
-    working || queuePosition !== undefined || thread.unanswered || followUp ? (
+    !publicThread && (working || queuePosition !== undefined || thread.unanswered || followUp) ? (
       <PendingReply
         working={working}
         place={queuePosition}
@@ -401,15 +508,59 @@ export function ThreadCard({
       >
         Reopen
       </button>
+    ) : draft && actions.remove ? (
+      <button
+        type="button"
+        className="btn btn-ghost btn-sm"
+        title="drop this draft; nothing was posted"
+        onClick={() => void actions.remove!(thread.id)}
+      >
+        Discard draft
+      </button>
     ) : (
       <button
         type="button"
         className="btn btn-ghost btn-sm"
+        title={
+          gh ? 'resolve on GitHub when you submit; until then it is only marked here' : undefined
+        }
         onClick={() => void actions.resolve(thread.id)}
       >
         Resolve
       </button>
     )
+
+  // Private → public only: the agent's words (its suggestion block, when it
+  // wrote one) become an editable draft on the same anchor; nothing of the
+  // agent's reaches GitHub on its own. A public card offers no way to the
+  // agent: its row is GitHub's, and a private question about the same lines
+  // starts from the composer's Ask agent side.
+  const promoteButton = pr && !publicThread && thread.messages.length > 0 && (
+    <button
+      type="button"
+      className="btn btn-ghost btn-sm thread-promote"
+      title="turn this into a review comment for GitHub; you edit it before it joins the review"
+      onClick={() => setPromote(promotionText(thread))}
+    >
+      <Icon name="globe" size="sm" /> Post as PR comment
+    </button>
+  )
+  const promoteComposer = promote !== null && (
+    <div className="thread-aside-compose">
+      <CommentBox
+        title="Comment on PR"
+        placeholder="The review comment as GitHub will show it…"
+        fixedAudience="pr"
+        initialText={promote}
+        agentConnected={agentConnected}
+        onSubmit={(text) => {
+          void actions.create(thread.anchor, text, undefined, { audience: 'pr' })
+          setPromote(null)
+        }}
+        onCancel={() => setPromote(null)}
+      />
+    </div>
+  )
 
   const copyPromptButton = showManualHint && (
     <button type="button" className="btn btn-ghost btn-sm" onClick={doSend}>
@@ -441,7 +592,8 @@ export function ThreadCard({
       Reopen
     </button>
   )
-  const deleteButton = actions.remove && (
+  // A thread GitHub owns comes back on the next pull; deleting it here is noise.
+  const deleteButton = actions.remove && !imported && (
     <button
       type="button"
       className="btn btn-ghost btn-icon btn-sm btn-ghost-danger"
@@ -471,7 +623,8 @@ export function ThreadCard({
           title="expand this resolved thread"
         >
           <span className="chip chip-mute">Resolved</span>
-          <span className="thread-collapsed-text">{first?.text ?? ''}</span>
+          {queuedMarks}
+          <span className="thread-collapsed-text">{firstLine(first?.text ?? '')}</span>
           <span className="thread-collapsed-count">
             {thread.messages.length > 1 ? `${thread.messages.length} messages` : ''}
           </span>
@@ -489,7 +642,9 @@ export function ThreadCard({
     // biome-ignore lint/a11y/noStaticElementInteractions: the handler only contains a mouse click
     // biome-ignore lint/a11y/useKeyWithClickEvents: the handler only contains a mouse click
     <div
-      className={`thread conv thread-${thread.state}`}
+      className={`thread conv thread-${thread.state}${
+        publicThread ? ' thread-public' : pr ? ' thread-private' : ''
+      }${thread.parentId ? ' thread-aside' : ''}`}
       data-thread-id={thread.id}
       ref={card}
       onClick={(e) => e.stopPropagation()}
@@ -505,9 +660,28 @@ export function ThreadCard({
         >
           <Icon name="chev" size="sm" />
         </button>
+        {pr && (
+          <span
+            className={`thread-side thread-side-${publicThread ? 'pr' : 'agent'}`}
+            title={
+              publicThread
+                ? 'a review comment: on GitHub, or headed there when you submit'
+                : 'private: between you and your agent, never leaves this machine'
+            }
+          >
+            <Icon name={publicThread ? 'globe' : 'lock'} size="sm" />
+            {publicThread ? 'PR comment' : 'Private'}
+          </span>
+        )}
         <span
           className={`thread-where${gone ? ' thread-where-gone' : ''}`}
-          title={gone ? 'this file is no longer in the changeset' : undefined}
+          title={
+            gone
+              ? gh?.outdated
+                ? 'outdated on GitHub: the line left the diff'
+                : 'this file is no longer in the changeset'
+              : undefined
+          }
         >
           {anchorLabel(thread, gone)}
         </span>
@@ -519,21 +693,21 @@ export function ThreadCard({
       </div>
       {shut ? (
         <button type="button" className="thread-shut-peek" onClick={() => setShut(false)}>
-          {thread.messages[0]?.text ?? ''}
+          {firstLine(thread.messages[0]?.text ?? '')}
         </button>
       ) : (
         <>
           {showContext && thread.codeContext && <ThreadContext code={thread.codeContext} />}
           {showManualHint && (
             <div className="thread-hint">
-              waiting on your agent — paste the copied prompt into it; replies land here live
+              waiting on your agent: paste the copied prompt into it; replies land here live
             </div>
           )}
           {withheld && (
             <div className="thread-hint">
               {gone
-                ? 'your reply is held here — Send hands it over; Finish review will not, since this file has left the changeset'
-                : 'your reply is held here — Send hands it over now, or Finish review takes it with the batch'}
+                ? 'your reply is held here: Send hands it over; Finish review will not, since this file has left the changeset'
+                : 'your reply is held here: Send hands it over now, or Finish review takes it with the batch'}
             </div>
           )}
           <div className="thread-messages">
@@ -546,15 +720,30 @@ export function ThreadCard({
                   }${editIndex !== -1 && i > editIndex ? ' thread-message-cut' : ''}`}
                 >
                   <div className="cmt-head">
-                    <Avatar who={m.author === 'reviewer' ? 'you' : 'agent'} />
+                    <Avatar
+                      who={
+                        m.author === 'reviewer' ? 'you' : m.author === 'agent' ? 'agent' : 'github'
+                      }
+                      user={m.github?.user}
+                    />
                     <span className={`cmt-who cmt-who-${m.author}`}>
-                      {m.author === 'reviewer' ? 'You' : 'Agent'}
+                      {m.author === 'reviewer'
+                        ? 'You'
+                        : m.author === 'agent'
+                          ? 'Agent'
+                          : (m.github?.user.login ?? 'GitHub')}
                     </span>
                     <span className="cmt-when">
                       {m.author === 'agent' && m.durationMs !== undefined
                         ? `answered in ${formatAgentDuration(m.durationMs)}`
                         : `${verbFor(m.author, i)} ${timeAgo(m.at)}`}
                       {m.editedAt && ' · edited'}
+                      {m.author === 'github' && ' · on GitHub'}
+                      {m.author === 'reviewer' && publicThread && m.github && ' · on GitHub'}
+                      {m.author === 'reviewer' &&
+                        publicThread &&
+                        !m.github &&
+                        (draft ? ' · draft' : ' · posts when you submit')}
                     </span>
                     {canEdit(m) && editing?.id !== m.id && (
                       <button
@@ -664,15 +853,17 @@ export function ThreadCard({
             ))}
             {pendingAt >= thread.messages.length && pending}
           </div>
+          {asides && <div className="thread-asides">{asides}</div>}
+          {promoteComposer}
           {actionFailed && (
             <div className="thread-hint thread-hint-error">
-              couldn't reach the diffo server — your text is still here; try again
+              couldn't reach the diffo server; your text is still here, try again
             </div>
           )}
           {manual && (
             <>
               <div className="thread-hint thread-hint-error">
-                couldn't reach the clipboard — this browser blocked it. The thread is marked sent;
+                couldn't reach the clipboard; this browser blocked it. The thread is marked sent;
                 select the prompt below and copy it by hand.
               </div>
               <pre className="invite-prompt">{manual}</pre>
@@ -711,7 +902,7 @@ export function ThreadCard({
               className="thread-reply-stub replybar"
               onClick={() => setReplyOpen(true)}
             >
-              Reply…
+              {publicThread ? 'Reply on GitHub…' : 'Reply…'}
             </button>
           )}
           {writing && (
@@ -729,7 +920,13 @@ export function ThreadCard({
                 className={`thread-input${ghost ? ' thread-input-ghost' : ''}`}
                 // The placeholder IS the ghost text: it wraps and sits exactly
                 // where the typed reply will, for free.
-                placeholder={ghost ? offered : 'reply…'}
+                placeholder={
+                  ghost
+                    ? offered
+                    : publicThread
+                      ? 'reply on GitHub, posts when you submit…'
+                      : 'reply…'
+                }
                 aria-description={
                   ghost ? 'the agent offered this reply; press Tab to take it' : undefined
                 }
@@ -769,7 +966,9 @@ export function ThreadCard({
               title={
                 replyDispatches
                   ? 'reply and hand it to your agent in one go'
-                  : 'write it into the thread'
+                  : publicThread
+                    ? 'reply on GitHub; it posts when you submit the review'
+                    : 'write it into the thread'
               }
             >
               {replyDispatches ? (
@@ -789,8 +988,8 @@ export function ThreadCard({
               onClick={() => doReply(false)}
               title={
                 gone
-                  ? 'write it into the thread without handing it over — Send takes it; the finish batch will not'
-                  : 'write it into the thread without handing it over — Send or Finish takes it'
+                  ? 'write it into the thread without handing it over: Send takes it; the finish batch will not'
+                  : 'write it into the thread without handing it over: Send or Finish takes it'
               }
             >
               Reply
@@ -798,6 +997,7 @@ export function ThreadCard({
           )}
           {sendButton}
           {copyPromptButton}
+          {promoteButton}
           {resolveButton}
           {thread.state === 'resolved' && (
             <button
@@ -822,7 +1022,19 @@ export function ThreadCard({
  * their author instead of "Comment" — the head is where the voice is declared. */
 function anchorLabel(thread: ReviewThread, gone = false): string {
   const anchor = thread.anchor
-  const word = startedByAgent(thread) ? 'Agent comment' : 'Comment'
+  const gh = thread.github
+  if (gh?.kind === 'description') return 'Pull request description'
+  if (gh?.kind === 'review') return 'Review on the pull request'
+  if (gh?.kind === 'comment' || (isPublic(thread) && anchor.kind === 'changeset')) {
+    return 'Comment on the pull request'
+  }
+  const word = startedByAgent(thread)
+    ? 'Agent comment'
+    : thread.messages[0]?.author === 'github'
+      ? `${thread.messages[0].github?.user.login ?? 'GitHub'}'s comment`
+      : isPublic(thread)
+        ? 'Review comment'
+        : 'Comment'
   if (anchor.kind === 'changeset') {
     return startedByAgent(thread) ? `${word} on the changeset` : 'Note on the changeset'
   }
@@ -853,21 +1065,42 @@ export function ThreadList({
   links?: RefLinks
 }) {
   if (threads.length === 0) return null
+  // A private aside renders inside its public parent, not beside it. An aside
+  // whose parent is elsewhere (a re-anchored parent) stands on its own.
+  const ids = new Set(threads.map((t) => t.id))
+  const asidesOf = new Map<string, ReviewThread[]>()
+  for (const t of threads) {
+    if (t.parentId && ids.has(t.parentId)) {
+      const list = asidesOf.get(t.parentId)
+      if (list) list.push(t)
+      else asidesOf.set(t.parentId, [t])
+    }
+  }
+  const card = (t: ReviewThread, asides?: ReactNode) => (
+    <ThreadCard
+      key={t.id}
+      thread={t}
+      actions={actions}
+      showContext={showContext}
+      agentConnected={agentConnected}
+      working={workingOn?.has(t.id) ?? false}
+      queuePosition={queuedOn?.get(t.id)}
+      gone={gone}
+      links={links}
+      asides={asides}
+    />
+  )
   return (
     <div className="thread-list">
-      {threads.map((t) => (
-        <ThreadCard
-          key={t.id}
-          thread={t}
-          actions={actions}
-          showContext={showContext}
-          agentConnected={agentConnected}
-          working={workingOn?.has(t.id) ?? false}
-          queuePosition={queuedOn?.get(t.id)}
-          gone={gone}
-          links={links}
-        />
-      ))}
+      {threads
+        .filter((t) => !(t.parentId && ids.has(t.parentId)))
+        .map((t) => {
+          const nested = asidesOf.get(t.id)
+          return card(
+            t,
+            nested?.map((a) => card(a)),
+          )
+        })}
     </div>
   )
 }

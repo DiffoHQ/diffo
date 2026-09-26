@@ -142,7 +142,7 @@ export function FileRow({
       <button
         type="button"
         className="row-pick"
-        title={`${file.path} · ${STATUS_WORD[file.status]}${done ? ' · read' : ''}${stat}${note ? ` — ${note}` : ''}`}
+        title={`${file.path} · ${STATUS_WORD[file.status]}${done ? ' · read' : ''}${stat}${note ? `, ${note}` : ''}`}
         onClick={() => {
           if (onPick) return onPick()
           const node = document.getElementById(fileAnchor(file.path))

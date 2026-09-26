@@ -7,6 +7,7 @@ teaches your agent everything on this page.
 
 ```bash
 diffo [options]           # open (or resume) the review for this repo
+diffo <target> [options]  # review against a branch, or review a pull request
 diffo <command> [...]     # manage the server, or talk to the review
 diffo help [command]      # help for one command
 ```
@@ -23,8 +24,11 @@ nothing.
 | Command | Side | What it does |
 | --- | --- | --- |
 | `diffo` | reviewer | Open (or resume) the review for this repo |
+| [`diffo <target>`](#opening-a-review) | reviewer | Review against a branch, or review a pull request |
+| [`diffo pr <ref>`](#opening-a-review) | reviewer | Review a pull request, spelled out: the same as `diffo <ref>` when the target is a PR |
 | [`diffo status`](#diffo-status) | reviewer | Is a server watching this repo, and where |
 | [`diffo stop`](#diffo-stop) | reviewer | Stop this repo's server |
+| [`diffo clean`](#diffo-clean) | reviewer | Remove the worktrees Diffo made for pull requests |
 | [`diffo setup`](#diffo-setup) | reviewer | Register Diffo with the coding agents on this machine |
 | [`diffo poll`](#diffo-poll) | agent | Wait for the reviewer's feedback |
 | [`diffo reply`](#diffo-reply-threadid) | agent | Reply to a thread |
@@ -32,12 +36,15 @@ nothing.
 | [`diffo layers`](#diffo-layers) | agent | Outline the changeset as steps to read in order |
 | [`diffo end`](#diffo-end) | agent | Detach from the review |
 | [`diffo help`](#help-and-version) | both | Help for the CLI, or for one command |
+| [`diffo help pr`](#help-and-version) | both | Help for reviewing a pull request: the spellings, the worktree, what `gh` needs |
 
 ## Opening a review
 
 ```bash
 diffo                     # the working tree vs HEAD
-diffo --base main         # everything since forking from main
+diffo main                # everything since forking from main (same as --base main)
+diffo https://github.com/acme/widgets/pull/482   # a pull request; also acme/widgets#482, #482, 482
+diffo pr 482              # the same, spelled out
 diffo --no-open -p 4949   # a fixed port, no browser
 ```
 
@@ -94,6 +101,22 @@ lingers, and clears its registration. Stopping nothing is still a success.
 
 The review itself survives: threads live in SQLite, and the next `diffo` picks
 them back up.
+
+### `diffo clean`
+
+```bash
+diffo clean            # remove worktrees whose review is over
+diffo clean --force    # the ones with uncommitted changes too
+diffo clean --all      # every worktree Diffo made
+```
+
+Lists every worktree Diffo made for a pull request and removes the ones whose
+review is over: the PR was merged or closed, the review was pruned, or the
+directory is gone. A worktree is kept and named when it has uncommitted
+changes, when its state could not be checked, or when a Diffo server is still
+reviewing in it; `--force` removes those too. A worktree git could not remove
+stays listed for the next run. See
+[Reviewing a pull request](/guide/pr-review#the-worktrees-life).
 
 ### `diffo setup`
 
@@ -251,6 +274,7 @@ nothing is touched and the output says so:
 | `diffo --help`, `-h` | The full usage page |
 | `diffo help <command>` | Help for one command, including its output shape |
 | `diffo help agent` | The agent's whole protocol on one page |
+| `diffo help pr` | Reviewing a pull request: the target spellings, the worktree, and what `gh` needs |
 | `diffo --version`, `-v` | Print the version |
 
 `-h` works after a command too: `diffo comment -h` is the same as

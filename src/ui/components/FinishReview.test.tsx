@@ -111,7 +111,7 @@ function show(
 describe('FinishReview — the outgoing batch', () => {
   it('names every comment that leaves the room, and which ones are new', async () => {
     show()
-    expect(await screen.findByText('— 2 new · 1 resent')).toBeTruthy()
+    expect(await screen.findByText('· 2 new · 1 resent')).toBeTruthy()
     expect(screen.getByText('Going out')).toBeTruthy()
     expect(screen.getByText('src/db.ts:214')).toBeTruthy()
     expect(screen.getByText('the whole changeset')).toBeTruthy()

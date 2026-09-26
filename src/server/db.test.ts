@@ -61,8 +61,100 @@ describe('retired tables', () => {
       'reviews',
       'servers',
       'ui_settings',
+      'worktrees',
     ])
     expect(second.getReview(scope)).toBe('{"kept":true}')
+  })
+})
+
+describe('sharing the file with another build', () => {
+  it('never lowers a newer file version, so its tables survive our open', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'diffo-db-'))
+    cleanups.push(() => rmSync(dir, { recursive: true, force: true }))
+    const path = join(dir, 'diffo.db')
+    const future = new DatabaseSync(path)
+    future.exec('CREATE TABLE later (id INTEGER PRIMARY KEY); PRAGMA user_version = 99;')
+    future.close()
+    new DiffoDb(path).close()
+    const inspect = new DatabaseSync(path)
+    const { user_version } = inspect.prepare('PRAGMA user_version').get() as {
+      user_version: number
+    }
+    const later = inspect.prepare("SELECT name FROM sqlite_master WHERE name = 'later'").get()
+    inspect.close()
+    expect(user_version).toBe(99)
+    expect(later).toBeTruthy()
+  })
+
+  it('keeps worktree rows when an older build wrote its lower version back', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'diffo-db-'))
+    cleanups.push(() => rmSync(dir, { recursive: true, force: true }))
+    const path = join(dir, 'diffo.db')
+    const first = new DiffoDb(path)
+    first.registerWorktree({
+      worktreePath: join(dir, 'wt'),
+      repoPath: dir,
+      prKey: 'github.com/acme/widgets#1',
+      branch: 'diffo/pr-1',
+      base: 'main',
+      createdAt: '2026-09-24T10:00:00Z',
+    })
+    first.close()
+    // What 0.5.0 does on every open, the table it never heard of untouched.
+    const older = new DatabaseSync(path)
+    older.exec('PRAGMA user_version = 2')
+    older.close()
+    const second = new DiffoDb(path)
+    cleanups.push(() => second.close())
+    expect(second.listWorktrees(dir).map((w) => w.prKey)).toEqual(['github.com/acme/widgets#1'])
+    const inspect = new DatabaseSync(path)
+    const { user_version } = inspect.prepare('PRAGMA user_version').get() as {
+      user_version: number
+    }
+    inspect.close()
+    expect(user_version).toBe(3)
+  })
+
+  it('rebuilds the worktrees table when a sibling build dropped it mid-run', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'diffo-db-'))
+    cleanups.push(() => rmSync(dir, { recursive: true, force: true }))
+    const path = join(dir, 'diffo.db')
+    const db = new DiffoDb(path)
+    cleanups.push(() => db.close())
+    const sibling = new DatabaseSync(path)
+    sibling.exec('DROP TABLE worktrees; PRAGMA user_version = 2;')
+    sibling.close()
+    expect(db.getWorktree('/gone')).toBeNull()
+    db.registerWorktree({
+      worktreePath: '/wt',
+      repoPath: '/repo',
+      prKey: 'github.com/acme/widgets#1',
+      branch: 'diffo/pr-1',
+      base: 'main',
+      createdAt: '2026-09-24T10:00:00Z',
+    })
+    expect(db.listWorktrees('/repo').map((w) => w.worktreePath)).toEqual(['/wt'])
+  })
+})
+
+describe('worktree rows', () => {
+  it('outlive their directory until the sweep has cleaned git, and go with the main repo', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'diffo-db-'))
+    cleanups.push(() => rmSync(dir, { recursive: true, force: true }))
+    const path = join(dir, 'diffo.db')
+    const first = new DiffoDb(path)
+    const row = {
+      prKey: 'github.com/acme/widgets#1',
+      branch: 'diffo/pr-1',
+      base: 'main',
+      createdAt: '2026-09-24T10:00:00Z',
+    }
+    first.registerWorktree({ ...row, worktreePath: join(dir, 'rm-rfd'), repoPath: dir })
+    first.registerWorktree({ ...row, worktreePath: join(dir, 'wt'), repoPath: join(dir, 'gone') })
+    first.close()
+    const second = new DiffoDb(path)
+    cleanups.push(() => second.close())
+    expect(second.listWorktrees().map((w) => w.worktreePath)).toEqual([join(dir, 'rm-rfd')])
   })
 })
 

@@ -5,10 +5,12 @@ import { serve } from '@hono/node-server'
 import { type Context, Hono } from 'hono'
 import { stream, streamSSE } from 'hono/streaming'
 import { SRC_STAMP } from '../devStamp.js'
+import type { ForgeClient, PrRef, ReviewEvent } from '../forge/types.js'
 import { parseLayersInput, parseSuggestReason } from '../shared/layers.js'
 import {
   type Anchor,
   type Coverage,
+  isPublic,
   normalizeTitle,
   type OutgoingThread,
   parseSuggestedReply,
@@ -21,7 +23,7 @@ import {
   undeliveredThreadIds,
   untouchedAgentVoice,
 } from '../shared/review.js'
-import type { ChangesetSpec } from '../shared/types.js'
+import type { ChangesetSpec, PrInfo } from '../shared/types.js'
 import { VERSION } from '../version.js'
 import { DiffoDb, type ServerRecord } from './db.js'
 import { DeliveryQueue, type Snapshot } from './delivery.js'
@@ -37,12 +39,22 @@ import {
 import { IdleMonitor, resolveIdleTimeoutMs } from './idle.js'
 import { maintainLanded } from './landed.js'
 import {
+  describeLeg,
+  type PublicLegOutcome,
+  planPublicLeg,
+  REVIEW_EVENTS,
+  runPublicLeg,
+} from './pr/finish.js'
+import { PrPuller } from './pr/puller.js'
+import { removeWorktree } from './pr/worktree.js'
+import {
   answeredByAgent,
   buildClearedPrompt,
   buildCoalescedPrompt,
   buildConnectAsk,
   buildFinishPrompt,
   buildLayersRequestPrompt,
+  buildSubmittedPrompt,
   buildThreadPrompt,
   captureAnchor,
   IS_DEV,
@@ -105,6 +117,20 @@ export interface ServerContext {
   onListenError?: (err: NodeJS.ErrnoException) => void
   idle?: IdleMonitor
   uiSettings?: UiSettings
+  /** Set when the server was opened on a pull request: the forge to talk to,
+   * which PR, and the user's checkout the worktree (`root`) hangs off. */
+  pr?: PrContext
+}
+
+export interface PrContext {
+  ref: PrRef
+  forge: ForgeClient
+  mainRepo: string
+  /** The pull request as the open read it, so the changeset carries it before
+   * the puller's first tick — a first tick that waits on the network. */
+  info?: PrInfo
+  /** Pull GitHub state now (tests, and the reviewer's refresh). */
+  refresh?: () => Promise<void>
 }
 
 export function createApp(
@@ -227,8 +253,14 @@ export function createApp(
 
   const deliverThreads = (threadIds: string[]): boolean => {
     if (!queue) return false
+    // A public thread is for GitHub, never the agent — whatever route asked.
+    const publicIds = new Set(
+      (review?.get().threads ?? []).filter((t) => isPublic(t)).map((t) => t.id),
+    )
+    const ids = threadIds.filter((id) => !publicIds.has(id))
+    if (ids.length === 0) return queue.hasListener()
     const live = queue.hasListener()
-    queue.enqueueThreads(threadIds)
+    queue.enqueueThreads(ids)
     return live
   }
 
@@ -269,21 +301,30 @@ export function createApp(
       const anchor = agentAnchor(file, line)
       const capture = store ? captureAnchor(store.get(), anchor) : null
       return c.json(
-        review.createThread(
-          anchor,
-          text,
-          capture,
-          undefined,
-          'agent',
-          parseSuggestedReply(body?.suggestedReply),
-        ),
+        review.createThread(anchor, text, capture, undefined, 'agent', {
+          suggestedReply: parseSuggestedReply(body?.suggestedReply),
+        }),
       )
     }
     const anchor = parseAnchor(body?.anchor)
     if (!anchor) return c.json({ error: 'need {anchor, text}' }, 400)
     const intent = THREAD_INTENTS.includes(body?.intent) ? (body.intent as ThreadIntent) : undefined
+    // Public drafts exist only on a pull request; without one the flag is a mistake.
+    const audience = body?.audience === 'pr' ? ('pr' as const) : undefined
+    if (audience && !ctx.pr) {
+      return c.json({ error: 'public comments need a pull request under review' }, 400)
+    }
+    const parentId =
+      typeof body?.parentId === 'string' && review.get().threads.some((t) => t.id === body.parentId)
+        ? (body.parentId as string)
+        : undefined
     const capture = store ? captureAnchor(store.get(), anchor) : null
-    return c.json(review.createThread(anchor, text, capture, intent))
+    return c.json(
+      review.createThread(anchor, text, capture, intent, 'reviewer', {
+        ...(audience ? { audience } : {}),
+        ...(parentId ? { parentId } : {}),
+      }),
+    )
   })
 
   // The agent's reading plan — `{ items }` replaces the whole list — or its flag
@@ -296,7 +337,7 @@ export function createApp(
       const suggested = review.suggestLayers(parseSuggestReason(body.reason))
       return c.json({
         suggested,
-        ...(suggested ? {} : { note: 'layers are already posted — nothing to suggest' }),
+        ...(suggested ? {} : { note: 'layers are already posted, nothing to suggest' }),
       })
     }
     const parsed = parseLayersInput(body?.items)
@@ -353,6 +394,13 @@ export function createApp(
       if (waitedMs !== null) review.annotateAgentReplies([thread.id], waitedMs)
       return c.json({ thread, delivered: false })
     }
+    const target = review.get().threads.find((t) => t.id === c.req.param('id'))
+    if (target && isPublic(target)) {
+      // A reply on a public thread is a draft reply for GitHub: it posts on
+      // Finish, and the agent never sees it. Nothing to hand over here.
+      const replied = review.addMessage(target.id, 'reviewer', text, false)
+      return c.json({ thread: replied, delivered: false, presence: queue?.presence() ?? 'waiting' })
+    }
     const deliver = body?.deliver !== false
     let thread = review.addMessage(c.req.param('id'), 'reviewer', text, !deliver)
     if (!thread) return c.json({ error: 'no such thread' }, 404)
@@ -394,6 +442,12 @@ export function createApp(
     if (current.messages[index]!.author !== 'reviewer') {
       return c.json({ error: 'only your own messages can be edited' }, 400)
     }
+    // A message GitHub already holds is edited there: rewriting it here would
+    // show words GitHub never saw, and cut the replies under it until the next
+    // import put them back. A draft, or a reply still owed, is only local.
+    if (current.messages[index]!.github !== undefined) {
+      return c.json({ error: 'this comment is on GitHub; edit it there' }, 409)
+    }
     if (current.state === 'resolved') {
       return c.json({ error: 'reopen the thread to edit it' }, 409)
     }
@@ -419,7 +473,18 @@ export function createApp(
     if (state !== 'open' && state !== 'resolved') {
       return c.json({ error: 'state must be "resolved" or "open" (reopen)' }, 400)
     }
-    const thread = review.setState(c.req.param('id'), state)
+    const id = c.req.param('id')
+    const current = review.get().threads.find((t) => t.id === id)
+    if (!current) return c.json({ error: 'no such thread' }, 404)
+    // An inline thread GitHub knows resolves there too — on Finish. Until then
+    // the change is local and queued; toggling back withdraws it. The other
+    // public kinds (the description, a review body, a conversation comment)
+    // have no resolution on GitHub: theirs is local only.
+    if (isPublic(current) && current.github?.kind === 'inline') {
+      const thread = review.queueResolve(id, state === 'resolved')
+      return thread ? c.json(thread) : c.json({ error: 'no such thread' }, 404)
+    }
+    const thread = review.setState(id, state)
     return thread ? c.json(thread) : c.json({ error: 'no such thread' }, 404)
   })
 
@@ -456,6 +521,13 @@ export function createApp(
 
   app.post('/api/review/threads/:id/send', (c) => {
     if (!review) return c.json({ error: 'review unavailable' }, 503)
+    const asked = review.get().threads.find((t) => t.id === c.req.param('id'))
+    if (asked && isPublic(asked)) {
+      return c.json(
+        { error: 'a public comment is for GitHub; it posts when you finish the review' },
+        400,
+      )
+    }
     const thread = review.send(c.req.param('id'))
     if (!thread) return c.json({ error: 'no such thread' }, 404)
     const prompt = buildThreadPrompt(thread, promptCtx(thread.id))
@@ -502,8 +574,12 @@ export function createApp(
     }
   }
 
+  // The threads Finish and the poll speak about: on the current changeset, and
+  // the agent's to hear. A public thread is a GitHub draft or a GitHub
+  // conversation — never the agent's, whatever route asks — and this is the one
+  // place that rule is applied on the way to a prompt.
   const activeThreads = (threads: ReviewThread[]): ReviewThread[] =>
-    threadsInChangeset(store?.get().files ?? [], threads).active
+    threadsInChangeset(store?.get().files ?? [], threads).active.filter((t) => !isPublic(t))
 
   // Finish speaks for the reviewer, so it must never flush a thread that is still
   // purely the agent's voice — those wait for a reply or a resolution.
@@ -573,6 +649,8 @@ export function createApp(
     const coverage = parseCoverage(body?.coverage)
     const before = review.get().threads
     const batch = projectClosingNote(activeThreads(projectFinish(before)), coverage)
+    const pr = store?.get().pr
+    const leg = ctx.pr ? planPublicLeg(before, store?.get().files ?? []) : null
     return c.json({
       outgoing: outgoing(batch, before),
       prompt: buildFinishPrompt(
@@ -580,6 +658,16 @@ export function createApp(
         { repo: repoInfo(), changeset: store?.get() ?? null },
         coverage,
       ),
+      ...(leg
+        ? {
+            public: {
+              ...describeLeg(leg),
+              canApprove: pr ? !pr.viewer.isAuthor : true,
+              pendingReview:
+                (review.get().pr?.pendingReviewId ?? pr?.viewer.pendingReviewId ?? null) !== null,
+            },
+          }
+        : {}),
     })
   })
 
@@ -588,8 +676,48 @@ export function createApp(
     const body = await c.req.json().catch(() => null)
     const coverage = parseCoverage(body?.coverage)
     const deliver = body?.deliver !== false
-    // Before the flush, so the note rides the batch it closes rather than the next one.
-    if (notable(coverage)) review.closingNote(coverage.note!)
+    // The GitHub leg runs first and alone decides whether anything public
+    // happens: an event names the submit, and the closing note is its body.
+    let publicOutcome: PublicLegOutcome | null = null
+    const event: ReviewEvent | null = REVIEW_EVENTS.includes(body?.event) ? body.event : null
+    if (ctx.pr && event !== null) {
+      const pr = store?.get().pr
+      if (!pr) return c.json({ error: 'the pull request has not loaded yet, try again' }, 503)
+      const leg = planPublicLeg(review.get().threads, store?.get().files ?? [])
+      publicOutcome = await runPublicLeg(
+        { forge: ctx.pr.forge, ref: ctx.pr.ref, review },
+        leg,
+        event,
+        coverage.note ?? '',
+      )
+      if (publicOutcome.submitted) {
+        queue?.enqueueSubmitted({
+          event,
+          comments: publicOutcome.posted,
+          body: coverage.note ?? '',
+          ...(publicOutcome.url ? { url: publicOutcome.url } : {}),
+        })
+        // Pull the conversation back so the submitted review shows in place.
+        void ctx.pr.refresh?.()
+      }
+      if (publicOutcome.failed) {
+        // Nothing of the agent's leg runs on a failed GitHub leg, half-posted
+        // or refused outright: the reviewer sees what did and did not post,
+        // fixes, and finishes again — and that retry is the one finish the
+        // agent hears about.
+        return c.json({
+          threads: review.get().threads,
+          prompt: '',
+          delivered: false,
+          presence: queue?.presence() ?? 'waiting',
+          public: publicOutcome,
+        })
+      }
+    }
+    // Before the flush, so the note rides the batch it closes rather than the next
+    // one. On a submitted PR review the note IS the review body: it comes back as
+    // an imported review thread, so a local copy would be a duplicate.
+    if (notable(coverage) && publicOutcome === null) review.closingNote(coverage.note!)
     const threads = review.finish(flushableIds(review.get().threads))
     const batch = activeThreads(threads)
     review.recordFinish(
@@ -613,6 +741,7 @@ export function createApp(
       prompt,
       delivered,
       presence,
+      ...(publicOutcome ? { public: publicOutcome } : {}),
     })
   })
 
@@ -639,6 +768,17 @@ export function createApp(
         kind: 'cleared' as const,
         threadIds: [] as string[],
         prompt: buildClearedPrompt({ repo: repoInfo(), changeset: store?.get() ?? null }),
+      }
+    }
+    if (snapshot.kind === 'submitted') {
+      return {
+        status: 'feedback' as const,
+        kind: 'submitted' as const,
+        threadIds: [] as string[],
+        prompt: buildSubmittedPrompt(
+          { repo: repoInfo(), changeset: store?.get() ?? null },
+          snapshot.submitted,
+        ),
       }
     }
     if (snapshot.kind === 'finish') {
@@ -683,7 +823,7 @@ export function createApp(
     // pages while `diffo poll` (which always sends it) is unaffected.
     if (!c.req.header('x-diffo-agent') && !c.req.header('x-diffo-session-pid')) {
       return c.json(
-        { error: 'agent polls must send the x-diffo-agent header — use `diffo poll`' },
+        { error: 'agent polls must send the x-diffo-agent header; use `diffo poll`' },
         403,
       )
     }
@@ -738,7 +878,7 @@ export function createApp(
               JSON.stringify({
                 status: 'timeout',
                 message:
-                  'no feedback within the poll window — nothing is lost; re-run `diffo poll` to keep listening',
+                  'no feedback within the poll window. Nothing is lost; re-run `diffo poll` to keep listening',
               }),
             )
             return
@@ -752,7 +892,7 @@ export function createApp(
               JSON.stringify({
                 status: 'superseded',
                 message:
-                  'another poll attached for this repo — this one is released. The newer poll ' +
+                  'another poll attached for this repo, so this one is released. The newer poll ' +
                   'carries the review now, so do nothing here and do not re-poll unless the user ' +
                   'asks. If that was not you, another agent session is on this repo: say so, so ' +
                   'the user knows where their feedback is going.',
@@ -765,7 +905,7 @@ export function createApp(
               JSON.stringify({
                 status: 'ended',
                 message:
-                  'the agent detached (`diffo end`) — do not re-poll unless asked; deliver anything remaining directly in the conversation',
+                  'the agent detached (`diffo end`). Do not re-poll unless asked; deliver anything remaining directly in the conversation',
               }),
             )
             return
@@ -805,7 +945,7 @@ export function createApp(
       reason: 'not-owner',
       ownerPid: queue.ownerPid(),
       message:
-        'this review belongs to another agent session — nothing was detached, and that ' +
+        'this review belongs to another agent session; nothing was detached, and that ' +
         "session's poll is untouched",
     })
   })
@@ -939,7 +1079,7 @@ export function createApp(
       const index = await readFile(resolve(ctx.clientDir, 'index.html'))
       return c.html(markDevIndex(index.toString(), IS_DEV))
     } catch {
-      return c.text('Client not built — run `pnpm build`', 404)
+      return c.text('Client not built; run `pnpm build`', 404)
     }
   }
 
@@ -1027,7 +1167,7 @@ export function startServer(options: ServerContext & { port: number }) {
     const took = Math.round((closed.closedAt - closed.deliveredAt) / 1000)
     log(
       `agent finished a batch of ${closed.threadIds.length} in ${took}s (${closed.reason})` +
-        (closed.unanswered.length > 0 ? ` — ${closed.unanswered.length} unanswered` : ''),
+        (closed.unanswered.length > 0 ? `, ${closed.unanswered.length} unanswered` : ''),
     )
   })
   const landedGit = {
@@ -1039,10 +1179,29 @@ export function startServer(options: ServerContext & { port: number }) {
   const checkLanded = (hasFiles: boolean, hunkIds: ReadonlySet<string>) => {
     if (maintainLanded(review, hasFiles, hunkIds, landedGit) === 'stamped') {
       const landed = review.get().landed
-      if (landed) log(`changeset landed in ${landed.sha.slice(0, 7)} — offering a fresh review`)
+      if (landed) log(`changeset landed in ${landed.sha.slice(0, 7)}, offering a fresh review`)
     }
   }
   const stopWatching = watchRepo(options.root, () => store.refresh())
+  // A pull request under review: the forge's pulse, and the refresh hook the
+  // routes call. Started after the listeners below, so its first import lands
+  // on a review that is already reconciling.
+  if (options.pr?.info) store.setPr(options.pr.info)
+  const puller = options.pr
+    ? new PrPuller({
+        forge: options.pr.forge,
+        ref: options.pr.ref,
+        mainRepo: options.pr.mainRepo,
+        worktree: options.root,
+        store,
+        review,
+        db,
+        log,
+      })
+    : null
+  const prContext: PrContext | undefined = options.pr
+    ? { ...options.pr, refresh: () => puller!.tick() }
+    : undefined
   const unsubscribeReconcile = store.subscribe((changeset) => {
     // A checkout under a running server is a change of work: swap to that branch's
     // review before reconciling, or new hunks meet the old branch's threads.
@@ -1070,16 +1229,18 @@ export function startServer(options: ServerContext & { port: number }) {
       timeoutMs: idleTimeoutMs,
       onIdle: () => {
         log(
-          `idle for ${Math.round(idleTimeoutMs / 60_000)}m with no browser or agent — shutting down`,
+          `idle for ${Math.round(idleTimeoutMs / 60_000)}m with no browser or agent, shutting down`,
         )
         process.exit(0)
       },
     })
     idle.start()
   }
+  puller?.start()
   const app = createApp(
     {
       ...options,
+      ...(prContext ? { pr: prContext } : {}),
       idle,
       onShutdownRequest: options.onShutdownRequest ?? (() => process.exit(0)),
       uiSettings: {
@@ -1099,6 +1260,13 @@ export function startServer(options: ServerContext & { port: number }) {
   const deregister = () => {
     try {
       db.removeServer(review.repoPath, options.port)
+      // A merged or closed pull request whose offer the reviewer has acted on
+      // (the landed marker is gone) takes its worktree with it. Anything else
+      // stays for the next open, or for the sweep.
+      if (options.pr) {
+        const record = db.getWorktree(review.repoPath)
+        if (record?.closedAt && !review.get().landed) removeWorktree(db, record, false)
+      }
     } catch {
       // the DB may already be closed — the stale row is health-checked away
     }
@@ -1112,8 +1280,8 @@ export function startServer(options: ServerContext & { port: number }) {
     if (options.onListenError) return options.onListenError(err)
     console.error(
       err.code === 'EADDRINUSE'
-        ? `diffo: port ${options.port} was taken while starting up — re-run to pick another`
-        : `diffo: cannot listen on port ${options.port} — ${err.message}`,
+        ? `diffo: port ${options.port} was taken while starting up; re-run to pick another`
+        : `diffo: cannot listen on port ${options.port}: ${err.message}`,
     )
     process.exit(1)
   })
@@ -1124,6 +1292,7 @@ export function startServer(options: ServerContext & { port: number }) {
     queue,
     stopWatching: async () => {
       idle?.stop()
+      puller?.stop()
       unsubscribeReconcile()
       unsubscribeBatch()
       await stopWatching()

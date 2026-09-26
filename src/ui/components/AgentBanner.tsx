@@ -22,7 +22,7 @@ function wording(notices: readonly AgentNotice[]): string {
   const count = (n: number, word: string) => `${n} ${word}${n === 1 ? '' : 's'}`
   if (threads === 0) return `Agent answered ${count(answers, 'thread')}`
   if (answers === 0) return `${count(threads, 'new thread')} from the agent`
-  return `Agent replied on ${notices.length} threads — ${count(answers, 'answer')} · ${count(threads, 'new thread')}`
+  return `Agent replied on ${notices.length} threads: ${count(answers, 'answer')} · ${count(threads, 'new thread')}`
 }
 
 export function AgentBanner({

@@ -199,7 +199,7 @@ describe('LayerRail', () => {
     )
     expect(files).toEqual(['dates.ts', 'weekday.ts'])
     const dates = document.querySelector('.ch-files .row .row-pick')!
-    expect(dates.getAttribute('title')).toContain('— delegates to resolveWeekday')
+    expect(dates.getAttribute('title')).toContain(', delegates to resolveWeekday')
     fireEvent.click(dates)
     expect(onPickFile).toHaveBeenCalledWith('src/dates.ts')
     fireEvent.click(screen.getByTitle('Parser contract'))
@@ -236,10 +236,34 @@ describe('LayerRail', () => {
     const overview = document.querySelector('.row-layer-overview')!
     expect(overview.querySelector('.row-base')?.textContent).toBe('Overview')
     expect(overview.querySelector('[role="checkbox"]')).toBeNull()
-    // No metadata line: the row is the guide, and "guide · agent" said nothing.
-    expect(overview.querySelector('.ch-sub')).toBeNull()
+    // The count line, in words: the row reads like the layers under it.
+    expect(overview.querySelector('.ch-sub')?.textContent).toBe('the agent’s guide')
     fireEvent.click(overview.querySelector('.row-pick')!)
     expect(onOpenGuide).toHaveBeenCalled()
+  })
+
+  it('on a pull request the description alone makes row 0', () => {
+    const description: ReviewThread = {
+      ...guide,
+      id: 'd',
+      github: { threadId: 'description', kind: 'description', resolved: false, outdated: false },
+    }
+    render(
+      <LayerRail
+        layers={resolved}
+        activeIndex={-1}
+        onPick={() => {}}
+        viewed={new Set()}
+        description={description}
+        onOpenGuide={() => {}}
+      />,
+    )
+    const overview = document.querySelector('.row-layer-overview')!
+    expect(overview.querySelector('.row-base')?.textContent).toBe('Overview')
+    expect(overview.querySelector('.row-pick')?.getAttribute('title')).toBe(
+      'The pull request description',
+    )
+    expect(overview.querySelector('.ch-sub')?.textContent).toBe('the pull request description')
   })
 
   it('a layer whose files all left says so, and its mark is inert', () => {

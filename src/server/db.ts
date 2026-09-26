@@ -43,8 +43,20 @@ export interface ReviewScope {
   base: string
 }
 
-/** A bump DROPS the affected table rather than migrating it (pre-release). */
-const SCHEMA_VERSION = 2
+/**
+ * A bump used to DROP the affected table rather than migrate it (pre-release).
+ * 3 added `worktrees` and dropped nothing. The version is a floor, not a
+ * migration log: an older build sharing this file writes its own (lower)
+ * number back unconditionally — 0.5.0 sets 2 on every open — so the number
+ * can go backwards under us. Nothing here reads a lower version as a reason
+ * to drop `worktrees`; every open creates what is missing and raises the
+ * version again. What this build cannot prevent: that older build retires
+ * `worktrees` itself on its next open, once the version is at its own.
+ */
+const SCHEMA_VERSION = 3
+
+/** Files written before this version carry a `reviews` table of another shape. */
+const REVIEWS_RESHAPED_AT = 2
 
 export const REVIEW_TTL_DAYS = 60
 
@@ -53,6 +65,23 @@ export interface ServerRecord {
   port: number
   pid: number
   startedAt: string
+}
+
+/**
+ * A worktree Diffo made for a pull request. `repoPath` is the main checkout it
+ * hangs off; the review itself is scoped to `worktreePath` like any other
+ * review, which is why the review and the worktree live and die together.
+ */
+export interface WorktreeRecord {
+  worktreePath: string
+  repoPath: string
+  /** `host/owner/repo#n` — see `prRefKey`. */
+  prKey: string
+  branch: string
+  base: string
+  createdAt: string
+  /** Set once the PR was seen merged or closed. */
+  closedAt: string | null
 }
 
 export class DiffoDb {
@@ -73,13 +102,25 @@ export class DiffoDb {
     this.db.exec(
       'PRAGMA journal_mode = WAL; PRAGMA busy_timeout = 3000; PRAGMA journal_size_limit = 4194304;',
     )
+    this.ensureSchema()
+    this.pruneVanishedRepos()
+  }
+
+  /**
+   * Creates what is missing and retires what is unknown. Runs at open, and
+   * again when a sibling process has dropped a table under us: an older build
+   * sharing this file retires every table it does not know, so a table this
+   * build added can vanish mid-run. The version is only ever raised here, never
+   * lowered, so a newer build's tables survive an older build's open.
+   */
+  private ensureSchema(): void {
     const { user_version: version } = this.db.prepare('PRAGMA user_version').get() as {
       user_version: number
     }
     // Retired tables are dropped, not kept. Guarded by version: if a *newer*
     // Diffo upgraded this file, its tables are not ours to judge.
     if (version <= SCHEMA_VERSION) {
-      const known = new Set(['reviews', 'servers', 'repo_ports', 'ui_settings'])
+      const known = new Set(['reviews', 'servers', 'repo_ports', 'ui_settings', 'worktrees'])
       const tables = this.db
         .prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%'")
         .all() as { name: string }[]
@@ -87,7 +128,7 @@ export class DiffoDb {
         if (!known.has(name)) this.db.exec(`DROP TABLE IF EXISTS "${name.replaceAll('"', '""')}"`)
       }
     }
-    if (version < SCHEMA_VERSION) this.db.exec('DROP TABLE IF EXISTS reviews')
+    if (version < REVIEWS_RESHAPED_AT) this.db.exec('DROP TABLE IF EXISTS reviews')
     this.db.exec(`
       CREATE TABLE IF NOT EXISTS reviews (
         repo_path  TEXT NOT NULL,
@@ -111,9 +152,28 @@ export class DiffoDb {
         key   TEXT PRIMARY KEY,
         value TEXT NOT NULL
       );
-      PRAGMA user_version = ${SCHEMA_VERSION};
+      CREATE TABLE IF NOT EXISTS worktrees (
+        worktree_path TEXT PRIMARY KEY,
+        repo_path     TEXT NOT NULL,
+        pr_key        TEXT NOT NULL,
+        branch        TEXT NOT NULL,
+        base          TEXT NOT NULL,
+        created_at    TEXT NOT NULL,
+        closed_at     TEXT
+      );
     `)
-    this.pruneVanishedRepos()
+    if (version < SCHEMA_VERSION) this.db.exec(`PRAGMA user_version = ${SCHEMA_VERSION}`)
+  }
+
+  /** Runs a query on a table a sibling build may have dropped; one rebuild, one retry. */
+  private onTable<T>(run: () => T): T {
+    try {
+      return run()
+    } catch (err) {
+      if (!/no such table/.test(err instanceof Error ? err.message : String(err))) throw err
+      this.ensureSchema()
+      return run()
+    }
   }
 
   /**
@@ -131,6 +191,19 @@ export class DiffoDb {
     for (const { repo_path } of this.distinctRepoPaths('repo_ports')) {
       if (!existsSync(repo_path)) {
         this.db.prepare('DELETE FROM repo_ports WHERE repo_path = ?').run(repo_path)
+      }
+    }
+    // A worktree directory someone rm -rf'd still owes the main repo a
+    // cleanup — git's stale entry, the branch, the ref — which is the sweep's
+    // 'missing' branch, and it needs the row to find them. The row goes only
+    // once the main repo itself is gone: nothing is left to clean.
+    const worktrees = this.db.prepare('SELECT worktree_path, repo_path FROM worktrees').all() as {
+      worktree_path: string
+      repo_path: string
+    }[]
+    for (const { worktree_path, repo_path } of worktrees) {
+      if (!existsSync(repo_path)) {
+        this.db.prepare('DELETE FROM worktrees WHERE worktree_path = ?').run(worktree_path)
       }
     }
     const servers = this.db.prepare('SELECT repo_path, pid FROM servers').all() as {
@@ -259,11 +332,80 @@ export class DiffoDb {
       .run(key, value)
   }
 
+  hasReview(scope: ReviewScope): boolean {
+    return this.getReview(scope) !== null
+  }
+
+  registerWorktree(record: Omit<WorktreeRecord, 'closedAt'>): void {
+    this.onTable(() =>
+      this.db
+        .prepare(
+          `INSERT INTO worktrees (worktree_path, repo_path, pr_key, branch, base, created_at, closed_at)
+         VALUES (?, ?, ?, ?, ?, ?, NULL)
+         ON CONFLICT(worktree_path) DO UPDATE SET
+           repo_path = excluded.repo_path, pr_key = excluded.pr_key, branch = excluded.branch,
+           base = excluded.base, closed_at = NULL`,
+        )
+        .run(
+          record.worktreePath,
+          record.repoPath,
+          record.prKey,
+          record.branch,
+          record.base,
+          record.createdAt,
+        ),
+    )
+  }
+
+  getWorktree(worktreePath: string): WorktreeRecord | null {
+    const row = this.onTable(
+      () =>
+        this.db.prepare('SELECT * FROM worktrees WHERE worktree_path = ?').get(worktreePath) as
+          | WorktreeRow
+          | undefined,
+    )
+    return row ? worktreeRecord(row) : null
+  }
+
+  /** Every worktree Diffo owns, or only those hanging off one main checkout. */
+  listWorktrees(repoPath?: string): WorktreeRecord[] {
+    const rows = this.onTable(
+      () =>
+        (repoPath === undefined
+          ? this.db.prepare('SELECT * FROM worktrees ORDER BY created_at').all()
+          : this.db
+              .prepare('SELECT * FROM worktrees WHERE repo_path = ? ORDER BY created_at')
+              .all(repoPath)) as unknown as WorktreeRow[],
+    )
+    return rows.map(worktreeRecord)
+  }
+
+  markWorktreeClosed(worktreePath: string): void {
+    this.onTable(() =>
+      this.db
+        .prepare('UPDATE worktrees SET closed_at = COALESCE(closed_at, ?) WHERE worktree_path = ?')
+        .run(new Date().toISOString(), worktreePath),
+    )
+  }
+
+  removeWorktree(worktreePath: string): void {
+    this.onTable(() =>
+      this.db.prepare('DELETE FROM worktrees WHERE worktree_path = ?').run(worktreePath),
+    )
+  }
+
   getServer(repoPath: string): ServerRecord | null {
     const row = this.db
       .prepare('SELECT port, pid, started_at FROM servers WHERE repo_path = ?')
       .get(repoPath) as { port: number; pid: number; started_at: string } | undefined
     return row ? { repoPath, port: row.port, pid: row.pid, startedAt: row.started_at } : null
+  }
+
+  /** The registered server whose process is still running, if there is one.
+   * A registration a dead process left behind is not a server. */
+  liveServer(repoPath: string): ServerRecord | null {
+    const record = this.getServer(repoPath)
+    return record && pidAlive(record.pid) ? record : null
   }
 
   /** Remove a registration — but only the one being asked about. A dying server
@@ -279,5 +421,27 @@ export class DiffoDb {
 
   close(): void {
     this.db.close()
+  }
+}
+
+interface WorktreeRow {
+  worktree_path: string
+  repo_path: string
+  pr_key: string
+  branch: string
+  base: string
+  created_at: string
+  closed_at: string | null
+}
+
+function worktreeRecord(row: WorktreeRow): WorktreeRecord {
+  return {
+    worktreePath: row.worktree_path,
+    repoPath: row.repo_path,
+    prKey: row.pr_key,
+    branch: row.branch,
+    base: row.base,
+    createdAt: row.created_at,
+    closedAt: row.closed_at,
   }
 }

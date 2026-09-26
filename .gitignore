@@ -33,6 +33,10 @@ CLAUDE.local.md
 # resolves a raw-HTML src as a real asset import — so an untracked clip is a hard
 # `docs:build` failure on a fresh clone, not a broken <video>. They ship with the repo.
 
+# Working plans. Internal drafts written while a feature is built; the docs
+# and the code are what ship, the plan is not.
+plans/
+
 # The recording harness. It drives a browser and a pty to film the clips, needs
 # Chrome, ffmpeg and a real agent to run, and ships nothing — the clips it produces
 # are what the repo carries.

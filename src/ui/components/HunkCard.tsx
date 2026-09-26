@@ -119,7 +119,7 @@ function FoldButton({ onCollapse }: { onCollapse: () => void }) {
   )
 }
 
-const EXPAND_FAILED = "couldn't read more context — the file may have changed since"
+const EXPAND_FAILED = "couldn't read more context; the file may have changed since"
 
 /** A gap with no hunk below it — the file tail — gets its own band after the last
  * card, since there is no hunk boundary to host the controls. */
@@ -322,7 +322,7 @@ function CommentButton({ onClick }: { onClick: () => void }) {
     <button
       type="button"
       className="line-comment-btn"
-      data-tip="comment on this line — drag down to take more lines"
+      data-tip="comment on this line; drag down to take more lines"
       aria-label="comment on this line, or drag down to comment on a range"
       onClick={(e) => {
         e.stopPropagation()
@@ -680,8 +680,10 @@ export function HunkCard({
         onDraft={setDraft}
         draftIntent={draftIntent}
         onDraftIntent={setDraftIntent}
-        onSubmit={(text, wide, intent) => {
-          void reviewActions.create(anchorFor(wide), text, intent)
+        onSubmit={(text, wide, intent, audience) => {
+          void (audience
+            ? reviewActions.create(anchorFor(wide), text, intent, { audience })
+            : reviewActions.create(anchorFor(wide), text, intent))
           closeComposer()
         }}
         onSend={(text, wide, intent) => {

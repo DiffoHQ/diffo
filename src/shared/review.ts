@@ -1,4 +1,4 @@
-import type { FileChange } from './types.js'
+import type { FileChange, GhUser } from './types.js'
 
 export type ThreadState = 'open' | 'sent' | 'addressed' | 'resolved'
 
@@ -20,7 +20,15 @@ export type Anchor =
   | { kind: 'file'; path: string }
   | { kind: 'changeset' }
 
-export type Author = 'reviewer' | 'agent'
+/** `github` is a person on the pull request — the author, another reviewer, a
+ * bot — carried on the message's `github` block. The reviewer's own words posted
+ * to GitHub stay `reviewer`: the message gains a `github` id when it lands. */
+export type Author = 'reviewer' | 'agent' | 'github'
+
+/** Who a thread is for. Absent means the agent — every thread from before pull
+ * requests existed, and every private thread since. A `pr` thread is a review
+ * comment: drafted here, posted to GitHub on Finish, never handed to the agent. */
+export type Audience = 'pr' | 'agent'
 
 /** The exact lines a hunk anchor covers, frozen at creation: where they sit
  * inside `codeContext` (0-based row indices, inclusive) and their text
@@ -54,6 +62,10 @@ export interface ReviewMessage {
   /** ISO, stamped when the reviewer rewrites a message the agent had already
    * seen. An edit to words the agent never saw is just a draft fixed in place. */
   editedAt?: string
+  /** Set once the message exists on GitHub: the comment's node id, who wrote it
+   * there, and where. A `reviewer` message in a posted public thread without
+   * this block is a reply still owed to GitHub. */
+  github?: { id: string; user: GhUser; url?: string }
 }
 
 /** Ghost text has one line and little room: collapse whitespace and cap it. */
@@ -65,10 +77,37 @@ export function parseSuggestedReply(value: unknown): string | undefined {
   return line ? line.slice(0, SUGGESTED_REPLY_MAX) : undefined
 }
 
+/** A public thread's link to GitHub, filled when it is imported or posted. */
+export interface GithubThread {
+  /** The review thread's node id (inline), the review's (a body), the comment's
+   * (a general comment), or `description`. What replies and resolves address. */
+  threadId: string
+  kind: 'inline' | 'review' | 'comment' | 'description'
+  /** For a `review` thread: the verdict it carried. */
+  reviewState?: 'APPROVED' | 'CHANGES_REQUESTED' | 'COMMENTED' | 'DISMISSED'
+  resolved: boolean
+  /** GitHub's own verdict: the commented line is no longer in the diff. */
+  outdated: boolean
+  /** The line GitHub reports, for re-anchoring after a push. */
+  line?: number | null
+  startLine?: number | null
+  side?: 'LEFT' | 'RIGHT'
+  url?: string
+}
+
 export interface ReviewThread {
   id: string
   anchor: Anchor
   state: ThreadState
+  /** See {@link Audience}. Absent ⇒ 'agent'. */
+  audience?: Audience
+  /** A private aside under a public thread: same anchor, rendered nested under
+   * its parent, delivered to the agent like any private thread. */
+  parentId?: string
+  /** Present on every public thread that exists on GitHub. */
+  github?: GithubThread
+  /** Queued for Finish — nothing has left the machine. */
+  queued?: { resolve?: true; unresolve?: true }
   intent?: ThreadIntent
   codeContext: string | null
   /** See {@link AnchoredLines}. Absent on threads created before it existed. */
@@ -108,6 +147,23 @@ export interface ReviewThread {
   messages: ReviewMessage[]
   createdAt: string
   updatedAt: string
+}
+
+/** For the agent, or for GitHub. Absent audience is the agent — every thread
+ * from before pull requests existed. */
+export function isPublic(thread: Pick<ReviewThread, 'audience'>): boolean {
+  return thread.audience === 'pr'
+}
+
+/** A public thread the reviewer wrote here and has not posted yet. */
+export function isDraft(thread: ReviewThread): boolean {
+  return isPublic(thread) && thread.state === 'open' && thread.github === undefined
+}
+
+/** Reviewer replies on a posted public thread that GitHub has not seen. */
+export function unpostedReplies(thread: ReviewThread): ReviewMessage[] {
+  if (!isPublic(thread) || thread.github === undefined) return []
+  return thread.messages.filter((m) => m.author === 'reviewer' && m.github === undefined)
 }
 
 /** The retired predecessor of agent-started threads. Kept only so `parseReview`
@@ -243,6 +299,12 @@ export interface ReviewState {
    */
   title?: string
   lastFinish?: LastFinish
+  /** Pull-request review bookkeeping: the pending review Diffo is filling, and
+   * what it has submitted. Present only on a review opened on a PR. */
+  pr?: {
+    pendingReviewId?: string
+    submissions: { at: string; event: string; reviewId: string; comments: number }[]
+  }
   /**
    * HEAD as of the last recompute that could move it: the base the work under
    * review sits on. What makes a commit made while no server ran detectable at
@@ -265,6 +327,7 @@ export function undeliveredThreadIds(threads: readonly ReviewThread[]): string[]
     threads
       .filter(
         (t) =>
+          !isPublic(t) &&
           (t.state === 'sent' || t.state === 'addressed') &&
           t.unanswered !== true &&
           t.withheld !== true &&

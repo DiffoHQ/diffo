@@ -5,6 +5,7 @@ import {
   byFile,
   byTurn,
   holdsAttention,
+  involves,
   isUnsent,
   shortAnchor,
   threadItems,
@@ -43,6 +44,11 @@ describe('isUnsent', () => {
     expect(isUnsent(thread({ state: 'sent' }))).toBe(false)
     expect(isUnsent(thread({ state: 'addressed' }))).toBe(false)
     expect(isUnsent(thread({ state: 'resolved' }))).toBe(false)
+  })
+
+  it('a public thread is never unsent — a GitHub draft is pending for the PR, not the agent', () => {
+    expect(isUnsent(thread({ state: 'open', audience: 'pr' }))).toBe(false)
+    expect(isUnsent(thread({ state: 'sent', withheld: true, audience: 'pr' }))).toBe(false)
   })
 
   it('survives an agent reply landing after the held one', () => {
@@ -202,6 +208,17 @@ describe('threads', () => {
     const [item] = threadItems([thread()], new Set(['t-1']), new Map([['t-1', 1]]))
     expect(item!.working).toBe(true)
     expect(item!.queued).toBeUndefined()
+  })
+
+  it('carries GitHub\'s "outdated" as its own reason, apart from a departed file', () => {
+    const gh = (outdated: boolean) =>
+      thread({
+        audience: 'pr',
+        github: { threadId: 'x', kind: 'inline', resolved: false, outdated },
+      })
+    expect(threadItems([gh(true)])[0]!.outdated).toBe(true)
+    expect(threadItems([gh(false)])[0]!.outdated).toBeUndefined()
+    expect(threadItems([thread()])[0]!.outdated).toBeUndefined()
   })
 })
 
@@ -429,5 +446,46 @@ describe('agentActivity', () => {
     expect(agentActivity([sent('t-1', 'src/ui/api.ts', true)], 'db.ts:42')).toBe(
       'working on api.ts:42',
     )
+  })
+})
+
+describe('involves', () => {
+  const at = '2026-09-24T10:00:00Z'
+  let n = 0
+  const said = (text: string, login: string): ReviewMessage => ({
+    id: `g${++n}`,
+    author: 'github',
+    text,
+    at,
+    github: { id: `c${n}`, user: { login, avatarUrl: '' } },
+  })
+  const wrote = (text: string): ReviewMessage => ({ id: `r${++n}`, author: 'reviewer', text, at })
+  const thread = (messages: ReviewMessage[]): ReviewThread => ({
+    id: 't',
+    anchor: { kind: 'changeset' },
+    state: 'open',
+    codeContext: null,
+    codeChanged: false,
+    messages,
+    createdAt: at,
+    updatedAt: at,
+    audience: 'pr',
+    github: { threadId: 't', kind: 'comment', resolved: false, outdated: false },
+  })
+
+  it('is yours when you wrote in it here, spoke in it on GitHub, or are @mentioned', () => {
+    expect(involves(thread([said('CI passed', 'ci-bot')]), 'reviewer-x')).toBe(false)
+    expect(involves(thread([said('CI passed', 'ci-bot'), wrote('rerun?')]), 'reviewer-x')).toBe(
+      true,
+    )
+    expect(involves(thread([said('looks off', 'reviewer-x')]), 'reviewer-x')).toBe(true)
+    expect(involves(thread([said('@reviewer-x thoughts?', 'sam')]), 'reviewer-x')).toBe(true)
+    // A login that merely prefixes another is not a mention of you.
+    expect(involves(thread([said('@reviewer-xy thoughts?', 'sam')]), 'reviewer-x')).toBe(false)
+  })
+
+  it('without a login, only your own words count', () => {
+    expect(involves(thread([said('@reviewer-x?', 'sam')]), null)).toBe(false)
+    expect(involves(thread([wrote('mine')]), null)).toBe(true)
   })
 })

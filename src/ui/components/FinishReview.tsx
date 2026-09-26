@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { type Anchor, anchorSpan, type Coverage, type OutgoingThread } from '../../shared/review.js'
-import { type Presence, useFinishPreview } from '../api.js'
+import { type Presence, type ReviewEvent, useFinishPreview } from '../api.js'
 import { copyText } from '../clipboard.js'
 import type { ThreadItem } from '../threads.js'
 import { Icon } from './Icon.js'
@@ -31,7 +31,7 @@ export function FinishReview({
   onReopen?: (threadId: string) => Promise<unknown>
   onFinish: (
     deliver: boolean,
-    closing: { note: string },
+    closing: { note: string; event?: ReviewEvent },
   ) => Promise<{ delivered: boolean; prompt: string }>
   onInvite: () => void
   onClose: () => void
@@ -131,7 +131,7 @@ export function FinishReview({
         <div className="fin-dest">
           <span className="fin-dest-pip" />
           <span className="fin-dest-text">
-            <b>No agent attached</b> — finishing copies the prompt for you to paste
+            <b>No agent attached</b>: finishing copies the prompt for you to paste
           </span>
           <button type="button" className="fin-link" onClick={onInvite}>
             Invite an agent
@@ -144,7 +144,7 @@ export function FinishReview({
           <div className="fin-sect-h">
             <span className="fin-sect-label">Still on you</span>
             <span className="fin-sect-n">{checkOff.length}</span>
-            <span className="fin-sect-why">— settle these first; reopened ones join this send</span>
+            <span className="fin-sect-why">· settle these first; reopened ones join this send</span>
           </div>
           <ul className="fin-rows">
             {checkOff.map((item) => (
@@ -167,8 +167,8 @@ export function FinishReview({
             {outgoing.length > 0 && (
               <span className="fin-sect-why">
                 {!attached
-                  ? '— in the copied prompt'
-                  : `— ${[
+                  ? '· in the copied prompt'
+                  : `· ${[
                       freshCount > 0 ? `${freshCount} new` : null,
                       resentCount > 0 ? `${resentCount} resent` : null,
                     ]
@@ -181,7 +181,7 @@ export function FinishReview({
           {preview.error && (
             <p className="cov-note cov-note-error">
               Couldn't read the outgoing batch: {(preview.error as Error).message}. Finishing still
-              works — it just isn't previewed.
+              works; it just isn't previewed.
             </p>
           )}
           {outgoing.length > 0 && (
@@ -206,7 +206,7 @@ export function FinishReview({
         <div className="fin-sect">
           <div className="fin-sect-h">
             <span className="fin-sect-label">Your coverage</span>
-            {!allClear && <span className="fin-sect-why">— sent as-is, never a gate</span>}
+            {!allClear && <span className="fin-sect-why">· sent as-is, never a gate</span>}
           </div>
           <div className="fin-cov-bar">
             <i className="fin-cov-read" style={{ width: `${(read / total) * 100}%` }} />
@@ -246,12 +246,12 @@ export function FinishReview({
           <div className="fin-sect-h">
             <span className="fin-sect-label">Your word</span>
             <span className="fin-sect-why">
-              — optional; sent as a thread on the changeset, so the agent can reply
+              · optional; sent as a thread on the changeset, so the agent can reply
             </span>
           </div>
           <textarea
             className="fin-note"
-            placeholder={'e.g. "LGTM, ship it" — or "fix these, then show me again"'}
+            placeholder='e.g. "LGTM, ship it", or "fix these, then show me again"'
             value={note}
             rows={2}
             onChange={(e) => setNote(e.target.value)}
@@ -264,8 +264,8 @@ export function FinishReview({
       {done && (
         <p className="thread-copied">
           {done === 'delivered'
-            ? 'Sent to your agent — replies and fixes will show up here live.'
-            : 'Review finished and the prompt copied — paste it to your agent. Its replies and fixes will show up here live.'}
+            ? 'Sent to your agent; replies and fixes will show up here live.'
+            : 'Review finished and the prompt copied. Paste it to your agent. Its replies and fixes will show up here live.'}
         </p>
       )}
 
@@ -274,7 +274,7 @@ export function FinishReview({
           <div className="warn">
             <Icon name="alert" size="sm" />
             <div>
-              <b>Couldn't reach the clipboard</b> — this browser blocked it. The review is finished;
+              <b>Couldn't reach the clipboard</b>: this browser blocked it. The review is finished;
               select the prompt below and copy it by hand.
             </div>
           </div>
@@ -284,7 +284,7 @@ export function FinishReview({
 
       {failed && (
         <p className="cov-note cov-note-error">
-          Couldn't finish the review — the server may be down. Nothing was sent; try again.
+          Couldn't finish the review; the server may be down. Nothing was sent; try again.
         </p>
       )}
     </Modal>
@@ -329,7 +329,7 @@ function CheckOffRow({
           type="button"
           className="btn btn-ghost btn-sm"
           disabled={busy || !onResolve}
-          title="the agent's answer stands — settle this one"
+          title="the agent's answer stands; settle this one"
           onClick={() => act(onResolve)}
         >
           <Icon name="check" size="sm" /> Done
@@ -340,8 +340,8 @@ function CheckOffRow({
           disabled={busy || !onReopen}
           title={
             item.gone
-              ? 'reopen it — it lands in Drafts, and Send on the thread hands it over; the finish batch is scoped to the changeset'
-              : 'reopen it — it goes out again in this batch'
+              ? 'reopen it; it lands in Drafts, and Send on the thread hands it over; the finish batch is scoped to the changeset'
+              : 'reopen it; it goes out again in this batch'
           }
           onClick={() => act(onReopen)}
         >

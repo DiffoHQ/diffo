@@ -575,7 +575,7 @@ describe('ReadingPane — the pane bar', () => {
       expect(screen.queryByText(/all read/)).toBeNull()
       // The bar says it too now ("12 of 16 files"); the payoff card is the one under test.
       expect(screen.getByText(/12 of 16/, { selector: '.done-stats *' })).toBeTruthy()
-      expect(screen.getByText(/4 test files were hidden — nobody reviewed them/)).toBeTruthy()
+      expect(screen.getByText(/4 test files were hidden; nobody reviewed them/)).toBeTruthy()
     })
 
     it('names the round when that is what excluded things', () => {
