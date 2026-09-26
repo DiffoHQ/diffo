@@ -814,7 +814,11 @@ describe('the open-time guide nudge', () => {
     expect(GUIDE.what).toMatch(/invariant/)
     expect(GUIDE.what).toMatch(/judgment call/)
     expect(GUIDE.what).toMatch(/skip/)
-    expect(GUIDE.what).toMatch(/runtime flow/)
+    // Problem first, for a reader outside the session; the diagram draws what
+    // happens, never a reference graph of code names.
+    expect(GUIDE.what).toMatch(/the problem it solves/)
+    expect(GUIDE.what).toMatch(/never saw your session/)
+    expect(GUIDE.what).toMatch(/which code references which/)
     // Ingredients, not a form: nothing in it is a heading to fill.
     expect(GUIDE.budget).toMatch(/only the parts this change needs/)
     // The legend is two tags and two classDef lines, strokes only — the fill
@@ -841,9 +845,12 @@ describe('the layers payload (reviewer pressed Outline)', () => {
   it('asks for the outline, carries the whole doctrine, and owes nothing else', () => {
     const prompt = buildLayersRequestPrompt({ repo, changeset: changeset() }, null)
     expect(prompt).toContain('asked for layers')
-    expect(prompt).toContain('is outlining…')
+    expect(prompt).toContain('reads "Outlining…"')
     expect(prompt).not.toContain('refresh')
     // An agent with no skill still gets every rule the CLI help carries.
+    expect(prompt).toContain(LAYERS.summary)
+    expect(prompt).toContain(LAYERS.diagram)
+    for (const line of GUIDE_CLASSDEFS) expect(prompt).toContain(line)
     expect(prompt).toContain(LAYERS.order)
     expect(prompt).toContain(LAYERS.mechanical)
     expect(prompt).toContain(LAYERS.stance)
@@ -910,6 +917,10 @@ describe('layers doctrine', () => {
     expect(nudge).toContain(CLI_COMMANDS.layersSuggest)
     expect(nudge).toContain(CLI_COMMANDS.layers)
     expect(nudge).toContain(LAYERS.suggest)
+    // Asked for layers in chat, the agent has only this line: it carries the
+    // summary and diagram rules the Outline request does.
+    expect(nudge).toContain(LAYERS.summary)
+    expect(nudge).toContain(LAYERS.diagram)
     expect(nudge).toContain(LAYERS.order)
     expect(nudge).toContain(LAYERS.stance)
     expect(layersNudge({ layers: { items: [], postedAt: '' } })).toBeNull()

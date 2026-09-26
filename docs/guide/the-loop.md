@@ -5,16 +5,17 @@ A Diffo review is a conversation with the agent that wrote the code.
 ## The agent orients you first
 
 On a change that's multi-file, structural, or just subtle, the agent leaves a
-single guide comment anchored to the whole changeset: a map of the change. What
-it does and why, in a sentence; how the changed pieces talk to each other, as a
-small [mermaid](https://mermaid.js.org) diagram of the runtime flow when the
-shape is easier to see than to read; what has to stay true, as checks for you to
+single guide comment anchored to the whole changeset: a map of the change,
+written for someone who never saw the agent's session. The problem it solves
+and what it changes, in a sentence or two; the flow it changes, from what sets
+it off to what someone sees, as a small [mermaid](https://mermaid.js.org)
+diagram when the shape is easier to see than to read; what has to stay true, as checks for you to
 run — the invariant the change must keep, a judgment call the agent made, a
 shortcoming it knows about; and what you can skip. It renders in the thread, so
 the picture is where you're already looking, and it fits one screen.
 
 In the diagram, new code and changed code carry their own outline color, and a
-plain node is existing code the change now leans on — so the seam where new
+plain node is anything existing the change now leans on — so the seam where new
 meets old is visible at a glance, in the same visual language on every review.
 The map is also navigation: a file the guide names, in prose or in a diagram
 node, is a click away.
@@ -46,7 +47,7 @@ to it. You read one layer at a time, in the order the agent would explain it.
 Layers come from the agent only; Diffo never guesses a plan from paths. With
 no layers, the review is exactly the flat file list.
 
-The rail's **Layers** tab offers **Ask the agent to outline this**. When the
+The rail's **Layers** tab offers **Ask the agent to outline**. When the
 agent thinks the change reads better in order it says so at open, and the
 header chip (*agent · suggests layers*) is the same ask in one click. Picking a
 layer narrows the reading pane to its files under a card with the summary,

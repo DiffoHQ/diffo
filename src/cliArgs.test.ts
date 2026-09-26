@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { HELP_TEXT, helpFor, parseCliArgs } from './cliArgs.js'
-import { GUIDE, GUIDE_CLASSDEFS } from './server/prompt.js'
+import { GUIDE, GUIDE_CLASSDEFS, LAYERS } from './server/prompt.js'
 
 describe('parseCliArgs', () => {
   it('defaults to working tree, auto port, open browser, background server', () => {
@@ -260,6 +260,17 @@ describe('parseCliArgs — help is never an error', () => {
     expect(page).toContain(GUIDE.budget)
     expect(page).toContain(GUIDE.legend)
     expect(page).toContain('diffo help guide')
+  })
+
+  it('help layers teaches what a summary is for, and diagrams', () => {
+    const page = helpFor('layers')
+    expect(page).toContain(LAYERS.summary)
+    expect(page).toContain(LAYERS.diagram)
+    for (const line of GUIDE_CLASSDEFS) expect(page).toContain(line)
+    // help agent carries the same rules, so no surface teaches a thinner summary.
+    const agent = helpFor('agent')
+    expect(agent).toContain(LAYERS.summary)
+    expect(agent).toContain(LAYERS.diagram)
   })
 
   it('help guide is a topic of its own, with the classDef lines and one example', () => {
