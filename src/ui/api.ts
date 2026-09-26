@@ -67,6 +67,16 @@ async function post<T>(path: string, body?: unknown): Promise<T> {
   )
 }
 
+async function patch<T>(path: string, body: unknown): Promise<T> {
+  return handle<T>(
+    await fetch(path, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    }),
+  )
+}
+
 async function del<T>(path: string): Promise<T> {
   return handle<T>(await fetch(path, { method: 'DELETE' }))
 }
@@ -119,6 +129,13 @@ export const reviewApi = {
       text,
       deliver,
     }),
+  /** Rewrite one of the reviewer's messages. The server decides whether that is
+   * a fix in place or a rewind that cuts what came after it. */
+  editMessage: (threadId: string, messageId: string, text: string, deliver = true) =>
+    patch<{ thread: ReviewThread } & DeliveryResult>(
+      `/api/review/threads/${threadId}/messages/${messageId}`,
+      { text, deliver },
+    ),
   setState: (threadId: string, state: 'open' | 'resolved') =>
     post<ReviewThread>(`/api/review/threads/${threadId}/state`, { state }),
   send: (threadId: string) =>

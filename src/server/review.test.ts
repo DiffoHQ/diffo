@@ -472,6 +472,96 @@ describe('ReviewStore', () => {
   })
 })
 
+describe('ReviewStore.editMessage', () => {
+  it('a draft the agent never saw is fixed in place — no edited mark, nothing cut', () => {
+    const store = makeStore(tempRoot())
+    const thread = store.createThread(hunkAnchor('h1'), 'rename ths', null)
+    const id = thread.messages[0]!.id
+
+    const edited = store.editMessage(thread.id, id, 'rename this')!
+    expect(edited.messages).toEqual([{ ...thread.messages[0]!, text: 'rename this' }])
+    expect(edited.state).toBe('open')
+    expect('rewound' in edited).toBe(false)
+  })
+
+  it('an edit the agent has answered rewinds: everything after it goes, the thread is the agent’s again', () => {
+    const store = makeStore(tempRoot())
+    const thread = store.createThread(hunkAnchor('h1'), 'cache this', null)
+    store.send(thread.id)
+    store.addMessage(thread.id, 'agent', 'added an LRU cache')
+    store.addMessage(thread.id, 'reviewer', 'size limit?')
+    store.addMessage(thread.id, 'agent', 'capping it — back soon', false, undefined, true)
+    store.setState(thread.id, 'addressed')
+    expect(store.get().threads[0]!.awaitingFollowUp).toBe(true)
+    const first = store.get().threads[0]!.messages[0]!
+
+    const edited = store.editMessage(thread.id, first.id, 'memoize per request instead')!
+    expect(edited.messages).toHaveLength(1)
+    expect(edited.messages[0]!.text).toBe('memoize per request instead')
+    expect(edited.messages[0]!.id).toBe(first.id)
+    expect(edited.messages[0]!.at).toBe(first.at)
+    expect(typeof edited.messages[0]!.editedAt).toBe('string')
+    expect(edited.state).toBe('sent')
+    expect(edited.rewound).toBe(true)
+    expect('awaitingFollowUp' in edited).toBe(false)
+  })
+
+  it('a rewind with nothing of the agent’s cut keeps its follow-up promise', () => {
+    const store = makeStore(tempRoot())
+    const thread = store.createThread(hunkAnchor('h1'), 'why?', null)
+    store.send(thread.id)
+    store.addMessage(thread.id, 'agent', 'checking', false, undefined, true)
+    store.addMessage(thread.id, 'reviewer', 'also X')
+    store.addMessage(thread.id, 'reviewer', 'and Y')
+    const alsoX = store.get().threads[0]!.messages[2]!
+
+    const edited = store.editMessage(thread.id, alsoX.id, 'also X, not Y')!
+    expect(edited.messages.map((m) => m.text)).toEqual(['why?', 'checking', 'also X, not Y'])
+    expect(edited.awaitingFollowUp).toBe(true)
+  })
+
+  it('an edit the agent saw un-strands the thread; withheld holds it back', () => {
+    const store = makeStore(tempRoot())
+    const thread = store.createThread(hunkAnchor('h1'), 'why?', null)
+    store.send(thread.id)
+    store.markDelivered([thread.id])
+    store.markUnanswered([thread.id])
+
+    const edited = store.editMessage(thread.id, thread.messages[0]!.id, 'why, really?', true)!
+    expect('unanswered' in edited).toBe(false)
+    expect(edited.withheld).toBe(true)
+    expect(typeof edited.messages[0]!.editedAt).toBe('string')
+    // Nothing came after it, so nothing was withdrawn.
+    expect('rewound' in edited).toBe(false)
+  })
+
+  it('the edited mark and the rewind survive a restart; the next delivery clears the rewind', () => {
+    const root = tempRoot()
+    const store = makeStore(root)
+    const thread = store.createThread(hunkAnchor('h1'), 'why?', null)
+    store.send(thread.id)
+    store.addMessage(thread.id, 'agent', 'because')
+    store.editMessage(thread.id, thread.messages[0]!.id, 'why, really?')
+
+    const reread = makeStore(root)
+    const after = reread.get().threads[0]!
+    expect(after.rewound).toBe(true)
+    expect(typeof after.messages[0]!.editedAt).toBe('string')
+
+    reread.markDelivered([thread.id])
+    expect('rewound' in reread.get().threads[0]!).toBe(false)
+    expect(typeof reread.get().threads[0]!.messages[0]!.editedAt).toBe('string')
+  })
+
+  it('unknown thread or message ids change nothing', () => {
+    const store = makeStore(tempRoot())
+    const thread = store.createThread(hunkAnchor('h1'), 'why?', null)
+    expect(store.editMessage('nope', thread.messages[0]!.id, 'x')).toBeNull()
+    expect(store.editMessage(thread.id, 'nope', 'x')).toBeNull()
+    expect(store.get().threads[0]!.messages[0]!.text).toBe('why?')
+  })
+})
+
 describe('ReviewStore titles', () => {
   it('a title outlives a restart, and a reset takes it with the round', () => {
     const root = tempRoot()

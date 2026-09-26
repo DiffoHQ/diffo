@@ -237,6 +237,8 @@ function useReviewActions(): ReviewActions {
         return thread
       },
       reply: (id, text, deliver) => reviewApi.reply(id, text, deliver).then(refresh),
+      edit: (id, messageId, text, deliver) =>
+        reviewApi.editMessage(id, messageId, text, deliver).then(refresh),
       send: async (id) => {
         const { prompt, delivered, presence } = await reviewApi.send(id)
         if (delivered || presence !== 'waiting') {

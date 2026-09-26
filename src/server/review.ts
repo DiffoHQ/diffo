@@ -14,6 +14,7 @@ import {
   type ReviewMessage,
   type ReviewState,
   type ReviewThread,
+  seenByAgent,
   THREAD_INTENTS,
   type ThreadCapture,
   type ThreadIntent,
@@ -186,15 +187,61 @@ export class ReviewStore {
     })
   }
 
+  /**
+   * The reviewer rewrites one of their own messages. Words the agent never saw
+   * are a draft fixed in place. Words it did see are a change of mind, like
+   * editing a chat message: the message is stamped edited and everything after
+   * it is cut — the agent's answers to the old words included — so the thread
+   * is the agent's to answer again. Cut, not kept: the old branch is not worth
+   * a second history on the card. `withheld` holds a seen rewrite back from the
+   * agent, the same as a withheld reply.
+   */
+  editMessage(
+    threadId: string,
+    messageId: string,
+    text: string,
+    withheld = false,
+  ): ReviewThread | null {
+    const current = this.state.threads.find((t) => t.id === threadId)
+    const index = current?.messages.findIndex((m) => m.id === messageId) ?? -1
+    if (!current || index === -1) return null
+    const seen = seenByAgent(current, index)
+    const cut = current.messages.slice(index + 1)
+    const cutAnswer = cut.some((m) => m.author === 'agent')
+    return this.update(threadId, ({ unanswered, awaitingFollowUp, ...thread }) => {
+      const before = thread.messages[index]!
+      const edited: ReviewMessage = {
+        ...before,
+        text,
+        ...(seen || before.editedAt ? { editedAt: new Date().toISOString() } : {}),
+      }
+      return {
+        ...thread,
+        // Speaking to the agent again un-strands the thread, as a reply does.
+        ...(unanswered && !seen ? { unanswered } : {}),
+        // A promised follow-up belonged to a reply that is gone.
+        ...(awaitingFollowUp && !cutAnswer ? { awaitingFollowUp } : {}),
+        // The answer that addressed it is gone: the thread waits on the agent again.
+        ...(cutAnswer && thread.state === 'addressed' ? { state: 'sent' as const } : {}),
+        ...(seen && cut.length > 0 ? { rewound: true as const } : {}),
+        ...(seen && withheld ? { withheld: true } : {}),
+        messages: [...thread.messages.slice(0, index), edited],
+      }
+    })
+  }
+
   /** A delivery just handed these threads to the agent — remember through when,
-   * so replies and the typing indicator can tell delivered words from raced ones. */
+   * so replies and the typing indicator can tell delivered words from raced ones.
+   * The delivery also carried the word that a rewind withdrew the old replies. */
   markDelivered(threadIds: readonly string[]): void {
     const ids = new Set(threadIds)
     if (ids.size === 0) return
     const at = new Date().toISOString()
     this.state = {
       ...this.state,
-      threads: this.state.threads.map((t) => (ids.has(t.id) ? { ...t, deliveredThrough: at } : t)),
+      threads: this.state.threads.map(({ rewound, ...t }) =>
+        ids.has(t.id) ? { ...t, deliveredThrough: at } : { ...t, ...(rewound ? { rewound } : {}) },
+      ),
     }
     this.commit()
   }
@@ -662,6 +709,7 @@ function normalizeThread(value: unknown, now: string): ReviewThread | null {
       ...(msg.author === 'agent' && typeof msg.suggestedReply === 'string' && msg.suggestedReply
         ? { suggestedReply: msg.suggestedReply }
         : {}),
+      ...(typeof msg.editedAt === 'string' ? { editedAt: msg.editedAt } : {}),
     })
   }
   return {
@@ -682,6 +730,8 @@ function normalizeThread(value: unknown, now: string): ReviewThread | null {
       : {}),
     ...(t.closingNote === true ? { closingNote: true as const } : {}),
     ...(typeof t.sentAt === 'string' ? { sentAt: t.sentAt } : {}),
+    // Survives a restart: the agent is owed the word that its replies were cut.
+    ...(t.rewound === true ? { rewound: true as const } : {}),
     messages,
     createdAt: typeof t.createdAt === 'string' ? t.createdAt : now,
     updatedAt: typeof t.updatedAt === 'string' ? t.updatedAt : now,

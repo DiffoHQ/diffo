@@ -3459,6 +3459,104 @@ tr:hover .line-range-glyph {
   max-width: 88ch;
 }
 
+/* ---------- editing a message: rewrite in place, rewind what follows ---------- */
+/* The pencil waits for the pointer, like the rail's row actions: a thread of
+ * short messages must not read as a column of buttons. */
+.cmt-edit {
+  margin-left: auto;
+  opacity: 0;
+  transition: opacity var(--dur) ease;
+}
+
+.thread-message:hover .cmt-edit,
+.cmt-edit:focus-visible {
+  opacity: 1;
+}
+
+@media (hover: none) {
+  .cmt-edit {
+    opacity: 1;
+  }
+}
+
+.cmt-edit[aria-disabled="true"] {
+  color: var(--ink-3);
+  cursor: not-allowed;
+}
+
+.cmt-edit-box {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-3);
+  padding-left: 30px;
+  max-width: calc(88ch + 30px);
+}
+
+/* The message being rewritten lifts off the thread, the way a chat app marks
+ * the one you are editing. */
+.thread-message-editing {
+  background: var(--fill);
+}
+
+/* Set like the body it replaces — same face, size, and leading — and pulled
+ * out by its own padding, so the words stay where they were read. */
+.cmt-edit-input {
+  width: calc(100% + 2 * var(--s-3));
+  margin: -7px calc(-1 * var(--s-3)) 0;
+  min-height: 0;
+  max-height: 40vh;
+  padding: 6px var(--s-3);
+  border: 1px solid var(--hair);
+  border-radius: var(--r-sm);
+  background: var(--paper);
+  color: var(--ink);
+  font-family: inherit;
+  font-size: var(--t-14);
+  line-height: 1.6;
+  resize: none;
+  field-sizing: content;
+}
+
+/* Same quiet focus as the reply box: the border darkens, no ring — the field
+ * you just clicked into needs no announcing. */
+.cmt-edit-input:focus,
+.cmt-edit-input:focus-visible {
+  outline: none;
+  border-color: var(--ink-3);
+}
+
+.cmt-edit-error {
+  color: var(--danger);
+  font-size: var(--t-12);
+}
+
+.cmt-edit-foot {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--s-2);
+}
+
+/* The rewind point: a caption over the messages that go, sitting on the same
+ * hairline every message sits on — a heading for the faded block, not a
+ * divider of its own. */
+.cmt-cut {
+  padding: var(--s-3) var(--s-5) 0;
+  border-top: 1px solid var(--hair-2);
+  color: var(--attn);
+  font-size: var(--t-12);
+}
+
+.cmt-cut + .cmt {
+  padding-top: var(--s-2);
+}
+
+/* What the rewind is about to cut: faded, still legible, never struck through —
+ * a line through a paragraph is harder to read than the paragraph. */
+.thread-message-cut {
+  opacity: 0.4;
+  transition: opacity var(--dur) ease;
+}
+
 /* ---------- rendered markdown ---------- */
 
 .markdown > *:first-child {

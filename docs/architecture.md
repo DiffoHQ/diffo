@@ -76,6 +76,7 @@ the event loop. Nothing is dropped; the trailing recompute is delayed, never can
 | `GET /api/file` | Raw bytes of one file, base or head side (the image differ) |
 | `GET /api/review` | Threads, layers, last finish |
 | `POST /api/review/threads` · `/:id/messages` · `/:id/state` · `/:id/send` | Comment lifecycle |
+| `PATCH /api/review/threads/:id/messages/:messageId` | Edit one of the reviewer's messages; if the agent had seen it, everything after it is cut and the thread is re-delivered |
 | `POST /api/review/finish/preview` · `/finish` | Batch hand-over, with coverage |
 | `POST /api/review/threads` (agent author) | `diffo comment`, an agent-started thread |
 | `POST /api/review/layers` | `diffo layers`: the agent's reading plan (`{ items }`, replace-not-merge) or its flag that one would help (`{ suggest, reason? }`) |
@@ -124,8 +125,15 @@ with a few honest extra bits: `codeChanged` (the anchored hunk's id rotated), `w
 (a reviewer reply deliberately not handed over yet, stored rather than inferred, because
 "the last message is the reviewer's" is also true of a reply that *was* delivered),
 `unanswered` (the agent closed the batch without replying), `closingNote` (Finish's own
-thread, below), and `sentAt`, which has to survive a restart because the queue's FIFO order
-is a promise.
+thread, below), `sentAt`, which has to survive a restart because the queue's FIFO order
+is a promise, and `rewound`.
+
+Editing a message works like editing a chat message. If the agent never saw it, the text
+is fixed in place. If the agent saw it, the message is marked `editedAt`, everything after
+it is deleted (not hidden), and the thread goes back to the agent. The agent's session
+still remembers the deleted replies, so `rewound` makes the next delivery say they were
+withdrawn and that any code written for them is still in the tree. That delivery clears
+the flag. Edits are refused while the agent is answering the thread.
 
 `reconcile()` runs against the current hunk id set on every changeset change. Threads whose
 code is gone are **hidden, never deleted**: a stash or a branch switch empties the diff

@@ -7,7 +7,16 @@ Until 1.0, minor versions may break things. When they do, the entry says how to 
 
 ## [Unreleased]
 
-Nothing yet.
+### Added
+
+- **Edit your comments.** Hover one of your messages and click the pencil. If
+  the agent hasn't seen it yet, the edit just fixes the text in place. If it
+  has, editing works like editing a chat message: everything after it is
+  deleted, the messages that will go are struck through while you edit, and
+  **Save & resend** hands the thread back (plain **Save** holds it). The
+  agent is told its earlier replies were withdrawn, and that any code it
+  changed for them is still in the tree, so it should keep or revert that code
+  and say which. The pencil is off while the agent is answering the thread.
 
 ## [0.5.0] — 2026-09-26
 
