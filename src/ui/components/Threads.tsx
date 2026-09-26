@@ -3,6 +3,7 @@ import {
   anchorSpan,
   type ReviewThread,
   startedByAgent,
+  type ThreadIntent,
   type ThreadState,
   untouchedAgentVoice,
 } from '../../shared/review.js'
@@ -26,8 +27,18 @@ export interface ReviewActions {
   remove?: (threadId: string) => Promise<unknown>
 }
 
+/** The kind the reviewer declared, as the card shows it — the composer's own
+ * words, so the badge reads as "what I picked", not as a new vocabulary. */
+export const INTENT_WORD: Record<ThreadIntent, string> = {
+  fix: 'Change',
+  question: 'Question',
+}
+
+/* One vocabulary, card and rail alike: Draft (yours, not sent) → Sent →
+ * Answered / Addressed (the agent replied, or changed the code you asked
+ * about) → Resolved. */
 const STATE_LABEL: Record<ThreadState, string> = {
-  open: 'Open',
+  open: 'Draft',
   sent: 'Sent',
   addressed: 'Answered',
   resolved: 'Resolved',
@@ -285,13 +296,20 @@ export function ThreadCard({
     ? 'From the agent'
     : withheld
       ? TURN_LABEL.note
-      : STATE_LABEL[thread.state]
+      : thread.state === 'addressed' && thread.intent === 'fix'
+        ? 'Addressed'
+        : STATE_LABEL[thread.state]
   const tone: string = proposed || withheld ? 'attn' : STATE_TONE[thread.state]
 
   // State and badges ride the first byline rather than a banded header row of their
   // own: on a two-line thread that band was taller than the comment it labelled.
   const marks = (
     <span className="thread-marks">
+      {thread.intent && !startedByAgent(thread) && (
+        <span className={`thread-badge thread-badge-kind thread-kind-${thread.intent}`}>
+          {INTENT_WORD[thread.intent]}
+        </span>
+      )}
       {thread.closingNote && <span className="thread-badge">closing note</span>}
       {thread.codeChanged && (
         <span className="thread-badge">

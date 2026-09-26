@@ -175,6 +175,9 @@ describe('LayerRail', () => {
     expect(onPick).toHaveBeenCalledWith(1)
     fireEvent.click(screen.getByLabelText('Show the files in Weekday resolution'))
     expect(onPick).toHaveBeenCalledTimes(1)
+    // The row's own padding picks too — the whole row is the target, once.
+    fireEvent.click(row)
+    expect(onPick).toHaveBeenCalledTimes(2)
   })
 
   it('an opened layer lists its file rows, notes as tooltips; a pick reports up', () => {
@@ -233,7 +236,8 @@ describe('LayerRail', () => {
     const overview = document.querySelector('.row-layer-overview')!
     expect(overview.querySelector('.row-base')?.textContent).toBe('Overview')
     expect(overview.querySelector('[role="checkbox"]')).toBeNull()
-    expect(subOf(overview)).toBe('guide · agent · with diagram')
+    // No metadata line: the row is the guide, and "guide · agent" said nothing.
+    expect(overview.querySelector('.ch-sub')).toBeNull()
     fireEvent.click(overview.querySelector('.row-pick')!)
     expect(onOpenGuide).toHaveBeenCalled()
   })

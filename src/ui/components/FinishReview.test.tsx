@@ -248,7 +248,7 @@ describe('FinishReview — still on you (check-off first: it mutates the batch)'
     // Reopening one can't put it back on the wire — the batch is scoped to the diff.
     const rows = document.querySelectorAll('.fin-row-checkoff')
     const back = rows[rows.length - 1]!.querySelector('button[title*="reopen"]')!
-    expect(back.getAttribute('title')).toMatch(/lands in Not sent/)
+    expect(back.getAttribute('title')).toMatch(/lands in Drafts/)
     expect(rows[0]!.querySelector('button[title*="reopen"]')!.getAttribute('title')).toMatch(
       /goes out again in this batch/,
     )

@@ -22,6 +22,10 @@ export function PaneBar({
   onToggleNav,
   left,
   total,
+  hunksRead,
+  hunksTotal,
+  hunkAt = 0,
+  hunkCount = 0,
   query = '',
   onClearQuery,
   hideReviewed,
@@ -43,6 +47,13 @@ export function PaneBar({
   onToggleNav?: () => void
   left: number
   total: number
+  /** Hunk marks, the finer grain: the bar fills by hunks when they are known;
+   * the words stay in files, which is what you tick. */
+  hunksRead?: number
+  hunksTotal?: number
+  /** Where `j`/`k` stand, 1-based; 0 when no hunk is selected. */
+  hunkAt?: number
+  hunkCount?: number
   /** In layer mode the burndown reads the active layer, and a pager sits at
    * the end of the bar. */
   layer?: PaneLayer
@@ -65,6 +76,16 @@ export function PaneBar({
   onAddNote?: () => void
 }) {
   const done = total - left
+  const byHunks = hunksTotal !== undefined && hunksRead !== undefined && hunksTotal > 0
+  const fill = layer
+    ? layer.progress
+    : byHunks
+      ? hunksRead / hunksTotal
+      : total === 0
+        ? 0
+        : done / total
+  // Files are the words; hunks only drive the bar's fill.
+  const coverage = left === 0 ? 'all reviewed' : `${done} of ${total} files`
   const showTests = testCount > 0 || hideTests
   const showChanged = changedCount > 0 || onlyChanged
   const trimmedQuery = query.trim()
@@ -82,18 +103,8 @@ export function PaneBar({
           <Icon name="sidebar" size="md" />
         </button>
       )}
-      <span className="prog-track" aria-hidden="true">
-        <i
-          style={{
-            width: `${
-              layer
-                ? Math.round(layer.progress * 100)
-                : total === 0
-                  ? 0
-                  : Math.round((done / total) * 100)
-            }%`,
-          }}
-        />
+      <span className="prog-track prog-track-pane" aria-hidden="true">
+        <i style={{ width: `${Math.round(fill * 100)}%` }} />
       </span>
       {layer ? (
         <span className="pane-left" title={layer.title}>
@@ -101,7 +112,12 @@ export function PaneBar({
         </span>
       ) : (
         <span className="pane-left" title={`${done} of ${total} files marked reviewed`}>
-          {left === 0 ? 'all reviewed' : `${left} left`}
+          {coverage}
+        </span>
+      )}
+      {hunkAt > 0 && hunkCount > 0 && (
+        <span className="pane-at" title="the selected hunk — j / k move it">
+          hunk {hunkAt} / {hunkCount}
         </span>
       )}
       <span className="grow" />

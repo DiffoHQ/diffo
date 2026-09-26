@@ -69,10 +69,13 @@ function LayerRow({
   const markable = layer.files.filter((f) => !isFileViewed(f.file, viewed)).map((f) => f.file.path)
   const paths = layer.files.map((f) => f.file.path)
   return (
+    // biome-ignore lint/a11y/noStaticElementInteractions: the row's own pick button is the keyboard path; this only widens the mouse target to the whole row
+    // biome-ignore lint/a11y/useKeyWithClickEvents: same — the pick button inside carries the keys
     <div
       className={`row row-layer${allDone ? ' row-done' : ''}${layer.derived ? ' row-layer-since' : ''}`}
       aria-current={current ? 'true' : undefined}
       data-layer={layer.id ?? 'since'}
+      onClick={() => onPick(index)}
     >
       {/* biome-ignore lint/a11y/useSemanticElements: a native checkbox cannot express the roll-up's mixed state */}
       <button
@@ -91,7 +94,8 @@ function LayerRow({
             : `Mark ${plural(markable.length, 'file')} reviewed`
         }
         disabled={paths.length === 0 || (allDone ? !onClearFiles : !onMarkFiles)}
-        onClick={() => {
+        onClick={(e) => {
+          e.stopPropagation()
           if (allDone) onClearFiles?.(paths)
           else onMarkFiles?.(markable)
         }}
@@ -100,7 +104,16 @@ function LayerRow({
       </button>
       {/* Title and count are one target: anywhere on them picks the layer. Only
           the mark and the fold chevron are their own controls. */}
-      <button type="button" className="row-pick" title={layer.title} onClick={() => onPick(index)}>
+      <button
+        type="button"
+        className="row-pick"
+        title={layer.title}
+        onClick={(e) => {
+          // The row behind also picks; one pick per click.
+          e.stopPropagation()
+          onPick(index)
+        }}
+      >
         <span className="row-name">
           <span className="row-base">{layer.title}</span>
         </span>
@@ -131,7 +144,10 @@ function LayerRow({
             aria-expanded={open}
             aria-label={`${open ? 'Hide' : 'Show'} the files in ${layer.title}`}
             data-tip={open ? 'Hide files' : 'Show files'}
-            onClick={onToggleOpen}
+            onClick={(e) => {
+              e.stopPropagation()
+              onToggleOpen()
+            }}
           >
             <Icon name="chev" size="sm" />
           </button>
@@ -190,7 +206,6 @@ export function LayerRail({
 }) {
   const threadCount = (layer: ResolvedLayer) =>
     layer.files.reduce((n, f) => n + (threads?.get(f.file.path)?.length ?? 0), 0)
-  const guideText = guide?.messages[0]?.text ?? ''
   // Files stay folded until the chevron opens them — the outline is the list of
   // steps, and a step's files are detail the reviewer asks for.
   const [opened, setOpened] = useState<ReadonlySet<string>>(new Set())
@@ -206,9 +221,12 @@ export function LayerRail({
   return (
     <div className="rail-scroll">
       {guide && (
+        // biome-ignore lint/a11y/noStaticElementInteractions: the pick button inside is the keyboard path; the row widens the mouse target
+        // biome-ignore lint/a11y/useKeyWithClickEvents: same
         <div
           className="row row-layer row-layer-overview"
           aria-current={overviewActive ? 'true' : undefined}
+          onClick={onOpenGuide}
         >
           <span className="row-box" aria-hidden="true">
             <MarkBox />
@@ -217,13 +235,13 @@ export function LayerRail({
             type="button"
             className="row-pick"
             title="The agent’s guide to this change"
-            onClick={onOpenGuide}
+            onClick={(e) => {
+              e.stopPropagation()
+              onOpenGuide?.()
+            }}
           >
             <span className="row-name">
               <span className="row-base">Overview</span>
-            </span>
-            <span className="ch-sub">
-              <span>guide · agent{guideText.includes('```mermaid') ? ' · with diagram' : ''}</span>
             </span>
           </button>
           <span className="row-right" />

@@ -816,6 +816,11 @@ body {
   padding: 0 2px;
 }
 
+.crow-kind {
+  color: var(--ink-2);
+  font-weight: 600;
+}
+
 .crow-state-agent {
   color: var(--attn);
 }
@@ -1397,6 +1402,29 @@ body {
   color: var(--ink-3);
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
+}
+
+/* The pane's own bar is wider and thicker than the rail's: it is the review's
+ * progress, not a row's. */
+.prog-track-pane {
+  width: 84px;
+  height: 5px;
+  border-radius: 3px;
+}
+
+.prog-track-pane i {
+  height: 5px;
+  border-radius: 3px;
+}
+
+.pane-at {
+  font-family: var(--mono);
+  font-size: var(--t-12);
+  color: var(--ink-2);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  padding-left: var(--s-2);
+  border-left: 1px solid var(--hair);
 }
 
 /* The rail's typed filter, echoed on the bar: with the rail collapsed this chip is
@@ -2178,6 +2206,9 @@ body {
    * clipping without creating a scroll container. */
   overflow: clip;
   background: var(--paper);
+  /* The header trims its trailing widgets to the width the section actually
+   * gets — see the @container rules under .file-header. */
+  container-type: inline-size;
   scroll-margin-top: var(--s-3);
 }
 
@@ -2236,17 +2267,44 @@ body {
   white-space: nowrap;
 }
 
+/* A narrow section (a review beside a terminal) trims the header from the
+ * right so the file name keeps its room: first the squares, then the +/−
+ * counts. The Viewed toggle and the thread count stay — those are actions. */
+@container (width < 560px) {
+  .file-header .dstat .sq {
+    display: none;
+  }
+}
+
+@container (width < 480px) {
+  .file-header .dstat {
+    display: none;
+  }
+}
+
+/* The path is two spans so that a narrow pane eats the directory, never the
+ * basename: `…/components/App.tsx`, not `src/cl…`. A grid, not flex, because
+ * the header must shrink this box only as far as the basename: each column's
+ * floor is its item's min-width, so the directory's floor is one ellipsis and
+ * the basename's is its own text. The directory ellipsizes from the left — an
+ * RTL box puts the ellipsis at its start — while the <bdi> inside keeps the
+ * text reading left to right, so a trailing slash stays at the end. */
 .file-path {
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: minmax(auto, max-content);
+  align-items: baseline;
   font-family: var(--mono);
   font-size: var(--t-125);
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
   white-space: nowrap;
 }
 
 .file-dir {
   color: var(--ink-3);
+  min-width: 1.5ch;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  direction: rtl;
 }
 
 .file-base {
@@ -2257,6 +2315,9 @@ body {
 .file-oldpath {
   color: var(--ink-3);
   text-decoration: line-through;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .ghb {
@@ -2504,8 +2565,12 @@ body {
   opacity: 0.45;
 }
 
+/* The cursor: a rail down the whole card plus a hairline ring, so `j`/`k`'s
+ * position is findable after a scroll and not only at the top-left corner. */
 .hunk-selected {
-  box-shadow: inset 2px 0 0 var(--acc-line);
+  box-shadow:
+    inset 3px 0 0 var(--acc),
+    0 0 0 1px var(--acc-line);
 }
 
 /*
@@ -3048,6 +3113,13 @@ tr:hover .line-range-glyph {
  * hue as the gap expanders, and the one color that stays legible over both tints.
  * After the resting-spine rules so that lit beats muted on the shared bar.
  */
+/* The focused line: the one a click chose and `c` will comment on. A bar in
+ * the gutter, like a selection's, but in the accent so the two never read as
+ * the same thing; a selection (declared below) wins when both apply. */
+.hunk-lines tr.line-focus > td:first-child {
+  box-shadow: inset 2px 0 0 var(--accent);
+}
+
 .hunk-lines tr.line-sel > td {
   background: var(--exp-wash);
 }
@@ -3232,6 +3304,13 @@ tr:hover .line-range-glyph {
   background: var(--attn-wash);
   color: var(--attn);
   font-size: var(--t-11);
+}
+
+/* The kind the reviewer picked: quiet, not an alert — it labels, it doesn't warn. */
+.thread-badge-kind {
+  background: var(--fill-2);
+  color: var(--ink-2);
+  font-weight: 600;
 }
 
 .thread-message-pending {
@@ -3470,7 +3549,11 @@ tr:hover .line-range-glyph {
 }
 
 /* A rendered ```mermaid fence. The SVG carries its own colors; the figure just
- * gives it a quiet frame and keeps a wide diagram scrollable, not overflowing. */
+ * gives it a quiet frame. Both renderers emit a viewBox plus a natural
+ * width/height, so capping the width scales the whole drawing to the card —
+ * a diagram wider than the comment shrinks to fit instead of clipping at the
+ * edge behind an overlay scrollbar nobody sees. mermaid.ts pins a min-width
+ * on the SVG at 60% of natural size; past that floor the figure scrolls. */
 .markdown .mermaid-figure {
   background: var(--fill);
   border-radius: var(--s-3);
@@ -3482,6 +3565,8 @@ tr:hover .line-range-glyph {
 .markdown .mermaid-figure svg {
   display: block;
   margin: 0 auto;
+  max-width: 100%;
+  height: auto;
 }
 
 /* A diagram node naming a changeset file is a jump (see `linkDiagramRefs`). */
@@ -3907,12 +3992,14 @@ tr:hover .line-range-glyph {
   outline-offset: -1px;
 }
 
+/* A segmented control: one segment is always lit, so the comment's kind is
+ * never a guess — "Agent decides" is the default and looks like a choice. */
 .cbox-intent {
   display: inline-flex;
   align-items: center;
   gap: 2px;
   padding: 2px;
-  border: 1px solid var(--hair);
+  background: var(--fill-2);
   border-radius: var(--r-sm);
 }
 
@@ -3929,14 +4016,14 @@ tr:hover .line-range-glyph {
 }
 
 .cbox-intent-chip:hover {
-  background: var(--fill-2);
   color: var(--ink);
 }
 
 .cbox-intent-chip[aria-checked="true"] {
-  background: var(--fill-2);
+  background: var(--paper);
   color: var(--ink);
   font-weight: 600;
+  box-shadow: 0 1px 2px rgb(0 0 0 / 0.12);
 }
 
 .cbox-intent-chip:focus-visible {

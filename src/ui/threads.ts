@@ -40,7 +40,7 @@ export const TURN_LABEL: Record<Turn, string> = {
   unanswered: 'No answer',
   proposed: 'From the agent',
   agent: 'Waiting on agent',
-  note: 'Not sent',
+  note: 'Draft',
   resolved: 'Resolved',
 }
 
@@ -52,7 +52,7 @@ export const SECTION_LABEL: Record<Section, string> = {
   yours: 'Your turn',
   proposed: 'From the agent',
   agent: 'Waiting on the agent',
-  note: 'Not sent',
+  note: 'Drafts',
   settled: 'Settled',
 }
 
