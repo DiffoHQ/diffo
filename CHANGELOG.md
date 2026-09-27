@@ -7,7 +7,13 @@ Until 1.0, minor versions may break things. When they do, the entry says how to 
 
 ## [Unreleased]
 
-Nothing yet.
+### Fixed
+
+- **Diagram labels stay readable in dark mode.** A node the agent colors
+  (`classDef` / `style … fill:`) keeps its fill in both themes, but its label
+  followed the theme, so dark mode drew near-white text on a pastel box. A
+  label on a colored node now gets whichever ink reads better on its fill; an
+  explicit `color:` is still kept.
 
 ## [0.7.0] — 2026-09-26
 

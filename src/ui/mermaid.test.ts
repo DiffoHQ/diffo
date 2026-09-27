@@ -159,6 +159,28 @@ describe('renderMermaidIn', () => {
     await new Promise((r) => setTimeout(r, 20))
     expect(figure.innerHTML).toBe(before)
   })
+  it('inks a painted node against its fill, not the theme — a pastel box stays readable in dark mode', async () => {
+    const root = fence(
+      [
+        'flowchart LR',
+        '  a[pale] --> b[deep] --> c[own ink] --> d[plain] --> e[see-through]',
+        '  classDef pale fill:#fff3c4,stroke:#c9a227',
+        '  class a pale',
+        '  style b fill:rgb(20, 30, 60)',
+        '  style c fill:#fff3c4,color:#123',
+        '  style e fill:#fff3c433',
+      ].join('\n'),
+    )
+    await renderMermaidIn(root)
+    const ink = (id: string) =>
+      root.querySelector(`g.node[data-id="${id}"] text`)?.getAttribute('fill')
+    expect(ink('a')).toBe('rgb(29 29 31)')
+    expect(ink('b')).toBe('rgb(245 245 247)')
+    expect(ink('c')).toBe('#123')
+    expect(ink('d')).toBe('var(--_text)')
+    expect(ink('e')).toBe('var(--_text)')
+  })
+
   it('pins a floor at 60% of natural width, so a wide diagram scrolls before its labels shrink away', async () => {
     const root = fence(
       'flowchart LR\n  a[db.ts] --> b[routes.ts] --> c[App.tsx] --> d[FileRow.tsx]',
