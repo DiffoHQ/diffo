@@ -159,6 +159,66 @@ function pinScaleFloor(figure: HTMLElement): void {
   }
 }
 
+/** Diffo's light- and dark-theme `--ink`, as fixed colors: a painted node's
+ * fill doesn't follow the theme, so neither may the ink chosen against it. */
+const INK_ON_LIGHT = [0x1d, 0x1d, 0x1f] as const
+const INK_ON_DARK = [0xf5, 0xf5, 0xf7] as const
+
+/** `#rgb`, `#rgba`, `#rrggbb`, `#rrggbbaa`, `rgb()`/`rgba()` — as 0–255
+ * channels plus a 0–1 alpha. Anything else is null. */
+function parseColor(value: string): { rgb: number[]; alpha: number } | null {
+  const v = value.trim().toLowerCase()
+  const hex = /^#([0-9a-f]{3,4}|[0-9a-f]{6}|[0-9a-f]{8})$/.exec(v)?.[1]
+  if (hex) {
+    const pairs = hex.length <= 4 ? Array.from(hex, (c) => c + c) : hex.match(/../g)!
+    const [r, g, b, a] = pairs.map((p) => Number.parseInt(p, 16))
+    return { rgb: [r!, g!, b!], alpha: a === undefined ? 1 : a / 255 }
+  }
+  const fn = /^rgba?\(([^)]*)\)$/.exec(v)?.[1]
+  if (fn) {
+    const parts = fn.split(/[\s,/]+/).filter(Boolean)
+    if (parts.length < 3) return null
+    const [r, g, b] = parts.slice(0, 3).map(Number)
+    const a =
+      parts[3] === undefined ? 1 : Number.parseFloat(parts[3]) / (parts[3].endsWith('%') ? 100 : 1)
+    if (![r, g, b, a].every(Number.isFinite)) return null
+    return { rgb: [r!, g!, b!], alpha: a }
+  }
+  return null
+}
+
+/** WCAG relative luminance of 0–255 channels. */
+function luminance(rgb: readonly number[]): number {
+  const [r, g, b] = rgb.map((c) => {
+    const s = c / 255
+    return s <= 0.03928 ? s / 12.92 : ((s + 0.055) / 1.055) ** 2.4
+  })
+  return 0.2126 * r! + 0.7152 * g! + 0.0722 * b!
+}
+
+/** A node the agent painted (`classDef … fill:#fff3c4`, `style a fill:…`)
+ * keeps that fill in both themes, while its label follows the theme's ink —
+ * so on a dark page it turns near-white on a pastel box. Such a label gets
+ * whichever ink reads better on the fill instead. An authored `color:` is
+ * left alone, and so is a mostly transparent fill, which the page shows
+ * through. Runs on a connected figure: a named or `hsl()` fill is read back
+ * resolved from the computed style. */
+function inkPaintedNodes(figure: HTMLElement): void {
+  for (const node of Array.from(figure.querySelectorAll('g.node'))) {
+    const labels = node.querySelectorAll('text[fill="var(--_text)"]')
+    const shape = node.querySelector('[fill]:not(text):not(tspan)')
+    const fill = shape?.getAttribute('fill') ?? ''
+    if (labels.length === 0 || !shape || fill.startsWith('var(') || fill === 'none') continue
+    const color = parseColor(fill) ?? parseColor(getComputedStyle(shape).fill)
+    if (!color || color.alpha < 0.5) continue
+    const bg = luminance(color.rgb)
+    const onLight = (bg + 0.05) / (luminance(INK_ON_LIGHT) + 0.05)
+    const onDark = (luminance(INK_ON_DARK) + 0.05) / (bg + 0.05)
+    const ink = onLight >= onDark ? INK_ON_LIGHT : INK_ON_DARK
+    for (const label of Array.from(labels)) label.setAttribute('fill', `rgb(${ink.join(' ')})`)
+  }
+}
+
 let watchingTheme = false
 
 /** Stock mermaid bakes its palette in at render time, so a figure it drew goes
@@ -235,6 +295,7 @@ export async function renderMermaidIn(root: HTMLElement | null): Promise<void> {
       watchThemeForStockFigures()
     }
     pre.replaceWith(figure)
+    if (rendered.live) inkPaintedNodes(figure)
   }
 }
 
