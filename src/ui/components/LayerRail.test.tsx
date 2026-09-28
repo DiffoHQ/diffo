@@ -97,6 +97,19 @@ describe('LayerRail', () => {
     expect(bar.style.width).toBe('40%')
   })
 
+  it('an unstarted layer draws no bar — an empty track reads as broken', () => {
+    render(
+      <LayerRail
+        layers={resolved}
+        activeIndex={-1}
+        onPick={() => {}}
+        viewed={new Set(['src/dates.ts#1'])}
+      />,
+    )
+    expect(rows()[0]!.querySelector('.prog-track')).toBeNull()
+    expect(rows()[1]!.querySelector('.prog-track')).not.toBeNull()
+  })
+
   it('a hidden file is counted under the title, and a layer left with none says why', () => {
     const shown = hideLayerFiles(
       resolved,

@@ -120,7 +120,9 @@ function LayerRow({
           <span className="row-base">{layer.title}</span>
         </span>
         <span className="ch-sub">
-          {p.files > 0 && (
+          {/* The bar waits for the first mark: an empty track reads as
+              something failing to render, not as 0%. */}
+          {p.doneMarks > 0 && (
             <span className="prog-track" aria-hidden="true">
               <i
                 style={{
