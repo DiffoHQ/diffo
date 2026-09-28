@@ -49,13 +49,13 @@ whichever agent you already use:
 Run `npx skills add DiffoHQ/diffo --skill diffo -g` and open the diffo review
 ```
 
-That's the whole install. From then on, ask for a review the way you'd ask a colleague:
+That's the whole install. From then on, one command in any session:
 
-| Say | And the agent reviews |
+| Run | And the agent reviews |
 | --- | --- |
-| **"let's review that"**, or just `/diffo` | what it just wrote, before anything is committed |
-| **"review this against main"**, or `/diffo main` | everything since you branched off `main` |
-| **"review this PR with me"** and the link, or `/diffo <link>` | a GitHub pull request, checked out in a worktree of its own; your review goes back to GitHub when you finish |
+| `/diffo` | what it just wrote, before anything is committed |
+| `/diffo main` | everything since you branched off `main` |
+| `/diffo <PR link>` | a GitHub pull request, checked out in a worktree of its own; your review goes back to GitHub when you finish |
 
 Every time, the agent opens the review and hands you the URL. It all runs on your
 machine, and nothing needs to be committed or pushed first. A pull request needs the
