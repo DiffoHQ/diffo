@@ -4,6 +4,9 @@ Diffo reviews pull requests too. Hand it a PR and it becomes the place you read
 it, with your agent beside you as a copilot for code it did not write, and your
 review goes back to GitHub when you finish.
 
+<video class="clip" src="../assets/pr-review.mp4" muted loop playsinline width="1152" height="648" poster="../assets/pr-review-poster.jpg" preload="none"
+  aria-label="One take of a pull request review: the reviewer types /diffo with a pull request's link in Claude Code, the review opens beside the session with the PR's title, author and checks in the header, the agent lays the change out in layers, a question for the agent on the streak check comes back answered in the thread, a comment for GitHub goes on the same line, and the review is submitted with Request changes and appears on the pull request"></video>
+
 ```text
 /diffo https://github.com/acme/widgets/pull/482
 ```

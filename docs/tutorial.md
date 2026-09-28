@@ -126,6 +126,8 @@ scoped per repo and branch, so switching branches never mixes reviews.
 
 ## Where to go next
 
+- [Reviewing a pull request](guide/pr-review.md): the same loop on a GitHub pull
+  request, with your review submitted back to GitHub.
 - [The agent protocol](agents.md): how an agent attaches, what a poll payload
   carries, and how presence works.
 - [Architecture](architecture.md): the diff pipeline, the delivery queue, and the SQLite
