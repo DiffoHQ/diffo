@@ -33,7 +33,7 @@ header chip reads *agent · suggests layers*. Click it, or press **Ask the agent
 the **Layers** tab, and a moment later the change arrives as ordered steps, each
 with a title, a summary, and its files. You can ask whether the agent suggested it or not;
 without an outline the review is the plain file list.
-[The review loop](guide/the-loop.md#read-it-in-layers) has the detail.
+[Layers](guide/layers.md) has the detail.
 
 <video class="clip clip-light" src="./assets/layers.mp4" muted loop playsinline width="1440" height="1102" poster="./assets/layers-poster.jpg" preload="none"
   aria-label="A 23-file change, every file folded. The header chip reads agent · suggests layers; the reviewer clicks it, eight layers land, and picking the first shows its summary card. ] steps to layers 2 and 3, where the reviewer asks on a line and the agent answers in the thread."></video>
@@ -117,6 +117,34 @@ code gets finished. The agent stays in the flow with you, round after round: rea
 changed, comment again, send again. When every thread is resolved and the diff reads
 clean, the code is ready.
 
+## Part two · A pull request
+
+The same loop works on a pull request that lands on your desk, with your agent reading
+beside you instead of answering for its own work. You need the
+[GitHub CLI](https://cli.github.com) signed in, and any open pull request in a repo you
+can clone.
+
+<video class="clip" src="./assets/pr-review.mp4" muted loop playsinline width="1152" height="648" poster="./assets/pr-review-poster.jpg" preload="none"
+  aria-label="One take of a pull request review: the reviewer types /diffo with a pull request's link in Claude Code, the review opens beside the session with the PR's title, author and checks in the header, the agent lays the change out in layers, a question for the agent on the streak check comes back answered in the thread, a comment for GitHub goes on the same line, and the review is submitted with Request changes and appears on the pull request"></video>
+
+1. **Open it.** In any session, `/diffo <PR link>`. The PR is fetched into a worktree
+   Diffo owns, so nothing in your checkout moves, and the review opens with the PR's
+   title, author and checks in the header. Row 0 of the Layers list is the
+   **Overview**: the description, and the GitHub conversation you are part of.
+2. **Read it in layers.** The agent suggests an outline when the change has an order
+   worth explaining. Click the chip and read one layer at a time, as before.
+3. **Ask the agent.** Every composer has two tabs. **Ask agent** is private: the agent
+   can run the tests in the worktree and answer with evidence, and when the answer is a
+   fix it comes as a ```` ```suggestion ```` block in the reply.
+4. **Leave a comment for the author.** Flip the tab to **Comment on PR** (`⌘.`). It's a
+   blue draft, and it posts when you finish, not before.
+5. **Submit.** **Submit review** is GitHub's own dialog: a body, a verdict, then one
+   review posted through your own `gh`. Your private threads go to the agent at the same
+   time.
+
+[Reviewing a pull request](guide/pr-review.md) has what the clip doesn't show: a push
+while you read, merged and closed pull requests, and the worktree's life.
+
 ## Your review is durable
 
 Comments live in Diffo's local server, not in the agent's session. Close the terminal,
@@ -126,8 +154,7 @@ scoped per repo and branch, so switching branches never mixes reviews.
 
 ## Where to go next
 
-- [Reviewing a pull request](guide/pr-review.md): the same loop on a GitHub pull
-  request, with your review submitted back to GitHub.
+- [Layers](guide/layers.md): the agent's reading plan, in full.
 - [The agent protocol](agents.md): how an agent attaches, what a poll payload
   carries, and how presence works.
 - [Architecture](architecture.md): the diff pipeline, the delivery queue, and the SQLite

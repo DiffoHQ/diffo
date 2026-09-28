@@ -110,7 +110,7 @@ context.
 
 | Where | What |
 | --- | --- |
-| `~/.diffo/diffo.db`, SQLite (WAL), mode `0600` | Review threads and the agent's [layers](/guide/the-loop#read-it-in-layers), keyed by repo path + branch + base, pruned after 60 days untouched · which server holds which repo · each repo's preferred port |
+| `~/.diffo/diffo.db`, SQLite (WAL), mode `0600` | Review threads and the agent's [layers](/guide/layers), keyed by repo path + branch + base, pruned after 60 days untouched · which server holds which repo · each repo's preferred port |
 | Your browser's `localStorage` | Which hunks you've read, keyed by worktree path and changeset spec |
 | Nowhere | Your code. Diffo reads git on demand and stores no copy of your files |
 

@@ -147,7 +147,8 @@ GitHub's conventions. The CLI, the flags, and everything under the hood are in t
 | --- | --- |
 | [**Your first review**](https://diffohq.github.io/diffo/tutorial) | The whole loop end to end, about five minutes |
 | [**Getting started**](https://diffohq.github.io/diffo/guide/getting-started) | Install, and where each agent gets wired |
-| [**The review loop**](https://diffohq.github.io/diffo/guide/the-loop) | Reading, layers, commenting, and what the agent receives |
+| [**The review loop**](https://diffohq.github.io/diffo/guide/the-loop) | Reading, commenting, and what the agent receives |
+| [**Layers**](https://diffohq.github.io/diffo/guide/layers) | The agent's reading plan: ordered steps, one at a time |
 | [**Reviewing a pull request**](https://diffohq.github.io/diffo/guide/pr-review) | A GitHub PR in a worktree, your agent beside you, your review back on GitHub |
 | [**How it works**](https://diffohq.github.io/diffo/guide/how-it-works) | The components and the server lifecycle |
 | [**The agent side**](https://diffohq.github.io/diffo/agents) | The agent protocol: every command, every payload |
