@@ -157,13 +157,48 @@ describe('LayerRail', () => {
   it('files start folded, the active layer included; the chevron opens and shuts them', () => {
     render(<LayerRail layers={resolved} activeIndex={1} onPick={() => {}} viewed={new Set()} />)
     const files = () =>
-      [...document.querySelectorAll('.ch-files .row .row-base')].map((n) => n.textContent)
+      [...document.querySelectorAll('.ch-files .row:not(.row-dir) .row-base')].map(
+        (n) => n.textContent,
+      )
     expect(files()).toEqual([])
     fireEvent.click(screen.getByLabelText('Show the files in Parser contract'))
     fireEvent.click(screen.getByLabelText('Show the files in Weekday resolution'))
     expect(files()).toEqual(['parse.ts', 'dates.ts', 'weekday.ts'])
     fireEvent.click(screen.getByLabelText('Hide the files in Weekday resolution'))
     expect(files()).toEqual(['parse.ts'])
+  })
+
+  it('an opened layer is the Files tree: folders fold, and their mark rolls the layer up', () => {
+    const onMarkFiles = vi.fn()
+    render(
+      <LayerRail
+        layers={resolved}
+        activeIndex={1}
+        onPick={() => {}}
+        viewed={new Set()}
+        onMarkFiles={onMarkFiles}
+      />,
+    )
+    const names = () =>
+      [...document.querySelectorAll('.ch-files .row .row-base')].map((n) => n.textContent)
+    fireEvent.click(screen.getByLabelText('Show the files in Weekday resolution'))
+    // By folder, files by basename under it — not the flat list the agent
+    // posted. The pane keeps the agent's order; the rail is the map.
+    expect(names()).toEqual(['src', 'dates.ts', 'weekday.ts'])
+    const dir = document.querySelector('.ch-files .row-dir')!
+    expect(dir.querySelector('.dir-ico')).toBeTruthy()
+    // Folded and unfolded on the folder's own row, independent of the layer's chevron.
+    fireEvent.click(dir.querySelector('.row-pick')!)
+    expect(names()).toEqual(['src'])
+    fireEvent.click(dir.querySelector('.row-pick')!)
+    expect(names()).toEqual(['src', 'dates.ts', 'weekday.ts'])
+    // The folder's box is the same roll-up the Files tab has.
+    fireEvent.click(screen.getByLabelText('Mark 2 files in src reviewed'))
+    expect(onMarkFiles).toHaveBeenCalledWith(['src/dates.ts', 'src/weekday.ts'])
+    // The trailing layer's root file needs no folder: it sits at the top level.
+    fireEvent.click(screen.getByLabelText('Show the files in Since your review'))
+    expect(names().slice(3)).toEqual(['README.md'])
+    expect(document.querySelectorAll('.ch-files .row-dir')).toHaveLength(1)
   })
 
   it('the whole title-and-count block is the pick target; the chevron is not', () => {
@@ -194,11 +229,11 @@ describe('LayerRail', () => {
     )
     expect(rows()[1]!.getAttribute('aria-current')).toBe('true')
     fireEvent.click(screen.getByLabelText('Show the files in Weekday resolution'))
-    const files = [...document.querySelectorAll('.ch-files .row .row-base')].map(
+    const files = [...document.querySelectorAll('.ch-files .row:not(.row-dir) .row-base')].map(
       (n) => n.textContent,
     )
     expect(files).toEqual(['dates.ts', 'weekday.ts'])
-    const dates = document.querySelector('.ch-files .row .row-pick')!
+    const dates = document.querySelector('.ch-files .row:not(.row-dir) .row-pick')!
     expect(dates.getAttribute('title')).toContain(', delegates to resolveWeekday')
     fireEvent.click(dates)
     expect(onPickFile).toHaveBeenCalledWith('src/dates.ts')

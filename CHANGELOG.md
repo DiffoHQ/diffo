@@ -7,6 +7,13 @@ Until 1.0, minor versions may break things. When they do, the entry says how to 
 
 ## [Unreleased]
 
+### Changed
+
+- **A layer's files read as a tree.** Opening a layer in the Layers tab lists
+  its files the way the Files tab does — folders that fold, each with the
+  roll-up mark — instead of a flat list. The reading pane still reads the
+  layer in the order the agent listed it.
+
 ### Fixed
 
 - **Diagram labels stay readable in dark mode.** A node the agent colors

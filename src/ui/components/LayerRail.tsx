@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import type { ReviewThread } from '../../shared/review.js'
 import type { LayersRequest } from '../api.js'
 import { isFileViewed } from '../fileMarks.js'
@@ -6,7 +6,7 @@ import { layerProgress, type ResolvedLayer } from '../layers.js'
 import type { ThreadItem } from '../threads.js'
 import { Icon } from './Icon.js'
 import { MarkBox } from './MarkBox.js'
-import { FileRow } from './Nav.js'
+import { FileTree, type FileTreeProps } from './Nav.js'
 
 /**
  * The outline: one row per layer, a directory row without the folder icon. The
@@ -14,8 +14,10 @@ import { FileRow } from './Nav.js'
  * marks every file in the layer read, same toggle, same mixed state. Counts sit
  * under the title rather than beside it, because at 264px a right-hand tally
  * truncated titles; the thread count is the one thing that stays on the right,
- * and only when it is non-zero. The active layer is expanded to its file rows,
- * which are the Files tree's own rows, marks and all.
+ * and only when it is non-zero. An opened layer shows its files as the Files
+ * tab's own tree — folders that fold, roll-up marks and all — so a layer reads
+ * as a place in the repo, not a flat list. The reading pane still reads the
+ * layer in the order the agent listed it; the tree is the map, not the route.
  */
 
 const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? '' : 's'}`
@@ -157,6 +159,22 @@ function LayerRow({
   )
 }
 
+/** An opened layer's files, as the Files tab's tree. The layer's notes ride
+ * along as the rows' tooltips. */
+function LayerFiles({
+  layer,
+  ...tree
+}: { layer: ResolvedLayer } & Omit<FileTreeProps, 'files' | 'notes' | 'forceOpen'>) {
+  // `layer.files` is stable between resolutions of the outline, so the tree is
+  // rebuilt only when the changeset (or the filter) moves under it.
+  const files = useMemo(() => layer.files.map((f) => f.file), [layer.files])
+  const notes = useMemo(
+    () => new Map(layer.files.flatMap((f) => (f.note ? [[f.file.path, f.note] as const] : []))),
+    [layer.files],
+  )
+  return <FileTree files={files} notes={notes} {...tree} />
+}
+
 export function LayerRail({
   layers,
   activeIndex,
@@ -288,26 +306,19 @@ export function LayerRail({
             />
             {open && layer.files.length > 0 && (
               <div className="ch-files">
-                {layer.files.map(({ file, note }) => (
-                  <FileRow
-                    key={file.path}
-                    file={file}
-                    depth={0}
-                    note={note}
-                    done={isFileViewed(file, viewed)}
-                    current={selectedPath === file.path}
-                    threads={threads?.get(file.path)}
-                    wantsYou={
-                      (attention?.get(file.path) ?? []).filter((i) => i.turn === 'yours').length
-                    }
-                    changed={changed?.has(file.path) ?? false}
-                    onPick={onPickFile ? () => onPickFile(file.path) : undefined}
-                    onToggleViewed={
-                      onToggleFileViewed ? () => onToggleFileViewed(file.path) : undefined
-                    }
-                    onAsk={onAskFile ? () => onAskFile(file.path) : undefined}
-                  />
-                ))}
+                <LayerFiles
+                  layer={layer}
+                  viewed={viewed}
+                  selectedPath={selectedPath}
+                  threads={threads}
+                  attention={attention}
+                  changed={changed}
+                  onPickFile={onPickFile}
+                  onToggleFileViewed={onToggleFileViewed}
+                  onMarkFiles={onMarkFiles}
+                  onClearFiles={onClearFiles}
+                  onAskFile={onAskFile}
+                />
               </div>
             )}
           </div>
