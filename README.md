@@ -11,11 +11,12 @@
 
 ### The human way to review agent-written code.
 
-Ask your agent for a review and read it in your browser, with the agent on the other end
-of every comment: it answers on the line, explains, and fixes while you read. Hand it a
-pull request instead, and it reads beside you and sends your review to GitHub.
+Ask your agent for a review. You get the change in **layers**, in the order it should be
+read, and **the agent on the other end of every comment**: it answers on the line and fixes
+while you read. Hand it a pull request instead, and it reads beside you and sends your
+review to GitHub.
 
-[Quick start](#quick-start) · [Why Diffo](#why-diffo) · [Pull requests](#review-a-pull-request) · [Docs](#docs) · [Contributing](#contributing)
+[Quick start](#quick-start) · [The conversation](#talk-to-the-agent-on-the-line) · [Layers](#read-it-in-layers) · [Pull requests](#review-a-pull-request) · [Docs](#docs) · [Contributing](#contributing)
 
 [![CI](https://img.shields.io/github/actions/workflow/status/DiffoHQ/diffo/ci.yml?branch=main&label=CI)](https://github.com/DiffoHQ/diffo/actions/workflows/ci.yml)
 [![npm](https://img.shields.io/npm/v/%40diffohq%2Fdiffo?label=npm&color=cb3837)](https://www.npmjs.com/package/@diffohq/diffo)
@@ -64,7 +65,7 @@ the network.
 
 New here? [**Your first review, end to end**](https://diffohq.github.io/diffo/tutorial) takes about five minutes.
 
-## Why Diffo
+## Talk to the agent on the line
 
 **We write code with an LLM. We review it alone.**
 
@@ -85,12 +86,13 @@ stop reading alone.
 - **A map, not a verdict.** On a multi-file or subtle change the agent opens the review
   with one orienting comment on what the change does. It never pre-reviews: no verdicts,
   nothing is "fine". That judgement is the part it doesn't get to make.
-- **Read it in layers.** Ask, and the agent posts the change as ordered steps, each with a
-  summary and its files. You read one layer at a time, in the order it should be read,
-  not alphabetically.
-- **A real diff viewer.** Unified and split diffs, word-level marks, keyboard-first
-  movement, context expansion. The conventions are GitHub's, so there is nothing to
-  learn.
+## Read it in layers
+
+A diff arrives alphabetically, which is almost never the order to read it in. Ask, and the
+agent posts **layers**: the change as ordered steps, each with a title, a summary, and its
+files. You read one layer at a time, in the order the agent would explain it; `]` steps to
+the next. Anything the agent touches after posting gathers in a *Since your review* layer,
+so nothing hides outside the plan.
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/assets/layers-dark.gif">
@@ -136,7 +138,8 @@ read, and the agent is there to answer, explain, and fix.
 One process on your machine, bound to loopback: no account, no cloud, no telemetry, and
 no model API. Diffo spawns no agents of its own; the one you're already talking to stays
 attached through the `diffo` CLI, so your comments land in the session that holds the
-context. The CLI, the flags, and everything under the hood are in the docs.
+context. The viewer itself is a real diff viewer, unified and split, keyboard-first, with
+GitHub's conventions. The CLI, the flags, and everything under the hood are in the docs.
 
 ## Docs
 
