@@ -211,28 +211,8 @@ export function FileRow({
   )
 }
 
-export function Nav({
-  files,
-  viewed,
-  selectedPath,
-  onPickFile,
-  onToggleFileViewed,
-  onMarkFiles,
-  onClearFiles,
-  onAskFile,
-  threads,
-  attention,
-  changed,
-  query: sharedQuery,
-  onQuery,
-  focusTick = 0,
-  hideReviewed = false,
-  onHideReviewed,
-  hideTests = false,
-  onHideTests,
-  onlyChanged = false,
-  onOnlyChanged,
-}: {
+/** What every file row in a tree is told about its file, and can do to it. */
+export interface FileTreeProps {
   files: FileChange[]
   viewed?: ReadonlySet<string>
   selectedPath?: string | null
@@ -244,53 +224,37 @@ export function Nav({
   threads?: Map<string, ReviewThread[]>
   attention?: Map<string, ThreadItem[]>
   changed?: ReadonlySet<string>
-  /** The typed filter is review-wide state, not the rail's: the pane narrows by the
-   * same word (`useReviewFilter`), so the tree stays a map of what the pane shows. */
-  query?: string
-  onQuery?: (q: string) => void
-  /** Bumped by the app when `/` is pressed. Focusing is Nav's own job: the press may
-   * also be what reveals the rail, and only an effect here runs after that commit —
-   * a display:none input swallows focus(). */
-  focusTick?: number
-  hideReviewed?: boolean
-  onHideReviewed?: (on: boolean) => void
-  hideTests?: boolean
-  onHideTests?: (on: boolean) => void
-  onlyChanged?: boolean
-  onOnlyChanged?: (on: boolean) => void
-}) {
-  // Uncontrolled fallback so the rail still filters when no owner drives it.
-  const [localQuery, setLocalQuery] = useState('')
-  const query = sharedQuery ?? localQuery
-  const setQuery = onQuery ?? setLocalQuery
+  /** The agent's one line on a file, by path — a layer's notes, as row tooltips. */
+  notes?: ReadonlyMap<string, string>
+  /** Every folder open, whatever was folded: while a filter narrows the tree, a
+   * shut folder would hide the very match the reviewer typed for. */
+  forceOpen?: boolean
+}
+
+/**
+ * The tree itself: folders that fold, file rows under them, a roll-up mark on
+ * every folder. The Files tab wraps it in the filter head and the tally; the
+ * Layers tab shows one per opened layer, so a layer's files read the way the
+ * Files tab does — by folder, never as a flat list.
+ */
+export function FileTree({
+  files,
+  viewed,
+  selectedPath,
+  onPickFile,
+  onToggleFileViewed,
+  onMarkFiles,
+  onClearFiles,
+  onAskFile,
+  threads,
+  attention,
+  changed,
+  notes,
+  forceOpen = false,
+}: FileTreeProps) {
   const [shut, setShut] = useState<ReadonlySet<string>>(new Set())
-  const searchRef = useRef<HTMLInputElement>(null)
-
-  useEffect(() => {
-    if (focusTick > 0) searchRef.current?.focus()
-  }, [focusTick])
-
   const isDone = useCallback((file: FileChange) => isFileViewed(file, viewed), [viewed])
-
-  // The tally counts the whole changeset, not the filtered view — "12 left" must
-  // stay honest while a filter narrows what's on screen.
-  const left = files.filter((f) => !isDone(f)).length
-  const testCount = files.filter((f) => isTestFile(f.path)).length
-  const sinceCount = files.filter((f) => changed?.has(f.path) ?? false).length
-
-  const visible = useMemo(() => {
-    const q = query.trim().toLowerCase()
-    return files.filter(
-      (f) =>
-        (q === '' || f.path.toLowerCase().includes(q)) &&
-        !(hideReviewed && isDone(f)) &&
-        !(hideTests && isTestFile(f.path)) &&
-        !(onlyChanged && !(changed?.has(f.path) ?? false)),
-    )
-  }, [files, query, hideReviewed, hideTests, onlyChanged, changed, isDone])
-
-  const tree = useMemo(() => buildTree(visible), [visible])
-  const filtering = query.trim() !== ''
+  const tree = useMemo(() => buildTree(files), [files])
 
   const fileRow = (file: FileChange, depth: number) => (
     <FileRow
@@ -302,6 +266,7 @@ export function Nav({
       threads={threads?.get(file.path)}
       wantsYou={(attention?.get(file.path) ?? []).filter((i) => i.turn === 'yours').length}
       changed={changed?.has(file.path) ?? false}
+      note={notes?.get(file.path)}
       onPick={onPickFile ? () => onPickFile(file.path) : undefined}
       onToggleViewed={onToggleFileViewed ? () => onToggleFileViewed(file.path) : undefined}
       onAsk={onAskFile ? () => onAskFile(file.path) : undefined}
@@ -310,7 +275,7 @@ export function Nav({
 
   const dirRows = (dir: TreeDir, depth: number): ReactElement[] => {
     const inside = filesUnder(dir)
-    const open = filtering || !shut.has(dir.path)
+    const open = forceOpen || !shut.has(dir.path)
     // Every file under here can be owed — including the hunkless ones. Same cut as
     // `fileProgress`.
     const doneCount = inside.filter(isDone).length
@@ -380,6 +345,77 @@ export function Nav({
       node.kind === 'file' ? [fileRow(node.file, depth)] : dirRows(node, depth),
     )
 
+  return <>{nodeRows(tree, 0)}</>
+}
+
+export function Nav({
+  files,
+  viewed,
+  selectedPath,
+  onPickFile,
+  onToggleFileViewed,
+  onMarkFiles,
+  onClearFiles,
+  onAskFile,
+  threads,
+  attention,
+  changed,
+  query: sharedQuery,
+  onQuery,
+  focusTick = 0,
+  hideReviewed = false,
+  onHideReviewed,
+  hideTests = false,
+  onHideTests,
+  onlyChanged = false,
+  onOnlyChanged,
+}: Omit<FileTreeProps, 'notes' | 'forceOpen'> & {
+  /** The typed filter is review-wide state, not the rail's: the pane narrows by the
+   * same word (`useReviewFilter`), so the tree stays a map of what the pane shows. */
+  query?: string
+  onQuery?: (q: string) => void
+  /** Bumped by the app when `/` is pressed. Focusing is Nav's own job: the press may
+   * also be what reveals the rail, and only an effect here runs after that commit —
+   * a display:none input swallows focus(). */
+  focusTick?: number
+  hideReviewed?: boolean
+  onHideReviewed?: (on: boolean) => void
+  hideTests?: boolean
+  onHideTests?: (on: boolean) => void
+  onlyChanged?: boolean
+  onOnlyChanged?: (on: boolean) => void
+}) {
+  // Uncontrolled fallback so the rail still filters when no owner drives it.
+  const [localQuery, setLocalQuery] = useState('')
+  const query = sharedQuery ?? localQuery
+  const setQuery = onQuery ?? setLocalQuery
+  const searchRef = useRef<HTMLInputElement>(null)
+
+  useEffect(() => {
+    if (focusTick > 0) searchRef.current?.focus()
+  }, [focusTick])
+
+  const isDone = useCallback((file: FileChange) => isFileViewed(file, viewed), [viewed])
+
+  // The tally counts the whole changeset, not the filtered view — "12 left" must
+  // stay honest while a filter narrows what's on screen.
+  const left = files.filter((f) => !isDone(f)).length
+  const testCount = files.filter((f) => isTestFile(f.path)).length
+  const sinceCount = files.filter((f) => changed?.has(f.path) ?? false).length
+
+  const visible = useMemo(() => {
+    const q = query.trim().toLowerCase()
+    return files.filter(
+      (f) =>
+        (q === '' || f.path.toLowerCase().includes(q)) &&
+        !(hideReviewed && isDone(f)) &&
+        !(hideTests && isTestFile(f.path)) &&
+        !(onlyChanged && !(changed?.has(f.path) ?? false)),
+    )
+  }, [files, query, hideReviewed, hideTests, onlyChanged, changed, isDone])
+
+  const filtering = query.trim() !== ''
+
   return (
     <>
       <div className="rail-search">
@@ -443,7 +479,20 @@ export function Nav({
       )}
 
       <div className="rail-scroll">
-        {nodeRows(tree, 0)}
+        <FileTree
+          files={visible}
+          viewed={viewed}
+          selectedPath={selectedPath}
+          onPickFile={onPickFile}
+          onToggleFileViewed={onToggleFileViewed}
+          onMarkFiles={onMarkFiles}
+          onClearFiles={onClearFiles}
+          onAskFile={onAskFile}
+          threads={threads}
+          attention={attention}
+          changed={changed}
+          forceOpen={filtering}
+        />
         {visible.length === 0 && <div className="rail-empty">no files match</div>}
       </div>
     </>
