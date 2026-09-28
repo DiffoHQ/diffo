@@ -43,8 +43,9 @@ export default defineConfig({
           { text: 'Getting started', link: '/guide/getting-started' },
           { text: 'Your first review', link: '/tutorial' },
           { text: 'The review loop', link: '/guide/the-loop' },
-          { text: 'How it works', link: '/guide/how-it-works' },
+          { text: 'Layers', link: '/guide/layers' },
           { text: 'Reviewing a pull request', link: '/guide/pr-review' },
+          { text: 'How it works', link: '/guide/how-it-works' },
         ],
       },
       {

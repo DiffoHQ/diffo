@@ -42,13 +42,17 @@ npx skills add DiffoHQ/diffo --skill diffo
 
 That's the whole install: project-local by default, `-g` for everywhere.
 There is no CLI to set up: the skill runs `diffo` through `npx`, so it comes
-along on demand. Then, in any session, just say:
+along on demand. Then, in any session, one command:
 
-> **"open a code review"**
+| Run | And the agent reviews |
+| --- | --- |
+| `/diffo` | what it just wrote, before anything is committed |
+| `/diffo main` | everything since you branched off `main` |
+| `/diffo <PR link>` | a GitHub pull request, checked out in a worktree of its own; your review goes back to GitHub when you finish |
 
-The agent opens a live review of its own work and hands you the URL. Your
-comments arrive in its context, its replies land inline in your threads, and
-its fixes update the diff live while you read.
+The agent opens the review and hands you the URL. Your comments arrive in its
+context, its replies land inline in your threads, and its fixes update the diff
+live while you read.
 
 And the plain diff viewer needs no install at all: `npx -y @diffohq/diffo` inside
 any repo opens the browser on your working tree vs HEAD.

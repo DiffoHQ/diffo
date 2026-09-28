@@ -23,7 +23,7 @@ Yes, if the agent posts one. Ask for **layers** from the Layers tab and the agen
 wrote the change outlines it as ordered steps, each with a title, a summary, and its files;
 you read one layer at a time. Layers come from the agent only: Diffo never guesses a plan
 from paths, and with none posted the review is the flat file list. Details in
-[the review loop](guide/the-loop.md#read-it-in-layers); the agent's side is in
+[Layers](guide/layers.md); the agent's side is in
 [the agent protocol](agents.md#layers).
 
 ### Why not just use a pull request?
@@ -41,6 +41,13 @@ worktree Diffo owns, so your checkout is untouched; its description, reviews and
 come in as threads; your agent is a copilot for code it did not write; and your public
 comments post to GitHub as one review when you finish. It needs the GitHub CLI signed in.
 The whole flow is in [Reviewing a pull request](/guide/pr-review).
+
+### Does the agent post to GitHub?
+
+Never. On a pull request the agent reads, runs the tests in the worktree, and answers
+you in private threads; when the answer is a fix, it comes as a ```` ```suggestion ````
+block in its reply. The only thing that reaches GitHub is the review you submit
+yourself, through your own `gh`.
 
 ### Why Node 24?
 

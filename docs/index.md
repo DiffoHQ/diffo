@@ -4,7 +4,7 @@ layout: home
 hero:
   name: Diffo
   text: The human way to review agent-written code.
-  tagline: "A live review on your machine, wired to the agent that wrote the code, so your comments come back as fixes."
+  tagline: "A live review on your machine: the change in layers, in the order it should be read, and the agent on the other end of every comment. For what it just wrote, or for a pull request."
   image:
     light: /logo.svg
     dark: /logo-dark.svg
@@ -21,26 +21,26 @@ hero:
       link: https://github.com/DiffoHQ/diffo
 
 features:
-  - icon: '<svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M6 3h8l4 4v14H6z"/><path d="M14 3v4h4"/><path d="M9.5 12h5"/><path d="M12 9.5v5"/><path d="M9.5 18h5"/></svg>'
-    title: Review any changeset
-    details: "Uncommitted agent output, a branch, a commit range, or a GitHub pull request. Local work opens in your browser before the code ever needs a remote."
-    link: /guide/how-it-works#the-changeset-is-the-unit-of-review
-    linkText: What you can review
   - icon: '<svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 0 0-9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/><path d="M3 12a9 9 0 0 0 9 9 9.75 9.75 0 0 0 6.74-2.74L21 16"/><path d="M16 16h5v5"/></svg>'
-    title: A live loop with the agent
-    details: Your comments arrive in the agent's session, its replies land inline in your threads, and its fixes update the diff live while you read.
+    title: Talk to the agent on the line
+    details: Ask on any line and the agent answers in the thread. Ask for a change and the fix lands in the diff while you read.
     link: /guide/the-loop
     linkText: How the loop works
+  - icon: '<svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="m12 3 9 5-9 5-9-5 9-5z"/><path d="m3 13 9 5 9-5"/><path d="m3 18 9 5 9-5"/></svg>'
+    title: Read it in layers
+    details: The agent outlines the change as ordered steps, each with a summary and its files. One layer at a time, in the order it should be read, not alphabetically.
+    link: /guide/layers
+    linkText: Layers
+  - icon: '<svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><circle cx="18" cy="18" r="3"/><circle cx="6" cy="6" r="3"/><path d="M13 6h3a2 2 0 0 1 2 2v7"/><path d="M6 9v12"/></svg>'
+    title: Review pull requests
+    details: Hand it a link. The PR opens in a worktree of its own, your agent reads beside you, and your review goes back to GitHub when you finish.
+    link: /guide/pr-review
+    linkText: Reviewing a pull request
   - icon: '<svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="12" rx="2"/><path d="M12 16v4"/><path d="M8 20h8"/></svg>'
     title: Entirely on your machine
-    details: No config, no accounts, no cloud, no telemetry. A small local server per repo, state in SQLite under ~/.diffo.
+    details: No config, no accounts, no cloud, no telemetry. A small local server per repo, state in SQLite under ~/.diffo. A pull request's calls to GitHub go through your own gh.
     link: /faq#does-any-of-my-code-leave-my-machine
     linkText: What leaves the box
-  - icon: '<svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="2.5"/><circle cx="5" cy="5" r="2"/><circle cx="19" cy="5" r="2"/><circle cx="12" cy="20" r="2"/><path d="m6.4 6.4 3.7 3.7"/><path d="m17.6 6.4-3.7 3.7"/><path d="M12 14.5V18"/></svg>'
-    title: One setup, every agent
-    details: diffo setup registers with Claude Code, Cursor, VS Code, Copilot, Codex, Gemini CLI, Amp, Goose, and OpenCode, whichever are installed.
-    link: /guide/getting-started#one-setup-every-agent
-    linkText: One setup, every agent
 ---
 
 ## One round trip
@@ -58,12 +58,17 @@ context of the change: the agent that just wrote it.
 npx skills add DiffoHQ/diffo --skill diffo
 ```
 
-Then, in any agent session:
+Then, in any agent session, one command:
 
-> **"open a code review"**
+| Run | And the agent reviews |
+| --- | --- |
+| `/diffo` | what it just wrote, before anything is committed |
+| `/diffo main` | everything since you branched off `main` |
+| `/diffo <PR link>` | a GitHub pull request, checked out in a worktree of its own |
 
-The agent opens a live review of its own work and hands you the URL. Nothing to commit,
-nothing to push, no CI to wait for.
+The agent opens the review and hands you the URL. Nothing to commit, nothing to push, no
+CI to wait for. Installed from one agent and want them all? `diffo setup`
+[registers every agent on the machine](./guide/getting-started#one-setup-every-agent).
 
 ## The loop
 
@@ -73,7 +78,7 @@ nothing to push, no CI to wait for.
     <h3>The agent orients you</h3>
     <p>On a multi-file or structural change it leaves one guide comment at the top of the review:
     what the change does, plus a <a href="https://mermaid.js.org">mermaid</a> diagram when
-    the shape is easier to see than to read. Ask, and it posts <a href="./guide/the-loop#read-it-in-layers">layers</a>:
+    the shape is easier to see than to read. Ask, and it posts <a href="./guide/layers">layers</a>:
     the change as ordered steps, so you read it in the order it should be read in, not
     alphabetically. It orients your reading and stops there, with no verdicts.</p>
   </div>
@@ -99,6 +104,19 @@ nothing to push, no CI to wait for.
     you're reading the fix itself, not a promise of one.</p>
   </div>
 </div>
+
+## Read it in layers
+
+<video class="clip clip-light home-clip" src="./assets/layers.mp4" muted loop playsinline width="1440" height="1102" poster="./assets/layers-poster.jpg" preload="none"
+  aria-label="A 23-file change, every file folded. The header chip reads agent · suggests layers; the reviewer clicks it, eight layers land, and picking the first shows its summary card. ] steps to layers 2 and 3, where the reviewer asks on a line and the agent answers in the thread."></video>
+<video class="clip clip-dark home-clip" src="./assets/layers-dark.mp4" muted loop playsinline width="1440" height="1102" poster="./assets/layers-dark-poster.jpg" preload="none"
+  aria-label="A 23-file change, every file folded. The header chip reads agent · suggests layers; the reviewer clicks it, eight layers land, and picking the first shows its summary card. ] steps to layers 2 and 3, where the reviewer asks on a line and the agent answers in the thread."></video>
+
+A diff arrives alphabetically, which is almost never the order to read it in. Ask, and
+the agent posts **layers**: the change as ordered steps, each with a title, a summary,
+and its files. You read one at a time; `]` steps to the next, and anything the agent
+touches after posting gathers in a *Since your review* layer, so nothing hides outside
+the plan. [Layers](./guide/layers) has the whole of it.
 
 ## Pull requests too
 

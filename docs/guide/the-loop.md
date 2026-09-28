@@ -1,6 +1,8 @@
 # The review loop
 
-A Diffo review is a conversation with the agent that wrote the code.
+A Diffo review is a conversation with the agent that wrote the code. On a
+pull request it is the same loop with your own agent reading beside you;
+[Reviewing a pull request](/guide/pr-review) has what differs.
 
 ## The agent orients you first
 
@@ -20,7 +22,7 @@ meets old is visible at a glance, in the same visual language on every review.
 The map is also navigation: a file the guide names, in prose or in a diagram
 node, is a click away.
 
-What the guide is not is a reading order. That is what [layers](#read-it-in-layers)
+What the guide is not is a reading order. That is what [layers](/guide/layers)
 are for, and the agent offers them instead when the change reads better in
 order.
 
@@ -39,30 +41,11 @@ the same guide thread rather than as a second guide.
 
 ## Read it in layers
 
-A diff arrives in alphabetical order, which is almost never the order it
-should be read in. **Layers** are the agent's reading plan: the change as
-ordered steps, each with a title, a short summary, and the files that belong
-to it. You read one layer at a time, in the order the agent would explain it.
-
-Layers come from the agent only; Diffo never guesses a plan from paths. With
-no layers, the review is exactly the flat file list.
-
-The rail's **Layers** tab offers **Ask the agent to outline**. When the
-agent thinks the change reads better in order it says so at open, and the
-header chip (*agent · suggests layers*) is the same ask in one click. Picking a
-layer narrows the reading pane to its files under a card with the summary,
-which renders markdown and mermaid like a thread does; `]` / `[` step between
-layers, and `n` rolls from one layer's last unread file into the next. A layer
-tagged *mechanical* keeps its files folded.
-
-Layers are resolved against the live changeset on every refresh. A file the
-agent touches after posting, or one no layer names, gathers in a trailing
-**Since your review** layer, and one line at the foot of the tab asks the agent
-to re-outline; a re-post keeps your place for every title that survives.
-Progress per layer is read off the same hunk marks Finish review reports.
-
-A layer summary follows the guide's rule: it orients your reading and never
-pre-reviews it.
+A diff arrives in alphabetical order, which is almost never the order it should
+be read in. Ask, and the agent posts **layers**: the change as ordered steps,
+each with a title, a summary, and its files, and you read one at a time.
+[Layers](/guide/layers) is the whole of it: asking, the keys, *Since your
+review*, and what a summary may say.
 
 ## You read
 
