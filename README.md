@@ -11,10 +11,11 @@
 
 ### The human way to review agent-written code.
 
-A live review on your machine, wired to the agent that wrote the code, so your comments
-come back as fixes.
+A live review on your machine. Read what your agent just wrote, with the session that
+wrote it; or read a pull request with your agent beside you, and send your review to
+GitHub.
 
-[Quick start](#quick-start) · [Why Diffo](#why-diffo) · [Docs](#docs) · [Status](#status) · [Contributing](#contributing)
+[Quick start](#quick-start) · [What you can review](#what-you-can-review) · [Why Diffo](#why-diffo) · [Docs](#docs) · [Status](#status) · [Contributing](#contributing)
 
 [![CI](https://img.shields.io/github/actions/workflow/status/DiffoHQ/diffo/ci.yml?branch=main&label=CI)](https://github.com/DiffoHQ/diffo/actions/workflows/ci.yml)
 [![npm](https://img.shields.io/npm/v/%40diffohq%2Fdiffo?label=npm&color=cb3837)](https://www.npmjs.com/package/@diffohq/diffo)
@@ -26,8 +27,9 @@ come back as fixes.
 </div>
 
 <!-- Every clip here is a real recording: a real Claude Code session, a real server, and a
-     real changeset under review. The hero reviews a small demo app, so the diff reads at a
-     glance; the clips further down and in the tutorial review this repo's own changesets. -->
+     real changeset under review. The hero and the pull request clip review a small demo
+     app, so the diff reads at a glance; the others, and the tutorial, review this repo's
+     own changesets. -->
 
 <!-- Light-theme only. The clip opens once the session has finished writing the change:
      waiting on the agent is fast-forwarded — the badge in the session's corner says so
@@ -63,6 +65,14 @@ The agent opens a live review of its own work and hands you the URL. Your commen
 in its context, its replies land inline in your threads, and its fixes update the diff
 while you read. That is the clip above, with no URL to ask for.
 
+Or hand it a pull request:
+
+> **`/diffo https://github.com/acme/widgets/pull/482`**
+
+It checks the PR out in a worktree of its own, opens the review, and reads beside you;
+your review goes back to GitHub when you finish. This one needs the
+[GitHub CLI](https://cli.github.com) signed in.
+
 <details>
 <summary><b>Running from a clone instead</b></summary>
 
@@ -80,6 +90,33 @@ node dist/cli.mjs setup   # or `node dist/cli.mjs` from any repo to review it
 
 New here? [**Your first review, end to end**](https://diffohq.github.io/diffo/tutorial) takes about five minutes.
 
+## What you can review
+
+One command, three targets. In your agent's session it's `/diffo …`; in a terminal it's
+`diffo …`, or `npx -y @diffohq/diffo …` with nothing installed.
+
+| You want to review | In your agent | In a terminal |
+| --- | --- | --- |
+| What the agent just wrote: the working tree, untracked files included | `/diffo` | `diffo` |
+| Everything since you branched off `main` | `/diffo main` | `diffo main` |
+| A GitHub pull request | `/diffo <PR link>` | `diffo <PR URL>` |
+
+From a clone of its repo, a pull request also goes by `acme/widgets#482`, `#482`, or
+just `482`.
+
+Around the review:
+
+| | |
+| --- | --- |
+| `diffo status` | Is a server watching this repo, and where |
+| `diffo stop` | Stop it. The review survives; the next `diffo` picks it back up |
+| `diffo clean` | Remove the worktrees Diffo made for pull requests whose review is over |
+| `diffo setup` | Register Diffo with every coding agent on this machine, not just the one you installed the skill from |
+
+The agent's side is five commands, `poll`, `reply`, `comment`, `layers` and `end`, and the
+skill teaches them. The [**CLI reference**](https://diffohq.github.io/diffo/reference/cli)
+has every flag.
+
 ## Why Diffo
 
 **We write code with an LLM. We review it alone.**
@@ -90,9 +127,9 @@ read four hundred lines by yourself, in a viewer built for a world where whoever
 had already moved on.
 
 Diffo keeps the conversation open through the review. Ask what a hunk does and the agent
-that wrote it answers in the thread. Ask why, and it explains, with a diagram when the
-shape needs one. Ask for a change and it makes it, and the diff updates while you read.
-The judgement stays yours. You just stop reading alone.
+answers in the thread. Ask why, and it explains, with a diagram when the shape needs one.
+Ask for a change and it makes it, and the diff updates while you read. The judgement stays
+yours. You just stop reading alone.
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/assets/hero-dark.gif">
@@ -101,71 +138,39 @@ The judgement stays yours. You just stop reading alone.
 
 <p align="center"><sub>Ask for a change and the agent makes it. The diff updates under you, and the file count falls as those files stop differing.</sub></p>
 
-## What you get
+## Review what your agent wrote
 
-<table>
-<tr>
-<td width="50%">
+The default. `diffo` reviews the working tree against `HEAD`, so agent output is
+reviewable the moment it hits the disk, which is the moment it's cheapest to change.
+Nothing is committed, pushed, or opened as a PR first.
 
-**A thread is a decision**
+- **A thread is a decision.** Each comment is one small call: change this, explain that,
+  leave it alone. Drop it on a line or drag down the gutter for a range of them. Mark it a
+  **Change** or a **Question** and the agent is told which, so a question never turns into
+  an unrequested refactor.
+- **Fixes land in the diff you're reading.** A Change gets the edit, live, under your
+  cursor. A hunk you had marked read says *changed since you read it* once it's edited, so
+  the second pass stays honest.
+- **It explains itself.** On a change that's multi-file, structural, or just subtle, the
+  agent opens the review with one orienting comment: what the change does, plus a small
+  [mermaid](https://mermaid.js.org) diagram when the shape is easier to see than to read.
+  It orients, and it never pre-reviews: no verdicts, nothing is "fine". That judgement is
+  the part it doesn't get to make.
+- **Send one, or finish the batch.** *Send to agent* delivers a thread now. *Finish
+  review* hands the whole batch back with honest coverage stats attached ("38/42 hunks
+  viewed, 2 files skipped").
+- **Reading, not scrolling.** Syntax-highlighted unified and split diffs, word-level marks,
+  keyboard-first movement, context expansion, images side by side, lockfiles collapsed.
+  The conventions are GitHub's, deliberately: a reviewer shouldn't have to learn a new
+  diff.
 
-Each comment is one small call: change this, explain that, leave it alone. Drop it on a
-line or drag down the gutter for a range of them. Mark it a Change or a Question and the
-agent is told which. The review is the sum of those decisions, not a verdict at the end.
-
-</td>
-<td width="50%">
-
-**Reading, not scrolling**
-
-Syntax-highlighted unified and split diffs, word-level marks, keyboard-first movement,
-context expansion, images side by side, lockfiles collapsed. The conventions are GitHub's,
-deliberately: a reviewer shouldn't have to learn a new diff.
-
-</td>
-</tr>
-<tr>
-<td width="50%">
-
-**Live while you iterate**
-
-Fixes land in the diff you are already reading. A hunk you had marked read says *changed
-since you read it* once it's edited, so the second pass stays honest.
-
-</td>
-<td width="50%">
-
-**Local**
-
-One process on your machine, bound to loopback. No account, no telemetry, no cloud, and
-nothing to configure.
-
-</td>
-</tr>
-<tr>
-<td width="50%">
-
-**It explains itself**
-
-On a change that's multi-file, structural, or just subtle, the agent opens the review with
-one orienting comment: a sentence on what the change does, plus a small
-[mermaid](https://mermaid.js.org) diagram when the shape is easier to see than to read. It
-orients, and it never pre-reviews: no verdicts, nothing is "fine". That judgement is the
-part it doesn't get to make.
-
-</td>
-<td width="50%">
-
-**Read it in the right order**
+## Read it in layers
 
 A diff arrives alphabetically, which is almost never the order to read it in. Ask, and the
 agent posts **layers**: the change as ordered steps, each with a title, a summary, and its
 files. You read one layer at a time; `]` steps to the next. Anything the agent touches after
-posting gathers in a *Since your review* layer, so nothing hides outside the plan.
-
-</td>
-</tr>
-</table>
+posting gathers in a *Since your review* layer, so nothing hides outside the plan. Layers
+come from the agent only; Diffo never guesses a plan from paths.
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/assets/layers-dark.gif">
@@ -174,34 +179,50 @@ posting gathers in a *Since your review* layer, so nothing hides outside the pla
 
 <p align="center"><sub>Layers, in one take: the agent offers an outline, the reviewer asks, and a 23-file change arrives as eight steps to read in order. Three layers in, a question on a line comes back answered in the thread. A real server and a real <code>diffo poll</code> on the other end; only the agent's thinking time is cut.</sub></p>
 
-## Where it fits
+## Review a pull request
 
-Diffo doesn't replace pull request review, and it isn't trying to. A pull request is how you
-hand finished work to someone else. Diffo is the step before that: the loop where you and the
-agent turn a first draft into something worth another person's time.
+When a pull request lands on *your* desk, `/diffo <PR link>` opens it in the same review,
+with your agent beside you as a copilot for code it did not write.
 
-|  | **Diffo** | Pull request review | AI reviewer bot |
-| --- | --- | --- | --- |
-| When | **before the PR exists** | after you push | after you push |
-| What it's for | **getting the code right** | getting it approved | catching the obvious |
-| Who you work with | **the agent that wrote it** | your teammates | nobody |
-| Where the code is | **uncommitted, on your disk** | pushed to a branch | pushed to a branch |
-| What comes out | **code worth pushing** | an approval and a record | a list of comments |
-
-So they stack rather than compete: iterate here until the diff reads clean, then open the
-pull request you actually want reviewed. Your judgement is the scarce resource, and this is
-the stage where spending it changes the outcome.
-
-And when a pull request lands on *your* desk, Diffo reads that too: `/diffo <PR link>`
-opens it in a worktree of its own, imports its conversation, puts your agent beside you as
-a copilot for code it did not write, and submits your review to GitHub when you finish.
-[Reviewing a pull request](https://diffohq.github.io/diffo/guide/pr-review) has the loop.
+- **Your checkout is never touched.** The PR is fetched into a worktree Diffo owns, under
+  `~/.diffo/worktrees`, and the review opens there: no branch switch, no stash, nothing in
+  `git status`. `diffo clean` removes it once the review is over.
+- **The conversation comes with it.** The description is the review's overview, inline
+  GitHub threads sit at their lines with the real logins, and the header carries the PR's
+  state: draft, CI failing, changes requested. A push moves the review to the new head.
+- **Two kinds of comment.** Every composer has two tabs. **Comment on PR** goes to the
+  author and reviewers, as one review when you finish. **Ask agent** goes to your agent,
+  on this machine, and never leaves it: the agent can run the tests in the worktree and
+  answer with evidence, and it never posts to GitHub. When the answer is a fix, it comes as
+  a ```` ```suggestion ```` block rather than an edit to code that isn't its own.
+- **Submit from Diffo.** *Submit review* is GitHub's own dialog: a body, a verdict
+  (Comment, Approve, Request changes), then one review posted through your own `gh`.
+  Diffo holds no token, and this is the only time it touches the network: that PR's
+  GitHub host, and nothing else.
 
 <!-- Light-theme only, like the hero. The pull request is a real one on a demo repo
      (DiffoHQ/todo-demo#1), and the review at the end is the one this take submitted. -->
 <img alt="One take of a pull request review. On GitHub, a pull request adds recurring todos to a todo app; in Claude Code the reviewer types /diffo with its link, and the review opens beside the session, the PR's title, author and checks in the header. The agent lays the change out in layers. On the streak check the reviewer asks the agent whether anything done on its due day now counts as late, and the answer comes back in the thread; they leave a comment for GitHub on the same line, submit the review with Request changes, and the review appears on the pull request." src="docs/assets/pr-review.gif" width="100%">
 
 <p align="center"><sub>A pull request, end to end: <code>/diffo &lt;PR link&gt;</code>, read it in layers, ask your agent on a line, leave a comment for the author, and submit to GitHub. A real Claude Code session and a real pull request; the only edit is that waiting on the agent runs fast.</sub></p>
+
+## Where it fits
+
+Diffo isn't an AI reviewer. It doesn't grade your diff or leave generated nitpicks: you
+read, and the agent is there to answer, explain, and fix. That's the difference from a
+bot, and from reading a pull request on your own.
+
+|  | **Diffo** | AI reviewer bot | Plain pull request review |
+| --- | --- | --- | --- |
+| Who reads the code | **you** | a model | you |
+| Who answers your questions | **the agent, in the thread, now** | nobody | the author, when they get to it |
+| When | **while the agent writes, or when the PR lands** | after you push | after you push |
+| What comes out | **fixes in the diff, or a review on GitHub** | a list of comments | a review on GitHub |
+
+So it stacks with the pull request rather than competing: iterate locally until the diff
+reads clean, open the PR, and read the ones that land on your desk the same way. Your
+judgement is the scarce resource, and this is the tool for spending it where it changes
+the outcome.
 
 ---
 
@@ -213,16 +234,11 @@ a copilot for code it did not write, and submits your review to GitHub when you 
 </picture>
 
 The left half is a diff viewer. The right half is what Diffo is for: your comment doesn't
-land in a queue for later, it lands in **the conversation that wrote the code**, while that
-conversation still remembers why. Nothing needs to be committed, pushed, or opened as a PR
-first, so agent output is reviewable the moment it hits the disk, which is the moment it's
-cheapest to change.
-
-| You want to review | Command |
-| --- | --- |
-| Uncommitted work in progress (the default) | `diffo` |
-| Everything since you branched off `main` | `diffo --base main` |
-| A GitHub pull request | `diffo <PR URL>` |
+land in a queue for later, it lands in **the agent's session**, live. For your own work
+that is the session that wrote the code, while it still remembers why; for a pull request,
+the one you invited to read beside you. One npm package, one process per repo, bound to
+loopback: no account, no telemetry, no cloud, and no model API. Diffo spawns no agents of
+its own; the one you're already talking to stays attached through `diffo poll`.
 
 ## Docs
 
@@ -271,7 +287,8 @@ deliberately not its line numbers. That one decision is what makes the live revi
 ## Open core
 
 Everything in this repository is the core, and the core stays Apache-2.0: local review, the
-agent loop, the CLI, the Agent Skill. It works offline, for one reviewer, forever, for free.
+agent loop, pull request review, the CLI, the Agent Skill. It works offline, for one
+reviewer, forever, for free.
 
 A hosted team tier is planned: shared changesets, review history across a team, SSO. None of
 it exists yet, and none of it will take an existing core feature behind a paywall. The line
@@ -279,15 +296,15 @@ we commit to: **anything that runs on your machine for one reviewer is core.**
 
 ## Status
 
-Diffo is pre-1.0: the loop below works end to end (this repo is reviewed with it
+Diffo is pre-1.0: everything below works end to end (this repo is reviewed with it
 daily) and the edges are still moving. What works today:
 
 - [x] [Live review of any changeset](https://diffohq.github.io/diffo/guide/how-it-works): the working tree, or anything since `--base`.
-- [x] [The comment loop](https://diffohq.github.io/diffo/guide/the-loop): threads that reach the session that wrote the code.
+- [x] [Pull request review](https://diffohq.github.io/diffo/guide/pr-review): `diffo <PR URL>` reviews a GitHub PR in a worktree of its own, with the conversation imported and your review submitted from Diffo.
+- [x] [The comment loop](https://diffohq.github.io/diffo/guide/the-loop): threads that reach the session that wrote the code, or the one reading beside you.
 - [x] [Layers](https://diffohq.github.io/diffo/guide/the-loop#read-it-in-layers): the agent's reading plan, one ordered step at a time.
 - [x] [One setup, every agent](https://diffohq.github.io/diffo/guide/getting-started): Claude Code, Codex, Cursor, VS Code, Copilot CLI, Gemini CLI, Amp, Goose, OpenCode.
 - [x] [Reading tools](https://diffohq.github.io/diffo/reference/keyboard-shortcuts): unified and split diffs, word-level marks, coverage tracking.
-- [x] [Pull request review](https://diffohq.github.io/diffo/guide/pr-review): `diffo <PR URL>` reviews a GitHub PR in a worktree of its own, with the conversation imported and your review submitted from Diffo.
 
 ## Contributing
 
