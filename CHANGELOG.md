@@ -21,6 +21,10 @@ Until 1.0, minor versions may break things. When they do, the entry says how to 
   followed the theme, so dark mode drew near-white text on a pastel box. A
   label on a colored node now gets whichever ink reads better on its fill; an
   explicit `color:` is still kept.
+- **Layer progress bars no longer look broken at 0%.** An empty track read as
+  something failing to render. A layer row now draws its bar only once
+  something in it is marked, and the Overview, which has nothing to mark,
+  draws none in the pane bar.
 
 ## [0.7.0] — 2026-09-26
 

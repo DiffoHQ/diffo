@@ -1285,7 +1285,7 @@ function Review() {
         title: description
           ? 'the author’s description of this change; ] enters the first layer'
           : 'the agent’s orientation to this change; ] enters the first layer',
-        progress: 0,
+        progress: null,
         prev: null,
         next: to(step(1)),
       }

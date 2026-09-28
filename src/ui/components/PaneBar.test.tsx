@@ -126,6 +126,19 @@ describe('the layer pager', () => {
     expect(container.querySelector<HTMLElement>('.prog-track i')?.style.width).toBe('100%')
   })
 
+  it('the Overview has nothing to read through, so it draws no bar', () => {
+    const { container } = render(
+      bar({ layer: layer({ text: 'overview · the guide', progress: null, prev: null }) }),
+    )
+    expect(container.querySelector('.pane-left')?.textContent).toBe('overview · the guide')
+    expect(container.querySelector('.prog-track')).toBeNull()
+  })
+
+  it('an unstarted layer keeps its empty track — the words beside it say why', () => {
+    const { container } = render(bar({ layer: layer({ progress: 0 }) }))
+    expect(container.querySelector<HTMLElement>('.prog-track i')?.style.width).toBe('0%')
+  })
+
   it('the narrowing filters step aside in layer mode; Hide tests stays', () => {
     const { container, unmount } = render(
       bar({

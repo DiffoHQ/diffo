@@ -11,8 +11,9 @@ export interface PaneLayer {
   text: string
   /** The burndown's title, for the hover. */
   title: string
-  /** 0..1, from the layer's hunk marks. */
-  progress: number
+  /** 0..1, from the layer's hunk marks; null on the Overview, which has
+   * nothing to read through and so draws no bar. */
+  progress: number | null
   prev: { title: string; onGo: () => void } | null
   next: { title: string; onGo: () => void } | null
 }
@@ -103,9 +104,11 @@ export function PaneBar({
           <Icon name="sidebar" size="md" />
         </button>
       )}
-      <span className="prog-track prog-track-pane" aria-hidden="true">
-        <i style={{ width: `${Math.round(fill * 100)}%` }} />
-      </span>
+      {fill !== null && (
+        <span className="prog-track prog-track-pane" aria-hidden="true">
+          <i style={{ width: `${Math.round(fill * 100)}%` }} />
+        </span>
+      )}
       {layer ? (
         <span className="pane-left" title={layer.title}>
           {layer.text}
