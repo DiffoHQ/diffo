@@ -13,6 +13,8 @@ your machine.
 
 - **Node >= 24**
 - **git** on your PATH
+- To [review pull requests](./pr-review) only: the [GitHub CLI](https://cli.github.com),
+  signed in (`gh auth login`)
 
 ## Install
 

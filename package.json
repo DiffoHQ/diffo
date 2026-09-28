@@ -1,7 +1,7 @@
 {
   "name": "@diffohq/diffo",
   "version": "0.7.0",
-  "description": "Local, live code review for the AI age — read what the agent wrote and send feedback straight back",
+  "description": "Local, live code review for the AI age — read what the agent wrote and send feedback straight back, or review a GitHub pull request with your agent beside you",
   "type": "module",
   "license": "Apache-2.0",
   "author": "DiffoHQ",
@@ -17,6 +17,8 @@
     "git",
     "diff",
     "code-review",
+    "pull-request",
+    "github",
     "cli",
     "ai"
   ],

@@ -23,9 +23,9 @@ hero:
 features:
   - icon: '<svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M6 3h8l4 4v14H6z"/><path d="M14 3v4h4"/><path d="M9.5 12h5"/><path d="M12 9.5v5"/><path d="M9.5 18h5"/></svg>'
     title: Review any changeset
-    details: "Uncommitted agent output, a branch, a commit range: the review opens in your browser before the code ever needs a remote."
+    details: "Uncommitted agent output, a branch, a commit range, or a GitHub pull request. Local work opens in your browser before the code ever needs a remote."
     link: /guide/how-it-works#the-changeset-is-the-unit-of-review
-    linkText: Changesets, not just PRs
+    linkText: What you can review
   - icon: '<svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 0 0-9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/><path d="M3 12a9 9 0 0 0 9 9 9.75 9.75 0 0 0 6.74-2.74L21 16"/><path d="M16 16h5v5"/></svg>'
     title: A live loop with the agent
     details: Your comments arrive in the agent's session, its replies land inline in your threads, and its fixes update the diff live while you read.
@@ -99,6 +99,17 @@ nothing to push, no CI to wait for.
     you're reading the fix itself, not a promise of one.</p>
   </div>
 </div>
+
+## Pull requests too
+
+<video class="clip home-clip" src="./assets/pr-review.mp4" muted loop playsinline width="1152" height="648" poster="./assets/pr-review-poster.jpg" preload="none"
+  aria-label="One take of a pull request review: the reviewer types /diffo with a pull request's link in Claude Code, the review opens beside the session with the PR's title, author and checks in the header, the agent lays the change out in layers, a question for the agent on the streak check comes back answered in the thread, a comment for GitHub goes on the same line, and the review is submitted with Request changes and appears on the pull request"></video>
+
+When a pull request lands on your desk, `/diffo <PR link>` opens it in a worktree of its
+own, with its conversation imported and your agent beside you as a copilot for code it did
+not write. Comments for the author go to GitHub as one review when you finish; questions
+for your agent never leave your machine. [Reviewing a pull request](./guide/pr-review) has
+the loop.
 
 ## Read next
 

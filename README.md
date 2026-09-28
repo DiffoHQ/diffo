@@ -21,7 +21,7 @@ come back as fixes.
 [![License](https://img.shields.io/badge/license-Apache--2.0-blue)](LICENSE)
 [![Node](https://img.shields.io/badge/node-%E2%89%A5%2024-brightgreen)](#quick-start)
 [![Docs](https://img.shields.io/badge/docs-diffo-8b5cf6)](https://diffohq.github.io/diffo/)
-[![Tests](https://img.shields.io/badge/tests-1143-brightgreen)](#contributing)
+[![Tests](https://img.shields.io/badge/tests-1327-brightgreen)](#contributing)
 
 </div>
 
@@ -197,6 +197,12 @@ opens it in a worktree of its own, imports its conversation, puts your agent bes
 a copilot for code it did not write, and submits your review to GitHub when you finish.
 [Reviewing a pull request](https://diffohq.github.io/diffo/guide/pr-review) has the loop.
 
+<!-- Light-theme only, like the hero. The pull request is a real one on a demo repo
+     (DiffoHQ/todo-demo#1), and the review at the end is the one this take submitted. -->
+<img alt="One take of a pull request review. On GitHub, a pull request adds recurring todos to a todo app; in Claude Code the reviewer types /diffo with its link, and the review opens beside the session, the PR's title, author and checks in the header. The agent lays the change out in layers. On the streak check the reviewer asks the agent whether anything done on its due day now counts as late, and the answer comes back in the thread; they leave a comment for GitHub on the same line, submit the review with Request changes, and the review appears on the pull request." src="docs/assets/pr-review.gif" width="100%">
+
+<p align="center"><sub>A pull request, end to end: <code>/diffo &lt;PR link&gt;</code>, read it in layers, ask your agent on a line, leave a comment for the author, and submit to GitHub. A real Claude Code session and a real pull request; the only edit is that waiting on the agent runs fast.</sub></p>
+
 ---
 
 ## How it works
@@ -216,7 +222,7 @@ cheapest to change.
 | --- | --- |
 | Uncommitted work in progress (the default) | `diffo` |
 | Everything since you branched off `main` | `diffo --base main` |
-| A pull request | *not supported yet* |
+| A GitHub pull request | `diffo <PR URL>` |
 
 ## Docs
 
@@ -225,6 +231,7 @@ cheapest to change.
 | [**Your first review**](https://diffohq.github.io/diffo/tutorial) | The whole loop end to end, about five minutes |
 | [**Getting started**](https://diffohq.github.io/diffo/guide/getting-started) | Install, and where each agent gets wired |
 | [**The review loop**](https://diffohq.github.io/diffo/guide/the-loop) | Reading, layers, commenting, and what the agent receives |
+| [**Reviewing a pull request**](https://diffohq.github.io/diffo/guide/pr-review) | A GitHub PR in a worktree, your agent beside you, your review back on GitHub |
 | [**How it works**](https://diffohq.github.io/diffo/guide/how-it-works) | The components and the server lifecycle |
 | [**The agent side**](https://diffohq.github.io/diffo/agents) | The agent protocol: every command, every payload |
 | [**Architecture**](https://diffohq.github.io/diffo/architecture) | Diff pipeline, delivery queue, SQLite state |
@@ -237,7 +244,7 @@ TypeScript on Node >= 24: a [Hono](https://hono.dev) server over loopback servin
 UI, live updates over server-sent events from one recursive filesystem watch, and state in a
 single SQLite file at `~/.diffo/diffo.db` through the runtime's built-in `node:sqlite`, so
 there is no database to install. **No network calls of its own**: a pull request review
-talks to GitHub only through your `gh`. 1,307 tests across 70 files.
+talks to GitHub only through your `gh`. 1,327 tests across 70 files.
 
 Reviews are scoped per repo **and branch**, and the server is loopback-only, rejecting
 non-loopback `Host` and `Origin` headers so a web page can't reach into your repo through
