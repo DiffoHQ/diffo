@@ -60,8 +60,9 @@ That's the whole install. From then on, one command in any session:
 
 Every time, the agent opens the review and hands you the URL. It all runs on your
 machine, and nothing needs to be committed or pushed first. A pull request needs the
-[GitHub CLI](https://cli.github.com) signed in, and that is the only time Diffo touches
-the network.
+[GitHub CLI](https://cli.github.com) signed in. Otherwise the only thing that leaves your
+machine is two small anonymous usage events per review, [listed in full](https://diffohq.github.io/diffo/telemetry)
+and off with `diffo telemetry off`.
 
 New here? [**Your first review, end to end**](https://diffohq.github.io/diffo/tutorial) takes about five minutes.
 
@@ -135,10 +136,11 @@ read, and the agent is there to answer, explain, and fix.
   <img alt="Diffo's architecture: your agent writes the code and opens the review; a local Diffo server watches the changeset and serves it to your browser; your comments and Finish review return to the agent through diffo poll, and its answers and fixes land back in the review live." src="assets/how-it-works-light.svg" width="100%">
 </picture>
 
-One process on your machine, bound to loopback: no account, no cloud, no telemetry, and
-no model API. Diffo spawns no agents of its own; the one you're already talking to stays
-attached through the `diffo` CLI, so your comments land in the session that holds the
-context. The viewer itself is a real diff viewer, unified and split, keyboard-first, with
+One process on your machine, bound to loopback: no account, no cloud, and no model API.
+The one thing it reports is [anonymous usage data](https://diffohq.github.io/diffo/telemetry),
+two events per review, never code or paths, off with one command. Diffo spawns no agents
+of its own; the one you're already talking to stays attached through the `diffo` CLI, so
+your comments land in the session that holds the context. The viewer itself is a real diff viewer, unified and split, keyboard-first, with
 GitHub's conventions. The CLI, the flags, and everything under the hood are in the docs.
 
 ## Docs

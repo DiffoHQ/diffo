@@ -5,7 +5,7 @@ import { createServer } from 'node:net'
 import { homedir } from 'node:os'
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { detectSessionPid } from './agentSession.js'
+import { detectHarness, detectSessionPid } from './agentSession.js'
 import { helpFor, parseCliArgs } from './cliArgs.js'
 import { SRC_STAMP } from './devStamp.js'
 import { GhClient } from './forge/github/gh.js'
@@ -38,6 +38,12 @@ import {
   prOpenNote,
   TAB_TITLE,
 } from './server/prompt.js'
+import {
+  describeTelemetry,
+  fileMachineIdStore,
+  reviewKindOf,
+  Telemetry,
+} from './server/telemetry.js'
 import {
   assessRunningServer,
   defaultLogPath,
@@ -319,6 +325,24 @@ interface ChangesetInfo {
   pr?: PrInfo
 }
 
+/**
+ * Tells the server a review was opened, and by which agent — the server decides
+ * whether that is reported (see server/telemetry.ts). Best effort: an open never
+ * waits on, or fails over, usage data.
+ */
+async function announceOpen(port: number): Promise<void> {
+  try {
+    await fetch(apiUrl(port, '/api/telemetry/opened'), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ agent: detectHarness() ?? 'unknown' }),
+      signal: AbortSignal.timeout(2000),
+    })
+  } catch {
+    // an older server without the route, or a server mid-restart
+  }
+}
+
 async function fetchChangesetInfo(port: number): Promise<ChangesetInfo | null> {
   try {
     const res = await fetch(apiUrl(port, '/api/changeset'), {
@@ -502,6 +526,30 @@ if (command.kind === 'stop') {
     }
     db.removeServer(repoPath, record.port)
     console.log(`stopped the diffo server on port ${record.port}`)
+  } finally {
+    db.close()
+  }
+  process.exit(0)
+}
+
+if (command.kind === 'telemetry') {
+  const db = new DiffoDb()
+  try {
+    const telemetry = new Telemetry({
+      store: {
+        get: (key) => db.getUiSetting(key),
+        set: (key, value) => db.setUiSetting(key, value),
+      },
+      ids: fileMachineIdStore(),
+      log: (line) => process.stderr.write(`diffo: ${line}\n`),
+      dev: SRC_STAMP !== null || process.env.ENV === 'development',
+    })
+    const farewell =
+      command.action === 'status' ? false : telemetry.setEnabled(command.action === 'on', 'cli')
+    console.log(describeTelemetry(telemetry.status(), command.action, farewell))
+    // The one last event must leave before this process does; the send's own
+    // timeout bounds the wait.
+    await telemetry.flush()
   } finally {
     db.close()
   }
@@ -825,6 +873,7 @@ if (existing !== null && takeOverPort === null) {
     prOpen ? 'diffo is already watching this pull request' : 'diffo is already watching this repo',
   )
   await warnSpecMismatch(existing.port, spec)
+  await announceOpen(existing.port)
   console.log(`→ ${url}`)
   await printAgentNextStep(existing.port, prOpen?.pr)
   process.exit(0)
@@ -860,6 +909,7 @@ if (!command.foreground) {
     SRC_STAMP,
     prOpen ? command.target : undefined,
   )
+  await announceOpen(daemonPort)
   const url = reviewUrl(daemonPort)
   await printChangesetSummary(daemonPort)
   console.log(`→ ${url}`)
@@ -910,6 +960,11 @@ try {
   }
   throw err
 }
+
+started.telemetry.reviewOpened({
+  kind: reviewKindOf(spec, prOpen !== null),
+  agent: detectHarness() ?? 'unknown',
+})
 
 const changeset = started.store.get()
 const { stats, repo } = changeset

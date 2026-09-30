@@ -30,6 +30,7 @@ nothing.
 | [`diffo stop`](#diffo-stop) | reviewer | Stop this repo's server |
 | [`diffo clean`](#diffo-clean) | reviewer | Remove the worktrees Diffo made for pull requests |
 | [`diffo setup`](#diffo-setup) | reviewer | Register Diffo with the coding agents on this machine |
+| [`diffo telemetry`](#diffo-telemetry) | reviewer | See, turn off, or turn on anonymous usage data |
 | [`diffo poll`](#diffo-poll) | agent | Wait for the reviewer's feedback |
 | [`diffo reply`](#diffo-reply-threadid) | agent | Reply to a thread |
 | [`diffo comment`](#diffo-comment-file) | agent | Start a thread in the agent's own voice |
@@ -142,6 +143,21 @@ manual equivalent of every row if you'd rather do it by hand.
 
 You don't need to re-run `setup` after an upgrade: opening a review refreshes
 the skill copies it installed.
+
+### `diffo telemetry`
+
+```bash
+diffo telemetry [status|on|off]
+```
+
+Anonymous usage data: two small events per review, on by default, announced in
+the review page before the first one is sent. `status` (the default) prints
+whether it is on, why it is off, and where the data goes. `off` stops reporting
+on this machine for good and deletes the machine's random id; `on` starts again
+with a fresh one. [Usage data](/telemetry) lists every field.
+
+`DIFFO_TELEMETRY_DISABLED=1` or `DO_NOT_TRACK=1` turns it off without touching
+the setting, and wins over it; so does `CI`.
 
 ## Agent commands
 
@@ -290,6 +306,8 @@ An unrecognised command is an error with a suggestion (`diffo repyl` offers
 | `DIFFO_DB` | Path to the state file. Default `~/.diffo/diffo.db` |
 | `DIFFO_IDLE_TIMEOUT_MS` | Idle budget before a background server self-stops. `0` or `off` disables it. Default: 30 minutes for a background server, off in the foreground |
 | `DIFFO_SERVER_LOG` | Where a background server writes its log. Default `~/.diffo/logs/<repo>-<hash>.log` |
+| `DIFFO_TELEMETRY_DISABLED` | Set to `1` to send no [usage data](/telemetry). `DO_NOT_TRACK=1` and `CI` do the same |
+| `DIFFO_TELEMETRY_DEBUG` | Set to `1` to write every usage-data payload to the server log before it is sent |
 | `DIFFO_DAEMON` | Internal. Set by the CLI on the server it spawns; don't set it yourself |
 
 ## Exit codes

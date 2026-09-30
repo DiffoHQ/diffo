@@ -11,7 +11,7 @@ live in the repo; this page is the operational detail.
 
 | Question | Answer |
 | --- | --- |
-| Network egress | **None of Diffo's own.** No telemetry, no accounts, no model APIs. Reviewing a pull request talks to that PR's GitHub host, only through your own `gh` |
+| Network egress | **Two anonymous usage events per review** to one host, [listed in full](/telemetry), off with `diffo telemetry off` or `DO_NOT_TRACK=1`. Nothing else of Diffo's own: no accounts, no model APIs. Reviewing a pull request talks to that PR's GitHub host, only through your own `gh` |
 | Listens on | `127.0.0.1` only, one port per repo |
 | Who can connect | Local processes; web pages are actively defended against |
 | Writes to your repo | **Never to your working tree or branches.** A pull-request review adds refs under `refs/diffo/`, a `diffo/pr-N` branch, and a worktree of its own under `~/.diffo`; `diffo clean` removes them |
@@ -20,15 +20,24 @@ live in the repo; this page is the operational detail.
 | Runtime dependencies | 8, all mainstream |
 | Releases | Built and signed on GitHub Actions with npm provenance |
 
-## Nothing leaves your machine
+## What leaves your machine
 
-Diffo is one local process. Every HTTP request in the codebase targets its own
-loopback server; there is no analytics endpoint, no update check, no crash
-reporter, and no model API; it holds no keys because it calls no models. The
-review you see in the browser is served from `127.0.0.1`, computed live from
-your git repository.
+Diffo is one local process. The review you see in the browser is served from
+`127.0.0.1`, computed live from your git repository, and every request the page
+makes targets that loopback server. There is no update check, no crash reporter,
+and no model API; it holds no keys because it calls no models.
 
-The one exception is a review you open on a pull request. Diffo then reads and
+Two things do leave. The first is [anonymous usage data](/telemetry): two
+small `POST`s per review to `eu.i.posthog.com`, sent from the server process,
+never from the page and never from an install script. Each carries Diffo's
+version, your OS and Node major, the kind of review, which agent opened it,
+counts, and one random id per machine; never code, paths, repository or branch
+names, or comment text. Nothing is sent before the review page has shown you
+the notice, and `diffo telemetry off`, `DIFFO_TELEMETRY_DISABLED=1`, or
+`DO_NOT_TRACK=1` stops it for good. The sending code is one function in
+[`src/server/telemetry.ts`](https://github.com/DiffoHQ/diffo/blob/main/src/server/telemetry.ts).
+
+The second is a review you open on a pull request. Diffo then reads and
 posts to that PR's GitHub host, and only through the GitHub CLI you are signed
 in with: every call is a `gh` subprocess with typed arguments, Diffo never opens
 a socket to GitHub itself, and it never holds a token. Opening the review runs
