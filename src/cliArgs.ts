@@ -36,6 +36,8 @@ For the reviewer:
   setup              Register diffo with the coding agents on this machine
                      (Claude Code, Cursor, VS Code, Copilot, and the shared
                      ~/.agents skills dir read by Codex, Gemini, Amp, Goose, …)
+  telemetry          Show whether anonymous usage data is on, or turn it
+                     off / on (telemetry off · telemetry on)
 
 For the agent (the AI that wrote the change):
   poll               Wait for the reviewer's feedback (blocking long-poll;
@@ -377,6 +379,32 @@ automatically after upgrades.
 
 Example:
   diffo setup`,
+  telemetry: `diffo telemetry: anonymous usage data — see it, turn it off, turn it on
+
+Usage: diffo telemetry [status|on|off]
+
+Diffo reports two small anonymous events per review, "opened" and "finished":
+its version, your OS and Node major, the kind of review (working tree, branch,
+or pull request), which agent opened it, counts (threads, comments, whether
+layers were used, a coarse duration), and whether it runs from a source
+checkout (dev: true, so the maintainers' own use is filtered out). Never code,
+paths, repository or branch names, comment text, or anything about the pull
+request. One random id per machine tells returning machines from new ones;
+turning reporting off deletes it. Nothing is sent until the review page has
+shown you the notice once, and nothing from the review that showed it.
+
+  status   what is on, why it is off, and where the data goes (the default)
+  off      stop reporting on this machine, for good (a machine that has
+           reported sends one last event saying so, then nothing)
+  on       start again (a fresh id, not the old history)
+
+DIFFO_TELEMETRY_DISABLED=1 or DO_NOT_TRACK=1 turns it off for one process or
+for a fleet; CI does the same. DIFFO_TELEMETRY_DEBUG=1 writes every payload to
+the server log before it is sent. The full list, and where it goes:
+${'https://diffohq.github.io/diffo/telemetry'}
+
+Example:
+  diffo telemetry off`,
 }
 
 export function helpFor(topic?: string): string {
@@ -416,6 +444,7 @@ export type CliCommand =
   | { kind: 'layers'; source: LayersSource }
   | { kind: 'end' }
   | { kind: 'setup' }
+  | { kind: 'telemetry'; action: 'status' | 'on' | 'off' }
   | { kind: 'status'; json: boolean }
   | { kind: 'stop' }
   | { kind: 'error'; message: string }
@@ -433,6 +462,7 @@ const VERBS = new Set([
   'layers',
   'end',
   'setup',
+  'telemetry',
   'status',
   'stop',
   'clean',
@@ -681,9 +711,28 @@ function parseCleanVerb(rest: string[]): CliCommand {
   }
 }
 
+function parseTelemetryVerb(rest: string[]): CliCommand {
+  const parsed = tryParse(() =>
+    parseArgs({
+      args: rest,
+      allowPositionals: true,
+      options: { help: { type: 'boolean', short: 'h' } },
+    }),
+  )
+  if (!parsed.ok) return { kind: 'error', message: parsed.message }
+  const { values, positionals } = parsed.value
+  if (values.help) return { kind: 'help', topic: 'telemetry' }
+  const action = positionals[0] ?? 'status'
+  if (positionals.length > 1 || (action !== 'status' && action !== 'on' && action !== 'off')) {
+    return { kind: 'error', message: 'telemetry takes one of: status, on, off' }
+  }
+  return { kind: 'telemetry', action }
+}
+
 function parseVerb(verb: string, rest: string[]): CliCommand {
   if (verb === 'layers') return parseLayersVerb(rest)
   if (verb === 'clean') return parseCleanVerb(rest)
+  if (verb === 'telemetry') return parseTelemetryVerb(rest)
   const parsed = tryParse(() =>
     parseArgs({
       args: rest,

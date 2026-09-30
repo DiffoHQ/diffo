@@ -433,6 +433,8 @@ export interface HeaderSettings {
   theme?: Theme
   onSetTheme?: (theme: Theme) => void
   onShowShortcuts?: () => void
+  /** Opens the Privacy dialog, where the usage-data switch lives. */
+  onShowPrivacy?: () => void
 }
 
 export function Header({
@@ -447,7 +449,7 @@ export function Header({
   settings?: HeaderSettings
 }) {
   const { openComments = 0, publicDrafts = 0, onFinishReview } = review
-  const { theme, onSetTheme, onShowShortcuts } = settings
+  const { theme, onSetTheme, onShowShortcuts, onShowPrivacy } = settings
   return (
     <header className="top">
       <span className="mark">
@@ -551,6 +553,20 @@ export function Header({
                   }}
                 >
                   Shortcuts
+                </MenuItem>
+              </>
+            )}
+            {onShowPrivacy && (
+              <>
+                {(onSetTheme || onShowShortcuts) && <MenuSep />}
+                <MenuItem
+                  icon="lock"
+                  onClick={() => {
+                    close()
+                    onShowPrivacy()
+                  }}
+                >
+                  Privacy
                 </MenuItem>
               </>
             )}

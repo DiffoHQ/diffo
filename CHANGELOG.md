@@ -7,7 +7,22 @@ Until 1.0, minor versions may break things. When they do, the entry says how to 
 
 ## [Unreleased]
 
-Nothing yet.
+### Added
+
+- **Anonymous usage data, off with one command.** Diffo now reports two small
+  events per review, `review_opened` and `review_finished`: its version, your
+  OS and Node major, the kind of review (working tree, branch, pull request),
+  which agent opened it, counts, and one random id per machine, plus one last
+  `telemetry_disabled` when a machine that has reported turns it off. Never
+  code, paths, repository or branch names, or comment text. It is on by default, but
+  nothing is sent until the review page has shown you the notice once, and the
+  review that shows it reports nothing. `diffo telemetry off`,
+  `DIFFO_TELEMETRY_DISABLED=1`, or `DO_NOT_TRACK=1` stops it; `diffo telemetry`
+  says what is on and why; `DIFFO_TELEMETRY_DEBUG=1` prints every payload to the
+  server log. The full list, and where it goes, is on the new
+  [Usage data](https://diffohq.github.io/diffo/telemetry) page; the previous
+  "no telemetry" statements in the README, FAQ, and security model are updated
+  to match.
 
 ## [0.8.0] — 2026-09-28
 

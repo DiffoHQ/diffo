@@ -38,7 +38,7 @@ features:
     linkText: Reviewing a pull request
   - icon: '<svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="12" rx="2"/><path d="M12 16v4"/><path d="M8 20h8"/></svg>'
     title: Entirely on your machine
-    details: No config, no accounts, no cloud, no telemetry. A small local server per repo, state in SQLite under ~/.diffo. A pull request's calls to GitHub go through your own gh.
+    details: No config, no accounts, no cloud. Anonymous usage data, off with one command. A small local server per repo, state in SQLite under ~/.diffo. A pull request's calls to GitHub go through your own gh.
     link: /faq#does-any-of-my-code-leave-my-machine
     linkText: What leaves the box
 ---

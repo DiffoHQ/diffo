@@ -422,3 +422,22 @@ describe('parseCliArgs — layers', () => {
     expect(page).toContain("diffo layers --json '<Layer[]>'")
   })
 })
+
+describe('parseCliArgs — telemetry', () => {
+  it('defaults to status, and takes exactly one of status, on, off', () => {
+    expect(parseCliArgs(['telemetry'])).toEqual({ kind: 'telemetry', action: 'status' })
+    expect(parseCliArgs(['telemetry', 'status'])).toEqual({ kind: 'telemetry', action: 'status' })
+    expect(parseCliArgs(['telemetry', 'off'])).toEqual({ kind: 'telemetry', action: 'off' })
+    expect(parseCliArgs(['telemetry', 'on'])).toEqual({ kind: 'telemetry', action: 'on' })
+    expect(parseCliArgs(['telemetry', 'maybe'])).toMatchObject({ kind: 'error' })
+    expect(parseCliArgs(['telemetry', 'on', 'off'])).toMatchObject({ kind: 'error' })
+    expect(parseCliArgs(['telemetry', '--json'])).toMatchObject({ kind: 'error' })
+  })
+
+  it('has help, and is a verb — never a branch', () => {
+    expect(parseCliArgs(['telemetry', '--help'])).toEqual({ kind: 'help', topic: 'telemetry' })
+    expect(parseCliArgs(['help', 'telemetry'])).toEqual({ kind: 'help', topic: 'telemetry' })
+    expect(helpFor('telemetry')).toContain('DO_NOT_TRACK')
+    expect(parseCliArgs(['telemetr'])).toMatchObject({ kind: 'error' })
+  })
+})

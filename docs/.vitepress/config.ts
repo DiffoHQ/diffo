@@ -61,6 +61,7 @@ export default defineConfig({
         items: [
           { text: 'Architecture', link: '/architecture' },
           { text: 'Security model', link: '/security' },
+          { text: 'Usage data', link: '/telemetry' },
           { text: 'FAQ', link: '/faq' },
         ],
       },

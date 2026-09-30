@@ -2,14 +2,21 @@
 
 ### Does any of my code leave my machine?
 
-No, unless you point it at a pull request. Diffo makes no network calls of its own: one
-process on your machine, bound to loopback, state under `~/.diffo`: a single SQLite file
-at `~/.diffo/diffo.db`, a log per repo, and a checkout per pull request you review. No
-account, no telemetry, no model API: it holds no keys because it calls no models.
-Reviewing a pull request is the one exception, and even then Diffo talks only to that
-PR's GitHub host, only through your own `gh`, and still holds no token. To remove
-everything, run `diffo clean --all` before deleting `~/.diffo`, so the branches and refs a
-pull-request checkout adds to your clone go with it.
+No. Diffo is one process on your machine, bound to loopback, with its state under
+`~/.diffo`: a single SQLite file at `~/.diffo/diffo.db`, a log per repo, and a checkout
+per pull request you review. No account, no model API: it holds no keys because it calls
+no models. Two things do leave, neither carrying code:
+
+- **Anonymous usage data**: two small events per review (opened, finished) with the
+  version, OS, kind of review, which agent, and counts. Never code, paths, repository
+  names, or comment text. Announced in the review page before the first one is sent, and
+  off with `diffo telemetry off` or `DO_NOT_TRACK=1`. [Usage data](/telemetry) lists
+  every field.
+- **A pull-request review's traffic**, only to that PR's GitHub host, only through your
+  own `gh`, and Diffo still holds no token.
+
+To remove everything, run `diffo clean --all` before deleting `~/.diffo`, so the branches
+and refs a pull-request checkout adds to your clone go with it.
 
 ### Is this an AI code reviewer?
 

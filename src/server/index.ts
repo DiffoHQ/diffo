@@ -63,6 +63,7 @@ import {
 } from './prompt.js'
 import { parseAnchor, ReviewStore } from './review.js'
 import { ChangesetStore } from './store.js'
+import { agentNameOf, fileMachineIdStore, reviewKindOf, Telemetry } from './telemetry.js'
 import { watchRepo } from './watcher.js'
 
 /** Types the UI embeds in <img>/srcset — the only repo content that may keep
@@ -117,6 +118,8 @@ export interface ServerContext {
   onListenError?: (err: NodeJS.ErrnoException) => void
   idle?: IdleMonitor
   uiSettings?: UiSettings
+  /** Anonymous usage data; absent in tests that never touch it. */
+  telemetry?: Telemetry
   /** Set when the server was opened on a pull request: the forge to talk to,
    * which PR, and the user's checkout the worktree (`root`) hangs off. */
   pr?: PrContext
@@ -230,6 +233,37 @@ export function createApp(
     }
     ctx.uiSettings.set('theme', theme)
     return c.json({ ok: true })
+  })
+
+  // Anonymous usage data (see telemetry.ts). The page reads the state to show
+  // the one-time notice and the Settings toggle; the CLI's open lands here so
+  // the decision to report a review is made once, in the process that reports.
+  const reviewKind = () => reviewKindOf(ctx.spec, ctx.pr !== undefined)
+  app.get('/api/telemetry', (c) => {
+    if (!ctx.telemetry) return c.json({ error: 'telemetry unavailable' }, 503)
+    return c.json(ctx.telemetry.status())
+  })
+
+  app.put('/api/telemetry', async (c) => {
+    if (!ctx.telemetry) return c.json({ error: 'telemetry unavailable' }, 503)
+    const body = await c.req.json().catch(() => null)
+    if (typeof body?.enabled === 'boolean') {
+      ctx.telemetry.setEnabled(body.enabled, 'ui')
+    } else if (body?.notice === 'shown') {
+      ctx.telemetry.noticeShown()
+    } else if (body?.notice === 'acknowledged') {
+      ctx.telemetry.acknowledge()
+    } else {
+      return c.json({ error: 'need {enabled: boolean} or {notice: "shown" | "acknowledged"}' }, 400)
+    }
+    return c.json(ctx.telemetry.status())
+  })
+
+  app.post('/api/telemetry/opened', async (c) => {
+    const body = await c.req.json().catch(() => null)
+    const armed =
+      ctx.telemetry?.reviewOpened({ kind: reviewKind(), agent: agentNameOf(body?.agent) }) ?? false
+    return c.json({ ok: true, armed })
   })
 
   const repoInfo = () =>
@@ -736,6 +770,16 @@ export function createApp(
       queue.enqueueFinish(coverage)
     }
     review.clearWithheld(batch.map((t) => t.id))
+    ctx.telemetry?.reviewFinished({
+      kind: reviewKind(),
+      threads: batch.length,
+      comments: batch.reduce(
+        (n, t) => n + t.messages.filter((m) => m.author === 'reviewer').length,
+        0,
+      ),
+      layers: (review.get().layers?.items.length ?? 0) > 0,
+      ...(event !== null ? { event } : {}),
+    })
     return c.json({
       threads: review.get().threads,
       prompt,
@@ -1162,6 +1206,17 @@ export function startServer(options: ServerContext & { port: number }) {
   rehydrateQueue(review, queue)
   const log = (message: string) =>
     console.log(`[${new Date().toLocaleTimeString('en-GB', { hour12: false })}] ${message}`)
+  const telemetry =
+    options.telemetry ??
+    new Telemetry({
+      store: {
+        get: (key) => db.getUiSetting(key),
+        set: (key, value) => db.setUiSetting(key, value),
+      },
+      ids: fileMachineIdStore(),
+      log,
+      dev: SRC_STAMP !== null || IS_DEV,
+    })
   queue.subscribe((presence) => log(`agent ${presence}`))
   const unsubscribeBatch = queue.onBatchClosed((closed) => {
     const took = Math.round((closed.closedAt - closed.deliveredAt) / 1000)
@@ -1242,6 +1297,7 @@ export function startServer(options: ServerContext & { port: number }) {
       ...options,
       ...(prContext ? { pr: prContext } : {}),
       idle,
+      telemetry,
       onShutdownRequest: options.onShutdownRequest ?? (() => process.exit(0)),
       uiSettings: {
         get: (key) => db.getUiSetting(key),
@@ -1290,6 +1346,7 @@ export function startServer(options: ServerContext & { port: number }) {
     store,
     review,
     queue,
+    telemetry,
     stopWatching: async () => {
       idle?.stop()
       puller?.stop()
