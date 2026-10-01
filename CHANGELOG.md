@@ -7,7 +7,15 @@ Until 1.0, minor versions may break things. When they do, the entry says how to 
 
 ## [Unreleased]
 
-Nothing yet.
+### Changed
+
+- **`npx -y @diffohq/diffo` installs 2 packages instead of 172.** The review
+  page's libraries (mermaid, shiki, marked, DOMPurify, beautiful-mermaid,
+  TanStack Query) are bundled into the shipped client and were never loaded at
+  run time, but they were declared as runtime dependencies, so every first run
+  and every release fetched them: 256 MB and 172 packages where the CLI needs
+  `hono` and `@hono/node-server`, 3 MB. A cold `npx` now takes seconds rather
+  than minutes on a slow link.
 
 ## [0.9.0] — 2026-09-30
 
