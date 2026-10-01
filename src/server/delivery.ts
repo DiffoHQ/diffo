@@ -8,6 +8,7 @@ export type PresenceReason =
   | 'delivered'
   | 'stalled'
   | 'replied'
+  | 'repolling'
   | 'ended'
   | 'disconnected'
 
@@ -103,6 +104,9 @@ export class DeliveryQueue {
   private stalled = false
   private stallTimer: ReturnType<typeof setTimeout> | null = null
   private betweenPolls = false
+  /** Why the agent is parked between polls: a reply just landed, or its poll
+   * ended on its own and the re-poll is expected. */
+  private parked: 'replied' | 'repolling' = 'replied'
   private graceTimer: ReturnType<typeof setTimeout> | null = null
   private lastDetach: 'ended' | 'disconnected' | null = null
   private since = Date.now()
@@ -278,7 +282,7 @@ export class DeliveryQueue {
     if (this.awaitingReply) return this.stalled ? 'stalled' : 'delivered'
     if (this.outlining() !== null) return 'delivered'
     if (this.waiter) return 'polling'
-    if (this.betweenPolls) return 'replied'
+    if (this.betweenPolls) return this.parked
     return this.lastDetach ?? 'no-agent'
   }
 
@@ -340,9 +344,10 @@ export class DeliveryQueue {
     this.stallTimer = null
   }
 
-  private armGrace(): void {
+  private armGrace(why: 'replied' | 'repolling' = 'replied'): void {
     this.clearGrace()
     this.betweenPolls = true
+    this.parked = why
     const drop = () => {
       this.graceTimer = null
       if (!this.betweenPolls) return
@@ -378,6 +383,31 @@ export class DeliveryQueue {
     if (this.graceTimer !== null) clearInterval(this.graceTimer)
     this.graceTimer = null
     this.betweenPolls = false
+  }
+
+  /**
+   * A poll ended without `diffo end`: the poll window closed, or the process
+   * died under its harness. Neither means the agent left — the CLI tells the
+   * session to re-run the poll, and it usually does within moments — so the
+   * reviewer keeps an agent instead of being asked to invite one again. The
+   * agent parks in the same grace a reply uses: a named session is watched
+   * until its process is gone (or the cap), an unnamed one gets the fixed
+   * window. Only a session that is already dead reads as gone at once. When
+   * the grace runs out without a re-poll, the reason it fell to waiting is
+   * still the dead poll.
+   */
+  private pollDropped(): void {
+    this.lastDetach = 'disconnected'
+    const pid = this.owner
+    const isAlive = this.liveness.isAlive ?? pidAlive
+    const sessionGone = pid !== null && !isAlive(pid)
+    // Mid-batch (a re-poll inside the settle window) the batch already says
+    // working, and an outline in progress says so too; the grace is for the
+    // poll that was the only thing holding the agent.
+    if (!sessionGone && !this.awaitingReply && this.outlining() === null) {
+      this.armGrace('repolling')
+    }
+    this.notify()
   }
 
   enqueueThreads(threadIds: string[]): void {
@@ -488,8 +518,7 @@ export class DeliveryQueue {
       onAbort?.(() => {
         if (this.waiter === waiter) {
           this.releaseWaiter(null)
-          this.lastDetach = 'disconnected'
-          this.notify()
+          this.pollDropped()
         }
       })
     })

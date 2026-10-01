@@ -250,6 +250,20 @@ describe('Header', () => {
 })
 
 describe('Header — the layers suggestion', () => {
+  it('between polls the chip keeps the agent — no invite, and the tooltip says a send queues', () => {
+    const { container } = render(
+      <Header
+        changeset={changeset()}
+        agent={{ presence: 'working', reason: 'repolling', onInvite: vi.fn() }}
+      />,
+    )
+    expect(container.querySelector('button.presence')).toBeNull()
+    const chip = container.querySelector('.presence')!
+    expect(chip.textContent).toContain('agent · working')
+    expect(chip.textContent).not.toContain('Invite')
+    expect(chip.getAttribute('title')).toMatch(/polls again/)
+  })
+
   it('turns the presence chip into the call to action while the suggestion stands', () => {
     const onOutline = vi.fn()
     render(

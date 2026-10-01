@@ -258,17 +258,24 @@ from the connection and the queue, never asserted by the agent:
 | --- | --- | --- |
 | **waiting** | `no-agent` | Nothing attached. Sends queue for the next poll |
 | | `ended` | An agent detached deliberately |
-| | `disconnected` | A poll died without detaching |
+| | `disconnected` | A poll died without detaching, and the agent never came back |
 | **listening** | `polling` | A poll is open. A Send arrives now |
 | **working** | `delivered` | Feedback handed over, no reply yet |
-| | `replied` | A reply just landed; a brief grace window before the next state |
+| | `replied` | A reply just landed; a grace window before the next state |
+| | `repolling` | The poll ended on its own (the window closed, the process was killed) and the session is alive; its next poll is expected |
 | | `stalled` | Delivered over **5 minutes** ago with nothing back |
 
-Two deliberate choices here. `stalled` stays *inside* **working** rather than
+Three deliberate choices here. `stalled` stays *inside* **working** rather than
 becoming its own state, because a slow agent and a dead agent look identical from
-outside; the reviewer gets the elapsed time and decides. And there is a **90-second**
-grace after each reply, so an agent working through a batch does not flicker between
-states on every `diffo reply`.
+outside; the reviewer gets the elapsed time and decides. There is a grace after each
+reply, so an agent working through a batch does not flicker between states on every
+`diffo reply`: with a known session pid the grace lasts while that process lives (capped
+at **10 minutes**), without one it is a fixed **90 seconds**. And a poll that ends without
+`diffo end` — the poll window closing, or the harness killing the process — parks the
+agent in that same grace as `repolling` rather than dropping to **waiting**: the CLI tells
+the session to re-run the poll, and it normally does within moments, so the reviewer
+must not be asked to invite an agent that is still there. Only when the grace runs out
+without a re-poll does the review read `disconnected`.
 
 If nothing is attached at all, every thread carries a **Copy prompt** button: the
 same prompt the poll would have delivered, ready to paste into any agent.

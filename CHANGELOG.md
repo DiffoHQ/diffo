@@ -17,6 +17,17 @@ Until 1.0, minor versions may break things. When they do, the entry says how to 
   `hono` and `@hono/node-server`, 3 MB. A cold `npx` now takes seconds rather
   than minutes on a slow link.
 
+### Fixed
+
+- **The header no longer drops to *no agent · Invite* between polls.** When a
+  `diffo poll` ended on its own — the poll window closed, or the harness
+  killed the process — the chip fell straight to *no agent* until the agent
+  ran `diffo poll` again, and reviewers read that as the agent being gone
+  while it was working. A poll that ends without `diffo end` now parks the
+  agent the way a reply does: the chip keeps *agent · working* while the
+  session's process is alive (for the fixed grace when the session could not
+  be named), and reads *disconnected* only once it is gone or never re-polled.
+
 ## [0.9.0] — 2026-09-30
 
 ### Added

@@ -25,6 +25,7 @@ export type PresenceReason =
   | 'delivered'
   | 'stalled'
   | 'replied'
+  | 'repolling'
   | 'ended'
   | 'disconnected'
 
