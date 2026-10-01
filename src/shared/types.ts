@@ -77,7 +77,9 @@ export interface PrCommit {
   at: string
 }
 
-export type PrCheckState = 'pending' | 'success' | 'failure' | 'none'
+/** CI on the head commit. `none` is GitHub saying there are no checks;
+ * `unknown` is Diffo not being allowed to ask. */
+export type PrCheckState = 'pending' | 'success' | 'failure' | 'none' | 'unknown'
 
 export interface PrReviewEvent {
   /** GraphQL node id — what replies and resolves address. */

@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import type { PrRef } from '../types.js'
 import { GhClient, type GhExec } from './gh.js'
-import { COMMENTS_QUERY, PR_QUERY, REVIEWS_QUERY, THREADS_QUERY } from './queries.js'
+import { CHECKS_QUERY, COMMENTS_QUERY, PR_QUERY, REVIEWS_QUERY, THREADS_QUERY } from './queries.js'
 
 // The client over a scripted `gh`: every call is an argv, every answer a page.
 // What matters here is that a connection past its first hundred is read to the
@@ -18,8 +18,10 @@ function page(nodes: unknown[], endCursor: string | null) {
   }
 }
 
-/** A `gh` that answers by query text and cursor, and records what it was asked. */
-function scriptedGh() {
+/** A `gh` that answers by query text and cursor, and records what it was asked.
+ * `checks` is the head commit's status rollup: a GraphQL state, `null` for a
+ * commit with no checks, or `'forbidden'` for a token that may not ask. */
+function scriptedGh(checks: string | null = 'SUCCESS') {
   const asked: { query: string; cursor: string | null }[] = []
   const reviews = {
     first: page(
@@ -84,6 +86,13 @@ function scriptedGh() {
         },
       })
     }
+    if (query === CHECKS_QUERY) {
+      // `gh api graphql` exits 1 on any GraphQL error, even beside full data.
+      if (checks === 'forbidden')
+        throw new Error('gh: Resource not accessible by personal access token')
+      const rollup = checks === null ? null : { state: checks }
+      return JSON.stringify(pr({ commits: { nodes: [{ commit: { statusCheckRollup: rollup } }] } }))
+    }
     if (query === REVIEWS_QUERY) return JSON.stringify(pr({ reviews: reviews[cursor as 'r1'] }))
     if (query === COMMENTS_QUERY) return JSON.stringify(pr({ comments: comments[cursor as 'c1'] }))
     if (query === THREADS_QUERY) return JSON.stringify(pr({ reviewThreads: page([], null) }))
@@ -99,7 +108,11 @@ describe('GhClient pagination', () => {
     expect(pr.viewer.pendingReviewId).toBe('R2')
     expect(pr.approvals).toBe(1)
     expect(pr.reviews.map((r) => r.id)).toEqual(['R1'])
-    expect(asked.map((a) => [a.query === REVIEWS_QUERY ? 'reviews' : 'pr', a.cursor])).toEqual([
+    expect(
+      asked
+        .filter((a) => a.query !== CHECKS_QUERY)
+        .map((a) => [a.query === REVIEWS_QUERY ? 'reviews' : 'pr', a.cursor]),
+    ).toEqual([
       ['pr', null],
       ['reviews', 'r1'],
     ])
@@ -122,7 +135,12 @@ describe('GhClient pagination', () => {
           : q === COMMENTS_QUERY
             ? 'comments'
             : 'threads'
-    expect(asked.map((a) => name(a.query))).toEqual(['pr', 'reviews', 'comments', 'threads'])
+    expect(asked.filter((a) => a.query !== CHECKS_QUERY).map((a) => name(a.query))).toEqual([
+      'pr',
+      'reviews',
+      'comments',
+      'threads',
+    ])
   })
 
   it('listThreads reads every page of reviews and comments', async () => {
@@ -134,5 +152,34 @@ describe('GhClient pagination', () => {
       'comment:IC2',
     ])
     expect(asked.filter((a) => a.query === COMMENTS_QUERY).map((a) => a.cursor)).toEqual(['c1'])
+  })
+})
+
+// CI status is decoration on the header, and the one field a fine-grained or
+// SAML-limited token is routinely refused while it reads the rest of the pull
+// request. It is asked for on its own so a refusal costs the chip, not the review.
+describe('GhClient CI status', () => {
+  it('asks for checks beside the PR query, once, and maps the rollup', async () => {
+    const { exec, asked } = scriptedGh('FAILURE')
+    const pr = await new GhClient(exec).getPr(REF)
+    expect(pr.checks.state).toBe('failure')
+    expect(asked.filter((a) => a.query === CHECKS_QUERY)).toHaveLength(1)
+    expect(PR_QUERY).not.toContain('statusCheckRollup')
+  })
+
+  it('a commit with no checks is `none`', async () => {
+    const pr = await new GhClient(scriptedGh(null).exec).getPr(REF)
+    expect(pr.checks.state).toBe('none')
+  })
+
+  it('a token that may not read checks still opens the review, with `unknown`', async () => {
+    const { exec } = scriptedGh('forbidden')
+    const client = new GhClient(exec)
+    const pr = await client.getPr(REF)
+    expect(pr.checks.state).toBe('unknown')
+    expect(pr.viewer.pendingReviewId).toBe('R2')
+    const fetched = await client.fetchPr(REF)
+    expect(fetched.pr.checks.state).toBe('unknown')
+    expect(fetched.threads.map((t) => t.id)).toEqual(['R1', 'IC1', 'IC2'])
   })
 })

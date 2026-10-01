@@ -316,6 +316,13 @@ describe('the header on a pull request', () => {
     expect(screen.queryByRole('region', { name: 'pull request details' })).toBeNull()
   })
 
+  it('CI the token may not read says so in the card, instead of claiming no checks', () => {
+    render(<Header changeset={changesetOn(fixturePr({ checks: { state: 'unknown' } }))} />)
+    fireEvent.click(screen.getByRole('button', { name: /#482/ }))
+    const card = screen.getByRole('region', { name: 'pull request details' })
+    expect(within(card).getByText(/checks not visible to your token · pushed/)).toBeTruthy()
+  })
+
   it('shows one status chip, the most decision-relevant state first', () => {
     const chip = (info: PrInfo) => {
       const { container, unmount } = render(<Header changeset={changesetOn(info)} />)
@@ -324,6 +331,7 @@ describe('the header on a pull request', () => {
       return text
     }
     expect(chip(pr)).toBeNull()
+    expect(chip(fixturePr({ checks: { state: 'unknown' } }))).toBeNull()
     expect(chip(fixturePr({ checks: { state: 'pending' } }))).toBe('CI running')
     expect(chip(fixturePr({ draft: true, checks: { state: 'pending' } }))).toBe('draft')
     expect(chip(fixturePr({ draft: true, checks: { state: 'failure' } }))).toBe('CI failing')
