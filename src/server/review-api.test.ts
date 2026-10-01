@@ -1354,7 +1354,8 @@ describe('the poll window', () => {
     expect(payload.status).toBe('timeout')
     expect(String(payload.message)).toMatch(/nothing is lost|re-run/)
     expect(queue.hasListener()).toBe(false)
-    expect(queue.presence()).toBe('waiting')
+    // Sent away, not gone: it re-polls next, and the reviewer keeps an agent meanwhile.
+    expect(queue.presenceDetail()).toMatchObject({ state: 'working', reason: 'repolling' })
   })
 
   it('delivers feedback that arrives inside the window, window untouched', async () => {

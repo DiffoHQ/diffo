@@ -1360,6 +1360,7 @@ function Review() {
           changeset={data}
           agent={{
             presence,
+            reason: presenceReason,
             since: presenceSince,
             activity,
             onInvite: () => setInviteOpen(true),

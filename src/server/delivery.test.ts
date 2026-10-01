@@ -103,7 +103,7 @@ describe('DeliveryQueue', () => {
     expect(await second).toBe('data')
   })
 
-  it('an aborted listener goes back to waiting without resolving', async () => {
+  it('an aborted listener stops listening without resolving; the agent parks for its re-poll', async () => {
     const q = new DeliveryQueue()
     let detach: (() => void) | null = null
     let resolved = false
@@ -111,7 +111,8 @@ describe('DeliveryQueue', () => {
     await Promise.resolve()
     expect(q.presence()).toBe('listening')
     detach!()
-    expect(q.presence()).toBe('waiting')
+    expect(q.hasListener()).toBe(false)
+    expect(q.presenceDetail()).toMatchObject({ state: 'working', reason: 'repolling' })
     q.enqueueThreads(['t1'])
     await Promise.resolve()
     expect(resolved).toBe(false)
@@ -429,13 +430,18 @@ describe('DeliveryQueue presence honesty', () => {
     ended.end()
     expect(ended.presenceDetail()).toMatchObject({ state: 'waiting', reason: 'ended' })
 
-    const dropped = new DeliveryQueue()
+    // A dead poll is not a gone agent: the CLI tells the session to re-run it,
+    // so with no session to watch the reviewer keeps an agent for the fixed
+    // grace, and only then does the death show.
+    const dropped = new DeliveryQueue(5 * 60_000, 20)
     let detach = () => {}
     void dropped.attach((d) => {
       detach = d
     })
     expect(dropped.presenceDetail().reason).toBe('polling')
     detach()
+    expect(dropped.presenceDetail()).toMatchObject({ state: 'working', reason: 'repolling' })
+    await new Promise((r) => setTimeout(r, 40))
     expect(dropped.presenceDetail()).toMatchObject({ state: 'waiting', reason: 'disconnected' })
 
     void dropped.attach()
@@ -586,6 +592,104 @@ describe('DeliveryQueue batch boundary', () => {
     void q.attach()
     q.enqueueThreads(['t1'])
     expect(closed).toHaveLength(0)
+  })
+})
+
+describe('DeliveryQueue — a poll that ended without detaching', () => {
+  // The poll window closing, or the harness killing the process: the agent is
+  // expected back on its next `diffo poll`, so the reviewer must not be told
+  // there is no agent to invite while it is working.
+  const dropPoll = (q: DeliveryQueue) => {
+    let detach = () => {}
+    void q.attach((d) => {
+      detach = d
+    })
+    return detach
+  }
+
+  it('parks a live session in the re-poll grace, and its death ends it as disconnected', async () => {
+    let alive = true
+    const q = new DeliveryQueue(5 * 60_000, 5 * 60_000, {
+      isAlive: () => alive,
+      checkEveryMs: 5,
+      capMs: 60_000,
+    })
+    q.claimSession(4242)
+    const detach = dropPoll(q)
+    expect(q.presence()).toBe('listening')
+    detach()
+    expect(q.presenceDetail()).toMatchObject({ state: 'working', reason: 'repolling' })
+    await new Promise((r) => setTimeout(r, 25))
+    expect(q.presence()).toBe('working')
+    alive = false
+    await new Promise((r) => setTimeout(r, 25))
+    expect(q.presenceDetail()).toMatchObject({ state: 'waiting', reason: 'disconnected' })
+  })
+
+  it('a session that is already dead reads as disconnected at once', () => {
+    const q = new DeliveryQueue(5 * 60_000, 5 * 60_000, { isAlive: () => false, checkEveryMs: 5 })
+    q.claimSession(4242)
+    const detach = dropPoll(q)
+    detach()
+    expect(q.presenceDetail()).toMatchObject({ state: 'waiting', reason: 'disconnected' })
+  })
+
+  it('the cap still bounds it — a session that never re-polls is not an agent', async () => {
+    const q = new DeliveryQueue(5 * 60_000, 5 * 60_000, {
+      isAlive: () => true,
+      checkEveryMs: 5,
+      capMs: 20,
+    })
+    q.claimSession(4242)
+    dropPoll(q)()
+    expect(q.presence()).toBe('working')
+    await new Promise((r) => setTimeout(r, 60))
+    expect(q.presenceDetail()).toMatchObject({ state: 'waiting', reason: 'disconnected' })
+  })
+
+  it('the re-poll ends the grace: listening again, and sends made meanwhile are queued for it', () => {
+    const q = new DeliveryQueue(5 * 60_000, 5 * 60_000, { isAlive: () => true, checkEveryMs: 5 })
+    q.claimSession(4242)
+    dropPoll(q)()
+    q.enqueueThreads(['t1'])
+    expect(q.presence()).toBe('working')
+    expect(q.queuedThreadIds()).toEqual(['t1'])
+    let outcome: string | null = null
+    void q.attach().then((o) => (outcome = o))
+    expect(q.take()).toEqual({ kind: 'threads', threadIds: ['t1'] })
+    q.confirm(q.take()!, ['t1'])
+    expect(q.presenceDetail()).toMatchObject({ state: 'working', reason: 'delivered' })
+    return new Promise<void>((r) => setImmediate(r)).then(() => expect(outcome).toBe('data'))
+  })
+
+  it('a poll dropped inside the settle window leaves the batch to say working', async () => {
+    const q = new DeliveryQueue(5 * 60_000, 5 * 60_000, {}, 60_000)
+    q.enqueueThreads(['t1'])
+    q.confirm(q.take()!, ['t1'])
+    const detach = dropPoll(q)
+    expect(q.presenceDetail()).toMatchObject({ state: 'working', reason: 'delivered' })
+    detach()
+    expect(q.presenceDetail()).toMatchObject({ state: 'working', reason: 'delivered' })
+    q.agentReplied('t1')
+    expect(q.presenceDetail()).toMatchObject({ state: 'working', reason: 'replied' })
+  })
+
+  it('a reply during the window restarts it as replied', () => {
+    const q = new DeliveryQueue(5 * 60_000, 5 * 60_000, { isAlive: () => true, checkEveryMs: 5 })
+    q.claimSession(4242)
+    dropPoll(q)()
+    expect(q.presenceDetail().reason).toBe('repolling')
+    q.agentReplied('t-old')
+    expect(q.presenceDetail()).toMatchObject({ state: 'working', reason: 'replied' })
+  })
+
+  it('a polite end still reads as ended, grace or not', () => {
+    const q = new DeliveryQueue(5 * 60_000, 5 * 60_000, { isAlive: () => true, checkEveryMs: 5 })
+    q.claimSession(4242)
+    dropPoll(q)()
+    expect(q.presence()).toBe('working')
+    expect(q.end(4242)).toBe(true)
+    expect(q.presenceDetail()).toMatchObject({ state: 'waiting', reason: 'ended' })
   })
 })
 

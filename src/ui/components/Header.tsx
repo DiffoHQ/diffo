@@ -1,6 +1,6 @@
 import { type ReactNode, useEffect, useRef, useState } from 'react'
 import type { Changeset, PrInfo } from '../../shared/types.js'
-import type { Presence } from '../api.js'
+import type { Presence, PresenceReason } from '../api.js'
 import { isDevServer } from '../devMode.js'
 import { shortAgo } from '../markdown.js'
 import type { Theme } from '../theme.js'
@@ -263,6 +263,18 @@ const PRESENCE_TITLE: Record<Presence, string> = {
   working: 'the agent received feedback and is working on it',
 }
 
+/** Between polls because the poll ended on its own (the window closed, or the
+ * process was killed under its harness), not because anyone left: the chip
+ * keeps the agent, and the tooltip says what a send does meanwhile. */
+const REPOLLING_TITLE =
+  'the agent is attached but its last poll ended; a send queues and reaches it when it polls again'
+
+function presenceTitle(presence: Presence, reason: PresenceReason | undefined): string {
+  return presence === 'working' && reason === 'repolling'
+    ? REPOLLING_TITLE
+    : PRESENCE_TITLE[presence]
+}
+
 function formatAgo(ms: number): string {
   const s = Math.max(0, Math.round(ms / 1000))
   if (s < 60) return `${s}s`
@@ -285,6 +297,7 @@ export interface LayersSuggestion {
 
 function PresenceChip({
   presence,
+  reason,
   since,
   activity,
   onInvite,
@@ -295,6 +308,7 @@ function PresenceChip({
   suggestion,
 }: {
   presence: Presence
+  reason?: PresenceReason
   since?: number | null
   activity?: string | null
   onInvite?: () => void
@@ -377,7 +391,7 @@ function PresenceChip({
   }
   if (presence === 'waiting' || total === 0 || !onOpenMonitor) {
     return (
-      <span className={`presence presence-${presence}`} title={PRESENCE_TITLE[presence]}>
+      <span className={`presence presence-${presence}`} title={presenceTitle(presence, reason)}>
         {body}
       </span>
     )
@@ -410,6 +424,8 @@ function PresenceChip({
 
 export interface HeaderAgent {
   presence?: Presence
+  /** Why the state holds — only `repolling` changes what the chip says. */
+  reason?: PresenceReason
   since?: number | null
   /** What the agent is doing right now — replaces the static working label. */
   activity?: string | null
@@ -468,6 +484,7 @@ export function Header({
       {agent.presence && (
         <PresenceChip
           presence={agent.presence}
+          reason={agent.reason}
           since={agent.since}
           activity={agent.activity}
           onInvite={agent.onInvite}
