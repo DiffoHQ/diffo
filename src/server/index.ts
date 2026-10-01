@@ -101,6 +101,10 @@ const POLL_HEARTBEAT_MS = 15_000
  */
 const POLL_MAX_MS = 30 * 60_000
 
+/** How long after listening the daemon starts the machine-wide database sweep:
+ * past the first page load, which is what the sweep must never delay. */
+const MAINTENANCE_DELAY_MS = 5_000
+
 /** Reviewer preferences shared across every repo's server — backed by the one
  * DiffoDb, narrowed here so createApp (and its tests) never hold a database. */
 export interface UiSettings {
@@ -1198,14 +1202,24 @@ export function startServer(options: ServerContext & { port: number }) {
     throw new RepoAlreadyServedError(holder)
   }
   db.setPreferredPort(resolve(options.root), options.port)
+  const log = (message: string) =>
+    console.log(`[${new Date().toLocaleTimeString('en-GB', { hour12: false })}] ${message}`)
+  // This repo's reviews for branches it no longer has go before its review
+  // loads, so a branch deleted since the last start is forgotten before a
+  // namesake could inherit its threads. Only this repo is asked about here; the
+  // rest of the machine is swept in the background below.
+  const retired = db.pruneRepo(resolve(options.root))
+  if (retired > 0) {
+    log(
+      `retired ${retired} ${retired === 1 ? 'review' : 'reviews'} for branches this repo no longer has`,
+    )
+  }
   const review = new ReviewStore(options.root, db, options.spec)
   const queue = new DeliveryQueue()
   // Start the queue on the review's scope, or feedback queued before the first
   // checkout would park under the default scope and never deliver.
   queue.rescope(store.get().repo.branch)
   rehydrateQueue(review, queue)
-  const log = (message: string) =>
-    console.log(`[${new Date().toLocaleTimeString('en-GB', { hour12: false })}] ${message}`)
   const telemetry =
     options.telemetry ??
     new Telemetry({
@@ -1313,6 +1327,23 @@ export function startServer(options: ServerContext & { port: number }) {
     port: options.port,
     hostname: '127.0.0.1',
   })
+  // The machine-wide sweep — reviews whose repo or branch is gone, across every
+  // repo this machine ever reviewed — asks git once per branch it knows, which
+  // is exactly the work an open must never wait for. It runs here, once the
+  // server is serving and the first page has had its moment, and never holds
+  // the process open.
+  const maintenance = setTimeout(() => {
+    db.maintain()
+      .then((report) => {
+        if (report.reviews > 0) {
+          log(
+            `retired ${report.reviews} ${report.reviews === 1 ? 'review' : 'reviews'} whose repo or branch is gone`,
+          )
+        }
+      })
+      .catch((err: Error) => log(`database sweep failed: ${err.message}`))
+  }, MAINTENANCE_DELAY_MS)
+  maintenance.unref()
   const deregister = () => {
     try {
       db.removeServer(review.repoPath, options.port)
@@ -1348,6 +1379,7 @@ export function startServer(options: ServerContext & { port: number }) {
     queue,
     telemetry,
     stopWatching: async () => {
+      clearTimeout(maintenance)
       idle?.stop()
       puller?.stop()
       unsubscribeReconcile()

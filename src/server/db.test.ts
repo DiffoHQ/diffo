@@ -138,7 +138,7 @@ describe('sharing the file with another build', () => {
 })
 
 describe('worktree rows', () => {
-  it('outlive their directory until the sweep has cleaned git, and go with the main repo', () => {
+  it('outlive their directory until the sweep has cleaned git, and go with the main repo', async () => {
     const dir = mkdtempSync(join(tmpdir(), 'diffo-db-'))
     cleanups.push(() => rmSync(dir, { recursive: true, force: true }))
     const path = join(dir, 'diffo.db')
@@ -154,12 +154,13 @@ describe('worktree rows', () => {
     first.close()
     const second = new DiffoDb(path)
     cleanups.push(() => second.close())
+    await second.maintain()
     expect(second.listWorktrees().map((w) => w.worktreePath)).toEqual([join(dir, 'rm-rfd')])
   })
 })
 
 describe('reviews', () => {
-  it('prunes reviews whose worktree no longer exists on disk', () => {
+  it('the sweep drops reviews whose worktree no longer exists on disk', async () => {
     const dir = mkdtempSync(join(tmpdir(), 'diffo-db-'))
     cleanups.push(() => rmSync(dir, { recursive: true, force: true }))
     const path = join(dir, 'diffo.db')
@@ -173,6 +174,7 @@ describe('reviews', () => {
 
     const second = new DiffoDb(path)
     cleanups.push(() => second.close())
+    expect(await second.maintain()).toEqual({ reviews: 1 })
     expect(second.getReview(living)).toBe('{"kept":true}')
     expect(second.getReview(gone)).toBeNull()
   })
@@ -237,7 +239,7 @@ describe('server registry', () => {
     })
   })
 
-  it('prunes registrations whose worktree no longer exists on disk', () => {
+  it('the sweep drops registrations whose worktree no longer exists on disk', async () => {
     const dir = mkdtempSync(join(tmpdir(), 'diffo-db-'))
     cleanups.push(() => rmSync(dir, { recursive: true, force: true }))
     const path = join(dir, 'diffo.db')
@@ -255,11 +257,12 @@ describe('server registry', () => {
 
     const second = new DiffoDb(path)
     cleanups.push(() => second.close())
+    await second.maintain()
     expect(second.getServer(dir)).toMatchObject({ port: 4001 })
     expect(second.getServer(join(dir, 'deleted-worktree'))).toBeNull()
   })
 
-  it('keeps a live server registered even when its worktree is unreachable', () => {
+  it('keeps a live server registered even when its worktree is unreachable', async () => {
     const dir = mkdtempSync(join(tmpdir(), 'diffo-db-'))
     cleanups.push(() => rmSync(dir, { recursive: true, force: true }))
     const path = join(dir, 'diffo.db')
@@ -271,6 +274,7 @@ describe('server registry', () => {
 
     const second = new DiffoDb(path)
     cleanups.push(() => second.close())
+    await second.maintain()
     expect(second.getServer(unmounted)).toMatchObject({ port: 4001 })
   })
 
@@ -308,7 +312,24 @@ describe('review pruning', () => {
     return db
   }
 
-  it('retires a branch that has been merged and deleted', () => {
+  it('opening the database asks git nothing: a gone branch keeps its review until a sweep', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'diffo-db-'))
+    cleanups.push(() => rmSync(dir, { recursive: true, force: true }))
+    const path = join(dir, 'diffo.db')
+    const root = repo('main')
+    const db = new DiffoDb(path)
+    db.setReview({ repoPath: root, branch: 'gone-branch', base: '' }, '{"threads":[]}')
+    db.close()
+
+    // The old behaviour — every open checked every branch with git — cost an
+    // open 1.5s on a database a few weeks old. The check moved to pruneRepo and
+    // maintain, so a plain reopen must leave the row alone.
+    expect(reopen(path).getReview({ repoPath: root, branch: 'gone-branch', base: '' })).toBe(
+      '{"threads":[]}',
+    )
+  })
+
+  it('the sweep retires a branch that has been merged and deleted', async () => {
     const dir = mkdtempSync(join(tmpdir(), 'diffo-db-'))
     cleanups.push(() => rmSync(dir, { recursive: true, force: true }))
     const path = join(dir, 'diffo.db')
@@ -319,11 +340,32 @@ describe('review pruning', () => {
     db.close()
 
     const fresh = reopen(path)
+    expect(await fresh.maintain()).toEqual({ reviews: 1 })
     expect(fresh.getReview({ repoPath: root, branch: 'main', base: '' })).not.toBeNull()
     expect(fresh.getReview({ repoPath: root, branch: 'gone-branch', base: '' })).toBeNull()
   })
 
-  it('keeps the review when git cannot answer — never guess away a thread', () => {
+  it('pruneRepo retires only the repo it is given', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'diffo-db-'))
+    cleanups.push(() => rmSync(dir, { recursive: true, force: true }))
+    const path = join(dir, 'diffo.db')
+    const served = repo('main')
+    const other = repo('main')
+    const db = reopen(path)
+    db.setReview({ repoPath: served, branch: 'main', base: '' }, '{"kept":true}')
+    db.setReview({ repoPath: served, branch: 'gone-branch', base: '' }, '{"stale":true}')
+    db.setReview({ repoPath: other, branch: 'gone-branch', base: '' }, '{"elsewhere":true}')
+
+    expect(db.pruneRepo(served)).toBe(1)
+    expect(db.getReview({ repoPath: served, branch: 'main', base: '' })).toBe('{"kept":true}')
+    expect(db.getReview({ repoPath: served, branch: 'gone-branch', base: '' })).toBeNull()
+    // The other repo's turn comes when it is served, or at the sweep.
+    expect(db.getReview({ repoPath: other, branch: 'gone-branch', base: '' })).toBe(
+      '{"elsewhere":true}',
+    )
+  })
+
+  it('keeps the review when git cannot answer — never guess away a thread', async () => {
     const dir = mkdtempSync(join(tmpdir(), 'diffo-db-'))
     cleanups.push(() => rmSync(dir, { recursive: true, force: true }))
     const path = join(dir, 'diffo.db')
@@ -333,7 +375,25 @@ describe('review pruning', () => {
     db.setReview({ repoPath: notARepo, branch: 'main', base: '' }, '{"threads":[]}')
     db.close()
 
-    expect(reopen(path).getReview({ repoPath: notARepo, branch: 'main', base: '' })).not.toBeNull()
+    const fresh = reopen(path)
+    expect(fresh.pruneRepo(notARepo)).toBe(0)
+    expect(await fresh.maintain()).toEqual({ reviews: 0 })
+    expect(fresh.getReview({ repoPath: notARepo, branch: 'main', base: '' })).not.toBeNull()
+  })
+
+  it('a sweep interrupted by close() ends quietly', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'diffo-db-'))
+    cleanups.push(() => rmSync(dir, { recursive: true, force: true }))
+    const path = join(dir, 'diffo.db')
+    const root = repo('main')
+    const db = new DiffoDb(path)
+    db.setReview({ repoPath: root, branch: 'gone-branch', base: '' }, '{"threads":[]}')
+
+    // The branch check is the first await inside maintain; closing before it
+    // settles is what a server shutting down mid-sweep does.
+    const sweep = db.maintain()
+    db.close()
+    await expect(sweep).resolves.toEqual({ reviews: 0 })
   })
 
   it('retires a review nothing has touched for the TTL', () => {
@@ -353,7 +413,7 @@ describe('review pruning', () => {
     expect(reopen(path).getReview({ repoPath: root, branch: 'main', base: '' })).toBeNull()
   })
 
-  it('a detached HEAD is left to the TTL, not to the branch check', () => {
+  it('a detached HEAD is left to the TTL, not to the branch check', async () => {
     const dir = mkdtempSync(join(tmpdir(), 'diffo-db-'))
     cleanups.push(() => rmSync(dir, { recursive: true, force: true }))
     const path = join(dir, 'diffo.db')
@@ -362,7 +422,10 @@ describe('review pruning', () => {
     db.setReview({ repoPath: root, branch: '', base: '' }, '{"threads":[]}')
     db.close()
 
-    expect(reopen(path).getReview({ repoPath: root, branch: '', base: '' })).not.toBeNull()
+    const fresh = reopen(path)
+    expect(fresh.pruneRepo(root)).toBe(0)
+    expect(await fresh.maintain()).toEqual({ reviews: 0 })
+    expect(fresh.getReview({ repoPath: root, branch: '', base: '' })).not.toBeNull()
   })
 })
 
@@ -400,7 +463,7 @@ describe('remembered ports', () => {
     expect(second.getPreferredPort(dir)).toBe(4949)
   })
 
-  it('forgets the port of a worktree that is gone', () => {
+  it('the sweep forgets the port of a worktree that is gone', async () => {
     const dir = mkdtempSync(join(tmpdir(), 'diffo-db-'))
     cleanups.push(() => rmSync(dir, { recursive: true, force: true }))
     const path = join(dir, 'diffo.db')
@@ -414,6 +477,7 @@ describe('remembered ports', () => {
 
     const second = new DiffoDb(path)
     cleanups.push(() => second.close())
+    await second.maintain()
     expect(second.getPreferredPort(vanished)).toBeNull()
     expect(second.getPreferredPort(dir)).toBe(4322)
   })

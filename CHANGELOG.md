@@ -9,6 +9,17 @@ Until 1.0, minor versions may break things. When they do, the entry says how to 
 
 ### Changed
 
+- **Opening a review no longer tidies every review on the machine first.**
+  Every `diffo` command used to begin by asking git, for every branch Diffo had
+  ever reviewed in every repo, whether that branch still existed — one `git`
+  process each, on every database open, and an open opens the database five
+  times. On a database a few weeks old that was 1.5 seconds per open and close
+  to 9 seconds per review opened, growing with use, and far worse on Windows.
+  The check now runs where it is needed: a starting server checks only its own
+  repo's branches before loading the review, and sweeps the rest in the
+  background once it is serving. `status`, `poll`, `reply` and the other quick
+  commands no longer ask git at all. `diffo clean` runs the full sweep on
+  demand; the 60-day expiry is unchanged.
 - **`npx -y @diffohq/diffo` installs 2 packages instead of 172.** The review
   page's libraries (mermaid, shiki, marked, DOMPurify, beautiful-mermaid,
   TanStack Query) are bundled into the shipped client and were never loaded at

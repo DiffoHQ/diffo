@@ -4,6 +4,7 @@ import { createServer } from 'node:net'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
+import { DiffoDb } from './db.js'
 import { RepoAlreadyServedError, startServer } from './index.js'
 
 const cleanups: (() => void | Promise<void>)[] = []
@@ -92,6 +93,34 @@ describe('startServer — one server per repo', () => {
     const repo = tempRepo()
     expect(() => start2(repo)).toThrow()
     expect(() => start(repo, 0)).not.toThrow()
+  })
+})
+
+describe('startServer — review housekeeping', () => {
+  it('retires its own repo’s reviews for gone branches before loading, and nobody else’s yet', async () => {
+    const repo = tempRepo()
+    const other = mkdtempSync(join(tmpdir(), 'diffo-claim-other-'))
+    cleanups.push(() => rmSync(other, { recursive: true, force: true }))
+    git(other, 'init', '-b', 'main')
+    const dbPath = process.env.DIFFO_DB as string
+
+    const seed = new DiffoDb(dbPath)
+    seed.setReview({ repoPath: repo, branch: 'main', base: '' }, '{"threads":[],"layers":null}')
+    seed.setReview({ repoPath: repo, branch: 'gone-branch', base: '' }, '{"threads":[]}')
+    seed.setReview({ repoPath: other, branch: 'gone-branch', base: '' }, '{"threads":[]}')
+    seed.close()
+
+    start(repo, 0)
+
+    const after = new DiffoDb(dbPath)
+    cleanups.push(() => after.close())
+    // This repo's dead branch went before the review loaded; the other repo's
+    // waits for the background sweep, which has not had its five seconds yet.
+    // (A branch already recreated under the same name exists again, so neither
+    // pass can tell it from one that never left — same as before this change.)
+    expect(after.getReview({ repoPath: repo, branch: 'gone-branch', base: '' })).toBeNull()
+    expect(after.getReview({ repoPath: repo, branch: 'main', base: '' })).not.toBeNull()
+    expect(after.getReview({ repoPath: other, branch: 'gone-branch', base: '' })).not.toBeNull()
   })
 })
 

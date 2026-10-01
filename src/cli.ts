@@ -157,6 +157,9 @@ if (command.kind === 'setup') {
 if (command.kind === 'clean') {
   const db = new DiffoDb()
   try {
+    // The sweep the daemon runs in its background, on demand: rows about repos
+    // and branches that are gone, so the worktree pass below reads a tidy table.
+    await db.maintain()
     const entries = sweepWorktrees(db, undefined, { force: command.force, all: command.all })
     if (entries.length === 0) {
       console.log('no diffo worktrees, nothing to clean')
