@@ -7,6 +7,10 @@ Until 1.0, minor versions may break things. When they do, the entry says how to 
 
 ## [Unreleased]
 
+Nothing yet.
+
+## [0.10.0] — 2026-10-01
+
 ### Changed
 
 - **Opening a review no longer tidies every review on the machine first.**
@@ -558,7 +562,8 @@ shipped in it, written as a starting point rather than a history.
 - **Guided reading** — splitting a large change into an ordered sequence of small,
   reviewable sections — is designed but not built.
 
-[Unreleased]: https://github.com/DiffoHQ/diffo/compare/v0.9.0...HEAD
+[Unreleased]: https://github.com/DiffoHQ/diffo/compare/v0.10.0...HEAD
+[0.10.0]: https://github.com/DiffoHQ/diffo/compare/v0.9.0...v0.10.0
 [0.9.0]: https://github.com/DiffoHQ/diffo/compare/v0.8.0...v0.9.0
 [0.8.0]: https://github.com/DiffoHQ/diffo/compare/v0.7.0...v0.8.0
 [0.7.0]: https://github.com/DiffoHQ/diffo/compare/v0.6.0...v0.7.0
