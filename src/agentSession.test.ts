@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'vitest'
-import { type AncestorRow, pickSessionAncestor, readAncestors } from './agentSession.js'
+import {
+  type AncestorRow,
+  pickSessionAncestor,
+  pickSessionHarness,
+  readAncestors,
+} from './agentSession.js'
 
 const OWN = { script: '/Users/dev/proj/src/cli.ts', args: ['poll'] }
 
@@ -140,5 +145,20 @@ describe('readAncestors', () => {
   it('a self-parenting row cannot loop forever', () => {
     const rows = readAncestors(9, () => ({ pid: 9, ppid: 9, command: 'weird' }))
     expect(rows).toHaveLength(1)
+  })
+})
+
+describe('pickSessionHarness', () => {
+  it('names the agent the same walk finds', () => {
+    expect(pickSessionHarness(CLAUDE_CODE, OWN)).toBe('claude')
+  })
+
+  it('is null from a plain terminal, and never a word from inside a path', () => {
+    expect(
+      pickSessionHarness([
+        { pid: 10, ppid: 20, command: '-zsh' },
+        { pid: 20, ppid: 1, command: '/Users/sam/example/bin/tool' },
+      ]),
+    ).toBeNull()
   })
 })

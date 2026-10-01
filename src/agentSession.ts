@@ -11,9 +11,26 @@ export interface AncestorRow {
  * `~/.claude/shell-snapshots/…` in its arguments, which would match HARNESS. */
 const SHELL = /^-?(?:\/[^ ]*\/)?(?:sh|bash|zsh|fish|dash|ksh|csh|tcsh)(?:\s|$)/
 
+/** The coding agents whose processes the ancestor walk recognises. Also the
+ * vocabulary of the `agent` field in usage data, so a name never travels unless
+ * it is on this list. */
+export const HARNESS_NAMES = [
+  'claude',
+  'cursor',
+  'codex',
+  'copilot',
+  'windsurf',
+  'zed',
+  'aider',
+  'goose',
+  'cline',
+  'amp',
+] as const
+export type HarnessName = (typeof HARNESS_NAMES)[number]
+
 /** A harness name at the start of a path segment or token, never inside a word:
  * `/Users/sam/example/` must not read as `amp`. */
-const HARNESS = /(?:^|[/\s@_.-])(?:claude|cursor|codex|copilot|windsurf|zed|aider|goose|cline|amp)/i
+const HARNESS = new RegExp(`(?:^|[/\\s@_.-])(${HARNESS_NAMES.join('|')})`, 'i')
 
 /** How this CLI was started: enough to recognise the processes that only exist
  * to run it (a `tsx` or `node` wrapper, `npx`, `pnpm dlx`). They sit between the
@@ -43,17 +60,33 @@ function isOwnLauncher(command: string, own: OwnInvocation): boolean {
   return command === tail || command.endsWith(` ${tail}`) || command.endsWith(`/${tail}`)
 }
 
-export function pickSessionAncestor(
+function pickSession(
   ancestors: AncestorRow[],
-  own: OwnInvocation = ownInvocation(),
-): number | null {
+  own: OwnInvocation,
+): { pid: number; harness: HarnessName } | null {
   for (const row of ancestors) {
     const command = row.command.trim()
     if (SHELL.test(command)) continue
     if (isOwnLauncher(command, own)) continue
-    if (HARNESS.test(command)) return row.pid
+    const match = HARNESS.exec(command)
+    if (match) return { pid: row.pid, harness: match[1]!.toLowerCase() as HarnessName }
   }
   return null
+}
+
+export function pickSessionAncestor(
+  ancestors: AncestorRow[],
+  own: OwnInvocation = ownInvocation(),
+): number | null {
+  return pickSession(ancestors, own)?.pid ?? null
+}
+
+/** Which agent the session is, by the same walk that finds it. */
+export function pickSessionHarness(
+  ancestors: AncestorRow[],
+  own: OwnInvocation = ownInvocation(),
+): HarnessName | null {
+  return pickSession(ancestors, own)?.harness ?? null
 }
 
 function readRow(pid: number): AncestorRow | null {
@@ -93,6 +126,17 @@ export function detectSessionPid(): number | null {
   if (process.platform === 'win32') return null
   try {
     return pickSessionAncestor(readAncestors(process.ppid))
+  } catch {
+    return null
+  }
+}
+
+/** The agent this CLI runs under, or null from a plain terminal (and on Windows,
+ * where the walk is not available). Only ever a name from HARNESS_NAMES. */
+export function detectHarness(): HarnessName | null {
+  if (process.platform === 'win32') return null
+  try {
+    return pickSessionHarness(readAncestors(process.ppid))
   } catch {
     return null
   }

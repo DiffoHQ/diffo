@@ -9,8 +9,9 @@
 </picture>
 
 One npm package, one process per repo, no services. The CLI, the server, and the
-review UI all ship together and all run on your machine: no accounts, no cloud, no
-telemetry, and no model API. Diffo holds no keys because it calls no models.
+review UI all ship together and all run on your machine: no accounts, no cloud, and no
+model API. Diffo holds no keys because it calls no models. The one thing it reports is
+[anonymous usage data](/telemetry), two events per review, off with one command.
 
 ## One process, four parts
 

@@ -37,6 +37,7 @@ import { LayersEmpty, type LayersEmptyState } from './components/LayersEmpty.js'
 import { LeftPanel } from './components/LeftPanel.js'
 import { Monitor } from './components/Monitor.js'
 import { Nav, treeOrder } from './components/Nav.js'
+import { Privacy } from './components/Privacy.js'
 import {
   type LayerView,
   ReadingPane,
@@ -45,6 +46,7 @@ import {
 } from './components/ReadingPane.js'
 import { Shortcuts } from './components/Shortcuts.js'
 import { SubmitReview } from './components/SubmitReview.js'
+import { TelemetryNotice } from './components/TelemetryNotice.js'
 import { ThreadRail } from './components/ThreadRail.js'
 import type { ReviewActions } from './components/Threads.js'
 import { isFileViewed } from './fileMarks.js'
@@ -68,6 +70,7 @@ import { PrContext } from './prMode.js'
 import { isTestFile, useReviewFilter } from './reviewFilter.js'
 import { partitionThreads, threadsByFile } from './reviewPlacement.js'
 import { computeSinceLastReview } from './sinceLastReview.js'
+import { useTelemetry } from './telemetry.js'
 import { useTheme } from './theme.js'
 import {
   agentActivity,
@@ -322,6 +325,8 @@ function Review() {
   const [shortcutsOpen, setShortcutsOpen] = useState(false)
   const [inviteOpen, setInviteOpen] = useState(false)
   const [theme, setTheme] = useTheme()
+  const telemetry = useTelemetry()
+  const [privacyOpen, setPrivacyOpen] = useState(false)
   const [panel, setPanel] = useState<PanelTab>('files')
   const [searchFocusTick, setSearchFocusTick] = useState(0)
   // The pull request under review, when there is one (see prMode.ts). Null is
@@ -1391,6 +1396,7 @@ function Review() {
           settings={{
             theme,
             onSetTheme: setTheme,
+            ...(telemetry.status ? { onShowPrivacy: () => setPrivacyOpen(true) } : {}),
             onShowShortcuts: () => setShortcutsOpen(true),
           }}
         />
@@ -1631,6 +1637,20 @@ function Review() {
           onClear={banner.clear}
           onOpenMonitor={() => setMonitorOpen(true)}
         />
+        {telemetry.status && (
+          <TelemetryNotice
+            status={telemetry.status}
+            onShown={telemetry.markShown}
+            onAcknowledge={telemetry.acknowledge}
+          />
+        )}
+        {privacyOpen && telemetry.status && (
+          <Privacy
+            status={telemetry.status}
+            onSetEnabled={telemetry.setEnabled}
+            onClose={() => setPrivacyOpen(false)}
+          />
+        )}
         {shortcutsOpen && <Shortcuts onClose={() => setShortcutsOpen(false)} />}
         {inviteOpen && (
           <InviteAgent

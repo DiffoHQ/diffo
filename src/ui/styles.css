@@ -7379,3 +7379,120 @@ i.q-now {
     transform: rotate(360deg);
   }
 }
+
+/* The usage-data notice: a card at the foot of the page, out of the header's
+   and the agent banner's way, in the paper colour rather than the attention
+   wash — it is information, not an event. */
+.telemetry-notice {
+  position: fixed;
+  left: 50%;
+  bottom: var(--s-4);
+  transform: translateX(-50%);
+  z-index: 40;
+  display: flex;
+  align-items: center;
+  gap: var(--s-3);
+  width: min(720px, calc(100vw - 2 * var(--s-4)));
+  padding: var(--s-3) var(--s-4);
+  background: var(--paper);
+  border: 1px solid var(--hair);
+  border-radius: 10px;
+  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.12);
+  animation: banner-in var(--dur-move) var(--ease-out);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .telemetry-notice {
+    animation: none;
+  }
+}
+
+.telemetry-notice > .icon {
+  color: var(--ink-3);
+  flex-shrink: 0;
+}
+
+.telemetry-notice-text {
+  flex: 1;
+  min-width: 0;
+  margin: 0;
+  font-size: var(--t-13);
+  line-height: 1.45;
+  color: var(--ink-2);
+}
+
+.telemetry-notice-text strong {
+  color: var(--ink);
+  font-weight: 600;
+}
+
+.telemetry-notice-text a {
+  color: var(--ink);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+/* OK sits inside a ring that drains with the auto-dismiss clock; the ring is
+   the only place the timer shows, so the card never needs a countdown number. */
+.telemetry-notice-ok {
+  position: relative;
+  flex-shrink: 0;
+  width: 40px;
+  height: 40px;
+  display: grid;
+  place-items: center;
+}
+
+.telemetry-notice-ring {
+  position: absolute;
+  inset: 0;
+  transform: rotate(-90deg);
+  pointer-events: none;
+}
+
+.telemetry-notice-ring circle {
+  fill: none;
+  stroke-width: 2;
+}
+
+.telemetry-notice-ring-track {
+  stroke: var(--hair);
+}
+
+.telemetry-notice-ring-left {
+  stroke: var(--ink-3);
+  stroke-linecap: round;
+  transition: stroke-dashoffset 0.25s linear;
+}
+
+.telemetry-notice-ok-btn {
+  width: 30px;
+  height: 30px;
+  padding: 0;
+  justify-content: center;
+  border-radius: 50%;
+}
+
+/* Settings → Privacy: the switch row, its state, and the inline confirmation. */
+.privacy-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--s-3);
+  margin-bottom: var(--s-3);
+}
+
+.privacy-row .pane-sw:disabled {
+  opacity: 0.55;
+  cursor: default;
+}
+
+.privacy-state {
+  font-size: var(--t-12);
+  color: var(--ink-3);
+  text-align: right;
+}
+
+.privacy-confirm {
+  margin-top: var(--s-3);
+}

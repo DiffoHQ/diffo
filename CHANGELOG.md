@@ -7,6 +7,16 @@ Until 1.0, minor versions may break things. When they do, the entry says how to 
 
 ## [Unreleased]
 
+### Changed
+
+- **`npx -y @diffohq/diffo` installs 2 packages instead of 172.** The review
+  page's libraries (mermaid, shiki, marked, DOMPurify, beautiful-mermaid,
+  TanStack Query) are bundled into the shipped client and were never loaded at
+  run time, but they were declared as runtime dependencies, so every first run
+  and every release fetched them: 256 MB and 172 packages where the CLI needs
+  `hono` and `@hono/node-server`, 3 MB. A cold `npx` now takes seconds rather
+  than minutes on a slow link.
+
 ### Fixed
 
 - **The header no longer drops to *no agent · Invite* between polls.** When a
@@ -17,6 +27,25 @@ Until 1.0, minor versions may break things. When they do, the entry says how to 
   agent the way a reply does: the chip keeps *agent · working* while the
   session's process is alive (for the fixed grace when the session could not
   be named), and reads *disconnected* only once it is gone or never re-polled.
+
+## [0.9.0] — 2026-09-30
+
+### Added
+
+- **Anonymous usage data, off with one command.** Diffo now reports two small
+  events per review, `review_opened` and `review_finished`: its version, your
+  OS and Node major, the kind of review (working tree, branch, pull request),
+  which agent opened it, counts, and one random id per machine, plus one last
+  `telemetry_disabled` when a machine that has reported turns it off. Never
+  code, paths, repository or branch names, or comment text. It is on by default, but
+  nothing is sent until the review page has shown you the notice once, and the
+  review that shows it reports nothing. `diffo telemetry off`,
+  `DIFFO_TELEMETRY_DISABLED=1`, or `DO_NOT_TRACK=1` stops it; `diffo telemetry`
+  says what is on and why; `DIFFO_TELEMETRY_DEBUG=1` prints every payload to the
+  server log. The full list, and where it goes, is on the new
+  [Usage data](https://diffohq.github.io/diffo/telemetry) page; the previous
+  "no telemetry" statements in the README, FAQ, and security model are updated
+  to match.
 
 ## [0.8.0] — 2026-09-28
 
@@ -509,7 +538,8 @@ shipped in it, written as a starting point rather than a history.
 - **Guided reading** — splitting a large change into an ordered sequence of small,
   reviewable sections — is designed but not built.
 
-[Unreleased]: https://github.com/DiffoHQ/diffo/compare/v0.8.0...HEAD
+[Unreleased]: https://github.com/DiffoHQ/diffo/compare/v0.9.0...HEAD
+[0.9.0]: https://github.com/DiffoHQ/diffo/compare/v0.8.0...v0.9.0
 [0.8.0]: https://github.com/DiffoHQ/diffo/compare/v0.7.0...v0.8.0
 [0.7.0]: https://github.com/DiffoHQ/diffo/compare/v0.6.0...v0.7.0
 [0.6.0]: https://github.com/DiffoHQ/diffo/compare/v0.5.0...v0.6.0

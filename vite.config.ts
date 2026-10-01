@@ -18,7 +18,9 @@ export default defineConfig({
     environment: 'node',
     // Tests assert the published `npx -y @diffohq/diffo` spelling, so a developer running
     // with ENV=development would otherwise watch the suite go red.
-    env: { ENV: '' },
+    // Nothing the suite spawns may report usage: the CLI e2e tests inherit this.
+    // Telemetry's own tests pass an explicit env.
+    env: { ENV: '', DIFFO_TELEMETRY_DISABLED: '1' },
     /* Well above vitest's 5s default: a good part of this suite builds real git
      * repositories in tmp and shells out to `git` dozens of times per test, and on a
      * loaded machine that tripped the default at random. */
