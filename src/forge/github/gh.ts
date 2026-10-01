@@ -14,6 +14,7 @@ import {
   ADD_REVIEW,
   ADD_THREAD,
   ADD_THREAD_REPLY,
+  CHECKS_QUERY,
   COMMENTS_QUERY,
   PR_QUERY,
   RESOLVE_THREAD,
@@ -182,9 +183,27 @@ export class GhClient implements ForgeClient {
     return { viewer: data.viewer.login, pr, reviewNodes }
   }
 
+  /** CI on the head commit, best effort: a token without the checks scope
+   * gets `unknown` and the review opens anyway. Never throws. */
+  private async checks(ref: PrRef): Promise<PrCheckState> {
+    try {
+      const data = await this.graphql<{
+        repository: { pullRequest: { commits: { nodes: Json[] } } | null } | null
+      }>(ref.host, CHECKS_QUERY, { owner: ref.owner, name: ref.repo, number: ref.number })
+      const commit = data.repository?.pullRequest?.commits.nodes.at(-1)?.commit as Json | undefined
+      const rollup = commit?.statusCheckRollup as Json | null | undefined
+      return checkState(rollup?.state)
+    } catch {
+      return 'unknown'
+    }
+  }
+
   async getPr(ref: PrRef): Promise<PrInfo> {
-    const { viewer, pr, reviewNodes } = await this.head(ref)
-    return prInfo(ref, viewer, pr, reviewNodes)
+    const [{ viewer, pr, reviewNodes }, checks] = await Promise.all([
+      this.head(ref),
+      this.checks(ref),
+    ])
+    return prInfo(ref, viewer, pr, reviewNodes, checks)
   }
 
   async listThreads(ref: PrRef): Promise<ImportedThread[]> {
@@ -193,9 +212,12 @@ export class GhClient implements ForgeClient {
   }
 
   async fetchPr(ref: PrRef): Promise<{ pr: PrInfo; threads: ImportedThread[] }> {
-    const { viewer, pr, reviewNodes } = await this.head(ref)
+    const [{ viewer, pr, reviewNodes }, checks] = await Promise.all([
+      this.head(ref),
+      this.checks(ref),
+    ])
     return {
-      pr: prInfo(ref, viewer, pr, reviewNodes),
+      pr: prInfo(ref, viewer, pr, reviewNodes, checks),
       threads: await this.conversation(ref, pr, reviewNodes),
     }
   }
@@ -332,7 +354,13 @@ export class GhClient implements ForgeClient {
 }
 
 /** The PR query's answer as a PrInfo, with every review page in hand. */
-function prInfo(ref: PrRef, viewer: string, pr: Json, reviewNodes: Json[]): PrInfo {
+function prInfo(
+  ref: PrRef,
+  viewer: string,
+  pr: Json,
+  reviewNodes: Json[],
+  checks: PrCheckState,
+): PrInfo {
   const commitNodes = ((pr.commits as Json).nodes as Json[]) ?? []
   const commits: PrCommit[] = commitNodes.map((n) => {
     const c = n.commit as Json
@@ -344,8 +372,6 @@ function prInfo(ref: PrRef, viewer: string, pr: Json, reviewNodes: Json[]): PrIn
       at: String(c.committedDate ?? ''),
     }
   })
-  const lastCommit = commitNodes.at(-1)?.commit as Json | undefined
-  const rollup = lastCommit?.statusCheckRollup as Json | null | undefined
   const reviews: PrReviewEvent[] = reviewNodes.map((r) => ({
     id: String(r.id),
     author: user(r.author),
@@ -377,7 +403,7 @@ function prInfo(ref: PrRef, viewer: string, pr: Json, reviewNodes: Json[]): PrIn
     base: { ref: String(pr.baseRefName), sha: String(pr.baseRefOid) },
     head: { ref: String(pr.headRefName), sha: String(pr.headRefOid) },
     commits,
-    checks: { state: checkState(rollup?.state) },
+    checks: { state: checks },
     reviews: reviews.filter((r) => r.state !== 'PENDING'),
     approvals: [...latest.values()].filter((s) => s === 'APPROVED').length,
     changesRequested: [...latest.values()].filter((s) => s === 'CHANGES_REQUESTED').length,

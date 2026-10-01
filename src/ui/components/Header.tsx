@@ -52,6 +52,7 @@ const CHECK_LABEL: Record<PrInfo['checks']['state'], string> = {
   failure: 'CI failing',
   pending: 'CI running',
   none: 'no checks',
+  unknown: 'checks not visible to your token',
 }
 
 /** The one chip the header shows beside the title: the most decision-relevant

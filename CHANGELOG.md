@@ -30,6 +30,15 @@ Until 1.0, minor versions may break things. When they do, the entry says how to 
 
 ### Fixed
 
+- **A token that cannot read CI status no longer blocks opening a pull
+  request.** Diffo asked GitHub for the head commit's check rollup in the same
+  query as everything else about the PR. A fine-grained or SAML-limited
+  personal access token is routinely allowed to read the pull request but not
+  its checks; GitHub answers that with an error on the one field, `gh` turns
+  any error into a failed call, and Diffo gave up with *Resource not accessible
+  by personal access token*. CI status is now fetched on its own, in parallel,
+  and a refusal costs only the chip: the card reads *checks not visible to your
+  token*, the review opens, and submitting works as before.
 - **The header no longer drops to *no agent · Invite* between polls.** When a
   `diffo poll` ended on its own — the poll window closed, or the harness
   killed the process — the chip fell straight to *no agent* until the agent

@@ -31,7 +31,6 @@ query($owner: String!, $name: String!, $number: Int!) {
             messageHeadline
             committedDate
             author { name user { login avatarUrl } }
-            statusCheckRollup { state }
           }
         }
       }
@@ -42,6 +41,25 @@ query($owner: String!, $name: String!, $number: Int!) {
       comments(first: 100) {
         pageInfo { hasNextPage endCursor }
         nodes { ${COMMENT_FIELDS} }
+      }
+    }
+  }
+}`
+
+/**
+ * CI status, asked for on its own. Reading it needs the checks and statuses
+ * scopes, which a fine-grained or SAML-limited token may lack while reading
+ * everything else about the pull request; GraphQL answers that with a
+ * FORBIDDEN error on this one field, and `gh` turns any error into a failed
+ * call. Kept out of the PR query so a token that cannot see CI still opens
+ * the review.
+ */
+export const CHECKS_QUERY = `
+query($owner: String!, $name: String!, $number: Int!) {
+  repository(owner: $owner, name: $name) {
+    pullRequest(number: $number) {
+      commits(last: 1) {
+        nodes { commit { statusCheckRollup { state } } }
       }
     }
   }
