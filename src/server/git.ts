@@ -89,6 +89,21 @@ export function branchExists(root: string, branch: string): boolean {
   }
 }
 
+/** {@link branchExists}, off the event loop, for the daemon's background sweep
+ * over every repo it has ever reviewed. Same lean: true unless git said no. */
+export async function branchExistsAsync(root: string, branch: string): Promise<boolean> {
+  try {
+    await execFileAsync('git', ['show-ref', '--verify', '--quiet', `refs/heads/${branch}`], {
+      cwd: root,
+      encoding: 'utf-8',
+      maxBuffer: MAX_BUFFER,
+    })
+    return true
+  } catch (err) {
+    return (err as { code?: number | string }).code !== 1
+  }
+}
+
 /**
  * The name of the linked worktree we're in, or null in the main one. A linked
  * worktree's git dir is `<main>/.git/worktrees/<name>`, while the main worktree's

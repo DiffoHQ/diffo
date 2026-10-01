@@ -194,6 +194,14 @@ the agent session) that opened it.
 - **Preferred port per repo**, so the browser tab you left open keeps working.
 - **Review blobs**, with a 60-day TTL. Schema bumps *drop* the affected table rather than
   migrating it, and only when the file's version is not newer than ours.
+- **Housekeeping belongs to the server, not the CLI.** Opening the database is schema
+  plus one TTL statement, nothing more. A starting server retires its own repo's
+  reviews for branches that no longer exist *before* loading the review (so a branch
+  deleted since the last start is forgotten before a namesake could inherit its
+  threads), then sweeps every other repo in the background a few seconds after it is
+  serving. Asking git about every branch this
+  machine ever reviewed is the one thing an open must never wait for; `diffo clean` runs
+  the same sweep on demand.
 
 Starting up, the CLI health-checks any registered server and decides: **reuse** it,
 **replace** it (a different build: retire it politely, then take over), or start fresh. A

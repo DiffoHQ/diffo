@@ -3,7 +3,7 @@ import { createRequire } from 'node:module'
 import { homedir } from 'node:os'
 import { dirname, join } from 'node:path'
 import type { DatabaseSync } from 'node:sqlite'
-import { branchExists } from './git.js'
+import { branchExists, branchExistsAsync } from './git.js'
 
 const require = createRequire(import.meta.url)
 
@@ -84,10 +84,26 @@ export interface WorktreeRecord {
   closedAt: string | null
 }
 
+/** What a {@link DiffoDb.maintain} sweep retired. */
+export interface MaintenanceReport {
+  /** Review rows dropped: their repo is gone, or their branch is. */
+  reviews: number
+}
+
 export class DiffoDb {
   private db: DatabaseSync
+  private closed = false
   readonly path: string
 
+  /**
+   * Opening is cheap on purpose: the schema, and one SQL statement for the TTL.
+   * Nothing here touches the filesystem beyond the database file, and nothing
+   * asks git. It used to: every open checked every review's branch with a
+   * `git show-ref`, across every repo this machine ever reviewed — 73 git
+   * processes, 1.5s, on a database a few weeks old, and an open constructs
+   * this five times. The checks live in {@link pruneRepo} (one repo, before its
+   * review loads) and {@link maintain} (everything, in the daemon's background).
+   */
   constructor(path: string = defaultDbPath()) {
     this.path = path
     // The DB holds every repo's review threads and code snapshots: on a shared
@@ -103,7 +119,7 @@ export class DiffoDb {
       'PRAGMA journal_mode = WAL; PRAGMA busy_timeout = 3000; PRAGMA journal_size_limit = 4194304;',
     )
     this.ensureSchema()
-    this.pruneVanishedRepos()
+    this.pruneExpiredReviews()
   }
 
   /**
@@ -177,16 +193,55 @@ export class DiffoDb {
   }
 
   /**
-   * Rows about a worktree that is gone can never be reached again — the path *is*
-   * the key. An unmounted volume looks the same as a deleted worktree, so its rows
-   * go too; the `servers` row needs its process dead as well, or a live server's
-   * claim could be dropped over a moment of unreachability.
+   * Reviews untouched for `REVIEW_TTL_DAYS` go on every open: one statement,
+   * no git, and the backstop for everything the two targeted sweeps below leave
+   * for later.
    */
-  private pruneVanishedRepos(): void {
+  private pruneExpiredReviews(): void {
+    const cutoff = new Date(Date.now() - REVIEW_TTL_DAYS * 86_400_000).toISOString()
+    const stale = this.db.prepare('DELETE FROM reviews WHERE updated_at < ?').run(cutoff)
+    if (Number(stale.changes) > 0) this.checkpoint()
+  }
+
+  /**
+   * Retire this one repo's reviews for branches it no longer has. The server
+   * runs it before loading the review it is about to serve, so a branch
+   * deleted since the last server start is forgotten before a namesake could
+   * inherit its threads. Only this repo's branches are asked about, so the
+   * cost is a handful of `git show-ref`s, once per server start, never per CLI
+   * call. Branch existence is asked of git rather than assumed — when git can't
+   * answer the row is kept, because guessing here deletes threads.
+   */
+  pruneRepo(repoPath: string): number {
+    const rows = this.db
+      .prepare('SELECT DISTINCT branch FROM reviews WHERE repo_path = ?')
+      .all(repoPath) as { branch: string }[]
+    let dropped = 0
+    for (const { branch } of rows) {
+      if (branch === '' || branchExists(repoPath, branch)) continue
+      dropped += this.dropReviews(repoPath, branch)
+    }
+    return dropped
+  }
+
+  /**
+   * The full sweep, for a long-lived process with time on its hands: rows about
+   * repos that are gone, and reviews for branches that are. The daemon runs it
+   * once, a few seconds after it is serving; `diffo clean` runs it on demand.
+   * Git is asked asynchronously and one repo at a time, so a sweep over every
+   * repo this machine ever reviewed never blocks a request. A `close()` midway
+   * ends it quietly between steps.
+   *
+   * Rows about a worktree that is gone can never be reached again — the path
+   * *is* the key. An unmounted volume looks the same as a deleted worktree, so
+   * its rows go too; the `servers` row needs its process dead as well, or a live
+   * server's claim could be dropped over a moment of unreachability.
+   */
+  async maintain(): Promise<MaintenanceReport> {
+    const report: MaintenanceReport = { reviews: 0 }
+    if (this.closed) return report
     for (const { repo_path } of this.distinctRepoPaths('reviews')) {
-      if (!existsSync(repo_path)) {
-        this.db.prepare('DELETE FROM reviews WHERE repo_path = ?').run(repo_path)
-      }
+      if (!existsSync(repo_path)) report.reviews += this.dropReviews(repo_path)
     }
     for (const { repo_path } of this.distinctRepoPaths('repo_ports')) {
       if (!existsSync(repo_path)) {
@@ -215,32 +270,29 @@ export class DiffoDb {
         this.db.prepare('DELETE FROM servers WHERE repo_path = ?').run(repo_path)
       }
     }
-    this.pruneStaleReviews()
-  }
-
-  /**
-   * Reviews the reviewer can never return to: a branch that no longer exists, or
-   * one untouched for `REVIEW_TTL_DAYS`. Branch existence is asked of git rather
-   * than assumed — if git can't answer the row is kept, because guessing here
-   * deletes threads.
-   */
-  private pruneStaleReviews(): void {
-    const cutoff = new Date(Date.now() - REVIEW_TTL_DAYS * 86_400_000).toISOString()
-    const stale = this.db.prepare('DELETE FROM reviews WHERE updated_at < ?').run(cutoff)
-    if (Number(stale.changes) > 0) {
-      this.checkpoint()
-      return
-    }
     const rows = this.db.prepare('SELECT DISTINCT repo_path, branch FROM reviews').all() as {
       repo_path: string
       branch: string
     }[]
     for (const { repo_path, branch } of rows) {
-      if (branch === '' || branchExists(repo_path, branch)) continue
-      this.db
-        .prepare('DELETE FROM reviews WHERE repo_path = ? AND branch = ?')
-        .run(repo_path, branch)
+      if (branch === '') continue
+      const exists = await branchExistsAsync(repo_path, branch)
+      if (this.closed) return report
+      if (!exists) report.reviews += this.dropReviews(repo_path, branch)
     }
+    if (report.reviews > 0) this.checkpoint()
+    return report
+  }
+
+  /** Every review of a repo, or only one branch's. Returns the rows dropped. */
+  private dropReviews(repoPath: string, branch?: string): number {
+    const result =
+      branch === undefined
+        ? this.db.prepare('DELETE FROM reviews WHERE repo_path = ?').run(repoPath)
+        : this.db
+            .prepare('DELETE FROM reviews WHERE repo_path = ? AND branch = ?')
+            .run(repoPath, branch)
+    return Number(result.changes)
   }
 
   /** Fold the write-ahead log back into the database file and truncate it. WAL
@@ -420,6 +472,7 @@ export class DiffoDb {
   }
 
   close(): void {
+    this.closed = true
     this.db.close()
   }
 }
