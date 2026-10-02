@@ -176,7 +176,7 @@ export function githubPosition(
   body: string,
   files: readonly FileChange[],
 ): { draft: ReviewDraftComment; downgraded: boolean } | null {
-  if (anchor.kind === 'changeset') return null
+  if (anchor.kind === 'changeset' || anchor.kind === 'layer') return null
   if (anchor.kind === 'file')
     return { draft: { path: anchor.path, body, subjectType: 'FILE' }, downgraded: false }
   const file = files.find((f) => f.path === anchor.path)

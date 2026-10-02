@@ -1208,6 +1208,30 @@ describe('threads the changeset left behind', () => {
     expect(card.textContent).toContain('the commented change')
   })
 
+  it('a thread whose layer left the outline names the layer, and shows no diff', () => {
+    const dropped = thread({
+      id: 't-layer-gone',
+      anchor: { kind: 'layer', layerId: 'L9', title: 'Callers' },
+      codeContext: null,
+      anchoredLayer: { title: 'Callers', files: ['src/b.ts'] },
+      state: 'addressed',
+    })
+    const { container } = render(
+      <ReadingPane
+        files={[FILE]}
+        comments={{ partition: partitionThreads([FILE], []), past: [dropped], actions: actions() }}
+      />,
+    )
+    const section = container.querySelector('.past-threads')!
+    expect(section.textContent).toContain('1 thread whose layer left the outline')
+    fireEvent.click(section.querySelector('.file-header')!)
+    expect(section.textContent).toContain('left the outline: the agent re-posted without its title')
+    const card = section.querySelector('[data-thread-id="t-layer-gone"]')!
+    expect(card.querySelector('.thread-where')!.textContent).toBe('Layer “Callers”')
+    expect(card.querySelector('.thread-where-gone')).toBeTruthy()
+    expect(card.querySelector('.thread-context')).toBeNull()
+  })
+
   it('a GitHub thread whose line went outdated says so, not that the file left', () => {
     const outdated = thread({
       id: 't-outdated',

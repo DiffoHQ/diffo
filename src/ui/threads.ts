@@ -145,6 +145,7 @@ function describe(thread: ReviewThread): { anchor: string | null; path: string |
   const a = thread.anchor
   if (a.kind === 'changeset') return { anchor: null, path: null }
   if (a.kind === 'file') return { anchor: a.path, path: a.path }
+  if (a.kind === 'layer') return { anchor: `layer “${a.title}”`, path: null }
   return { anchor: `${a.path}:${anchorSpan(a)}`, path: a.path }
 }
 

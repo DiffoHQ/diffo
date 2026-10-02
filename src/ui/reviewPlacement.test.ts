@@ -99,6 +99,18 @@ describe('partitionThreads', () => {
     expect(p.byFile.get('a.ts')!.map((t) => t.id)).toEqual(['f'])
     expect(p.changeset.map((t) => t.id)).toEqual(['f-gone', 'c'])
   })
+
+  it('layer threads group under their layer id, never under a file', () => {
+    const p = partitionThreads(files, [
+      thread('l1', { kind: 'layer', layerId: 'L1', title: 'Contract' }),
+      thread('l2', { kind: 'layer', layerId: 'L1', title: 'Contract' }),
+      thread('l3', { kind: 'layer', layerId: 'L2', title: 'Callers' }),
+    ])
+    expect(p.byLayer.get('L1')!.map((t) => t.id)).toEqual(['l1', 'l2'])
+    expect(p.byLayer.get('L2')!.map((t) => t.id)).toEqual(['l3'])
+    expect(p.byFile.size).toBe(0)
+    expect(p.changeset).toEqual([])
+  })
 })
 
 describe('anchorForLine / anchorForHunk', () => {

@@ -3,6 +3,7 @@ import { resolve } from 'node:path'
 import { type LayerInput, parseLayersInput, parseSuggestReason } from '../shared/layers.js'
 import {
   type Anchor,
+  type AnchoredLayer,
   type AnchoredLines,
   type Audience,
   type Author,
@@ -96,6 +97,7 @@ export class ReviewStore {
       ...(options.parentId ? { parentId: options.parentId } : {}),
       codeContext: capture?.codeContext ?? null,
       ...(capture?.anchored ? { anchored: capture.anchored } : {}),
+      ...(capture?.anchoredLayer ? { anchoredLayer: capture.anchoredLayer } : {}),
       codeChanged: false,
       messages: [
         {
@@ -358,7 +360,7 @@ export class ReviewStore {
       postedAt: new Date().toISOString(),
     }
     const { layersSuggested: _suggested, ...rest } = this.state
-    this.state = { ...rest, layers }
+    this.state = { ...rest, layers, threads: reconcileLayerThreads(rest.threads, layers) }
     this.commit()
     return layers
   }
@@ -837,9 +839,29 @@ function migrateLegacySuggestion(value: unknown, now: string): ReviewThread | nu
   }
 }
 
+/**
+ * A re-post dropped a layer (its title is gone), so the threads on it have
+ * nothing left to sit under — the same fate as a hunk whose id rotated: a
+ * `sent` thread was overtaken and reads as addressed; an open one stays as it
+ * is and the UI files it with the threads the changeset left behind.
+ */
+function reconcileLayerThreads(threads: ReviewThread[], layers: Layers): ReviewThread[] {
+  const ids = new Set(layers.items.map((l) => l.id))
+  return threads.map((thread) =>
+    thread.anchor.kind === 'layer' && thread.state === 'sent' && !ids.has(thread.anchor.layerId)
+      ? { ...thread, state: 'addressed' as const, updatedAt: new Date().toISOString() }
+      : thread,
+  )
+}
+
 export function parseAnchor(value: unknown): Anchor | null {
   if (typeof value !== 'object' || value === null) return null
   const anchor = value as Record<string, unknown>
+  if (anchor.kind === 'layer') {
+    if (typeof anchor.layerId !== 'string' || anchor.layerId === '') return null
+    if (typeof anchor.title !== 'string' || anchor.title.trim() === '') return null
+    return { kind: 'layer', layerId: anchor.layerId, title: anchor.title.trim() }
+  }
   if (anchor.kind === 'hunk') {
     if (typeof anchor.hunkId !== 'string' || typeof anchor.path !== 'string') return null
     if (anchor.side !== 'old' && anchor.side !== 'new') return null
@@ -880,6 +902,19 @@ function normalizeAnchored(value: unknown): AnchoredLines | null {
   return { start: a.start, end: a.end, text: a.text }
 }
 
+/** Dropped when malformed — the thread keeps its anchor's title regardless. */
+function normalizeAnchoredLayer(value: unknown): AnchoredLayer | null {
+  if (typeof value !== 'object' || value === null) return null
+  const a = value as Record<string, unknown>
+  if (typeof a.title !== 'string' || !Array.isArray(a.files)) return null
+  if (!a.files.every((f: unknown) => typeof f === 'string')) return null
+  return {
+    title: a.title,
+    ...(typeof a.summary === 'string' && a.summary !== '' ? { summary: a.summary } : {}),
+    files: a.files as string[],
+  }
+}
+
 function normalizeThread(value: unknown, now: string): ReviewThread | null {
   if (typeof value !== 'object' || value === null) return null
   const t = value as Record<string, unknown>
@@ -887,6 +922,7 @@ function normalizeThread(value: unknown, now: string): ReviewThread | null {
   const anchor = parseAnchor(t.anchor)
   if (!anchor) return null
   const anchored = normalizeAnchored(t.anchored)
+  const anchoredLayer = normalizeAnchoredLayer(t.anchoredLayer)
   if (!Array.isArray(t.messages)) return null
   const messages: ReviewMessage[] = []
   for (const m of t.messages) {
@@ -925,6 +961,7 @@ function normalizeThread(value: unknown, now: string): ReviewThread | null {
       : {}),
     codeContext: typeof t.codeContext === 'string' ? t.codeContext : null,
     ...(anchored ? { anchored } : {}),
+    ...(anchoredLayer ? { anchoredLayer } : {}),
     codeChanged: t.codeChanged === true,
     ...(t.unanswered === true ? { unanswered: true } : {}),
     // Mutually exclusive with `unanswered` — a hand-edited file carrying both

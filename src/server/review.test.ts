@@ -777,6 +777,54 @@ describe('ReviewStore layers', () => {
     expect(store.get().layers).toEqual(second)
   })
 
+  it('a re-post that drops a layer overtakes the sent threads on it; open ones stay', () => {
+    const store = makeStore(tempRoot())
+    const first = post(store, ['Contract', 'Callers'])
+    const [contract, callers] = first.items
+    const sent = store.createThread(
+      { kind: 'layer', layerId: callers!.id, title: 'Callers' },
+      'why split here?',
+      null,
+    )
+    store.setState(sent.id, 'sent')
+    const open = store.createThread(
+      { kind: 'layer', layerId: callers!.id, title: 'Callers' },
+      'draft',
+      null,
+    )
+    const kept = store.createThread(
+      { kind: 'layer', layerId: contract!.id, title: 'Contract' },
+      'still here',
+      null,
+    )
+    store.setState(kept.id, 'sent')
+    post(store, ['Contract'])
+    const byId = new Map(store.get().threads.map((t) => [t.id, t]))
+    expect(byId.get(sent.id)?.state).toBe('addressed')
+    expect(byId.get(open.id)?.state).toBe('open')
+    expect(byId.get(kept.id)?.state).toBe('sent')
+  })
+
+  it('a layer thread survives a restart with its anchor and frozen layer intact', () => {
+    const root = tempRoot()
+    const store = makeStore(root)
+    const [layer] = post(store, ['Contract']).items
+    const t = store.createThread({ kind: 'layer', layerId: layer!.id, title: 'Contract' }, 'q', {
+      codeContext: null,
+      anchoredLayer: { title: 'Contract', summary: 'the parser', files: ['Contract.ts'] },
+    })
+    const back = makeStore(root)
+      .get()
+      .threads.find((x) => x.id === t.id)!
+    expect(back.anchor).toEqual({ kind: 'layer', layerId: layer!.id, title: 'Contract' })
+    expect(back.anchoredLayer).toEqual({
+      title: 'Contract',
+      summary: 'the parser',
+      files: ['Contract.ts'],
+    })
+    expect(back.codeContext).toBeNull()
+  })
+
   it('a suggestion stands until the post answers it, and is refused once layers exist', () => {
     const root = tempRoot()
     const store = makeStore(root)

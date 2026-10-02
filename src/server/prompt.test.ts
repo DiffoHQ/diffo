@@ -510,6 +510,37 @@ describe('reviewer intent', () => {
   })
 })
 
+describe('a thread on a layer', () => {
+  const onLayer = thread({
+    anchor: { kind: 'layer', layerId: 'L1', title: 'Contract' },
+    codeContext: null,
+    anchoredLayer: {
+      title: 'Contract',
+      summary: 'The parser returns null.\nCallers follow.',
+      files: ['src/a.ts', 'src/b.ts'],
+    },
+    messages: [
+      {
+        id: 'm1',
+        author: 'reviewer',
+        text: 'why is b.ts in this step?',
+        at: '2026-08-03T00:00:00Z',
+      },
+    ],
+  })
+
+  it('heads with the layer and quotes the step instead of a diff', () => {
+    const prompt = buildThreadPrompt(onLayer, ctx)
+    expect(prompt).toContain('### Thread 1 — layer "Contract"')
+    expect(prompt).toContain('as it was outlined when the comment was written')
+    expect(prompt).toContain('- title: Contract')
+    expect(prompt).toContain('- summary:\n  The parser returns null.\n  Callers follow.')
+    expect(prompt).toContain('- files: `src/a.ts`, `src/b.ts`')
+    expect(prompt).not.toContain('```diff')
+    expect(prompt).not.toContain('line numbers are stale')
+  })
+})
+
 describe('captureAnchor (what a new thread freezes)', () => {
   const hunk = {
     id: 'h1',
@@ -576,6 +607,33 @@ describe('captureAnchor (what a new thread freezes)', () => {
   it('non-hunk anchors and vanished hunks capture nothing', () => {
     expect(captureAnchor(withHunk, { kind: 'file', path: 'src/a.ts' })).toBeNull()
     expect(captureAnchor(withHunk, anchor({ hunkId: 'gone' }))).toBeNull()
+  })
+
+  it('a layer anchor freezes the step as outlined — no diff snapshot', () => {
+    const layers = {
+      items: [
+        {
+          id: 'L1',
+          title: 'Contract',
+          summary: 'The parser returns null.',
+          files: ['src/a.ts:1-9', { path: 'src/b.ts', note: 'callers' }],
+        },
+      ],
+      postedAt: '',
+    }
+    expect(
+      captureAnchor(withHunk, { kind: 'layer', layerId: 'L1', title: 'Contract' }, layers),
+    ).toEqual({
+      codeContext: null,
+      anchoredLayer: {
+        title: 'Contract',
+        summary: 'The parser returns null.',
+        files: ['src/a.ts', 'src/b.ts'],
+      },
+    })
+    expect(
+      captureAnchor(withHunk, { kind: 'layer', layerId: 'L9', title: 'Gone' }, layers),
+    ).toBeNull()
   })
 
   it('caps the frozen text of a huge range, keeping its head', () => {

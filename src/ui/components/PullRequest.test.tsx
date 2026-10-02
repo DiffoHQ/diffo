@@ -599,6 +599,7 @@ describe('the pane on a pull request', () => {
     partition: {
       byHunk: new Map(),
       byFile: new Map(),
+      byLayer: new Map(),
       changeset: [description, bot1, mine, bot2, mention],
     },
     actions: actions(),

@@ -1,8 +1,11 @@
 // @vitest-environment jsdom
 import { cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { fixturePr } from '../../forge/fixture.js'
+import type { ReviewThread } from '../../shared/review.js'
 import type { FileChange, Hunk } from '../../shared/types.js'
 import { fileMark } from '../fileMarks.js'
+import { PrContext } from '../prMode.js'
 import { type LayerView, ReadingPane } from './ReadingPane.js'
 
 vi.mock('../highlight.js', () => ({
@@ -109,7 +112,7 @@ describe('ReadingPane', () => {
       <ReadingPane
         files={[FILES[0]!]}
         comments={{
-          partition: { byHunk: new Map(), byFile: new Map(), changeset: [] },
+          partition: { byHunk: new Map(), byFile: new Map(), byLayer: new Map(), changeset: [] },
           actions: {
             create: async () => {
               throw new Error('unused')
@@ -314,7 +317,7 @@ describe('ReadingPane', () => {
         collapsed={new Set(['src/b.ts'])}
         onToggleCollapsed={(p) => collapse.push(p)}
         comments={{
-          partition: { byHunk: new Map(), byFile: new Map(), changeset: [] },
+          partition: { byHunk: new Map(), byFile: new Map(), byLayer: new Map(), changeset: [] },
           actions: {
             create: async () => {
               throw new Error('unused')
@@ -775,6 +778,7 @@ describe('ReadingPane in layer mode', () => {
     onToggleCollapseAll: () => {},
   }
   const view = (over: Partial<LayerView> = {}): LayerView => ({
+    id: 'L3',
     kicker: 'Layer 3 of 6',
     title: 'Weekday resolution',
     mechanical: false,
@@ -841,7 +845,7 @@ describe('ReadingPane in layer mode', () => {
       updatedAt: at,
     }
     const comments = {
-      partition: { byHunk: new Map(), byFile: new Map(), changeset: [guide] },
+      partition: { byHunk: new Map(), byFile: new Map(), byLayer: new Map(), changeset: [guide] },
       actions: {
         create: vi.fn(),
         reply: vi.fn(),
@@ -864,6 +868,105 @@ describe('ReadingPane in layer mode', () => {
     expect(c2.textContent).toContain('Start here.')
     expect(c2.querySelector('.ch-head')).toBeNull()
     expect(c2.querySelector('.empty-state')).toBeNull()
+  })
+
+  describe('a comment on the layer itself', () => {
+    const at = '2026-09-20T00:00:00Z'
+    const onLayer: ReviewThread = {
+      id: 'lt',
+      anchor: { kind: 'layer', layerId: 'L3', title: 'Weekday resolution' },
+      state: 'sent',
+      codeContext: null,
+      anchoredLayer: { title: 'Weekday resolution', files: ['src/b.ts'] },
+      codeChanged: false,
+      messages: [{ id: 'm', author: 'reviewer', text: 'why is b.ts in this step?', at }],
+      createdAt: at,
+      updatedAt: at,
+    }
+    const comments = (threads: ReviewThread[] = []) => ({
+      partition: {
+        byHunk: new Map(),
+        byFile: new Map(),
+        byLayer: new Map(threads.length ? [['L3', threads]] : []),
+        changeset: [],
+      },
+      actions: {
+        create: vi.fn(async () => onLayer),
+        reply: vi.fn(),
+        send: vi.fn(async () => ({ delivered: true })),
+        resolve: vi.fn(),
+        reopen: vi.fn(),
+        remove: vi.fn(),
+      },
+    })
+
+    it('the card carries its threads and a way to add one, anchored to the layer', async () => {
+      const c = comments([onLayer])
+      const { container } = render(<ReadingPane files={[FILES[0]!]} layer={view()} comments={c} />)
+      const head = container.querySelector('.ch-head')!
+      const card = head.querySelector('[data-thread-id="lt"]')!
+      expect(card.textContent).toContain('why is b.ts in this step?')
+      expect(card.querySelector('.thread-where')!.textContent).toBe('Comment on this layer')
+      fireEvent.click(screen.getByText('+ Comment on this layer'))
+      const box = screen.getByPlaceholderText(/Ask about this step/) as HTMLTextAreaElement
+      expect(head.contains(box)).toBe(true)
+      fireEvent.change(box, { target: { value: 'split this in two' } })
+      fireEvent.click(screen.getByText('Add comment'))
+      expect(c.actions.create).toHaveBeenCalledWith(
+        { kind: 'layer', layerId: 'L3', title: 'Weekday resolution' },
+        'split this in two',
+        undefined,
+      )
+      // Submitting closes the composer; the button is back.
+      expect(screen.queryByPlaceholderText(/Ask about this step/)).toBeNull()
+      expect(screen.getByText('+ Comment on this layer')).toBeTruthy()
+    })
+
+    it('Send to agent creates the thread and sends it in one go', async () => {
+      const c = comments()
+      render(<ReadingPane files={[FILES[0]!]} layer={view()} comments={c} />)
+      fireEvent.click(screen.getByText('+ Comment on this layer'))
+      fireEvent.change(screen.getByPlaceholderText(/Ask about this step/), {
+        target: { value: 'why here?' },
+      })
+      fireEvent.click(screen.getByText('Send to agent'))
+      await Promise.resolve()
+      await Promise.resolve()
+      expect(c.actions.create).toHaveBeenCalledTimes(1)
+      expect(c.actions.send).toHaveBeenCalledWith('lt')
+    })
+
+    it('the derived "Since your review" layer has no identity to comment on', () => {
+      render(
+        <ReadingPane
+          files={[FILES[0]!]}
+          layer={view({ id: null, kicker: 'Outside the outline', title: 'Since your review' })}
+          comments={comments()}
+        />,
+      )
+      expect(screen.queryByText('+ Comment on this layer')).toBeNull()
+    })
+
+    it('on a pull request the composer is private to the agent — no GitHub side', () => {
+      const c = comments()
+      render(
+        <PrContext.Provider value={fixturePr()}>
+          <ReadingPane files={[FILES[0]!]} layer={view()} comments={c} />
+        </PrContext.Provider>,
+      )
+      fireEvent.click(screen.getByText('+ Comment on this layer'))
+      expect(screen.queryByText('Add to review')).toBeNull()
+      expect(document.querySelector('.cbox-agent')).toBeTruthy()
+      fireEvent.change(screen.getByPlaceholderText(/Ask about this step/), {
+        target: { value: 'private ask' },
+      })
+      fireEvent.click(screen.getByText('Send to agent'))
+      expect(c.actions.create).toHaveBeenCalledWith(
+        { kind: 'layer', layerId: 'L3', title: 'Weekday resolution' },
+        'private ask',
+        undefined,
+      )
+    })
   })
 
   it('a layer whose files all left the changeset says that instead', () => {

@@ -86,6 +86,47 @@ async function answeredThread(
 
 const tick = () => new Promise((r) => setTimeout(r, 20))
 
+describe('review API — layer threads', () => {
+  it('a layer thread needs a layer the outline has, takes its title, and freezes the step', async () => {
+    const { app, review } = setup()
+    await post(app, '/api/review/layers', {
+      items: [{ title: 'Contract', summary: 'the parser', files: ['a.ts', { path: 'b.ts' }] }],
+    })
+    const layerId = review.get().layers!.items[0]!.id
+    const nope = await post(app, '/api/review/threads', {
+      anchor: { kind: 'layer', layerId: 'not-a-layer', title: 'x' },
+      text: 'why?',
+    })
+    expect(nope.status).toBe(400)
+    const created = await post(app, '/api/review/threads', {
+      anchor: { kind: 'layer', layerId, title: 'whatever the client said' },
+      text: 'why is this one step?',
+      intent: 'question',
+    })
+    expect(created.status).toBe(200)
+    const thread = (await created.json()) as ReviewThread
+    expect(thread.anchor).toEqual({ kind: 'layer', layerId, title: 'Contract' })
+    expect(thread.codeContext).toBeNull()
+    expect(thread.anchoredLayer).toEqual({
+      title: 'Contract',
+      summary: 'the parser',
+      files: ['a.ts', 'b.ts'],
+    })
+  })
+
+  it('a layer thread is never a public comment', async () => {
+    const { app, review } = setup()
+    await post(app, '/api/review/layers', { items: [{ title: 'Contract', files: ['a.ts'] }] })
+    const layerId = review.get().layers!.items[0]!.id
+    const res = await post(app, '/api/review/threads', {
+      anchor: { kind: 'layer', layerId, title: 'Contract' },
+      text: 'for github',
+      audience: 'pr',
+    })
+    expect(res.status).toBe(400)
+  })
+})
+
 describe('review API', () => {
   it('creates a hunk thread with a code-context snapshot', async () => {
     const { app, store } = setup()

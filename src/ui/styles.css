@@ -6280,6 +6280,16 @@ i.q-now {
   gap: 4px;
 }
 
+/* The step's own conversation, under the summary: full width so the thread
+ * cards and the composer line up with the file sections below. */
+.ch-head-threads {
+  align-self: stretch;
+  margin-top: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-3);
+}
+
 .ch-head-kicker {
   font-size: var(--t-11);
   color: var(--ink-3);

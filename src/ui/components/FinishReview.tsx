@@ -11,6 +11,7 @@ const ROWS = 4
 function rowAnchor(anchor: Anchor): string {
   if (anchor.kind === 'changeset') return 'the whole changeset'
   if (anchor.kind === 'file') return anchor.path
+  if (anchor.kind === 'layer') return `layer “${anchor.title}”`
   return `${anchor.path}:${anchorSpan(anchor)}${anchor.side === 'old' ? ' (old side)' : ''}`
 }
 
