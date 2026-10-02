@@ -54,6 +54,25 @@ describe('threadsInChangeset', () => {
     expect(past).toEqual([])
   })
 
+  it('a layer thread lives exactly as long as its layer is in the outline', () => {
+    const layers = { items: [{ id: 'L1', title: 'Contract', files: ['a.ts'] }], postedAt: '' }
+    const { active, past } = threadsInChangeset(
+      files,
+      [
+        thread('on-layer', { kind: 'layer', layerId: 'L1', title: 'Contract' }),
+        thread('on-dropped', { kind: 'layer', layerId: 'L9', title: 'Callers' }),
+      ],
+      layers,
+    )
+    expect(active.map((t) => t.id)).toEqual(['on-layer'])
+    expect(past.map((t) => t.id)).toEqual(['on-dropped'])
+    // No outline at all: every layer thread is a leftover.
+    expect(
+      threadsInChangeset(files, [thread('x', { kind: 'layer', layerId: 'L1', title: 'Contract' })])
+        .past,
+    ).toHaveLength(1)
+  })
+
   it('drops threads whose file has left the changeset entirely', () => {
     const { active, past } = threadsInChangeset(files, [
       thread('gone-hunk', { kind: 'hunk', hunkId: 'dead', path: 'z.ts', side: 'new', line: 1 }),
@@ -130,6 +149,9 @@ describe('anchorSpan / describeAnchor — the one label the agent ever sees', ()
     expect(describeAnchor({ ...single, endLine: 20 })).toBe('a.ts:12-20 (new side)')
     expect(describeAnchor({ kind: 'file', path: 'a.ts' })).toBe('a.ts')
     expect(describeAnchor({ kind: 'changeset' })).toBe('the whole changeset')
+    expect(describeAnchor({ kind: 'layer', layerId: 'L1', title: 'Contract' })).toBe(
+      'layer "Contract"',
+    )
   })
 })
 

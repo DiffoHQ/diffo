@@ -544,7 +544,7 @@ function Review() {
   const visibleFiles = useMemo(() => paneOrder.slice(0, visibleCount), [paneOrder, visibleCount])
 
   const { active: activeThreads, past: pastThreads } = useMemo(() => {
-    const split = threadsInChangeset(data?.files ?? [], review?.threads ?? [])
+    const split = threadsInChangeset(data?.files ?? [], review?.threads ?? [], review?.layers)
     // A GitHub thread whose line left the diff is outdated by GitHub's word or
     // ours: it has no line to sit under, so it reads with the threads the
     // changeset left behind rather than at the top of its file.
@@ -662,7 +662,8 @@ function Review() {
   const commentedPaths = useMemo(() => {
     const paths = new Set<string>()
     for (const t of activeThreads) {
-      if (!untouchedAgentVoice(t) && t.anchor.kind !== 'changeset') paths.add(t.anchor.path)
+      if (untouchedAgentVoice(t)) continue
+      if (t.anchor.kind === 'hunk' || t.anchor.kind === 'file') paths.add(t.anchor.path)
     }
     return paths
   }, [activeThreads])
@@ -1049,12 +1050,18 @@ function Review() {
   ])
 
   const openThread = useCallback(
-    (item: { threadId: string; path: string | null; gone?: boolean }) => {
+    (item: { threadId: string; path: string | null; layerId?: string; gone?: boolean }) => {
       setOpenThreadId(item.threadId)
       // A thread whose file left the changeset has no file body to scroll to — it
       // renders in the pane's own section for the ones the diff left behind.
       if (item.gone) {
         setRevealPastTick((t) => t + 1)
+      } else if (item.layerId !== undefined) {
+        // A layer thread's card lives on its layer's summary card, which only
+        // the Layers view draws: go there, and to that layer.
+        setPanel('layers')
+        const target = resolvedLayers.findIndex((l) => l.id === item.layerId)
+        if (target !== -1 && layerKey(resolvedLayers[target]!) !== activeLayerKey) goLayer(target)
       } else if (item.path) {
         enterLayerFor(item.path)
         revealFile(item.path)
@@ -1085,7 +1092,17 @@ function Review() {
       }
       requestAnimationFrame(() => seek(30))
     },
-    [revealFile, enterLayerFor],
+    [revealFile, enterLayerFor, resolvedLayers, activeLayerKey, goLayer],
+  )
+  /** The rail's row, as `openThread` wants it. */
+  const threadTarget = useCallback(
+    (item: ThreadItem, gone = false) => ({
+      threadId: item.thread.id,
+      path: item.path,
+      ...(item.thread.anchor.kind === 'layer' ? { layerId: item.thread.anchor.layerId } : {}),
+      ...(gone ? { gone } : {}),
+    }),
+    [],
   )
 
   // A notification click knows only the thread id — recover the pane target the
@@ -1095,13 +1112,13 @@ function Review() {
     (threadId: string) => {
       const item = items.find((i) => i.thread.id === threadId)
       if (item) {
-        openThread({ threadId, path: item.path })
+        openThread(threadTarget(item))
         return
       }
       const past = pastItems.find((i) => i.thread.id === threadId)
-      if (past) openThread({ threadId, path: past.path, gone: true })
+      if (past) openThread(threadTarget(past, true))
     },
-    [items, pastItems, openThread],
+    [items, pastItems, openThread, threadTarget],
   )
 
   const banner = useAgentNotifications({
@@ -1260,6 +1277,7 @@ function Review() {
       }
     }
     return {
+      id: activeLayer.id,
       kicker: activeLayer.derived
         ? 'Outside the outline'
         : `Layer ${activeLayer.number} of ${layerCount}`,
@@ -1384,7 +1402,7 @@ function Review() {
                 back={batch.back}
                 onOpen={(item) => {
                   setMonitorOpen(false)
-                  openThread({ threadId: item.thread.id, path: item.path })
+                  openThread(threadTarget(item))
                 }}
                 onClose={() => setMonitorOpen(false)}
               />
@@ -1486,13 +1504,7 @@ function Review() {
                 pr={pr !== null}
                 selectedThreadId={openThreadId}
                 totalThreads={review?.threads.length ?? 0}
-                onOpen={(item) =>
-                  openThread({
-                    threadId: item.thread.id,
-                    path: item.path,
-                    gone: item.gone === true,
-                  })
-                }
+                onOpen={(item) => openThread(threadTarget(item, item.gone === true))}
                 onResolve={reviewActions.resolve}
                 onReopen={reviewActions.reopen}
                 onDelete={reviewActions.remove}

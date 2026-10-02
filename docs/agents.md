@@ -244,6 +244,13 @@ The rules that make a post safe to repeat:
   reports, so a re-post cannot lose a read mark.
 - A suggestion is cleared by the post that answers it, and refused once layers
   exist. Both go when the reviewer clears the review.
+- **A thread can anchor to a layer.** The reviewer asks about the step itself,
+  not a line in it. The prompt heads the thread `layer "<title>"` and, in place
+  of a diff snapshot, quotes the layer as it was outlined when the comment was
+  written: title, summary, files. Answer about the outline, with `diffo reply`
+  like any thread; if the ask is to re-split or re-order, re-post the layers.
+  A layer thread follows its layer by title across re-posts, and a re-post
+  that drops the title retires it.
 
 If the agent suggests layers, the suggestion belongs in its handoff message
 too, where the reviewer's eyes already are: *say "layers" and I'll outline it

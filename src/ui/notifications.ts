@@ -37,6 +37,7 @@ function anchorLabel(thread: ReviewThread): string | null {
   const a = thread.anchor
   if (a.kind === 'changeset') return null
   if (a.kind === 'file') return a.path
+  if (a.kind === 'layer') return `layer “${a.title}”`
   return `${a.path}:${a.line}`
 }
 

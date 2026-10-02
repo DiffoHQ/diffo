@@ -1038,6 +1038,10 @@ function anchorLabel(thread: ReviewThread, gone = false): string {
   if (anchor.kind === 'changeset') {
     return startedByAgent(thread) ? `${word} on the changeset` : 'Note on the changeset'
   }
+  if (anchor.kind === 'layer') {
+    // Gone: the outline no longer has this step, so the card names it.
+    return gone ? `Layer “${anchor.title}”` : `${word} on this layer`
+  }
   if (gone) return anchor.kind === 'hunk' ? `${anchor.path}:${anchorSpan(anchor)}` : anchor.path
   if (anchor.kind === 'hunk') {
     return `${word} on ${anchor.endLine === undefined ? 'line' : 'lines'} ${anchorSpan(anchor)}`

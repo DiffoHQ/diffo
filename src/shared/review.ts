@@ -19,6 +19,11 @@ export type Anchor =
     }
   | { kind: 'file'; path: string }
   | { kind: 'changeset' }
+  /** One step of the agent's outline. `layerId` is the server-minted id, which
+   * a re-post keeps for a matching title, so the thread follows its layer by
+   * title. `title` is carried so a thread whose layer left the outline can
+   * still say which step it was about. Agent-only: GitHub has no layers. */
+  | { kind: 'layer'; layerId: string; title: string }
 
 /** `github` is a person on the pull request — the author, another reviewer, a
  * bot — carried on the message's `github` block. The reviewer's own words posted
@@ -42,11 +47,21 @@ export interface AnchoredLines {
   text: string
 }
 
+/** The layer as it was outlined when a layer thread was opened. A re-post may
+ * reword the summary or move files; this is what the comment was about. */
+export interface AnchoredLayer {
+  title: string
+  summary?: string
+  files: string[]
+}
+
 /** What a new thread freezes about the code it anchors to. `anchored` is absent
- * for pre-range snapshots and for anchors whose lines fell outside the hunk. */
+ * for pre-range snapshots and for anchors whose lines fell outside the hunk.
+ * A layer thread freezes the layer instead and carries no snapshot. */
 export interface ThreadCapture {
-  codeContext: string
+  codeContext: string | null
   anchored?: AnchoredLines
+  anchoredLayer?: AnchoredLayer
 }
 
 export interface ReviewMessage {
@@ -112,6 +127,8 @@ export interface ReviewThread {
   codeContext: string | null
   /** See {@link AnchoredLines}. Absent on threads created before it existed. */
   anchored?: AnchoredLines
+  /** See {@link AnchoredLayer}. Present on every layer thread. */
+  anchoredLayer?: AnchoredLayer
   /** The anchored hunk no longer exists in the current changeset (its
    * content-addressed ID rotated). `sent` threads become `addressed` instead. */
   codeChanged: boolean
@@ -396,15 +413,20 @@ export const EMPTY_REVIEW: ReviewState = { version: 1, threads: [] }
 export function threadsInChangeset(
   files: readonly FileChange[],
   threads: readonly ReviewThread[],
+  layers?: Layers,
 ): { active: ReviewThread[]; past: ReviewThread[] } {
   const hunkIds = new Set(files.flatMap((f) => f.hunks.map((h) => h.id)))
   // A thread anchors to the path as it was when it was opened, so a renamed file
   // must answer to both names.
   const paths = new Set(files.flatMap((f) => (f.oldPath ? [f.path, f.oldPath] : [f.path])))
+  // A layer thread lives exactly as long as its layer is in the outline; a
+  // re-post that drops the title retires the thread with it.
+  const layerIds = new Set((layers?.items ?? []).map((l) => l.id))
   const lives = (thread: ReviewThread): boolean => {
     const anchor = thread.anchor
     if (anchor.kind === 'changeset') return files.length > 0
     if (anchor.kind === 'file') return paths.has(anchor.path)
+    if (anchor.kind === 'layer') return layerIds.has(anchor.layerId)
     return hunkIds.has(anchor.hunkId) || paths.has(anchor.path)
   }
   const active: ReviewThread[] = []
@@ -421,5 +443,6 @@ export function anchorSpan(anchor: Extract<Anchor, { kind: 'hunk' }>): string {
 export function describeAnchor(anchor: Anchor): string {
   if (anchor.kind === 'changeset') return 'the whole changeset'
   if (anchor.kind === 'file') return anchor.path
+  if (anchor.kind === 'layer') return `layer "${anchor.title}"`
   return `${anchor.path}:${anchorSpan(anchor)} (${anchor.side} side)`
 }

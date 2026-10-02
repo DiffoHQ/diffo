@@ -1,9 +1,12 @@
 import { fileURLToPath } from 'node:url'
 import {
   type Anchor,
+  type AnchoredLayer,
   type Coverage,
   describeAnchor,
   type Layer,
+  type Layers,
+  layerFilePath,
   type ReviewThread,
   startedByAgent,
   THREAD_INTENTS,
@@ -29,7 +32,25 @@ function findHunk(changeset: Changeset, hunkId: string): Hunk | null {
  * — for the anchored line range — where those rows sit in it and their text.
  * Null for non-hunk anchors and for a hunk the changeset no longer has.
  */
-export function captureAnchor(changeset: Changeset, anchor: Anchor): ThreadCapture | null {
+export function captureAnchor(
+  changeset: Changeset,
+  anchor: Anchor,
+  layers?: Layers,
+): ThreadCapture | null {
+  if (anchor.kind === 'layer') {
+    // The step as outlined now: a later re-post may reword it, and the comment
+    // was about this version.
+    const layer = layers?.items.find((l) => l.id === anchor.layerId)
+    if (!layer) return null
+    return {
+      codeContext: null,
+      anchoredLayer: {
+        title: layer.title,
+        ...(layer.summary ? { summary: layer.summary } : {}),
+        files: layer.files.map(layerFilePath),
+      },
+    }
+  }
   if (anchor.kind !== 'hunk') return null
   const hunk = findHunk(changeset, anchor.hunkId)
   if (!hunk) return null
@@ -641,8 +662,22 @@ function snapshotWindow(
 /** The snapshot as the agent sees it: windowed on the anchored rows, each of
  * them marked with `>`. Threads from before `anchored` existed keep the old
  * head-of-hunk window. */
+/** A layer thread's stand-in for the diff snapshot: the step as the reviewer
+ * read it, so the agent answers about the outline, not about a line. */
+function layerBlock(layer: AnchoredLayer): string[] {
+  return [
+    'The layer this comments on, as it was outlined when the comment was written:',
+    `- title: ${layer.title}`,
+    ...(layer.summary ? ['- summary:', ...layer.summary.split('\n').map((l) => `  ${l}`)] : []),
+    `- files: ${layer.files.map((f) => `\`${f}\``).join(', ')}`,
+  ]
+}
+
 function snapshotBlock(thread: ReviewThread): string[] {
   const { codeContext, anchored } = thread
+  if (thread.anchor.kind === 'layer') {
+    return thread.anchoredLayer ? layerBlock(thread.anchoredLayer) : []
+  }
   if (!codeContext) {
     // The snapshot is gone (dropped on resolve) but the anchored text survives —
     // without this block a follow-up ships nothing but a stale line number.
@@ -658,7 +693,10 @@ function snapshotBlock(thread: ReviewThread): string[] {
     ]
   }
   const lines = codeContext.split('\n')
-  const where = thread.anchor.kind === 'changeset' ? 'the file' : `\`${thread.anchor.path}\``
+  const where =
+    thread.anchor.kind === 'hunk' || thread.anchor.kind === 'file'
+      ? `\`${thread.anchor.path}\``
+      : 'the file'
   // Already delivered once: the agent saw this snapshot, so re-shipping it only
   // spends tokens — and it was frozen at comment time, so the current file is
   // the better read anyway. The heading still quotes the anchored lines.

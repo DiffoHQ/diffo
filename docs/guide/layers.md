@@ -60,6 +60,24 @@ every title that survives.
 
 Read marks live on hunks, not on layers, so a re-post can never lose one.
 
+## Commenting on a layer
+
+A question about the step itself, not a line in it: why these files belong
+together, whether the order is right, a summary that says too much. The layer's
+card has **Comment on this layer** under the summary, and the thread lives
+there, with the agent on the other end like any other thread. The agent is
+handed the layer as it was outlined when you wrote the comment, title, summary
+and files, so a later re-post never changes what you were asking about.
+
+A layer thread follows its layer by title across re-posts. A re-post that drops
+the title retires the thread with it: it moves to the threads the changeset
+left behind, intact, and a thread you had sent reads as addressed.
+
+Only the agent's layers take a comment. *Since your review* is Diffo's, not the
+agent's, and the pull request **Overview** is the description: comment on those
+the way you would on the whole changeset. On a pull request a layer thread is
+always private; GitHub has no layers to post it to.
+
 ## What a layer may say
 
 A summary follows the guide's rule: it orients your reading and never pre-reviews

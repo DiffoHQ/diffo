@@ -346,17 +346,31 @@ export function createApp(
     }
     const anchor = parseAnchor(body?.anchor)
     if (!anchor) return c.json({ error: 'need {anchor, text}' }, 400)
+    // A layer thread needs its layer: one the outline has right now. The stored
+    // title is the outline's, not the client's, so a label never drifts.
+    const layer =
+      anchor.kind === 'layer'
+        ? review.get().layers?.items.find((l) => l.id === anchor.layerId)
+        : undefined
+    if (anchor.kind === 'layer') {
+      if (!layer) return c.json({ error: 'that layer is not in the outline' }, 400)
+      anchor.title = layer.title
+    }
     const intent = THREAD_INTENTS.includes(body?.intent) ? (body.intent as ThreadIntent) : undefined
     // Public drafts exist only on a pull request; without one the flag is a mistake.
     const audience = body?.audience === 'pr' ? ('pr' as const) : undefined
     if (audience && !ctx.pr) {
       return c.json({ error: 'public comments need a pull request under review' }, 400)
     }
+    // GitHub has no layers: a comment on one is always for the agent.
+    if (audience && anchor.kind === 'layer') {
+      return c.json({ error: 'a comment on a layer is for the agent, not the pull request' }, 400)
+    }
     const parentId =
       typeof body?.parentId === 'string' && review.get().threads.some((t) => t.id === body.parentId)
         ? (body.parentId as string)
         : undefined
-    const capture = store ? captureAnchor(store.get(), anchor) : null
+    const capture = store ? captureAnchor(store.get(), anchor, review.get().layers) : null
     return c.json(
       review.createThread(anchor, text, capture, intent, 'reviewer', {
         ...(audience ? { audience } : {}),
@@ -617,7 +631,9 @@ export function createApp(
   // conversation — never the agent's, whatever route asks — and this is the one
   // place that rule is applied on the way to a prompt.
   const activeThreads = (threads: ReviewThread[]): ReviewThread[] =>
-    threadsInChangeset(store?.get().files ?? [], threads).active.filter((t) => !isPublic(t))
+    threadsInChangeset(store?.get().files ?? [], threads, review?.get().layers).active.filter(
+      (t) => !isPublic(t),
+    )
 
   // Finish speaks for the reviewer, so it must never flush a thread that is still
   // purely the agent's voice — those wait for a reply or a resolution.

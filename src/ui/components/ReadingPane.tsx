@@ -85,6 +85,9 @@ export interface PaneControls {
  * and the filters step aside while it is up.
  */
 export interface LayerView {
+  /** The stored layer id; null on the derived trailing layer, which has no
+   * identity to comment on. */
+  id: string | null
   /** `Layer 3 of 6`, or the derived layer's own kicker. */
   kicker: string
   title: string
@@ -110,12 +113,21 @@ export interface LayerView {
 function LayerHead({
   layer,
   filesShown,
+  comments,
 }: {
   layer: LayerView
   /** How many of the layer's files the pane is rendering under the card. */
   filesShown: number
+  comments?: ReviewComments
 }) {
   const summary = layer.summary ? linkPaths(layer.summary, layer.knownPaths) : null
+  // A comment on the step itself — its order, its summary, the split — rather
+  // than on a line in it. Only an outlined layer has an identity to hang one
+  // on; the derived trailing layer is the UI's, not the agent's.
+  const [composerOpen, setComposerOpen] = useState(false)
+  const layerThreads = layer.id !== null ? (comments?.partition.byLayer.get(layer.id) ?? []) : []
+  const layerAnchor =
+    layer.id !== null ? ({ kind: 'layer', layerId: layer.id, title: layer.title } as const) : null
   const onClick = (e: React.MouseEvent) => {
     const ref = refClickTarget(e.target as Element)
     if (!ref) return
@@ -177,6 +189,46 @@ function LayerHead({
           {layer.hidden === 1 ? 'The one file' : `All ${layer.hidden} files`} in this layer{' '}
           {layer.hidden === 1 ? 'is a test' : 'are tests'}, hidden by <b>Hide tests</b> on the bar.
           Move on with <span className="kbd">]</span>.
+        </div>
+      )}
+      {comments && layerAnchor && (
+        <div className="ch-head-threads">
+          {layerThreads.length > 0 && (
+            <ThreadList
+              threads={layerThreads}
+              actions={comments.actions}
+              showContext
+              agentConnected={comments.agentConnected}
+              workingOn={comments.workingOn}
+              queuedOn={comments.queuedOn}
+              links={comments.links}
+            />
+          )}
+          {composerOpen ? (
+            <CommentBox
+              title="Comment on this layer"
+              placeholder="Ask about this step, or say what should change in it…"
+              scope={{ label: `layer “${layer.title}”`, canWiden: false }}
+              // GitHub has no layers: on a pull request this is a private ask.
+              fixedAudience="agent"
+              agentConnected={comments.agentConnected}
+              onSubmit={(text, _wide, intent) => {
+                void comments.actions.create(layerAnchor, text, intent)
+                setComposerOpen(false)
+              }}
+              onSend={(text, _wide, intent) => {
+                void comments.actions
+                  .create(layerAnchor, text, intent)
+                  .then((t) => comments.actions.send(t.id))
+                setComposerOpen(false)
+              }}
+              onCancel={() => setComposerOpen(false)}
+            />
+          ) : (
+            <button type="button" className="strip-add" onClick={() => setComposerOpen(true)}>
+              + Comment on this layer
+            </button>
+          )}
         </div>
       )}
     </section>
@@ -977,12 +1029,15 @@ export function ReadingPane({
   // Two ways here: the file or hunk left the changeset, or GitHub marked the
   // line outdated while the file stayed. The hint says which, or both.
   const outdated = past.filter((t) => t.github?.outdated === true).length
+  const onLayers = past.filter((t) => t.anchor.kind === 'layer').length
   const pastWhy =
-    outdated === past.length
-      ? `${past.length === 1 ? 'This one is' : 'These are'} outdated on GitHub: the line ${past.length === 1 ? 'it hangs' : 'they hang'} off left the diff, though the file is still in it.`
-      : outdated > 0
-        ? `The file or change these hang off is no longer in the diff: reverted, deleted, or stashed; ${outdated} ${outdated === 1 ? 'is' : 'are'} outdated on GitHub instead, the line left the diff.`
-        : 'The file or change these hang off is no longer in the diff: reverted, deleted, or stashed.'
+    onLayers === past.length
+      ? `The layer ${past.length === 1 ? 'this hangs' : 'these hang'} off left the outline: the agent re-posted without ${past.length === 1 ? 'its' : 'their'} title.`
+      : outdated === past.length
+        ? `${past.length === 1 ? 'This one is' : 'These are'} outdated on GitHub: the line ${past.length === 1 ? 'it hangs' : 'they hang'} off left the diff, though the file is still in it.`
+        : outdated > 0
+          ? `The file or change these hang off is no longer in the diff: reverted, deleted, or stashed; ${outdated} ${outdated === 1 ? 'is' : 'are'} outdated on GitHub instead, the line left the diff.`
+          : 'The file or change these hang off is no longer in the diff: reverted, deleted, or stashed.'
   const pastSection = comments && past.length > 0 && (
     <section className="file-section past-threads">
       <button
@@ -995,16 +1050,17 @@ export function ReadingPane({
           <Icon name="chev" />
         </span>
         <span className="file-path">
-          {past.length === 1
-            ? '1 thread whose code left the changeset'
-            : `${past.length} threads whose code left the changeset`}
+          {past.length === 1 ? '1 thread' : `${past.length} threads`} whose{' '}
+          {onLayers === past.length ? 'layer left the outline' : 'code left the changeset'}
         </span>
       </button>
       {pastOpen && (
         <div className="file-threads">
           <div className="past-hint">
-            {pastWhy} The conversation is intact, and the snapshot inside each one is the code you
-            commented on.
+            {pastWhy} The conversation is intact
+            {onLayers === past.length
+              ? '.'
+              : ', and the snapshot inside each one is the code you commented on.'}
           </div>
           <ThreadList
             threads={past}
@@ -1064,7 +1120,7 @@ export function ReadingPane({
   ) : layer && files.length === 0 ? (
     // A layer whose files all left the changeset says so on its own card, and
     // next/prev skip it — the generic empty state would lose the reader's place.
-    <LayerHead layer={layer} filesShown={0} />
+    <LayerHead layer={layer} filesShown={0} comments={comments} />
   ) : allHidden && scopeDone ? (
     done
   ) : allHidden && controls ? (
@@ -1088,7 +1144,7 @@ export function ReadingPane({
     </div>
   ) : (
     <>
-      {layer && <LayerHead layer={layer} filesShown={files.length} />}
+      {layer && <LayerHead layer={layer} filesShown={files.length} comments={comments} />}
       {files.map((file) => {
         const isCollapsed = handlers.collapsed?.has(file.path) ?? false
         const fileThreadCount = comments?.partition.byFile.get(file.path)?.length ?? 0

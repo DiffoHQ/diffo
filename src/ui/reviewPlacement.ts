@@ -8,6 +8,8 @@ import type { DiffLine, FileChange, Hunk } from '../shared/types.js'
 export interface ThreadPartition {
   byHunk: Map<string, ReviewThread[]>
   byFile: Map<string, ReviewThread[]>
+  /** Keyed by layer id; rendered under that layer's summary card. */
+  byLayer: Map<string, ReviewThread[]>
   changeset: ReviewThread[]
 }
 
@@ -16,6 +18,7 @@ export function partitionThreads(files: FileChange[], threads: ReviewThread[]): 
   const paths = new Set(files.map((f) => f.path))
   const byHunk = new Map<string, ReviewThread[]>()
   const byFile = new Map<string, ReviewThread[]>()
+  const byLayer = new Map<string, ReviewThread[]>()
   const changeset: ReviewThread[] = []
 
   const push = <K>(map: Map<K, ReviewThread[]>, key: K, thread: ReviewThread) => {
@@ -27,6 +30,9 @@ export function partitionThreads(files: FileChange[], threads: ReviewThread[]): 
   for (const thread of threads) {
     const anchor = thread.anchor
     if (anchor.kind === 'changeset') changeset.push(thread)
+    // A layer thread whose layer is gone never reaches here: `threadsInChangeset`
+    // files it with the past, so there is no fallback to pick.
+    else if (anchor.kind === 'layer') push(byLayer, anchor.layerId, thread)
     else if (anchor.kind === 'file') {
       if (paths.has(anchor.path)) push(byFile, anchor.path, thread)
       else changeset.push(thread)
@@ -38,7 +44,7 @@ export function partitionThreads(files: FileChange[], threads: ReviewThread[]): 
       else changeset.push(thread)
     }
   }
-  return { byHunk, byFile, changeset }
+  return { byHunk, byFile, byLayer, changeset }
 }
 
 /**
