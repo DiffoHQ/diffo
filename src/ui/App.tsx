@@ -35,6 +35,7 @@ import { InviteAgent } from './components/InviteAgent.js'
 import { LayerRail } from './components/LayerRail.js'
 import { LayersEmpty, type LayersEmptyState } from './components/LayersEmpty.js'
 import { LeftPanel } from './components/LeftPanel.js'
+import { LivingMark } from './components/LivingMark.js'
 import { Monitor } from './components/Monitor.js'
 import { Nav, treeOrder } from './components/Nav.js'
 import { Privacy } from './components/Privacy.js'
@@ -1338,6 +1339,7 @@ function Review() {
   if (isLoading) {
     return (
       <div className="center-note">
+        <LivingMark size={44} className="center-mark" />
         <div className="shimmer" />
         <div className="shimmer shimmer-short" />
         Reading the changeset…

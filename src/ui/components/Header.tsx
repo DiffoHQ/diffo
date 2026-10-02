@@ -1,10 +1,11 @@
-import { type ReactNode, useEffect, useRef, useState } from 'react'
+import { type CSSProperties, type ReactNode, useEffect, useRef, useState } from 'react'
 import type { Changeset, PrInfo } from '../../shared/types.js'
 import type { Presence, PresenceReason } from '../api.js'
 import { isDevServer } from '../devMode.js'
 import { shortAgo } from '../markdown.js'
 import type { Theme } from '../theme.js'
 import { Icon } from './Icon.js'
+import { LivingMark } from './LivingMark.js'
 import { Menu, MenuItem, MenuLabel, MenuSep } from './Menu.js'
 
 const n = (x: number) => x.toLocaleString('en-US')
@@ -470,8 +471,20 @@ export function Header({
   return (
     <header className="top">
       <span className="mark">
-        <Icon name="logo" size="lg" />
-        Diffo
+        <LivingMark size={36} />
+        <span className="wordmark" role="img" aria-label="Diffo">
+          {[...'Diffo'].map((letter, i) => (
+            <span
+              // biome-ignore lint/suspicious/noArrayIndexKey: letters of a fixed word; the index is the identity
+              key={i}
+              className="wordmark-letter"
+              style={{ '--i': i } as CSSProperties}
+              aria-hidden="true"
+            >
+              {letter}
+            </span>
+          ))}
+        </span>
         {isDevServer() && (
           <span
             className="dev-badge"
