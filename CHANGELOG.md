@@ -7,7 +7,23 @@ Until 1.0, minor versions may break things. When they do, the entry says how to 
 
 ## [Unreleased]
 
-Nothing yet.
+### Added
+
+- **The mark in the review header is alive.** The Diffo logo is a diff — a
+  removed line beside a −, a kept line, an added line beside a + — and it now
+  plays as one, on a slow nine-second loop with a rest between plays: the top
+  line and its − slide out red, the bottom line rewrites itself green while the
+  +'s upright pops in, a new top line springs back, and the wordmark is retyped
+  letter by letter in the same two colours on the same beat. It is drawn at
+  36px, up from 19, and the loading screen carries the same mark. A reader
+  with `prefers-reduced-motion` set sees the still mark.
+
+### Changed
+
+- **Progress wears the diff's green.** The viewed-files bar, the finish screen's
+  bar and the Viewed box fill in a new `--brand` colour — the diff's + colour
+  worn by the chrome — instead of ink. Buttons, selection and focus stay ink;
+  red is still only the diff's −.
 
 ## [0.10.0] — 2026-10-01
 

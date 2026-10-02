@@ -5,10 +5,7 @@ hero:
   name: Diffo
   text: The human way to review agent-written code.
   tagline: "A live review on your machine: the change in layers, in the order it should be read, and the agent on the other end of every comment. For what it just wrote, or for a pull request."
-  image:
-    light: /logo.svg
-    dark: /logo-dark.svg
-    alt: Diffo
+  # The hero image is theme/LivingMark.vue, through the `home-hero-image` slot.
   actions:
     - theme: brand
       text: Get started
@@ -45,8 +42,7 @@ features:
 
 ## One round trip
 
-<video class="clip home-clip" src="./assets/loop.mp4" muted loop playsinline width="1560" height="806" poster="./assets/loop-poster.jpg" preload="none"
-  aria-label="One take of the whole loop: a Claude Code session has just written natural-language due dates into a todo app, the reviewer types /diffo, the session opens a live review and hands over its localhost URL, the review opens beside the session, and a question left on the weekday line is answered in the thread while they watch"></video>
+<HeroDiff />
 
 Diffo doesn't grade your diff or leave generated nitpicks. It isn't an AI reviewer.
 It's a reading tool for the human, wired to the one process that still holds the full
@@ -54,9 +50,13 @@ context of the change: the agent that just wrote it.
 
 ## Start in one command
 
+<div class="home-install">
+
 ```bash
 npx skills add DiffoHQ/diffo --skill diffo
 ```
+
+</div>
 
 Then, in any agent session, one command:
 

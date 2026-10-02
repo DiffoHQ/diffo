@@ -2,10 +2,13 @@
    INK — the palette. Chrome is achromatic, so the code and its diff are the
    only coloured things on the page.
 
-   Two accent roles that never merge:
-     --acc    interactive — primary action, selection, Viewed, progress, focus.
+   Three accent roles that never merge:
+     --acc    interactive — selection, focus, the reviewer's own identity.
+     --brand  the product's green: Viewed and progress — what the review has
+              added. It is the diff's + colour worn by the chrome, so it is never
+              used for anything that is not progress; actions stay in ink.
      --attn   attention — changed-since-read, agent in flight. Amber, the one
-              hue in the chrome.
+              other hue in the chrome.
 
    --add / --del may also appear in the rail, on a file's git status (`+` born,
    `−` died) and nowhere else — always doubled by shape, so nothing depends on
@@ -34,7 +37,12 @@
   --acc-wash: #edeef0;
   --acc-line: #c9c4d6;
 
-  /* --- role 2: attention. The only hue in the chrome. --- */
+  /* --- role 2: brand. The diff's + colour, on Viewed and progress only. --- */
+  --brand: #1a7f37;
+  --brand-solid: #1f883d;
+  --brand-fg: #ffffff;
+
+  /* --- role 3: attention. The only other hue in the chrome. --- */
   --attn: #9a6206;
   --attn-wash: #faf1e2;
   --attn-line: #e6cfa0;
@@ -124,6 +132,9 @@
     --acc-fg: #000000;
     --acc-wash: #262234;
     --acc-line: #403b54;
+    --brand: #3fb950;
+    --brand-solid: #238636;
+    --brand-fg: #ffffff;
     --attn: #e0a83c;
     --attn-wash: #2a2214;
     --attn-line: #5c4818;
@@ -160,6 +171,9 @@
   --acc-fg: #000000;
   --acc-wash: #262234;
   --acc-line: #403b54;
+  --brand: #3fb950;
+  --brand-solid: #238636;
+  --brand-fg: #ffffff;
   --attn: #e0a83c;
   --attn-wash: #2a2214;
   --attn-line: #5c4818;
@@ -195,6 +209,9 @@
   --acc-fg: #ffffff;
   --acc-wash: #edeef0;
   --acc-line: #c9c4d6;
+  --brand: #1a7f37;
+  --brand-solid: #1f883d;
+  --brand-fg: #ffffff;
   --attn: #9a6206;
   --attn-wash: #faf1e2;
   --attn-line: #e6cfa0;
@@ -299,8 +316,221 @@ body {
 }
 
 .mark .icon {
-  width: 19px;
-  height: 19px;
+  width: 36px;
+  height: 36px;
+}
+
+/* ------------------------------------------------------------
+   The living mark (components/LivingMark.tsx). The logo is a diff, and on a 9s
+   loop a change passes through it: a rest in ink; the top line and its − flush
+   red and slide out to the right; the bottom line erases and rewrites itself left
+   to right in green while the +'s upright pops in; a new top line springs back in
+   from the left; everything settles to ink for the rest. Lines are dashes of
+   exactly their own length, so a dashoffset sweep erases or writes them. Slow on
+   purpose: at 36px in a header it has to be read, not noticed.
+   ------------------------------------------------------------ */
+.living-mark path {
+  animation-duration: 9s;
+  animation-timing-function: var(--ease-out);
+  animation-iteration-count: infinite;
+  transform-box: fill-box;
+  transform-origin: center;
+}
+
+.living-mark .lm-l1,
+.living-mark .lm-minus {
+  animation-name: lm-leave;
+}
+
+.living-mark .lm-l3 {
+  stroke-dasharray: 10.2 10.2;
+  animation-name: lm-rewrite;
+}
+
+.living-mark .lm-plus-h {
+  animation-name: lm-plus-h;
+}
+
+.living-mark .lm-plus-v {
+  animation-name: lm-plus-v;
+}
+
+/* 0–10% rest · 14–22% the removed line and its − go red and slide out · 24–38%
+   the bottom line erases and rewrites in green, the + upright pops in at 36–42% ·
+   52–62% a new top line springs in from the left · 66%– ink. The spring curve
+   overshoots on purpose; it is what makes a line land rather than fade. */
+@keyframes lm-leave {
+  0%,
+  10% {
+    stroke: currentColor;
+    transform: translateX(0);
+    opacity: 1;
+  }
+  14% {
+    stroke: var(--del);
+    transform: translateX(0);
+    opacity: 1;
+  }
+  22% {
+    stroke: var(--del);
+    transform: translateX(7px);
+    opacity: 0;
+  }
+  22.1%,
+  52% {
+    stroke: currentColor;
+    transform: translateX(-7px);
+    opacity: 0;
+    animation-timing-function: cubic-bezier(0.34, 1.56, 0.64, 1);
+  }
+  62%,
+  100% {
+    stroke: currentColor;
+    transform: translateX(0);
+    opacity: 1;
+  }
+}
+
+@keyframes lm-rewrite {
+  0%,
+  24% {
+    stroke: currentColor;
+    stroke-dashoffset: 0;
+  }
+  28% {
+    stroke: currentColor;
+    stroke-dashoffset: 10.2;
+  }
+  28.1% {
+    stroke: var(--brand);
+    stroke-dashoffset: 10.2;
+  }
+  38%,
+  60% {
+    stroke: var(--brand);
+    stroke-dashoffset: 0;
+  }
+  66%,
+  100% {
+    stroke: currentColor;
+    stroke-dashoffset: 0;
+  }
+}
+
+@keyframes lm-plus-h {
+  0%,
+  28% {
+    stroke: currentColor;
+  }
+  30%,
+  60% {
+    stroke: var(--brand);
+  }
+  66%,
+  100% {
+    stroke: currentColor;
+  }
+}
+
+@keyframes lm-plus-v {
+  0%,
+  24% {
+    stroke: currentColor;
+    transform: scaleY(1);
+  }
+  27% {
+    stroke: currentColor;
+    transform: scaleY(0);
+  }
+  27.1%,
+  36% {
+    stroke: var(--brand);
+    transform: scaleY(0);
+    animation-timing-function: cubic-bezier(0.34, 1.56, 0.64, 1);
+  }
+  42%,
+  60% {
+    stroke: var(--brand);
+    transform: scaleY(1);
+  }
+  66%,
+  100% {
+    stroke: currentColor;
+    transform: scaleY(1);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .living-mark path {
+    animation: none;
+  }
+}
+
+/* The wordmark keeps the mark's beat and wears its colours: while the top line
+   slides out red (14–22%) each letter flushes red and pops out, 90ms after the one
+   before; while the bottom line writes itself green (28–38%) the letters land
+   again in the brand green, same cascade; and the word settles to ink with the
+   mark (66%). Each letter runs the same 9s keyframes offset by its index, so the
+   erase and the retype both sweep left to right like a caret. */
+.wordmark {
+  display: inline-flex;
+}
+
+.wordmark-letter {
+  display: inline-block;
+  animation: wordmark-retype 9s var(--ease-out) infinite;
+  animation-delay: calc(var(--i, 0) * 90ms);
+}
+
+@keyframes wordmark-retype {
+  0%,
+  12% {
+    color: currentColor;
+    opacity: 1;
+    transform: translateY(0);
+  }
+  15%,
+  20% {
+    color: var(--del);
+    opacity: 1;
+    transform: translateY(0);
+  }
+  22% {
+    color: var(--del);
+    opacity: 0;
+    transform: translateY(-5px);
+  }
+  22.1%,
+  28% {
+    color: var(--brand);
+    opacity: 0;
+    transform: translateY(6px);
+    animation-timing-function: cubic-bezier(0.34, 1.56, 0.64, 1);
+  }
+  32%,
+  60% {
+    color: var(--brand);
+    opacity: 1;
+    transform: translateY(0);
+  }
+  66%,
+  100% {
+    color: currentColor;
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .wordmark-letter {
+    animation: none;
+  }
+}
+
+/* On the loading screen the mark sits above the shimmer, in ink, a touch larger. */
+.center-note .center-mark {
+  color: var(--ink);
+  margin-bottom: var(--s-4);
 }
 
 /* A source-checkout build says so, permanently and quietly. Amber because it is
@@ -407,10 +637,11 @@ body {
   overflow: hidden;
 }
 
+/* Progress is what the review has added, so it fills in the brand green. */
 .prog-track i {
   display: block;
   height: 3px;
-  background: var(--acc);
+  background: var(--brand);
   border-radius: 2px;
   transition: width 0.35s var(--ease-out);
 }
@@ -1215,9 +1446,9 @@ body {
 }
 
 .markbox[data-state="on"] {
-  background: var(--acc);
-  border-color: var(--acc);
-  color: var(--acc-fg);
+  background: var(--brand-solid);
+  border-color: var(--brand-solid);
+  color: var(--brand-fg);
 }
 
 .markbox[data-state="mixed"]::after {
@@ -1686,7 +1917,7 @@ body {
 .done-bar i {
   display: block;
   height: 100%;
-  background: var(--acc);
+  background: var(--brand);
   transform-origin: left;
   transform: scaleX(var(--p, 1));
   animation: done-fill 0.85s var(--ease-out) 1.02s both;

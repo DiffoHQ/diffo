@@ -30,7 +30,8 @@ export default defineConfig({
 
   lastUpdated: true,
   themeConfig: {
-    logo: { light: '/logo.svg', dark: '/logo-dark.svg', alt: 'Diffo' },
+    // No `logo`: the nav mark is drawn by theme/NavMark.vue through the
+    // `nav-bar-title-before` slot, so it can inherit currentColor and animate.
     nav: [
       { text: 'Guide', link: '/guide/getting-started' },
       { text: 'Reference', link: '/reference/cli' },
