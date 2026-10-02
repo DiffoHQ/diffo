@@ -26,7 +26,7 @@ import {
   useReview,
 } from './api.js'
 import { copyText } from './clipboard.js'
-import { AgentBanner } from './components/AgentBanner.js'
+import { AgentNotices } from './components/AgentNotices.js'
 import { ClearThreads } from './components/ClearThreads.js'
 import { FinishReview } from './components/FinishReview.js'
 import { Header } from './components/Header.js'
@@ -1631,9 +1631,10 @@ function Review() {
             onClose={() => setClearOpen(false)}
           />
         )}
-        <AgentBanner
+        <AgentNotices
           notices={banner.notices}
           onOpen={banner.open}
+          onDismiss={banner.dismiss}
           onClear={banner.clear}
           onOpenMonitor={() => setMonitorOpen(true)}
         />

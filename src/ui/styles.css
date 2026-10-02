@@ -4472,36 +4472,117 @@ tr:hover .line-range-glyph {
   color: var(--ink-3);
 }
 
-/* ---------- agent banner ---------- */
+/* ---------- agent notices: cards under the agent's chip ---------- */
 
-/* The in-app notification: one strip pinned under the header, in the chrome's
-   attention colour, wide enough to be caught from a second monitor. An overlay,
-   not layout — it must never shift the diff under a mid-read reviewer. */
-.agent-banner {
+/* The stack hangs off the header's underside at the right, where the presence
+   chip stands: the agent spoke, so its notices fall from where it is. Paper,
+   not the attention wash — these are thread cards in miniature, and the amber
+   stays in the avatar, where the review already keeps it. */
+.notices {
   position: fixed;
-  top: 53px; /* .top's height — the banner hangs off the header's underside */
-  left: 0;
-  right: 0;
+  top: calc(53px + var(--s-3)); /* .top's height, plus a breath */
+  right: var(--s-6);
   z-index: 30;
+  width: min(380px, calc(100vw - 2 * var(--s-6)));
   display: flex;
-  align-items: center;
+  flex-direction: column;
   gap: var(--s-2);
-  padding: var(--s-3) var(--s-6);
-  background: var(--attn-wash);
-  border-bottom: 1px solid var(--attn-line);
-  animation: banner-in var(--dur-move) var(--ease-out);
+  pointer-events: none; /* the gaps between cards stay click-through */
 }
 
-@media (prefers-reduced-motion: reduce) {
-  .agent-banner {
-    animation: none;
+.notice {
+  position: relative;
+  pointer-events: auto;
+  display: flex;
+  align-items: flex-start;
+  gap: var(--s-1);
+  padding: var(--s-3) var(--s-3) var(--s-3) var(--s-5);
+  background: var(--paper);
+  border: 1px solid var(--hair);
+  border-radius: var(--r);
+  box-shadow: var(--lift);
+  view-transition-class: notice;
+  transition:
+    transform var(--dur) var(--ease-out),
+    box-shadow var(--dur) var(--ease-out),
+    border-color var(--dur) var(--ease-out);
+}
+
+/* A card under the pointer lifts a hair and its × comes forward. */
+.notice:hover {
+  transform: translateY(-1px);
+  border-color: var(--acc-line);
+  box-shadow:
+    0 2px 4px rgba(0, 0, 0, 0.05),
+    0 18px 40px -16px rgba(0, 0, 0, 0.22);
+}
+
+.notice .notice-x {
+  opacity: 0.55;
+  transition: opacity var(--dur) var(--ease-out);
+}
+
+.notice:hover .notice-x,
+.notice .notice-x:focus-visible {
+  opacity: 1;
+}
+
+/* The clock: a hairline along the bottom edge that drains, left to right,
+   over the seconds the card has left. It runs only while the card is on a
+   clock — a card waiting for the reviewer to come back shows none. */
+.notice-drain {
+  position: absolute;
+  left: var(--s-5);
+  right: var(--s-5);
+  bottom: 0;
+  height: 2px;
+  border-radius: 1px;
+  background: var(--attn);
+  opacity: 0.55;
+  transform-origin: left;
+  animation: notice-drain linear forwards;
+}
+
+@keyframes notice-drain {
+  from {
+    transform: scaleX(1);
+  }
+  to {
+    transform: scaleX(0);
   }
 }
 
-@keyframes banner-in {
+/*
+ * Motion. The hook wraps every change to the stack in a view transition, so
+ * the browser snapshots the cards before and after and animates the
+ * difference: a new card slides in from the right edge, a leaving card fades
+ * out the same way, and the cards left behind glide to close the gap (the
+ * group animation, which the browser writes itself). The page is opted out
+ * of the transition, so the diff stays live and clickable while cards move.
+ */
+:root {
+  view-transition-name: none;
+}
+
+::view-transition-group(.notice) {
+  animation-duration: var(--dur-move);
+  animation-timing-function: var(--ease-out);
+}
+
+/* `:only-child` tells an arrival (only a new snapshot) from a departure (only
+   an old one); a card that merely moved has both and keeps the group glide. */
+::view-transition-new(.notice):only-child {
+  animation: notice-in 0.32s cubic-bezier(0.2, 0.9, 0.25, 1.15);
+}
+
+::view-transition-old(.notice):only-child {
+  animation: notice-out 0.22s var(--ease-out) forwards;
+}
+
+@keyframes notice-in {
   from {
     opacity: 0;
-    transform: translateY(-6px);
+    transform: translateX(28px) scale(0.96);
   }
   to {
     opacity: 1;
@@ -4509,58 +4590,151 @@ tr:hover .line-range-glyph {
   }
 }
 
-/* Baseline, not centre: the label, the mono anchor and the preview are three
-   different faces and sizes, and box-centring leaves the anchor floating a
-   pixel off the line. The icon has no baseline worth speaking of — it centres
-   itself against the row. */
-.agent-banner-body {
+@keyframes notice-out {
+  to {
+    opacity: 0;
+    transform: translateX(28px) scale(0.96);
+  }
+}
+
+/* No View Transitions API: a card still arrives with the slide-in, and leaves
+   at once. */
+@supports not (view-transition-name: none) {
+  .notice {
+    animation: notice-in 0.32s cubic-bezier(0.2, 0.9, 0.25, 1.15);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .notice {
+    animation: none;
+    transition: none;
+  }
+
+  ::view-transition-group(.notice),
+  ::view-transition-old(.notice),
+  ::view-transition-new(.notice) {
+    animation: none;
+  }
+}
+
+.notice-body {
   flex: 1;
   min-width: 0;
   display: flex;
-  align-items: baseline;
-  justify-content: center;
-  gap: var(--s-3);
+  align-items: flex-start;
+  gap: var(--s-4);
   border: none;
   background: transparent;
   padding: 0;
+  margin: 0;
   font: inherit;
+  text-align: left;
+  color: inherit;
   cursor: pointer;
+  border-radius: var(--r-sm);
 }
 
-.agent-banner-body .icon {
-  color: var(--attn);
-  flex-shrink: 0;
-  align-self: center;
+.notice-body:focus-visible {
+  outline: 2px solid var(--acc);
+  outline-offset: 4px;
 }
 
-.agent-banner-label {
+.notice-body .avatar {
+  margin-top: 1px;
+}
+
+.notice-text {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-0);
+}
+
+.notice-head {
   font-size: var(--t-13);
+  line-height: 1.4;
+  color: var(--ink-2);
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0 var(--s-2);
+}
+
+.notice-who {
   font-weight: 600;
   color: var(--ink);
-  white-space: nowrap;
 }
 
-.agent-banner-anchor {
+.notice-anchor {
   font-family: var(--mono);
-  font-size: var(--t-12);
-  color: var(--attn);
-  white-space: nowrap;
-}
-
-.agent-banner-preview {
-  font-size: var(--t-13);
+  font-size: var(--t-11);
+  line-height: 1.5;
   color: var(--ink-2);
+  background: var(--fill);
+  border: 1px solid var(--hair);
+  border-radius: 4px;
+  padding: 0 var(--s-1);
+  max-width: 100%;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.agent-banner-body:hover .agent-banner-preview {
+/* Two lines of the agent's first sentence — enough to know whether to click. */
+.notice-preview {
+  font-size: var(--t-13);
+  line-height: 1.4;
+  color: var(--ink);
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  overflow-wrap: anywhere;
+}
+
+.notice-body:hover .notice-preview {
+  text-decoration: underline;
+  text-decoration-color: var(--hair-2);
+  text-underline-offset: 2px;
+}
+
+.notice-x {
+  flex-shrink: 0;
+  margin: -2px -2px -2px 0;
+}
+
+/* The overflow row: a tally in the grey, not another card — it points at the
+   monitor, where the rest of the burst is listed. */
+.notice-more {
+  align-items: center;
+  padding-top: var(--s-2);
+  padding-bottom: var(--s-2);
+  background: var(--fill);
+  box-shadow: none;
+}
+
+.notice-more .notice-body {
+  align-items: center;
+  gap: var(--s-3);
+  color: var(--ink-2);
+}
+
+.notice-more .notice-body .icon {
+  color: var(--ink-3);
+  flex-shrink: 0;
+}
+
+.notice-more .notice-body:hover {
   color: var(--ink);
 }
 
-.agent-banner-x {
-  flex-shrink: 0;
+.notice-more-label {
+  font-size: var(--t-12);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 /* ---------- collapsed resolved threads ---------- */
@@ -7381,7 +7555,7 @@ i.q-now {
 }
 
 /* The usage-data notice: a card at the foot of the page, out of the header's
-   and the agent banner's way, in the paper colour rather than the attention
+   and the agent notices' way, in the paper colour rather than the attention
    wash — it is information, not an event. */
 .telemetry-notice {
   position: fixed;
@@ -7398,7 +7572,18 @@ i.q-now {
   border: 1px solid var(--hair);
   border-radius: 10px;
   box-shadow: 0 8px 28px rgba(0, 0, 0, 0.12);
-  animation: banner-in var(--dur-move) var(--ease-out);
+  animation: card-in var(--dur-move) var(--ease-out);
+}
+
+@keyframes card-in {
+  from {
+    opacity: 0;
+    transform: translate(-50%, 6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(-50%);
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {
