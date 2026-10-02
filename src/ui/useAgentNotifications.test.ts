@@ -5,6 +5,7 @@ import type { Anchor, ReviewMessage, ReviewThread } from '../shared/review.js'
 import {
   type AgentNotifications,
   BANNER_LINGER_MS,
+  FADE_STAGGER_MS,
   useAgentNotifications,
 } from './useAgentNotifications.js'
 
@@ -94,13 +95,98 @@ describe('useAgentNotifications', () => {
     expect(result.current.notices.map((n) => n.preview)).toEqual(['one', 'two'])
   })
 
-  it('a focused tab gets neither banner nor badge — the page itself is enough', () => {
+  it('a focused tab gets the card but no badge, and the card fades on its own', () => {
     vi.spyOn(document, 'hasFocus').mockReturnValue(true)
     const t = thread()
     const { result, rerender } = mount([t])
     rerender({ t: [reply(t, 'answer')] })
-    expect(result.current.notices).toEqual([])
+    expect(result.current.notices.map((n) => n.preview)).toEqual(['answer'])
+    // The badge is for a tab nobody is looking at; a focused one keeps its title.
     expect(document.title).toBe('Diffo')
+    act(() => {
+      vi.advanceTimersByTime(BANNER_LINGER_MS)
+    })
+    expect(result.current.notices).toEqual([])
+  })
+
+  it('a card on a clock knows when it fades; a waiting card does not', () => {
+    const t = thread()
+    const { result, rerender } = mount([t])
+    rerender({ t: [reply(t, 'answer')] })
+    // Unfocused: no clock until the reviewer is back.
+    expect(result.current.notices[0]!.expiresAt).toBeNull()
+    focusTab()
+    expect(result.current.notices[0]!.expiresAt).toBe(Date.now() + BANNER_LINGER_MS)
+  })
+
+  it('a card landing on a focused tab starts its clock at once', () => {
+    vi.spyOn(document, 'hasFocus').mockReturnValue(true)
+    const t = thread()
+    const { result, rerender } = mount([t])
+    rerender({ t: [reply(t, 'answer')] })
+    expect(result.current.notices[0]!.expiresAt).toBe(Date.now() + BANNER_LINGER_MS)
+  })
+
+  it('cards on one clock leave in a cascade, oldest first', () => {
+    const a = thread()
+    const b = thread()
+    const c = thread()
+    const { result, rerender } = mount([a, b, c])
+    const aR = reply(a, 'one')
+    const bR = reply(b, 'two')
+    rerender({ t: [aR, b, c] })
+    rerender({ t: [aR, bR, c] })
+    rerender({ t: [aR, bR, reply(c, 'three')] })
+    focusTab()
+    expect(result.current.notices.map((n) => n.expiresAt! - Date.now())).toEqual([
+      BANNER_LINGER_MS,
+      BANNER_LINGER_MS + FADE_STAGGER_MS,
+      BANNER_LINGER_MS + 2 * FADE_STAGGER_MS,
+    ])
+    act(() => {
+      vi.advanceTimersByTime(BANNER_LINGER_MS)
+    })
+    expect(result.current.notices.map((n) => n.preview)).toEqual(['two', 'three'])
+    act(() => {
+      vi.advanceTimersByTime(FADE_STAGGER_MS)
+    })
+    expect(result.current.notices.map((n) => n.preview)).toEqual(['three'])
+    act(() => {
+      vi.advanceTimersByTime(FADE_STAGGER_MS)
+    })
+    expect(result.current.notices).toEqual([])
+  })
+
+  it('two cards landing moments apart on a focused tab still leave a beat apart', () => {
+    vi.spyOn(document, 'hasFocus').mockReturnValue(true)
+    const a = thread()
+    const b = thread()
+    const { result, rerender } = mount([a, b])
+    const aR = reply(a, 'one')
+    rerender({ t: [aR, b] })
+    act(() => {
+      vi.advanceTimersByTime(40)
+    })
+    rerender({ t: [aR, reply(b, 'two')] })
+    const [first, second] = result.current.notices.map((n) => n.expiresAt!)
+    expect(second! - first!).toBe(FADE_STAGGER_MS)
+  })
+
+  it('a focused-tab fade takes only its own batch', () => {
+    vi.spyOn(document, 'hasFocus').mockReturnValue(true)
+    const a = thread()
+    const b = thread()
+    const { result, rerender } = mount([a, b])
+    const aReplied = reply(a, 'one')
+    rerender({ t: [aReplied, b] })
+    act(() => {
+      vi.advanceTimersByTime(BANNER_LINGER_MS / 2)
+    })
+    rerender({ t: [aReplied, reply(b, 'two')] })
+    act(() => {
+      vi.advanceTimersByTime(BANNER_LINGER_MS / 2)
+    })
+    expect(result.current.notices.map((n) => n.preview)).toEqual(['two'])
   })
 
   it('a guide reaches a focused tab — it lands while the reviewer is already reading', () => {
@@ -210,6 +296,18 @@ describe('useAgentNotifications', () => {
     document.title = 'diffo-dev'
     mount([thread()])
     expect(document.title).toBe('diffo-dev')
+  })
+
+  it('dismissing one notice leaves the others standing and goes nowhere', () => {
+    const a = thread()
+    const b = thread()
+    const { result, rerender, onOpenThread } = mount([a, b])
+    const aReplied = reply(a, 'one')
+    rerender({ t: [aReplied, b] })
+    rerender({ t: [aReplied, reply(b, 'two')] })
+    act(() => result.current.dismiss(result.current.notices[0]!))
+    expect(result.current.notices.map((n) => n.threadId)).toEqual([b.id])
+    expect(onOpenThread).not.toHaveBeenCalled()
   })
 
   it('clear drops everything at once', () => {

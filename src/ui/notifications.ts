@@ -4,7 +4,7 @@ import { type ReviewThread, untouchedAgentVoice } from '../shared/review.js'
  * What's worth telling a reviewer who isn't looking: the agent answered a thread
  * of theirs, or opened one of its own. This module is the pure half — diffing
  * review snapshots into notices — so it tests without a DOM in sight. The hook
- * (useAgentNotifications) owns the browser: toasts and the tab-title badge.
+ * (useAgentNotifications) owns the browser: the notice cards and the tab-title badge.
  */
 
 export interface AgentNotice {
@@ -16,7 +16,7 @@ export interface AgentNotice {
    * orientation comment the agent posts while the reviewer is opening the page. */
   kind: 'answer' | 'thread' | 'guide'
   threadId: string
-  /** Where it sits, for the banner: `path:line`, a path, or null for a
+  /** Where it sits, for the card: `path:line`, a path, or null for a
    * changeset-level note. */
   anchor: string | null
   /** First line of the agent's message. */
@@ -44,7 +44,7 @@ function anchorLabel(thread: ReviewThread): string | null {
 /**
  * The notices a fresh snapshot owes: per thread, the latest agent message not in
  * `seen`. One notice per thread — an agent that wrote twice into one thread is
- * still one "it answered here", not two banners.
+ * still one "it answered here", not two cards.
  */
 export function collectNotices(
   threads: readonly ReviewThread[],
