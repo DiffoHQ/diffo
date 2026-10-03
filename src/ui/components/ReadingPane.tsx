@@ -15,11 +15,12 @@ import {
   NO_EXPANSION,
 } from '../gaps.js'
 import { fileAnchor } from '../hooks.js'
-import { linkPaths, type RefLinks, refClickTarget } from '../layers.js'
+import { linkPaths, type RefLinks, type ResolvedDecision, refClickTarget } from '../layers.js'
 import { EMPTY_DELTA, type LiveDelta } from '../liveDelta.js'
 import { usePr } from '../prMode.js'
 import type { ThreadPartition } from '../reviewPlacement.js'
 import { involves } from '../threads.js'
+import { Decisions } from './Decisions.js'
 import { GapBand, type GapControls, HunkCard } from './HunkCard.js'
 import { Icon } from './Icon.js'
 import { ImageDiff } from './ImageDiff.js'
@@ -107,6 +108,11 @@ export interface LayerView {
   notes: ReadonlyMap<string, string>
   /** What a summary reference may resolve to. */
   knownPaths: readonly string[]
+  /** The agent's decisions for this step, under the summary. Absent when none. */
+  decisions?: readonly ResolvedDecision[]
+  /** The open decision card, owned above so `.` can drive it. */
+  openDecision?: number | null
+  onOpenDecision?: (index: number | null) => void
 }
 
 function LayerHead({
@@ -124,6 +130,10 @@ function LayerHead({
   // than on a line in it. Only an outlined layer has an identity to hang one
   // on; the derived trailing layer is the UI's, not the agent's.
   const [composerOpen, setComposerOpen] = useState(false)
+  // What the box cites: the decision the comment came from, shown as a block
+  // above the words and sent ahead of them, so the agent knows which one is
+  // meant. Nothing otherwise.
+  const [cite, setCite] = useState<{ label: string; text: string } | null>(null)
   const layerThreads = layer.id !== null ? (comments?.partition.byLayer.get(layer.id) ?? []) : []
   const layerAnchor =
     layer.id !== null ? ({ kind: 'layer', layerId: layer.id, title: layer.title } as const) : null
@@ -159,6 +169,22 @@ function LayerHead({
             paths={layer.knownPaths}
           />
         </div>
+      )}
+      {layer.decisions && layer.decisions.length > 0 && layer.onOpenDecision && (
+        <Decisions
+          decisions={layer.decisions}
+          open={layer.openDecision ?? null}
+          onOpen={layer.onOpenDecision}
+          onJump={layer.onJump}
+          onComment={
+            comments && layerAnchor
+              ? (i) => {
+                  setCite({ label: 'decision', text: layer.decisions![i]!.decision.text })
+                  setComposerOpen(true)
+                }
+              : undefined
+          }
+        />
       )}
       {layer.missing.length > 0 && (
         <div className="ch-head-files">
@@ -205,6 +231,7 @@ function LayerHead({
           )}
           {composerOpen ? (
             <CommentBox
+              citing={cite ?? undefined}
               title="Comment on this layer"
               placeholder="Ask about this step, or say what should change in it…"
               scope={{ label: `layer “${layer.title}”`, canWiden: false }}
@@ -214,14 +241,19 @@ function LayerHead({
               onSubmit={(text, _wide, intent) => {
                 void comments.actions.create(layerAnchor, text, intent)
                 setComposerOpen(false)
+                setCite(null)
               }}
               onSend={(text, _wide, intent) => {
                 void comments.actions
                   .create(layerAnchor, text, intent)
                   .then((t) => comments.actions.send(t.id))
                 setComposerOpen(false)
+                setCite(null)
               }}
-              onCancel={() => setComposerOpen(false)}
+              onCancel={() => {
+                setComposerOpen(false)
+                setCite(null)
+              }}
             />
           ) : (
             <button type="button" className="strip-add" onClick={() => setComposerOpen(true)}>

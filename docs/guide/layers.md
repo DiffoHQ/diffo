@@ -39,6 +39,7 @@ way a thread does; a file the summary names is a click away.
 | Key | |
 | --- | --- |
 | `]` / `[` | Next / previous layer |
+| `.` | Next decision in this layer |
 | `n` | Next unread file, rolling from one layer's last unread file into the next |
 | `J` / `K` | Next / previous file, staying inside the active layer |
 
@@ -49,6 +50,32 @@ rename or call sites following a signature, and keeps its files folded.
 On a pull request, row 0 of the list is the **Overview**: the pull request's
 description, in the place a guide takes on a local review. See
 [Reviewing a pull request](/guide/pr-review).
+
+## Decisions
+
+Under a layer's summary the agent may list its **decisions**: what it chose,
+found, or ran into while making this step, one short line each. Most layers
+have none. A plumbing step has nothing to decide, and the list is absent rather
+than empty.
+
+A decision is one of three things, and the line says which without a label:
+
+- the agent **chose** between real alternatives you might weigh differently: a cache, a data shape, a fallback
+- the code **now does** something the diff does not make obvious: a 400 where there was an empty list, a sort every caller sees
+- something in the repo or the environment **shaped** the change: no clock on the model, tests that could not run
+
+Each line is a plain statement a teammate who has not seen the code gets in a
+second: the effect, not the mechanism. Read the lines before the diff, or
+instead of it. Click one and the card opens under it: one sentence from the
+agent, then a chip for each place the decision names (a decision can span
+hunks, the rule and the test that pins it) that goes there, and **Comment**.
+`.` walks the layer's decisions one by one, landing on the first place of
+each.
+
+**Comment** opens the layer's own comment box with the decision quoted, so the
+thread sits with the step the agent explained rather than on a line that may
+move, and the agent knows which decision is meant. Like a summary, a decision
+never pre-reviews: it says what was done and why, never whether it is fine.
 
 ## The plan stays honest
 

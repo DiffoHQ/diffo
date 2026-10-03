@@ -11,6 +11,7 @@ const GROUPS: { name: string; keys: [string, string][] }[] = [
       ['n', 'Next unreviewed file'],
       [']', 'Next layer'],
       ['[', 'Previous layer'],
+      ['.', 'Next decision in this layer'],
       ['/', 'Filter files'],
     ],
   },

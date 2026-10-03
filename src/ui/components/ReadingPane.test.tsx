@@ -314,7 +314,7 @@ describe('ReadingPane', () => {
 
   it('commenting on a collapsed file expands it first, so the composer can show', () => {
     const collapse: string[] = []
-    const { container } = render(
+    render(
       <ReadingPane
         files={[FILES[0]!]}
         collapsed={new Set(['src/b.ts'])}

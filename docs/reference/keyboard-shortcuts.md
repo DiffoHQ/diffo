@@ -10,6 +10,7 @@ The review UI is keyboard-first. Press `?` in the review for this sheet.
 | `J` / `K` | Next / previous file |
 | `n` | Next unreviewed file, rolling into the next layer when the current one is read |
 | `]` / `[` | Next / previous layer (when the agent has posted [layers](/agents#layers)) |
+| `.` | Next decision in this layer: opens its card and lands on the first place it names (see [Decisions](/guide/layers#decisions)) |
 | `/` | Filter files |
 
 ## Read

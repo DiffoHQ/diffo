@@ -6757,7 +6757,9 @@ i.q-now {
  * cards and the composer line up with the file sections below. */
 .ch-head-threads {
   align-self: stretch;
-  margin-top: 10px;
+  margin-top: 14px;
+  padding-top: 12px;
+  border-top: 1px solid var(--hair-2);
   display: flex;
   flex-direction: column;
   gap: var(--s-3);
@@ -7090,6 +7092,37 @@ i.q-now {
  * label is read. */
 /* The head on a switchable composer: white, text tabs with a colored
    underline (the box's Write / Preview idiom), scope and close on the right. */
+/* A cited block: what the comment is about, above the words and apart from
+   them — the reviewer's cursor lands in an empty box below it. */
+.cbox-cite {
+  display: flex;
+  align-items: baseline;
+  gap: var(--s-3);
+  margin: var(--s-3) var(--s-5) 0;
+  padding: var(--s-3) var(--s-4);
+  border-left: 3px solid var(--hair);
+  background: var(--fill);
+  border-radius: 0 var(--r-sm) var(--r-sm) 0;
+  font-size: var(--t-13);
+  line-height: 1.5;
+}
+
+.cbox-cite-label {
+  flex: 0 0 auto;
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  padding: 1px 7px;
+  border-radius: var(--r-pill);
+  background: var(--fill-2);
+  color: var(--ink-2);
+}
+
+.cbox-cite-text {
+  color: var(--ink);
+  font-weight: 500;
+}
+
 .cbox-head-aud {
   padding: 0 var(--s-4) 0 var(--s-3);
   min-height: 36px;
@@ -8655,4 +8688,177 @@ i.q-now {
   .critter-act-write .critter-line-add {
     stroke-dashoffset: 0;
   }
+}
+
+/* ---------- decisions: what the agent chose, found, or ran into ----------
+   A ledger under the layer summary, one line each, read before the diff, each
+   row down a thin rule. No box around the section — the hairlines between
+   rows are the frame. Open, the row takes a soft wash and names its places
+   as chips. */
+.ch-dec {
+  align-self: stretch;
+  margin-top: 16px;
+}
+
+.ch-dec-h {
+  font-size: var(--t-11);
+  font-weight: 600;
+  color: var(--ink-3);
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  padding: 0 0 4px;
+}
+
+/* One row: the line, and when open the card beneath it. Every row wears a
+   rule down its left edge; open, the rule runs the whole block and the block
+   takes a wash, nothing moves. */
+.ch-dec-item {
+  position: relative;
+  padding-left: 14px;
+  border-top: 1px solid var(--hair-2);
+  border-radius: 8px;
+  transition: background var(--dur) var(--ease-out);
+  /* `.` glides the open row to the top of the pane, under the bar: hold it off. */
+  scroll-margin-top: 48px;
+}
+
+.ch-dec-item::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 9px;
+  bottom: 9px;
+  width: 2px;
+  border-radius: 2px;
+  background: var(--hair);
+}
+
+.ch-dec-item:first-of-type,
+.ch-dec-item-open,
+.ch-dec-item-open + .ch-dec-item {
+  border-top-color: transparent;
+}
+
+.ch-dec-item-open {
+  background: var(--fill);
+}
+
+.ch-dec-item-open::before {
+  top: 10px;
+  bottom: 12px;
+}
+
+.ch-dec-main {
+  display: block;
+  width: 100%;
+  padding: 10px 12px 10px 0;
+  border: 0;
+  border-radius: 8px;
+  background: none;
+  font: inherit;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.ch-dec-item:not(.ch-dec-item-open) > .ch-dec-main:hover {
+  background: var(--fill);
+}
+
+.ch-dec-main:focus-visible {
+  outline: 2px solid var(--acc-line);
+  outline-offset: -2px;
+}
+
+/* The weight never changes between closed and open: a heavier line is a
+   wider line, and the text would reflow under the click. */
+.ch-dec-text {
+  font-size: 14.5px;
+  line-height: 1.45;
+  font-weight: 500;
+  color: var(--ink);
+}
+
+/* Open: the card sits under the line. It appears, it does not animate: the
+   line above it keeps its place and weight, so the only change under the
+   click is the wash and the card. */
+.ch-dec-card {
+  display: grid;
+  gap: 12px;
+  padding: 0 12px 14px 0;
+}
+
+.ch-dec-card .ch-dec-detail {
+  margin: 0;
+  font-size: var(--t-14);
+  line-height: 1.55;
+  color: var(--ink-2);
+  max-width: 64ch;
+}
+
+.ch-dec-detail p {
+  margin: 0;
+}
+
+.ch-dec-detail strong {
+  color: var(--ink);
+  font-weight: 600;
+}
+
+/* Two ways on from a decision: the places it names, each a chip that goes
+   there, and a comment on the layer with the decision quoted. */
+.ch-dec-acts {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+
+.ch-dec-place {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 9px;
+  border: 1px solid var(--hair);
+  border-radius: 6px;
+  background: var(--paper);
+  font-family: var(--mono);
+  font-size: var(--t-12);
+  color: var(--ink-2);
+  cursor: pointer;
+}
+
+.ch-dec-place:hover {
+  border-color: var(--ink-3);
+}
+
+.ch-dec-place-path {
+  color: var(--ink);
+  font-weight: 500;
+}
+
+.ch-dec-place-lines {
+  color: var(--ink-3);
+}
+
+.ch-dec-comment {
+  margin-left: 4px;
+  padding: 5px 8px;
+  border: 0;
+  border-radius: 6px;
+  background: none;
+  font-family: var(--sans);
+  font-size: var(--t-13);
+  color: var(--ink-2);
+  cursor: pointer;
+}
+
+.ch-dec-comment:hover {
+  color: var(--ink);
+  background: var(--fill-2);
+}
+
+.ch-dec-gone {
+  font-size: var(--t-11);
+  color: var(--ink-3);
 }

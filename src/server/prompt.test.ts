@@ -901,6 +901,7 @@ describe('the layers payload (reviewer pressed Outline)', () => {
     expect(prompt).toContain(LAYERS.order)
     expect(prompt).toContain(LAYERS.mechanical)
     expect(prompt).toContain(LAYERS.stance)
+    expect(prompt).toContain(LAYERS.decisions)
     expect(prompt).toContain(LAYERS.shape)
     expect(prompt).toContain(CLI_COMMANDS.layers)
     expect(prompt).toContain(CLI_COMMANDS.layersStdin)

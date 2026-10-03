@@ -34,6 +34,18 @@ Until 1.0, minor versions may break things. When they do, the entry says how to 
   and the suggestions you edited under *The reviewer's voice*, and the submit
   notice says what became of each. See
   [Reviewing a pull request](https://diffohq.github.io/diffo/guide/pr-review#the-agent-suggests-the-comment).
+- **Decisions in a layer.** A layer may now carry up to five *decisions*: what
+  the agent chose, found, or ran into while making that step, one short line
+  each, under the layer's summary: a choice between alternatives a reviewer
+  might weigh differently, something the code now does that the diff does not
+  make obvious, or a constraint that shaped the change. Clicking one opens the
+  agent's one-sentence detail, a chip for each place it names (up to three, the
+  rule and the test that pins it) that goes there, and **Comment**, which opens
+  a comment on the layer with the decision quoted. `.` walks a layer's
+  decisions. Agents post them in the layers payload as `"decisions": [{ "text",
+  "detail", "at" }]`; `diffo help layers` and the poll's layers request carry
+  the rule for what earns a line. Most layers have none, and nothing changes for
+  an outline that posts none.
 
 ### Fixed
 
