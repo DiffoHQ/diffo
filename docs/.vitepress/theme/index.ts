@@ -1,6 +1,7 @@
 import DefaultTheme from 'vitepress/theme'
 import { useRoute } from 'vitepress'
 import { h, nextTick, onMounted, watch } from 'vue'
+import AppReview from './AppReview.vue'
 import HeroDiff from './HeroDiff.vue'
 import HeroField from './HeroField.vue'
 import InstallTerminal from './InstallTerminal.vue'
@@ -8,40 +9,6 @@ import LivingMark from './LivingMark.vue'
 import LoopScene from './LoopScene.vue'
 import NavMark from './NavMark.vue'
 import './custom.css'
-
-/*
- * Play the screen-recorded clips only while they are on screen.
- *
- * The `autoplay` attribute cannot do this job: it overrides `preload="none"`, so every
- * clip on the page downloads at load, including the theme variant that is `display: none`
- * and will never be seen. Driving playback from an IntersectionObserver instead means a
- * clip is fetched the moment it scrolls into view and never before, a hidden variant is
- * never fetched at all, and anything scrolled past stops decoding.
- */
-function bindClips() {
-  const clips = document.querySelectorAll<HTMLVideoElement>('video.clip')
-  if (!clips.length) return
-
-  const observer = new IntersectionObserver(
-    (entries) => {
-      for (const entry of entries) {
-        const video = entry.target as HTMLVideoElement
-        if (entry.isIntersecting) {
-          // play() on a preload="none" video is what triggers the download.
-          video.play().catch(() => {
-            /* autoplay blocked, or the clip was hidden mid-flight; nothing to recover */
-          })
-        } else {
-          video.pause()
-        }
-      }
-    },
-    { rootMargin: '200px' },
-  )
-
-  for (const clip of clips) observer.observe(clip)
-  return () => observer.disconnect()
-}
 
 /*
  * Home page motion: sections arrive like fresh hunks, and each heading rises in word by
@@ -113,7 +80,7 @@ function splitWords(heading: HTMLElement) {
 
 /*
  * Scroll-linked values, written as CSS custom properties once per frame:
- * `--p` on each recorded clip (0 as it enters the bottom of the viewport, 1 once it is
+ * `--p` on each drawn scene (0 as it enters the bottom of the viewport, 1 once it is
  * well inside), which the CSS turns into a tilt that settles flat; and
  * `--home-progress` on the page, which draws the reading bar under the nav.
  */
@@ -170,6 +137,7 @@ export default {
     })
   },
   enhanceApp({ app }) {
+    app.component('AppReview', AppReview)
     app.component('HeroDiff', HeroDiff)
     app.component('InstallTerminal', InstallTerminal)
     app.component('LoopScene', LoopScene)
@@ -181,7 +149,7 @@ export default {
 
     const rebind = () => {
       for (const teardown of teardowns.splice(0)) teardown?.()
-      teardowns.push(bindClips(), bindHomeMotion(), bindScrollFx())
+      teardowns.push(bindHomeMotion(), bindScrollFx())
     }
 
     onMounted(() => {
