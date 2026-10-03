@@ -7,7 +7,14 @@ Until 1.0, minor versions may break things. When they do, the entry says how to 
 
 ## [Unreleased]
 
-Nothing yet.
+### Changed
+
+- **The layer card is composed, not stacked.** A meta row carries where the
+  step sits and the card's one action; the title and summary follow; the
+  decisions run under them as a ledger the width of the card, each row
+  opening on a chevron like a file header. **Comment on this layer** moved
+  from the card's foot to its corner, and the rule under the card appears
+  only when there is a thread to show or one being written.
 
 ## [0.11.0] — 2026-10-03
 

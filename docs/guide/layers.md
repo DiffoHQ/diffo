@@ -89,8 +89,8 @@ Read marks live on hunks, not on layers, so a re-post can never lose one.
 
 A question about the step itself, not a line in it: why these files belong
 together, whether the order is right, a summary that says too much. The layer's
-card has **Comment on this layer** under the summary, and the thread lives
-there, with the agent on the other end like any other thread. The agent is
+card has **Comment on this layer** in its corner, and the thread lives under
+the card, with the agent on the other end like any other thread. The agent is
 handed the layer as it was outlined when you wrote the comment, title, summary
 and files, so a later re-post never changes what you were asking about.
 

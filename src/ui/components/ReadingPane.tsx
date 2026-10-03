@@ -144,9 +144,26 @@ function LayerHead({
     layer.onJump(ref.path, ref.line)
   }
   const emptied = filesShown === 0
+  const hasDecisions = !!(layer.decisions && layer.decisions.length > 0 && layer.onOpenDecision)
+  const hasAbout = summary !== null || layer.missing.length > 0 || emptied
+  const canComment = comments !== undefined && layerAnchor !== null
   return (
     <section className="ch-head" aria-label={`${layer.kicker}: ${layer.title}`}>
-      <div className="ch-head-kicker">{layer.kicker}</div>
+      <div className="ch-head-top">
+        <div className="ch-head-kicker">{layer.kicker}</div>
+        {/* The one action on the card, in its corner: a comment on the step
+            itself. It steps aside while the box is open below. */}
+        {canComment && !composerOpen && (
+          <button
+            type="button"
+            className="btn btn-ghost btn-sm ch-head-ask"
+            onClick={() => setComposerOpen(true)}
+          >
+            <Icon name="chat" size="sm" />
+            Comment on this layer
+          </button>
+        )}
+      </div>
       {/* The title is the card: what this step IS, before anything about it. */}
       <h2>
         {layer.title}
@@ -159,64 +176,74 @@ function LayerHead({
           </span>
         )}
       </h2>
-      {summary && (
-        // biome-ignore lint/a11y/noStaticElementInteractions: click delegation for the links inside rendered markdown
-        // biome-ignore lint/a11y/useKeyWithClickEvents: the links themselves are focusable and keyboard-activated
-        <div onClick={onClick}>
-          <Markdown
-            text={summary}
-            className="cmt-body markdown ch-summary"
-            paths={layer.knownPaths}
-          />
+      {(hasAbout || hasDecisions) && (
+        <div className="ch-head-body">
+          {hasAbout && (
+            <div className="ch-head-about">
+              {summary && (
+                // biome-ignore lint/a11y/noStaticElementInteractions: click delegation for the links inside rendered markdown
+                // biome-ignore lint/a11y/useKeyWithClickEvents: the links themselves are focusable and keyboard-activated
+                <div onClick={onClick}>
+                  <Markdown
+                    text={summary}
+                    className="cmt-body markdown ch-summary"
+                    paths={layer.knownPaths}
+                  />
+                </div>
+              )}
+              {layer.missing.length > 0 && (
+                <div className="ch-head-files">
+                  <span className="ch-head-missing">not in the changeset now:</span>
+                  {layer.missing.map((path) => (
+                    <span
+                      key={path}
+                      className="ch-chip ch-chip-done"
+                      title={`${path}, not in the changeset now`}
+                    >
+                      {path}
+                    </span>
+                  ))}
+                </div>
+              )}
+              {emptied && layer.listed === 0 && (
+                <div className="ch-head-empty">
+                  Nothing this layer lists is in the changeset right now. Move on with{' '}
+                  <span className="kbd">]</span>.
+                </div>
+              )}
+              {emptied && layer.listed > 0 && layer.hidden === layer.listed && (
+                // Every file here is a test, and Hide tests is on: say so, rather than
+                // let a layer with files look like one without. The switch that undoes
+                // it is on the bar above.
+                <div className="ch-head-empty">
+                  {layer.hidden === 1 ? 'The one file' : `All ${layer.hidden} files`} in this layer{' '}
+                  {layer.hidden === 1 ? 'is a test' : 'are tests'}, hidden by <b>Hide tests</b> on
+                  the bar. Move on with <span className="kbd">]</span>.
+                </div>
+              )}
+            </div>
+          )}
+          {hasDecisions && (
+            <Decisions
+              decisions={layer.decisions!}
+              open={layer.openDecision ?? null}
+              onOpen={layer.onOpenDecision!}
+              onJump={layer.onJump}
+              onComment={
+                canComment
+                  ? (i) => {
+                      setCite({ label: 'decision', text: layer.decisions![i]!.decision.text })
+                      setComposerOpen(true)
+                    }
+                  : undefined
+              }
+            />
+          )}
         </div>
       )}
-      {layer.decisions && layer.decisions.length > 0 && layer.onOpenDecision && (
-        <Decisions
-          decisions={layer.decisions}
-          open={layer.openDecision ?? null}
-          onOpen={layer.onOpenDecision}
-          onJump={layer.onJump}
-          onComment={
-            comments && layerAnchor
-              ? (i) => {
-                  setCite({ label: 'decision', text: layer.decisions![i]!.decision.text })
-                  setComposerOpen(true)
-                }
-              : undefined
-          }
-        />
-      )}
-      {layer.missing.length > 0 && (
-        <div className="ch-head-files">
-          <span className="ch-head-missing">not in the changeset now:</span>
-          {layer.missing.map((path) => (
-            <span
-              key={path}
-              className="ch-chip ch-chip-done"
-              title={`${path}, not in the changeset now`}
-            >
-              {path}
-            </span>
-          ))}
-        </div>
-      )}
-      {emptied && layer.listed === 0 && (
-        <div className="ch-head-empty">
-          Nothing this layer lists is in the changeset right now. Move on with{' '}
-          <span className="kbd">]</span>.
-        </div>
-      )}
-      {emptied && layer.listed > 0 && layer.hidden === layer.listed && (
-        // Every file here is a test, and Hide tests is on: say so, rather than
-        // let a layer with files look like one without. The switch that undoes
-        // it is on the bar above.
-        <div className="ch-head-empty">
-          {layer.hidden === 1 ? 'The one file' : `All ${layer.hidden} files`} in this layer{' '}
-          {layer.hidden === 1 ? 'is a test' : 'are tests'}, hidden by <b>Hide tests</b> on the bar.
-          Move on with <span className="kbd">]</span>.
-        </div>
-      )}
-      {comments && layerAnchor && (
+      {/* The step's own conversation: only there when there is one, or one is
+          being written — an empty footer would be a rule under nothing. */}
+      {canComment && (layerThreads.length > 0 || composerOpen) && (
         <div className="ch-head-threads">
           {layerThreads.length > 0 && (
             <ThreadList
@@ -229,7 +256,7 @@ function LayerHead({
               links={comments.links}
             />
           )}
-          {composerOpen ? (
+          {composerOpen && (
             <CommentBox
               citing={cite ?? undefined}
               title="Comment on this layer"
@@ -255,10 +282,6 @@ function LayerHead({
                 setCite(null)
               }}
             />
-          ) : (
-            <button type="button" className="strip-add" onClick={() => setComposerOpen(true)}>
-              + Comment on this layer
-            </button>
           )}
         </div>
       )}
