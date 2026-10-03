@@ -41,7 +41,7 @@ export function PaneBar({
   onSetViewMode,
   allCollapsed,
   onToggleCollapseAll,
-  onAddNote,
+  stats,
   layer,
 }: {
   navHidden?: boolean
@@ -74,7 +74,9 @@ export function PaneBar({
   onSetViewMode: (mode: ViewMode) => void
   allCollapsed: boolean
   onToggleCollapseAll: () => void
-  onAddNote?: () => void
+  /** The size of the whole change. It sits beside the coverage because both
+   * describe the changeset; the header is for where you are. */
+  stats?: { additions: number; deletions: number }
 }) {
   const done = total - left
   const byHunks = hunksTotal !== undefined && hunksRead !== undefined && hunksTotal > 0
@@ -89,6 +91,11 @@ export function PaneBar({
   const coverage = left === 0 ? 'all reviewed' : `${done} of ${total} files`
   const showTests = testCount > 0 || hideTests
   const showChanged = changedCount > 0 || onlyChanged
+  // A filter appears once it has something to do, and says how much: "Hide 11
+  // test files" offers, "11 test files hidden" reports. The same number on both
+  // sides of the click is what makes the pair read as one control.
+  const showReviewed = done > 0 || hideReviewed
+  const tests = `${testCount} test ${testCount === 1 ? 'file' : 'files'}`
   const trimmedQuery = query.trim()
   return (
     <div className="pane-bar">
@@ -118,27 +125,22 @@ export function PaneBar({
           {coverage}
         </span>
       )}
+      {stats && !layer && (
+        <span className="pane-size" title="lines added and removed across the changeset">
+          {stats.additions > 0 && (
+            <span className="stat-add">+{stats.additions.toLocaleString('en-US')}</span>
+          )}
+          {stats.deletions > 0 && (
+            <span className="stat-del">−{stats.deletions.toLocaleString('en-US')}</span>
+          )}
+        </span>
+      )}
       {hunkAt > 0 && hunkCount > 0 && (
         <span className="pane-at" title="the selected hunk — j / k move it">
           hunk {hunkAt} / {hunkCount}
         </span>
       )}
       <span className="grow" />
-      {/* In layer mode the Overview's strip carries "+ Note on the changeset". */}
-      {!layer && onAddNote && (
-        <>
-          <button
-            type="button"
-            className="pane-act"
-            onClick={onAddNote}
-            title="Note on the whole changeset"
-          >
-            <Icon name="note" size="sm" />
-            Note
-          </button>
-          <span className="pane-sep" />
-        </>
-      )}
       {/* In layer mode the outline is the narrowing, so the filters that narrow
           — the typed word, since, reviewed — step aside. Hide tests stays: it
           retires a category of file, which the outline has no opinion on. */}
@@ -159,13 +161,25 @@ export function PaneBar({
         <Switch
           on={onlyChanged}
           onChange={onOnlyChanged}
-          label="Only since review"
-          n={changedCount}
+          label={changedCount > 0 ? `Only ${changedCount} since review` : 'Only since review'}
+          onLabel={changedCount > 0 ? `only ${changedCount} since review` : undefined}
         />
       )}
-      {!layer && <Switch on={hideReviewed} onChange={onHideReviewed} label="Hide reviewed" />}
+      {!layer && showReviewed && (
+        <Switch
+          on={hideReviewed}
+          onChange={onHideReviewed}
+          label={done > 0 ? `Hide ${done} reviewed` : 'Hide reviewed'}
+          onLabel={done > 0 ? `${done} reviewed hidden` : undefined}
+        />
+      )}
       {showTests && (
-        <Switch on={hideTests} onChange={onHideTests} label="Hide tests" n={testCount} />
+        <Switch
+          on={hideTests}
+          onChange={onHideTests}
+          label={testCount > 0 ? `Hide ${tests}` : 'Hide tests'}
+          onLabel={testCount > 0 ? `${tests} hidden` : undefined}
+        />
       )}
       <span className="pane-sep" />
       {/* biome-ignore lint/a11y/useSemanticElements: a a fieldset would bring a legend and its own box */}
@@ -247,12 +261,16 @@ function Switch({
   on,
   onChange,
   label,
-  n,
+  onLabel,
 }: {
   on: boolean
   onChange: (on: boolean) => void
+  /** The offer, while off: "Hide 11 test files". */
   label: string
-  n?: number
+  /** The report, once on: "11 test files hidden" — the pill says what it did,
+   * so a shorter list is never a mystery. Left out when it hid nothing, so a
+   * switch never says "0 hidden". */
+  onLabel?: string
 }) {
   return (
     <button
@@ -265,8 +283,7 @@ function Switch({
       <span className="pane-track" aria-hidden="true">
         <i />
       </span>
-      {label}
-      {n !== undefined && <span className="menu-n">{n}</span>}
+      {on && onLabel ? onLabel : label}
     </button>
   )
 }

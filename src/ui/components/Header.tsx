@@ -8,42 +8,34 @@ import { Icon } from './Icon.js'
 import { LivingMark } from './LivingMark.js'
 import { Menu, MenuItem, MenuLabel, MenuSep } from './Menu.js'
 
-const n = (x: number) => x.toLocaleString('en-US')
-
+/** Where you are, in one line: `repo · from → to`. The branch is one of the two
+ * sides, so it is never repeated beside them; the worktree, when there is one,
+ * and the size of the change are not where you are, so they live in the hover
+ * and in the pane bar respectively. On a pull request the PR chips say all of
+ * this, and the line steps aside. */
 function Comparison({ changeset }: { changeset: Changeset }) {
-  const { spec, stats, repo, pr } = changeset
+  const { spec, repo, pr } = changeset
+  if (pr) return null
   const working = spec.kind === 'working-tree'
-  const from = pr ? pr.head.ref : working ? 'working tree' : repo.branch || 'HEAD'
-  const to = pr ? pr.base.ref : working ? 'HEAD' : spec.base
-  const size = (
-    <>
-      <span className="stat-add">+{n(stats.additions)}</span>{' '}
-      <span className="stat-del">−{n(stats.deletions)}</span>
-    </>
-  )
-  // On a pull request the branches are one click away in the PR card; the
-  // header keeps only the size, so the title gets the room.
-  if (pr) {
-    return (
-      <span className="cmp cmp-size" title={`${from} against ${to}`}>
-        {size}
-      </span>
-    )
-  }
+  const from = working ? 'working tree' : repo.branch || 'HEAD'
+  const to = working ? 'HEAD' : spec.base
+  const where = [
+    working
+      ? `comparing your working tree against HEAD${repo.branch ? ` on branch ${repo.branch}` : ''}`
+      : `comparing ${from} against ${to}`,
+    repo.worktree && `linked worktree '${repo.worktree}'`,
+  ]
+    .filter(Boolean)
+    .join(' · ')
   return (
-    <span
-      className="cmp"
-      title={
-        working
-          ? `comparing your working tree against HEAD${repo.branch ? ` on ${repo.branch}` : ''}`
-          : `comparing ${from} against ${to}`
-      }
-    >
-      <Icon name="cmp" size="sm" />
+    <span className="cmp" title={where}>
+      <span className="repo">{repo.name}</span>
+      <span className="cmp-dot" aria-hidden="true">
+        ·
+      </span>
       <span className="cmp-side">{from}</span>
       <Icon name="arrow" size="sm" className="cmp-arrow" />
       <span className="cmp-side cmp-side-base">{to}</span>
-      <span className="cmp-n">{size}</span>
     </span>
   )
 }
@@ -228,26 +220,6 @@ function PrChips({ pr }: { pr: PrInfo }) {
       </button>
       {status && <span className={`chip ${status.className}`}>{status.label}</span>}
       {open && <PrCard pr={pr} />}
-    </span>
-  )
-}
-
-function Where({ repo }: { repo: Changeset['repo'] }) {
-  return (
-    <span className="where">
-      <span className="repo">{repo.name}</span>
-      {repo.worktree && (
-        <span className="where-bit" title={`linked worktree '${repo.worktree}'`}>
-          <Icon name="worktree" size="sm" />
-          {repo.worktree}
-        </span>
-      )}
-      {repo.branch && (
-        <span className="where-bit" title={`on branch ${repo.branch}`}>
-          <Icon name="branch" size="sm" />
-          {repo.branch}
-        </span>
-      )}
     </span>
   )
 }
@@ -494,7 +466,7 @@ export function Header({
           </span>
         )}
       </span>
-      {changeset.pr ? <PrChips pr={changeset.pr} /> : <Where repo={changeset.repo} />}
+      {changeset.pr && <PrChips pr={changeset.pr} />}
       <Comparison changeset={changeset} />
       <span className="grow" />
       {agent.presence && (

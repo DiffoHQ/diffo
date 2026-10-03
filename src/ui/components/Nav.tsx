@@ -7,7 +7,6 @@ import { isTestFile } from '../reviewFilter.js'
 import type { ThreadItem } from '../threads.js'
 import { Icon } from './Icon.js'
 import { MarkBox } from './MarkBox.js'
-import { Menu, MenuItem } from './Menu.js'
 
 export type TreeDir = {
   kind: 'dir'
@@ -415,6 +414,18 @@ export function Nav({
   }, [files, query, hideReviewed, hideTests, onlyChanged, changed, isDone])
 
   const filtering = query.trim() !== ''
+  // What the toggles took away, as distinct from what the typed word narrowed:
+  // a file that vanished from the list must be traceable to the switch that hid
+  // it, and the list is where you notice it is gone.
+  const q = query.trim().toLowerCase()
+  const hiddenByFilters =
+    files.filter((f) => q === '' || f.path.toLowerCase().includes(q)).length - visible.length
+  const canShowHidden = !!(onHideReviewed || onHideTests || onOnlyChanged)
+  const showHidden = () => {
+    if (hideReviewed) onHideReviewed?.(false)
+    if (hideTests) onHideTests?.(false)
+    if (onlyChanged) onOnlyChanged?.(false)
+  }
 
   return (
     <>
@@ -446,37 +457,7 @@ export function Nav({
             </button>
           )}
         </span>
-        {(onHideReviewed || onHideTests || onOnlyChanged) && (
-          <Menu
-            label="Filter options"
-            icon="filter"
-            triggerClassName={`btn btn-ghost btn-icon btn-sm${hideReviewed || hideTests || onlyChanged ? ' rail-filter-on' : ''}`}
-          >
-            {() => (
-              <>
-                {onHideReviewed && (
-                  <MenuItem checked={hideReviewed} onClick={() => onHideReviewed(!hideReviewed)}>
-                    Hide reviewed
-                  </MenuItem>
-                )}
-                {onHideTests && (
-                  <MenuItem checked={hideTests} onClick={() => onHideTests(!hideTests)}>
-                    Hide tests <span className="menu-n">{testCount}</span>
-                  </MenuItem>
-                )}
-                {onOnlyChanged && (sinceCount > 0 || onlyChanged) && (
-                  <MenuItem checked={onlyChanged} onClick={() => onOnlyChanged(!onlyChanged)}>
-                    Only since review <span className="menu-n">{sinceCount}</span>
-                  </MenuItem>
-                )}
-              </>
-            )}
-          </Menu>
-        )}
       </div>
-      {files.length > 0 && (
-        <div className="rail-tally">{left === 0 ? 'all reviewed' : `${left} left to review`}</div>
-      )}
 
       <div className="rail-scroll">
         <FileTree
@@ -493,8 +474,20 @@ export function Nav({
           changed={changed}
           forceOpen={filtering}
         />
-        {visible.length === 0 && <div className="rail-empty">no files match</div>}
+        {visible.length === 0 && hiddenByFilters === 0 && (
+          <div className="rail-empty">no files match</div>
+        )}
       </div>
+      {hiddenByFilters > 0 && (
+        <div className="rail-hidden">
+          {hiddenByFilters} {hiddenByFilters === 1 ? 'file' : 'files'} hidden by filters
+          {canShowHidden && (
+            <button type="button" className="rail-hidden-show" onClick={showHidden}>
+              show
+            </button>
+          )}
+        </div>
+      )}
     </>
   )
 }

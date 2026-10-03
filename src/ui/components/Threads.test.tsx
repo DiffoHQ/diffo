@@ -534,7 +534,8 @@ describe('ThreadCard with an attached agent', () => {
       messages: [{ id: 'm1', author: 'agent', text: 'consider renaming this', at: '' }],
     })
     render(<ThreadCard thread={fromAgent} actions={acts} agentConnected />)
-    expect(screen.getByText('From the agent')).toBeTruthy()
+    // The head already reads "Agent comment …"; no chip repeats it.
+    expect(screen.queryByText('From the agent')).toBeNull()
     expect(screen.queryByText('Send')).toBeNull()
     const box = openReply()
     fireEvent.change(box, { target: { value: 'good call, do it' } })

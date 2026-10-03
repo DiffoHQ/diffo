@@ -148,7 +148,6 @@ describe('Nav', () => {
     const { rerender } = render(
       <Nav files={files} viewed={new Set()} onToggleFileViewed={onToggleFileViewed} />,
     )
-    expect(screen.getByText('2 left to review')).toBeTruthy()
 
     fireEvent.click(screen.getByLabelText('Mark reviewed: src/a.ts'))
     expect(onToggleFileViewed).toHaveBeenCalledWith('src/a.ts')
@@ -164,18 +163,11 @@ describe('Nav', () => {
     const done = document.querySelector('.row-done')!
     expect(done.textContent).toContain('a.ts')
     expect(done.querySelector('[aria-label="Mark not reviewed: src/a.ts"]')).toBeTruthy()
-    expect(screen.getByText('1 left to review')).toBeTruthy()
   })
 
-  it('the tally reports the whole changeset even while a filter narrows the view', () => {
+  it('carries no tally of its own — the pane bar counts, once', () => {
     render(<Nav files={FILES} viewed={new Set()} />)
-    fireEvent.change(screen.getByLabelText('Filter files'), { target: { value: 'git' } })
-    expect(screen.getByText('3 left to review')).toBeTruthy()
-  })
-
-  it('says "all reviewed" when the queue is empty', () => {
-    render(<Nav files={[file('src/a.ts')]} viewed={new Set(['src/a.ts:h'])} />)
-    expect(screen.getByText('all reviewed')).toBeTruthy()
+    expect(document.querySelector('.rail-tally')).toBeNull()
   })
 
   it('a folder whose every file is reviewed dims and takes the tick', () => {
@@ -236,7 +228,7 @@ describe('Nav', () => {
     expect(onMarkFiles).toHaveBeenCalledWith(['src/a.ts', 'src/new.ts'])
   })
 
-  it('"Hide reviewed" reports up, and collapses the tree when the app says so', () => {
+  it('"Hide reviewed" collapses the tree when the app says so', () => {
     const onHideReviewed = vi.fn()
     const files = [file('src/a.ts'), file('src/b.ts')]
     const { rerender } = render(
@@ -247,9 +239,8 @@ describe('Nav', () => {
         onHideReviewed={onHideReviewed}
       />,
     )
-    fireEvent.click(screen.getByLabelText('Filter options'))
-    fireEvent.click(screen.getByText('Hide reviewed'))
-    expect(onHideReviewed).toHaveBeenCalledWith(true)
+    // The switch itself lives in the pane bar; the rail only obeys it.
+    expect(screen.queryByLabelText('Filter options')).toBeNull()
     expect(names()).toEqual(['src', 'a.ts', 'b.ts'])
 
     rerender(
@@ -263,25 +254,26 @@ describe('Nav', () => {
     expect(names()).toEqual(['src', 'b.ts'])
   })
 
-  it('"Hide tests" hides the .test. twins and says how many it is hiding', () => {
+  it('a filtered list says what it is missing, and "show" gives it back', () => {
     const onHideTests = vi.fn()
     const files = [file('src/a.ts'), file('src/a.test.ts'), file('src/b.spec.ts')]
     const { rerender } = render(<Nav files={files} hideTests={false} onHideTests={onHideTests} />)
-    fireEvent.click(screen.getByLabelText('Filter options'))
-    expect(screen.getByText('Hide tests').parentElement!.textContent).toContain('2')
-    fireEvent.click(screen.getByText('Hide tests'))
-    expect(onHideTests).toHaveBeenCalledWith(true)
+    expect(screen.queryByText(/hidden by filters/)).toBeNull()
+    rerender(<Nav files={files} hideTests={true} onHideTests={onHideTests} />)
+    expect(screen.getByText(/2 files hidden by filters/)).toBeTruthy()
+    fireEvent.click(screen.getByText('show'))
+    expect(onHideTests).toHaveBeenCalledWith(false)
+  })
 
+  it('"Hide tests" hides the .test. twins', () => {
+    const onHideTests = vi.fn()
+    const files = [file('src/a.ts'), file('src/a.test.ts'), file('src/b.spec.ts')]
+    const { rerender } = render(<Nav files={files} hideTests={false} onHideTests={onHideTests} />)
     rerender(<Nav files={files} hideTests={true} onHideTests={onHideTests} />)
     expect(names()).toEqual(['src', 'a.ts'])
   })
 
-  it('offers no filter menu at all when the app drives none of the switches', () => {
-    render(<Nav files={FILES} />)
-    expect(screen.queryByLabelText('Filter options')).toBeNull()
-  })
-
-  it('"Only since review" narrows to what the agent rewrote — and only exists when that means something', () => {
+  it('"Only since review" narrows to what the agent rewrote', () => {
     const onOnlyChanged = vi.fn()
     const { rerender } = render(
       <Nav
@@ -291,10 +283,6 @@ describe('Nav', () => {
         onOnlyChanged={onOnlyChanged}
       />,
     )
-    fireEvent.click(screen.getByLabelText('Filter options'))
-    expect(screen.getByText('Only since review').parentElement!.textContent).toContain('1')
-    fireEvent.click(screen.getByText('Only since review'))
-    expect(onOnlyChanged).toHaveBeenCalledWith(true)
     rerender(
       <Nav
         files={[file('src/a.ts'), file('src/b.ts')]}
@@ -312,8 +300,7 @@ describe('Nav', () => {
         onOnlyChanged={onOnlyChanged}
       />,
     )
-    fireEvent.click(screen.getByLabelText('Filter options'))
-    expect(screen.queryByText('Only since review')).toBeNull()
+    expect(names()).toEqual(['src', 'a.ts'])
   })
 
   it('a row is a container, never a button — a button cannot contain a button', () => {

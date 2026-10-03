@@ -9,19 +9,27 @@
     and the signs lengthened to stay signs rather than blobs. Two drawings,
     one mark — change one and change the other.
 
-    A favicon can't inherit currentColor, so the ink is stated outright and
-    flipped for a dark tab strip. Chrome, Firefox and Safari 17+ all honour a
-    media query inside an SVG icon.
+    The icon wears the diff's colours the way the header mark does mid-play:
+    the removed line and its − in red, the added line and its + in green, the
+    kept line in ink. The colour rides on the lines, not only on the signs — at
+    16px a 2-unit sign is a dot, and a dot's colour is gone. A favicon can't
+    inherit currentColor, so every colour is stated outright and flipped for a
+    dark tab strip. Chrome, Firefox and Safari 17+ all honour a media query
+    inside an SVG icon.
   -->
   <style>
     .ink { stroke: #1d1d1f; }
+    .del { stroke: #c9252d; }
+    .add { stroke: #248a3d; }
     @media (prefers-color-scheme: dark) {
       .ink { stroke: #f5f5f7; }
+      .del { stroke: #ff453a; }
+      .add { stroke: #30d158; }
     }
   </style>
-  <g class="ink" fill="none" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
-    <path d="M10 7.2H20.8M10 12h7.8M10 16.8h9.9"/>
-    <path d="M3 7.2h3"/>
-    <path d="M3 16.8h3M4.5 15.2v3.2"/>
+  <g fill="none" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+    <path class="del" d="M3 7.2h3M10 7.2H20.8"/>
+    <path class="ink" d="M10 12h7.8"/>
+    <path class="add" d="M3 16.8h3M4.5 15.2v3.2M10 16.8h9.9"/>
   </g>
 </svg>
