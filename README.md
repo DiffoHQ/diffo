@@ -21,17 +21,12 @@ review to GitHub.
 
 </div>
 
-<!-- Every clip here is a real recording: a real Claude Code session, a real server, and a
-     real changeset under review. The hero and the pull request clip review a small demo
-     app, so the diff reads at a glance; the layers clip, and the tutorial, review this
-     repo's own changesets. -->
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="assets/readme-demo-dark.svg">
+  <img alt="The Diffo loop. In the agent's terminal you type /diffo and the review opens beside it. You ask a question on line 14, and it flies to the agent; the agent fixes the code and answers, and the answer and the fix fly back, landing in the thread and in the diff you are reading." src="assets/readme-demo.svg" width="100%">
+</picture>
 
-<!-- Light-theme only. The clip opens once the session has finished writing the change:
-     waiting on the agent is fast-forwarded — the badge in the session's corner says so
-     while it runs — and nothing else is cut. -->
-<img alt="One take of the whole loop. A Claude Code session has just written natural-language due dates into a todo app; the reviewer types /diffo, and the session opens a live review and hands over its localhost URL, which opens beside the session. The reviewer leaves a question on the weekday line (a bare weekday always lands next week, should it mean today?) and the agent's answer appears in the thread while they watch." src="docs/assets/loop.gif" width="100%">
-
-<p align="center"><sub>The whole loop in one take: type <code>/diffo</code>, read the diff, ask on the line, and the answer comes back in the thread. Left is a real Claude Code session, right is the real review it opened. Nothing here is a mock-up; the only edit is that waiting on the agent runs fast.</sub></p>
+<p align="center"><sub>The whole loop: type <code>/diffo</code>, ask on the line, and the answer and the fix come back into the diff you're reading. Drawn, so it stays sharp; <a href="#talk-to-the-agent-on-the-line">the real, unedited take</a> is below.</sub></p>
 
 ---
 
@@ -72,10 +67,17 @@ had already moved on.
 Diffo keeps the conversation open through the review. The judgement stays yours. You just
 stop reading alone.
 
-<picture>
-  <source media="(prefers-color-scheme: dark)" srcset="assets/readme-loop-dark.svg">
-  <img alt="One round trip in the Diffo review: the reviewer asks a Question on line 14, the agent chip turns to working, the agent answers in the thread, and the fix lands in the diff under it, with changed since you read it on the file and Viewed unticked." src="assets/readme-loop.svg" width="100%">
-</picture>
+<!-- Every clip here is a real recording: a real Claude Code session, a real server, and a
+     real changeset under review. The hero and the pull request clip review a small demo
+     app, so the diff reads at a glance; the layers clip, and the tutorial, review this
+     repo's own changesets. -->
+
+<!-- Light-theme only. The clip opens once the session has finished writing the change:
+     waiting on the agent is fast-forwarded — the badge in the session's corner says so
+     while it runs — and nothing else is cut. -->
+<img alt="One take of the whole loop. A Claude Code session has just written natural-language due dates into a todo app; the reviewer types /diffo, and the session opens a live review and hands over its localhost URL, which opens beside the session. The reviewer leaves a question on the weekday line (a bare weekday always lands next week, should it mean today?) and the agent's answer appears in the thread while they watch." src="docs/assets/loop.gif" width="100%">
+
+<p align="center"><sub>The same loop, for real, in one take: type <code>/diffo</code>, read the diff, ask on the line, and the answer comes back in the thread. Left is a real Claude Code session, right is the real review it opened. Nothing here is a mock-up; the only edit is that waiting on the agent runs fast.</sub></p>
 
 - **Ask on any line.** The agent that wrote the code answers in the thread, with a
   diagram when the shape needs one. Mark a thread a **Question** and it explains; mark it
