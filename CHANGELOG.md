@@ -7,6 +7,10 @@ Until 1.0, minor versions may break things. When they do, the entry says how to 
 
 ## [Unreleased]
 
+Nothing yet.
+
+## [0.12.0] — 2026-10-03
+
 ### Changed
 
 - **The layer card is composed, not stacked.** A meta row carries where the
@@ -15,6 +19,16 @@ Until 1.0, minor versions may break things. When they do, the entry says how to 
   opening on a chevron like a file header. **Comment on this layer** moved
   from the card's foot to its corner, and the rule under the card appears
   only when there is a thread to show or one being written.
+- **The agent chip wears the companion's face.** The chip's three-bar meter
+  is gone; the companion's face sits in its place, and the label says the
+  state as a verb with the detail muted beside it: *Invite your agent*,
+  *Listening*, *Reading the change*, *Working on db.ts:42*, *Paused*,
+  *Suggests layers*. A batch in flight fills the pill amber with its n/N
+  instead of a separate bar, and the face hops when the batch is answered,
+  even with the companion switched off. The companion now lives in the chip:
+  it hops out onto the header when you settle or the agent gets to work, and
+  back in when you type, a batch is done, or no agent is attached. Reduced
+  motion, or a header too narrow to walk, keeps it home.
 
 ## [0.11.0] — 2026-10-03
 
@@ -57,7 +71,6 @@ Until 1.0, minor versions may break things. When they do, the entry says how to 
   "detail", "at" }]`; `diffo help layers` and the poll's layers request carry
   the rule for what earns a line. Most layers have none, and nothing changes for
   an outline that posts none.
-
 - **Comment on a layer.** A thread can now anchor to a layer instead of a
   line, for a question about the step itself: why these files belong
   together, whether the order is right, a summary that says too much. The
@@ -678,7 +691,8 @@ shipped in it, written as a starting point rather than a history.
 - **Guided reading** — splitting a large change into an ordered sequence of small,
   reviewable sections — is designed but not built.
 
-[Unreleased]: https://github.com/DiffoHQ/diffo/compare/v0.11.0...HEAD
+[Unreleased]: https://github.com/DiffoHQ/diffo/compare/v0.12.0...HEAD
+[0.12.0]: https://github.com/DiffoHQ/diffo/compare/v0.11.0...v0.12.0
 [0.11.0]: https://github.com/DiffoHQ/diffo/compare/v0.10.0...v0.11.0
 [0.10.0]: https://github.com/DiffoHQ/diffo/compare/v0.9.0...v0.10.0
 [0.9.0]: https://github.com/DiffoHQ/diffo/compare/v0.8.0...v0.9.0
