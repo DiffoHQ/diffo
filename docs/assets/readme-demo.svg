@@ -100,25 +100,39 @@
     @keyframes s41 { 0%, 21.7% { opacity: 0; transform: translateY(6px); } 23.3%, 93% { opacity: 1; transform: none; } 96%, 100% { opacity: 0; transform: none; } }
     .s42 { animation-name: s42; opacity: 0; }
     @keyframes s42 { 0%, 22.3% { opacity: 0; transform: translateY(6px); } 23.900000000000002%, 93% { opacity: 1; transform: none; } 96%, 100% { opacity: 0; transform: none; } }
-    .f43 { animation-name: f43; stroke-dasharray: 700; stroke-dashoffset: 700; opacity: 0; }
-    @keyframes f43 { 0%, 12.5% { stroke-dashoffset: 700; opacity: 0; } 13% { opacity: 1; } 17% { stroke-dashoffset: 0; opacity: 1; } 21%, 100% { stroke-dashoffset: 0; opacity: 0; } }
-    .r44 { animation-name: r44; animation-timing-function: ease-out; opacity: 0; transform-box: fill-box; transform-origin: center; }
-    @keyframes r44 { 0%, 17% { opacity: 0; transform: scale(0.3); } 17.5% { opacity: 0.9; } 22%, 100% { opacity: 0; transform: scale(2.4); } }
-    .f45 { animation-name: f45; stroke-dasharray: 700; stroke-dashoffset: 700; opacity: 0; }
-    @keyframes f45 { 0%, 39.5% { stroke-dashoffset: 700; opacity: 0; } 40% { opacity: 1; } 44% { stroke-dashoffset: 0; opacity: 1; } 48%, 100% { stroke-dashoffset: 0; opacity: 0; } }
+    .f43 { animation-name: f43; stroke-dasharray: 100; stroke-dashoffset: 100; opacity: 0; }
+    @keyframes f43 { 0%, 12.5% { stroke-dashoffset: 100; opacity: 0; } 12.9% { opacity: 1; } 17% { stroke-dashoffset: 0; opacity: 1; } 20.5%, 100% { stroke-dashoffset: 0; opacity: 0; } }
+    .b44 { animation-name: b44; opacity: 0; }
+    @keyframes b44 { 0%, 12.5% { opacity: 0; } 13.5%, 20.5% { opacity: 1; } 21.5%, 100% { opacity: 0; } }
+    .b45 { animation-name: b45; opacity: 0; }
+    @keyframes b45 { 0%, 12.5% { opacity: 0; } 13.5%, 20.5% { opacity: 1; } 21.5%, 100% { opacity: 0; } }
     .r46 { animation-name: r46; animation-timing-function: ease-out; opacity: 0; transform-box: fill-box; transform-origin: center; }
-    @keyframes r46 { 0%, 44% { opacity: 0; transform: scale(0.3); } 44.5% { opacity: 0.9; } 49%, 100% { opacity: 0; transform: scale(2.4); } }
-    .f47 { animation-name: f47; stroke-dasharray: 700; stroke-dashoffset: 700; opacity: 0; }
-    @keyframes f47 { 0%, 55% { stroke-dashoffset: 700; opacity: 0; } 55.5% { opacity: 1; } 60% { stroke-dashoffset: 0; opacity: 1; } 64%, 100% { stroke-dashoffset: 0; opacity: 0; } }
-    .r48 { animation-name: r48; animation-timing-function: ease-out; opacity: 0; transform-box: fill-box; transform-origin: center; }
-    @keyframes r48 { 0%, 60% { opacity: 0; transform: scale(0.3); } 60.5% { opacity: 0.9; } 65%, 100% { opacity: 0; transform: scale(2.4); } }
+    @keyframes r46 { 0%, 17% { opacity: 0; transform: scale(0.3); } 17.5% { opacity: 0.9; } 22%, 100% { opacity: 0; transform: scale(2.4); } }
+    .f47 { animation-name: f47; stroke-dasharray: 100; stroke-dashoffset: 100; opacity: 0; }
+    @keyframes f47 { 0%, 39.5% { stroke-dashoffset: 100; opacity: 0; } 39.9% { opacity: 1; } 44% { stroke-dashoffset: 0; opacity: 1; } 47.5%, 100% { stroke-dashoffset: 0; opacity: 0; } }
+    .b48 { animation-name: b48; opacity: 0; }
+    @keyframes b48 { 0%, 39.5% { opacity: 0; } 40.5%, 47.5% { opacity: 1; } 48.5%, 100% { opacity: 0; } }
+    .b49 { animation-name: b49; opacity: 0; }
+    @keyframes b49 { 0%, 39.5% { opacity: 0; } 40.5%, 47.5% { opacity: 1; } 48.5%, 100% { opacity: 0; } }
+    .r50 { animation-name: r50; animation-timing-function: ease-out; opacity: 0; transform-box: fill-box; transform-origin: center; }
+    @keyframes r50 { 0%, 44% { opacity: 0; transform: scale(0.3); } 44.5% { opacity: 0.9; } 49%, 100% { opacity: 0; transform: scale(2.4); } }
+    .f51 { animation-name: f51; stroke-dasharray: 100; stroke-dashoffset: 100; opacity: 0; }
+    @keyframes f51 { 0%, 55% { stroke-dashoffset: 100; opacity: 0; } 55.4% { opacity: 1; } 60% { stroke-dashoffset: 0; opacity: 1; } 63.5%, 100% { stroke-dashoffset: 0; opacity: 0; } }
+    .b52 { animation-name: b52; opacity: 0; }
+    @keyframes b52 { 0%, 55% { opacity: 0; } 56%, 63.5% { opacity: 1; } 64.5%, 100% { opacity: 0; } }
+    .b53 { animation-name: b53; opacity: 0; }
+    @keyframes b53 { 0%, 55% { opacity: 0; } 56%, 63.5% { opacity: 1; } 64.5%, 100% { opacity: 0; } }
+    .r54 { animation-name: r54; animation-timing-function: ease-out; opacity: 0; transform-box: fill-box; transform-origin: center; }
+    @keyframes r54 { 0%, 60% { opacity: 0; transform: scale(0.3); } 60.5% { opacity: 0.9; } 65%, 100% { opacity: 0; transform: scale(2.4); } }
   </style>
   <defs>
     <linearGradient id="stage" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#f6f8fa"/><stop offset="1" stop-color="#eef6f0"/></linearGradient>
     <radialGradient id="glow" cx="0.55" cy="0.45" r="0.6"><stop offset="0" stop-color="rgba(31,136,61,0.14)"/><stop offset="1" stop-color="rgba(31,136,61,0.14)" stop-opacity="0"/></radialGradient>
     <pattern id="dots" width="22" height="22" patternUnits="userSpaceOnUse"><circle cx="11" cy="11" r="1" fill="rgba(31,35,40,0.08)"/></pattern>
     <filter id="shadow" x="-10%" y="-10%" width="120%" height="125%"><feDropShadow dx="0" dy="18" stdDeviation="20" flood-color="#000" flood-opacity="0.16"/></filter>
-    <filter id="lift" x="-30%" y="-80%" width="160%" height="300%"><feDropShadow dx="0" dy="6" stdDeviation="7" flood-color="#000" flood-opacity="0.3"/></filter>
+    <filter id="lift" x="-20%" y="-60%" width="140%" height="240%"><feDropShadow dx="0" dy="3" stdDeviation="4" flood-color="#000" flood-opacity="0.1"/></filter>
+    <marker id="arrow-brand" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse" markerUnits="userSpaceOnUse"><path d="M2 1.5L8 5L2 8.5" fill="none" stroke="#1f883d" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></marker>
+    <marker id="arrow-amber" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse" markerUnits="userSpaceOnUse"><path d="M2 1.5L8 5L2 8.5" fill="none" stroke="#bf8700" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></marker>
     <clipPath id="frame"><rect width="1280" height="720" rx="18"/></clipPath>
     <clipPath id="term"><rect x="24" y="24" width="470" height="672" rx="12"/></clipPath>
     <clipPath id="review"><rect x="520" y="24" width="736" height="672" rx="12"/></clipPath>
@@ -136,8 +150,6 @@
     <path d="M24 62.5h470" stroke="#30363d"/>
     <circle cx="44" cy="43" r="6" fill="#ff5f57"/><circle cx="64" cy="43" r="6" fill="#febc2e"/><circle cx="84" cy="43" r="6" fill="#28c840"/>
     <text x="106" y="48" font-family="ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, monospace" font-size="13" fill="#8b949e">your agent's session</text>
-
-    <!-- Claude Code's banner -->
     <g fill="#d97757">
       <rect x="46" y="88" width="34" height="9"/><rect x="42" y="97" width="42" height="9"/>
       <rect x="50" y="106" width="4" height="7"/><rect x="58" y="106" width="4" height="7"/><rect x="68" y="106" width="4" height="7"/><rect x="76" y="106" width="4" height="7"/>
@@ -145,7 +157,7 @@
     </g>
     <text x="104" y="98" font-family="ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, monospace" font-size="14" font-weight="700" fill="#e6edf3">Claude Code</text>
     <text x="104" y="118" font-family="ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, monospace" font-size="13" fill="#8b949e">Opus 5 · ~/todo-app</text>
-
+    
     <g class="s-on"><circle cx="50" cy="155" r="3.5" fill="#e6edf3"/><text x="64" y="160" font-family="ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, monospace" font-size="14" fill="#e6edf3" xml:space="preserve">Due dates now parse in plain words:</text></g>
     <text class="s-on" x="46" y="181" font-family="ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, monospace" font-size="14" fill="#e6edf3" xml:space="preserve">  today, tomorrow, in N days, weekdays.</text>
     <text class="s-on" x="46" y="206" font-family="ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, monospace" font-size="14" fill="#8b949e" xml:space="preserve">  Edited 2 files · tests pass</text>
@@ -177,7 +189,7 @@
     <text class="s11" x="46" y="540" font-family="ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, monospace" font-size="14" fill="#e6edf3" xml:space="preserve">  in the diff you’re reading.</text>
     <text class="s12" x="46" y="574" font-family="ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, monospace" font-size="14" fill="#d97757">✻ Listening for your comments…</text>
 
-    <!-- The prompt box at the bottom, where /diffo is typed -->
+
     <path d="M38 603.5h442M38 649.5h442" stroke="#30363d"/>
     <text x="46" y="632" font-family="ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, monospace" font-size="14" fill="#8b949e">❯</text>
     <text class="t13 b14" x="64" y="632" font-family="ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, monospace" font-size="14" fill="#e6edf3">/diffo</text>
@@ -345,32 +357,53 @@
     <rect x="520.5" y="24.5" width="735" height="671" rx="11.5" fill="none" stroke="#e5e5e7"/>
   </g>
     
-  <path class="f43" d="M166 329Q527 44 888 164" fill="none" stroke="#1f883d" stroke-width="2" stroke-linecap="round"/>
-    <g opacity="0">
-      <animate attributeName="opacity" dur="16s" repeatCount="indefinite" values="0;0;1;1;0;0" keyTimes="0;0.1250;0.1310;0.1700;0.1850;1"/>
-      <animateMotion dur="16s" repeatCount="indefinite" path="M166 329Q527 44 888 164" keyPoints="0;0;1;1" keyTimes="0;0.1250;0.1700;1" calcMode="spline" keySplines="0 0 1 1;0.45 0 0.2 1;0 0 1 1"/>
-      <rect x="-76" y="-15" width="152" height="30" rx="15" fill="#1f883d" filter="url(#lift)"/>
-      <circle cx="-61" cy="0" r="4" fill="#fff"/>
-      <text x="-50" y="5" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', 'Noto Sans', Helvetica, Arial, sans-serif" font-size="13.5" font-weight="600" fill="#fff">opens the review</text>
+  <g>
+      <path class="f43" d="M246 329C316 329 468 174 538 174" pathLength="100" fill="none" stroke="#1f883d" stroke-width="1.5" stroke-linecap="round" marker-end="url(#arrow-brand)"/>
+      <circle class="b44" cx="246" cy="329" r="3" fill="#1f883d"/>
+      <g opacity="0">
+        <animate attributeName="opacity" dur="16s" repeatCount="indefinite" values="0;0;1;1;0;0" keyTimes="0;0.1250;0.1290;0.1700;0.1760;1"/>
+        <animateMotion dur="16s" repeatCount="indefinite" path="M246 329C316 329 468 174 538 174" keyPoints="0;0;1;1" keyTimes="0;0.1250;0.1700;1" calcMode="spline" keySplines="0 0 1 1;0.5 0 0.2 1;0 0 1 1"/>
+        <circle r="8" fill="#1f883d" fill-opacity="0.18"/>
+        <circle r="3.5" fill="#1f883d"/>
+      </g>
+      <g class="b45">
+        <rect x="322" y="211.5" width="140" height="24" rx="12" fill="#ffffff" stroke="#e5e5e7" filter="url(#lift)"/>
+        <circle cx="335" cy="223.5" r="3" fill="#1f883d"/>
+        <text x="344" y="228" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', 'Noto Sans', Helvetica, Arial, sans-serif" font-size="12.5" font-weight="500" fill="#1d1d1f">opens the review</text>
+      </g>
+      <circle class="r46" cx="538" cy="174" r="6" fill="none" stroke="#1f883d" stroke-width="1.5"/>
     </g>
-  <circle class="r44" cx="888" cy="164" r="22" fill="none" stroke="#1f883d" stroke-width="2"/>
-  <path class="f45" d="M838 233Q582 93 326 363" fill="none" stroke="#bf8700" stroke-width="2" stroke-linecap="round"/>
-    <g opacity="0">
-      <animate attributeName="opacity" dur="16s" repeatCount="indefinite" values="0;0;1;1;0;0" keyTimes="0;0.3950;0.4010;0.4400;0.4550;1"/>
-      <animateMotion dur="16s" repeatCount="indefinite" path="M838 233Q582 93 326 363" keyPoints="0;0;1;1" keyTimes="0;0.3950;0.4400;1" calcMode="spline" keySplines="0 0 1 1;0.45 0 0.2 1;0 0 1 1"/>
-      <rect x="-83.5" y="-15" width="167" height="30" rx="15" fill="#bf8700" filter="url(#lift)"/>
-      <circle cx="-68.5" cy="0" r="4" fill="#fff"/>
-      <text x="-57.5" y="5" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', 'Noto Sans', Helvetica, Arial, sans-serif" font-size="13.5" font-weight="600" fill="#fff">Question · line 14</text>
+  <g>
+      <path class="f47" d="M544 376C474 376 554 363 484 363" pathLength="100" fill="none" stroke="#bf8700" stroke-width="1.5" stroke-linecap="round" marker-end="url(#arrow-amber)"/>
+      <circle class="b48" cx="544" cy="376" r="3" fill="#bf8700"/>
+      <g opacity="0">
+        <animate attributeName="opacity" dur="16s" repeatCount="indefinite" values="0;0;1;1;0;0" keyTimes="0;0.3950;0.3990;0.4400;0.4460;1"/>
+        <animateMotion dur="16s" repeatCount="indefinite" path="M544 376C474 376 554 363 484 363" keyPoints="0;0;1;1" keyTimes="0;0.3950;0.4400;1" calcMode="spline" keySplines="0 0 1 1;0.5 0 0.2 1;0 0 1 1"/>
+        <circle r="8" fill="#bf8700" fill-opacity="0.18"/>
+        <circle r="3.5" fill="#bf8700"/>
+      </g>
+      <g class="b49">
+        <rect x="437" y="329.5" width="154" height="24" rx="12" fill="#ffffff" stroke="#e5e5e7" filter="url(#lift)"/>
+        <circle cx="450" cy="341.5" r="3" fill="#bf8700"/>
+        <text x="459" y="346" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', 'Noto Sans', Helvetica, Arial, sans-serif" font-size="12.5" font-weight="500" fill="#1d1d1f">Question · line 14</text>
+      </g>
+      <circle class="r50" cx="484" cy="363" r="6" fill="none" stroke="#bf8700" stroke-width="1.5"/>
     </g>
-  <circle class="r46" cx="326" cy="363" r="22" fill="none" stroke="#d29922" stroke-width="2"/>
-  <path class="f47" d="M376 476Q587 386 798 564" fill="none" stroke="#1f883d" stroke-width="2" stroke-linecap="round"/>
-    <g opacity="0">
-      <animate attributeName="opacity" dur="16s" repeatCount="indefinite" values="0;0;1;1;0;0" keyTimes="0;0.5500;0.5560;0.6000;0.6150;1"/>
-      <animateMotion dur="16s" repeatCount="indefinite" path="M376 476Q587 386 798 564" keyPoints="0;0;1;1" keyTimes="0;0.5500;0.6000;1" calcMode="spline" keySplines="0 0 1 1;0.45 0 0.2 1;0 0 1 1"/>
-      <rect x="-61.5" y="-15" width="123" height="30" rx="15" fill="#1f883d" filter="url(#lift)"/>
-      <circle cx="-46.5" cy="0" r="4" fill="#fff"/>
-      <text x="-35.5" y="5" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', 'Noto Sans', Helvetica, Arial, sans-serif" font-size="13.5" font-weight="600" fill="#fff">answer + fix</text>
+  <g>
+      <path class="f51" d="M484 476C554 476 474 564 544 564" pathLength="100" fill="none" stroke="#1f883d" stroke-width="1.5" stroke-linecap="round" marker-end="url(#arrow-brand)"/>
+      <circle class="b52" cx="484" cy="476" r="3" fill="#1f883d"/>
+      <g opacity="0">
+        <animate attributeName="opacity" dur="16s" repeatCount="indefinite" values="0;0;1;1;0;0" keyTimes="0;0.5500;0.5540;0.6000;0.6060;1"/>
+        <animateMotion dur="16s" repeatCount="indefinite" path="M484 476C554 476 474 564 544 564" keyPoints="0;0;1;1" keyTimes="0;0.5500;0.6000;1" calcMode="spline" keySplines="0 0 1 1;0.5 0 0.2 1;0 0 1 1"/>
+        <circle r="8" fill="#1f883d" fill-opacity="0.18"/>
+        <circle r="3.5" fill="#1f883d"/>
+      </g>
+      <g class="b53">
+        <rect x="457.5" y="480" width="113" height="24" rx="12" fill="#ffffff" stroke="#e5e5e7" filter="url(#lift)"/>
+        <circle cx="470.5" cy="492" r="3" fill="#1f883d"/>
+        <text x="479.5" y="496.5" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', 'Noto Sans', Helvetica, Arial, sans-serif" font-size="12.5" font-weight="500" fill="#1d1d1f">answer + fix</text>
+      </g>
+      <circle class="r54" cx="544" cy="564" r="6" fill="none" stroke="#1f883d" stroke-width="1.5"/>
     </g>
-  <circle class="r48" cx="798" cy="564" r="22" fill="none" stroke="#1f883d" stroke-width="2"/>
   </g>
 </svg>

@@ -22,8 +22,8 @@ review to GitHub.
 </div>
 
 <picture>
-  <source media="(prefers-color-scheme: dark)" srcset="assets/readme-demo-dark.svg">
-  <img alt="The Diffo loop. In the agent's terminal you type /diffo and the review opens beside it. You ask a question on line 14, and it flies to the agent; the agent fixes the code and answers, and the answer and the fix fly back, landing in the thread and in the diff you are reading." src="assets/readme-demo.svg" width="100%">
+  <source media="(prefers-color-scheme: dark)" srcset="docs/assets/readme-demo-dark.svg">
+  <img alt="The Diffo loop. In the agent's terminal you type /diffo and the review opens beside it. You ask a question on line 14, and it flies to the agent; the agent fixes the code and answers, and the answer and the fix fly back, landing in the thread and in the diff you are reading." src="docs/assets/readme-demo.svg" width="100%">
 </picture>
 
 <p align="center"><sub>The whole loop: type <code>/diffo</code>, ask on the line, and the answer and the fix come back into the diff you're reading. Drawn, so it stays sharp; <a href="#talk-to-the-agent-on-the-line">the real, unedited take</a> is below.</sub></p>
@@ -97,11 +97,11 @@ the next. Anything the agent touches after posting gathers in a *Since your revi
 so nothing hides outside the plan.
 
 <picture>
-  <source media="(prefers-color-scheme: dark)" srcset="docs/assets/layers-dark.gif">
-  <img alt="A 23-file change, every file folded. The header chip reads agent · suggests layers; the reviewer clicks it, eight layers land, and picking the first shows its summary card. ] steps to layers 2 and 3, where the reviewer asks on a line and the agent answers in the thread." src="docs/assets/layers.gif" width="100%">
+  <source media="(prefers-color-scheme: dark)" srcset="docs/assets/readme-layers-dark.svg">
+  <img alt="Layers in Diffo. The header chip reads agent · suggests layers and the reviewer accepts. The request crosses to the agent's terminal, which outlines the 13-file change as four ordered steps and posts them with diffo layers. Four layers land in the rail; the first layer's card draws its diagram, its files are read and ticked, and ] steps to the second and third layers." src="docs/assets/readme-layers.svg" width="100%">
 </picture>
 
-<p align="center"><sub>Layers, in one take: the agent offers an outline, the reviewer asks, and a 23-file change arrives as eight steps to read in order. Three layers in, a question on a line comes back answered in the thread. Only the agent's thinking time is cut.</sub></p>
+<p align="center"><sub>Thirteen files, alphabetical, become four steps to read in order. The <a href="https://diffohq.github.io/diffo/tutorial">tutorial</a> shows it for real, on a 23-file change.</sub></p>
 
 ## Review a pull request
 

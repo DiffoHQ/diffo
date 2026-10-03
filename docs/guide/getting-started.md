@@ -6,8 +6,8 @@ straight to the agent that wrote the code, and its fixes land in the diff while
 you keep reading. It's entirely local: no config, no accounts, nothing leaves
 your machine.
 
-<video class="clip" src="../assets/loop.mp4" muted loop playsinline width="1560" height="806" poster="../assets/loop-poster.jpg" preload="none"
-  aria-label="One take of the whole loop: a Claude Code session has just written natural-language due dates into a todo app, the reviewer types /diffo, the session opens a live review and hands over its localhost URL, the review opens beside the session, and a question left on the weekday line is answered in the thread while they watch"></video>
+![The Diffo loop: in the agent's terminal you type /diffo and the review opens beside it; your question on line 14 crosses to the agent, which fixes the code and answers; the answer and the fix cross back into the thread and the diff you are reading.](../assets/readme-demo.svg){.clip .clip-light}
+![The Diffo loop: in the agent's terminal you type /diffo and the review opens beside it; your question on line 14 crosses to the agent, which fixes the code and answers; the answer and the fix cross back into the thread and the diff you are reading.](../assets/readme-demo-dark.svg){.clip .clip-dark}
 
 ## Requirements
 

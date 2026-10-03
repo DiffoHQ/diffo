@@ -7,7 +7,7 @@
  * <style> and @keyframes inside it run. That is the only motion a README can have, and
  * it is all here. No external fonts or images: an SVG loaded as <img> cannot fetch.
  *
- *   pnpm readme:art     → assets/readme-{hero,demo}{,-dark}.svg
+ *   pnpm readme:art     → assets/readme-hero{,-dark}.svg, docs/assets/readme-{demo,layers}{,-dark}.svg
  */
 import { writeFileSync } from 'node:fs'
 import { join } from 'node:path'
@@ -196,7 +196,12 @@ const TERM = {
   add: '#56d364',
 }
 
-function demo(a: App, dark: boolean) {
+/*
+ * What every README scene shares: the stage, the two windows' geometry, the keyframe
+ * helpers that put things on the scene's one clock, the connectors that carry a message
+ * between the windows, the terminal's chrome, and the SVG around it all.
+ */
+function kit(a: App, dark: boolean) {
   const W = 1280
   const H = 720
   const PAD = 24
@@ -215,10 +220,12 @@ function demo(a: App, dark: boolean) {
         glow: 'rgba(63,185,80,0.16)',
       }
     : { from: '#f6f8fa', to: '#eef6f0', dot: 'rgba(31,35,40,0.08)', glow: 'rgba(31,136,61,0.14)' }
+  const amber = dark ? '#d29922' : '#bf8700'
 
   /* ── keyframe helpers ── */
   const css: string[] = []
   let id = 0
+  const nextId = () => id++
   // Hidden until `at`% of the loop, then shown until the reset.
   const show = (at: number, from = 'translateY(6px)') => {
     const name = `s${id++}`
@@ -260,34 +267,51 @@ function demo(a: App, dark: boolean) {
     return name
   }
 
+  type Pt = { x: number; y: number }
   /*
-   * A message in flight: a pill riding an arc from one window to the other, with a
-   * trail that draws itself behind it. `go`..`land` are % of the loop.
+   * A message in flight. A hairline connector draws itself across the gap between the
+   * windows, a dot rides it, a small label names what is crossing, and a ring marks
+   * where it lands. `go`..`land` are % of the loop.
    */
   const flight = (
-    d: string,
+    p: Pt,
+    q: Pt,
     go: number,
     land: number,
     label: string,
     tone: string,
-    len: number,
+    marker: string,
   ) => {
-    const t0 = (go / 100).toFixed(4)
-    const t1 = (land / 100).toFixed(4)
-    const t2 = ((land + 1.5) / 100).toFixed(4)
-    const trail = `f${id++}`
+    const c1 = { x: p.x + (q.x > p.x ? 70 : -70), y: p.y }
+    const c2 = { x: q.x + (q.x > p.x ? -70 : 70), y: q.y }
+    const d = `M${p.x} ${p.y}C${c1.x} ${c1.y} ${c2.x} ${c2.y} ${q.x} ${q.y}`
+    const mid = {
+      x: (p.x + 3 * c1.x + 3 * c2.x + q.x) / 8,
+      y: (p.y + 3 * c1.y + 3 * c2.y + q.y) / 8,
+    }
+    const out = land + 3.5
+    const line = `f${id++}`
     css.push(
-      `.${trail} { animation-name: ${trail}; stroke-dasharray: ${len}; stroke-dashoffset: ${len}; opacity: 0; }
-    @keyframes ${trail} { 0%, ${go}% { stroke-dashoffset: ${len}; opacity: 0; } ${go + 0.5}% { opacity: 1; } ${land}% { stroke-dashoffset: 0; opacity: 1; } ${land + 4}%, 100% { stroke-dashoffset: 0; opacity: 0; } }`,
+      `.${line} { animation-name: ${line}; stroke-dasharray: 100; stroke-dashoffset: 100; opacity: 0; }
+    @keyframes ${line} { 0%, ${go}% { stroke-dashoffset: 100; opacity: 0; } ${go + 0.4}% { opacity: 1; } ${land}% { stroke-dashoffset: 0; opacity: 1; } ${out}%, 100% { stroke-dashoffset: 0; opacity: 0; } }`,
     )
-    const pw = Math.round(label.length * 7.4 + 34)
-    return `<path class="${trail}" d="${d}" fill="none" stroke="${tone}" stroke-width="2" stroke-linecap="round"/>
-    <g opacity="0">
-      <animate attributeName="opacity" dur="${LOOP}s" repeatCount="indefinite" values="0;0;1;1;0;0" keyTimes="0;${t0};${((go + 0.6) / 100).toFixed(4)};${t1};${t2};1"/>
-      <animateMotion dur="${LOOP}s" repeatCount="indefinite" path="${d}" keyPoints="0;0;1;1" keyTimes="0;${t0};${t1};1" calcMode="spline" keySplines="0 0 1 1;0.45 0 0.2 1;0 0 1 1"/>
-      <rect x="${-pw / 2}" y="-15" width="${pw}" height="30" rx="15" fill="${tone}" filter="url(#lift)"/>
-      <circle cx="${-pw / 2 + 15}" cy="0" r="4" fill="#fff"/>
-      <text x="${-pw / 2 + 26}" y="5" font-family="${SANS}" font-size="13.5" font-weight="600" fill="#fff">${escapeXml(label)}</text>
+    const t = (n: number) => (n / 100).toFixed(4)
+    const pw = Math.round(label.length * 6.9 + 30)
+    return `<g>
+      <path class="${line}" d="${d}" pathLength="100" fill="none" stroke="${tone}" stroke-width="1.5" stroke-linecap="round" marker-end="url(#${marker})"/>
+      <circle class="${between(go, out)}" cx="${p.x}" cy="${p.y}" r="3" fill="${tone}"/>
+      <g opacity="0">
+        <animate attributeName="opacity" dur="${LOOP}s" repeatCount="indefinite" values="0;0;1;1;0;0" keyTimes="0;${t(go)};${t(go + 0.4)};${t(land)};${t(land + 0.6)};1"/>
+        <animateMotion dur="${LOOP}s" repeatCount="indefinite" path="${d}" keyPoints="0;0;1;1" keyTimes="0;${t(go)};${t(land)};1" calcMode="spline" keySplines="0 0 1 1;0.5 0 0.2 1;0 0 1 1"/>
+        <circle r="8" fill="${tone}" fill-opacity="0.18"/>
+        <circle r="3.5" fill="${tone}"/>
+      </g>
+      <g class="${between(go, out)}">
+        <rect x="${mid.x - pw / 2}" y="${mid.y - 40}" width="${pw}" height="24" rx="12" fill="${a.paper}" stroke="${dark ? '#3a3a3c' : a.hair}" filter="url(#lift)"/>
+        <circle cx="${mid.x - pw / 2 + 13}" cy="${mid.y - 28}" r="3" fill="${tone}"/>
+        <text x="${mid.x - pw / 2 + 22}" y="${mid.y - 23.5}" font-family="${SANS}" font-size="12.5" font-weight="500" fill="${a.ink}">${escapeXml(label)}</text>
+      </g>
+      <circle class="${ripple(land)}" cx="${q.x}" cy="${q.y}" r="6" fill="none" stroke="${tone}" stroke-width="1.5"/>
     </g>`
   }
 
@@ -298,6 +322,117 @@ function demo(a: App, dark: boolean) {
     `<text class="${cls}" x="${tx}" y="${y}" ${mono} fill="${fill}" xml:space="preserve">${body}</text>`
   const bullet = (y: number, text: string, cls: string, fill = TERM.ink) =>
     `<g class="${cls}"><circle cx="${tx + 4}" cy="${y - 5}" r="3.5" fill="${fill}"/><text x="${tx + 18}" y="${y}" ${mono} fill="${TERM.ink}" xml:space="preserve">${text}</text></g>`
+
+  /* The terminal window: Claude Code's banner on top, `body` under it, the prompt box below. */
+  const termFrame = (body: string, prompt = '') => `
+  <g filter="url(#shadow)">
+    <rect x="${PAD}" y="${TOP}" width="${TW}" height="${WH}" rx="12" fill="${TERM.bg}"/>
+  </g>
+  <g clip-path="url(#term)">
+    <rect x="${PAD}" y="${TOP}" width="${TW}" height="38" fill="${TERM.bar}"/>
+    <path d="M${PAD} ${TOP + 38.5}h${TW}" stroke="${TERM.line}"/>
+    <circle cx="${PAD + 20}" cy="${TOP + 19}" r="6" fill="#ff5f57"/><circle cx="${PAD + 40}" cy="${TOP + 19}" r="6" fill="#febc2e"/><circle cx="${PAD + 60}" cy="${TOP + 19}" r="6" fill="#28c840"/>
+    <text x="${PAD + 82}" y="${TOP + 24}" font-family="${MONO}" font-size="13" fill="${TERM.dim}">your agent's session</text>
+    <g fill="${TERM.claude}">
+      <rect x="${tx}" y="${TOP + 64}" width="34" height="9"/><rect x="${tx - 4}" y="${TOP + 73}" width="42" height="9"/>
+      <rect x="${tx + 4}" y="${TOP + 82}" width="4" height="7"/><rect x="${tx + 12}" y="${TOP + 82}" width="4" height="7"/><rect x="${tx + 22}" y="${TOP + 82}" width="4" height="7"/><rect x="${tx + 30}" y="${TOP + 82}" width="4" height="7"/>
+      <rect x="${tx + 6}" y="${TOP + 67}" width="4" height="4" fill="${TERM.bg}"/><rect x="${tx + 24}" y="${TOP + 67}" width="4" height="4" fill="${TERM.bg}"/>
+    </g>
+    <text x="${tx + 58}" y="${TOP + 74}" font-family="${MONO}" font-size="14" font-weight="700" fill="${TERM.ink}">Claude Code</text>
+    <text x="${tx + 58}" y="${TOP + 94}" font-family="${MONO}" font-size="13" fill="${TERM.dim}">Opus 5 · ~/todo-app</text>
+    ${body}
+    <path d="M${tx - 8} ${TOP + WH - 92.5}h${TW - 28}M${tx - 8} ${TOP + WH - 46.5}h${TW - 28}" stroke="${TERM.line}"/>
+    <text x="${tx}" y="${TOP + WH - 64}" ${mono} fill="${TERM.dim}">❯</text>
+    ${prompt}
+    <rect class="caret" x="${tx + 18}" y="${TOP + WH - 78}" width="8" height="18" fill="${TERM.ink}"/>
+    <text x="${tx}" y="${TOP + WH - 22}" font-family="${MONO}" font-size="12.5" fill="${TERM.auto}">▸▸ auto mode on <tspan fill="${TERM.dim}">· 1 shell</tspan></text>
+  </g>`
+
+  const svg = (
+    aria: string,
+    body: string,
+  ) => `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}" role="img" aria-label="${escapeXml(aria)}">
+  <!-- Generated by scripts/build-readme-art.ts. Edit there, then run pnpm readme:art. -->
+  <style>
+    * { animation-duration: ${LOOP}s; animation-iteration-count: infinite; animation-timing-function: ${EASE}; animation-fill-mode: both; }
+    .s-on { opacity: 1; }
+    .caret { animation: caret 1.1s steps(1, end) infinite; }
+    @keyframes caret { 50% { opacity: 0; } }
+    .dots circle { animation: dot 1s ease-in-out infinite; }
+    .dots circle:nth-child(2) { animation-delay: 0.15s; }
+    .dots circle:nth-child(3) { animation-delay: 0.3s; }
+    @keyframes dot { 0%, 100% { opacity: 0.25; } 50% { opacity: 1; } }
+    ${css.join('\n    ')}
+  </style>
+  <defs>
+    <linearGradient id="stage" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="${stage.from}"/><stop offset="1" stop-color="${stage.to}"/></linearGradient>
+    <radialGradient id="glow" cx="0.55" cy="0.45" r="0.6"><stop offset="0" stop-color="${stage.glow}"/><stop offset="1" stop-color="${stage.glow}" stop-opacity="0"/></radialGradient>
+    <pattern id="dots" width="22" height="22" patternUnits="userSpaceOnUse"><circle cx="11" cy="11" r="1" fill="${stage.dot}"/></pattern>
+    <filter id="shadow" x="-10%" y="-10%" width="120%" height="125%"><feDropShadow dx="0" dy="18" stdDeviation="20" flood-color="#000" flood-opacity="${dark ? 0.55 : 0.16}"/></filter>
+    <filter id="lift" x="-20%" y="-60%" width="140%" height="240%"><feDropShadow dx="0" dy="3" stdDeviation="4" flood-color="#000" flood-opacity="${dark ? 0.5 : 0.1}"/></filter>
+    <marker id="arrow-brand" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse" markerUnits="userSpaceOnUse"><path d="M2 1.5L8 5L2 8.5" fill="none" stroke="${a.brand}" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></marker>
+    <marker id="arrow-amber" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse" markerUnits="userSpaceOnUse"><path d="M2 1.5L8 5L2 8.5" fill="none" stroke="${amber}" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></marker>
+    <clipPath id="frame"><rect width="${W}" height="${H}" rx="18"/></clipPath>
+    <clipPath id="term"><rect x="${PAD}" y="${TOP}" width="${TW}" height="${WH}" rx="12"/></clipPath>
+    <clipPath id="review"><rect x="${RX}" y="${TOP}" width="${RW}" height="${WH}" rx="12"/></clipPath>
+  </defs>
+  <g clip-path="url(#frame)">
+    <rect width="${W}" height="${H}" fill="url(#stage)"/>
+    <rect width="${W}" height="${H}" fill="url(#dots)"/>
+    <rect width="${W}" height="${H}" fill="url(#glow)"/>
+    ${body}
+  </g>
+</svg>
+`
+
+  return {
+    W,
+    H,
+    PAD,
+    TW,
+    RX,
+    RW,
+    TOP,
+    WH,
+    css,
+    nextId,
+    show,
+    between,
+    type,
+    ripple,
+    flight,
+    tx,
+    mono,
+    tline,
+    bullet,
+    termFrame,
+    amber,
+    svg,
+  }
+}
+
+function demo(a: App, dark: boolean) {
+  const {
+    PAD,
+    TW,
+    RX,
+    RW,
+    TOP,
+    WH,
+    css,
+    show,
+    between,
+    type,
+    flight,
+    tx,
+    mono,
+    tline,
+    bullet,
+    termFrame,
+    amber,
+    svg,
+    nextId,
+  } = kit(a, dark)
 
   // The session's timeline, in % of the loop.
   const T = {
@@ -332,25 +467,8 @@ function demo(a: App, dark: boolean) {
     fix: 62.5,
   }
 
-  const term = `
-  <g filter="url(#shadow)">
-    <rect x="${PAD}" y="${TOP}" width="${TW}" height="${WH}" rx="12" fill="${TERM.bg}"/>
-  </g>
-  <g clip-path="url(#term)">
-    <rect x="${PAD}" y="${TOP}" width="${TW}" height="38" fill="${TERM.bar}"/>
-    <path d="M${PAD} ${TOP + 38.5}h${TW}" stroke="${TERM.line}"/>
-    <circle cx="${PAD + 20}" cy="${TOP + 19}" r="6" fill="#ff5f57"/><circle cx="${PAD + 40}" cy="${TOP + 19}" r="6" fill="#febc2e"/><circle cx="${PAD + 60}" cy="${TOP + 19}" r="6" fill="#28c840"/>
-    <text x="${PAD + 82}" y="${TOP + 24}" font-family="${MONO}" font-size="13" fill="${TERM.dim}">your agent's session</text>
-
-    <!-- Claude Code's banner -->
-    <g fill="${TERM.claude}">
-      <rect x="${tx}" y="${TOP + 64}" width="34" height="9"/><rect x="${tx - 4}" y="${TOP + 73}" width="42" height="9"/>
-      <rect x="${tx + 4}" y="${TOP + 82}" width="4" height="7"/><rect x="${tx + 12}" y="${TOP + 82}" width="4" height="7"/><rect x="${tx + 22}" y="${TOP + 82}" width="4" height="7"/><rect x="${tx + 30}" y="${TOP + 82}" width="4" height="7"/>
-      <rect x="${tx + 6}" y="${TOP + 67}" width="4" height="4" fill="${TERM.bg}"/><rect x="${tx + 24}" y="${TOP + 67}" width="4" height="4" fill="${TERM.bg}"/>
-    </g>
-    <text x="${tx + 58}" y="${TOP + 74}" font-family="${MONO}" font-size="14" font-weight="700" fill="${TERM.ink}">Claude Code</text>
-    <text x="${tx + 58}" y="${TOP + 94}" font-family="${MONO}" font-size="13" fill="${TERM.dim}">Opus 5 · ~/todo-app</text>
-
+  const term = termFrame(
+    `
     ${bullet(TOP + 136, 'Due dates now parse in plain words:', 's-on')}
     ${tline(TOP + 157, '  today, tomorrow, in N days, weekdays.', 's-on')}
     ${tline(TOP + 182, '  Edited 2 files · tests pass', 's-on', TERM.dim)}
@@ -382,13 +500,9 @@ function demo(a: App, dark: boolean) {
     ${tline(TOP + 516, '  in the diff you’re reading.', show(T.answered + 0.4))}
     <text class="${show(T.listen2)}" x="${tx}" y="${TOP + 550}" ${mono} fill="${TERM.claude}">✻ Listening for your comments…</text>
 
-    <!-- The prompt box at the bottom, where /diffo is typed -->
-    <path d="M${tx - 8} ${TOP + WH - 92.5}h${TW - 28}M${tx - 8} ${TOP + WH - 46.5}h${TW - 28}" stroke="${TERM.line}"/>
-    <text x="${tx}" y="${TOP + WH - 64}" ${mono} fill="${TERM.dim}">❯</text>
-    <text class="${type(T.typeFrom, T.typeTo, 6)} ${between(0, T.sent - 1)}" x="${tx + 18}" y="${TOP + WH - 64}" ${mono} fill="${TERM.ink}">/diffo</text>
-    <rect class="caret" x="${tx + 18}" y="${TOP + WH - 78}" width="8" height="18" fill="${TERM.ink}"/>
-    <text x="${tx}" y="${TOP + WH - 22}" font-family="${MONO}" font-size="12.5" fill="${TERM.auto}">▸▸ auto mode on <tspan fill="${TERM.dim}">· 1 shell</tspan></text>
-  </g>`
+`,
+    `<text class="${type(T.typeFrom, T.typeTo, 6)} ${between(0, T.sent - 1)}" x="${tx + 18}" y="${TOP + WH - 64}" ${mono} fill="${TERM.ink}">/diffo</text>`,
+  )
 
   /* ── The review ── */
   const X = RX + 18 // file card left
@@ -429,10 +543,10 @@ function demo(a: App, dark: boolean) {
     </g>`
 
   const QUESTION = 'Does “friday” on a Friday mean today or next week?'
-  const viewed = `v${id++}`
+  const viewed = `v${nextId()}`
   css.push(`.${viewed} { animation-name: ${viewed}; opacity: 0; }
     @keyframes ${viewed} { 0%, ${R.land + 3}% { opacity: 0; } ${R.land + 4}%, ${R.fix}% { opacity: 1; } ${R.fix + 1}%, 100% { opacity: 0; } }`)
-  const shift = `l${id++}`
+  const shift = `l${nextId()}`
   css.push(`.${shift} { animation-name: ${shift}; }
     @keyframes ${shift} {
       0%, ${R.threadA}% { transform: translateY(${-(AFTER - THREAD + 8)}px); }
@@ -440,13 +554,13 @@ function demo(a: App, dark: boolean) {
       ${R.threadB + 2}%, ${RESET}% { transform: none; }
       ${RESET + 3}%, 100% { transform: translateY(${-(AFTER - THREAD + 8)}px); }
     }`)
-  const tail = `l${id++}`
+  const tail = `l${nextId()}`
   css.push(`.${tail} { animation-name: ${tail}; }
     @keyframes ${tail} { 0%, ${R.fix}% { transform: translateY(${-ROW}px); } ${R.fix + 2}%, ${RESET}% { transform: none; } ${RESET + 3}%, 100% { transform: translateY(${-ROW}px); } }`)
   const before = between(-1, R.fix)
   const after = show(R.fix, 'none')
   const working = between(R.working[0], R.working[1])
-  const listening = `x${id++}`
+  const listening = `x${nextId()}`
   css.push(`.${listening} { animation-name: ${listening}; animation-timing-function: steps(1, end); }
     @keyframes ${listening} { 0%, ${R.working[0]}% { opacity: 1; } ${R.working[0] + 1}%, ${R.working[1]}% { opacity: 0; } ${R.working[1] + 1}%, 100% { opacity: 1; } }`)
 
@@ -625,64 +739,363 @@ function demo(a: App, dark: boolean) {
   </g>`
 
   /* ── The messages ── */
-  const urlAt = { x: tx + 120, y: TOP + 305 }
-  const reviewAt = { x: RX + RW / 2, y: TOP + 140 }
-  const questionAt = { x: X + 300, y: THREAD - (B_H + 10) + 83 } // where the question sits, thread half-open
-  const pollAt = { x: tx + 280, y: TOP + 339 }
-  const fixFrom = { x: tx + 330, y: TOP + 452 }
-  const fixAt = { x: X + 260, y: AFTER + 14 }
-  const arc = (p: { x: number; y: number }, q: { x: number; y: number }, lift: number) =>
-    `M${p.x} ${p.y}Q${(p.x + q.x) / 2} ${Math.min(p.y, q.y) - lift} ${q.x} ${q.y}`
-
+  // Each runs edge to edge through the gap between the windows, never across the text.
+  const termEdge = PAD + TW - 10
+  const reviewEdge = X + 6
   const flights = `
-  ${flight(arc(urlAt, reviewAt, 120), T.p1[0], T.p1[1], 'opens the review', a.brand, 700)}
-  <circle class="${ripple(T.p1[1])}" cx="${reviewAt.x}" cy="${reviewAt.y}" r="22" fill="none" stroke="${a.brand}" stroke-width="2"/>
-  ${flight(arc(questionAt, pollAt, 140), T.p2[0], T.p2[1], 'Question · line 14', a.attn === '#9a6206' ? '#bf8700' : '#d29922', 700)}
-  <circle class="${ripple(T.p2[1])}" cx="${pollAt.x}" cy="${pollAt.y}" r="22" fill="none" stroke="#d29922" stroke-width="2"/>
-  ${flight(arc(fixFrom, fixAt, 90), T.p3[0], T.p3[1], 'answer + fix', a.brand, 700)}
-  <circle class="${ripple(T.p3[1])}" cx="${fixAt.x}" cy="${fixAt.y}" r="22" fill="none" stroke="${a.brand}" stroke-width="2"/>`
+  ${flight({ x: tx + 200, y: TOP + 305 }, { x: RX + 18, y: TOP + 150 }, T.p1[0], T.p1[1], 'opens the review', a.brand, 'arrow-brand')}
+  ${flight({ x: reviewEdge, y: THREAD + 78 }, { x: termEdge, y: TOP + 339 }, T.p2[0], T.p2[1], 'Question · line 14', amber, 'arrow-amber')}
+  ${flight({ x: termEdge, y: TOP + 452 }, { x: reviewEdge, y: AFTER + 14 }, T.p3[0], T.p3[1], 'answer + fix', a.brand, 'arrow-brand')}`
 
-  return `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}" role="img" aria-label="The Diffo loop: in the agent's terminal you type /diffo and the review opens; your question on line 14 flies to the agent, which fixes the code and answers; the answer and the fix fly back and land in the thread and the diff">
-  <!-- Generated by scripts/build-readme-art.ts. Edit there, then run pnpm readme:art. -->
-  <style>
-    * { animation-duration: ${LOOP}s; animation-iteration-count: infinite; animation-timing-function: ${EASE}; animation-fill-mode: both; }
-    .s-on { opacity: 1; }
-    .caret { animation: caret 1.1s steps(1, end) infinite; }
-    @keyframes caret { 50% { opacity: 0; } }
-    .dots circle { animation: dot 1s ease-in-out infinite; }
-    .dots circle:nth-child(2) { animation-delay: 0.15s; }
-    .dots circle:nth-child(3) { animation-delay: 0.3s; }
-    @keyframes dot { 0%, 100% { opacity: 0.25; } 50% { opacity: 1; } }
-    ${css.join('\n    ')}
-  </style>
-  <defs>
-    <linearGradient id="stage" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="${stage.from}"/><stop offset="1" stop-color="${stage.to}"/></linearGradient>
-    <radialGradient id="glow" cx="0.55" cy="0.45" r="0.6"><stop offset="0" stop-color="${stage.glow}"/><stop offset="1" stop-color="${stage.glow}" stop-opacity="0"/></radialGradient>
-    <pattern id="dots" width="22" height="22" patternUnits="userSpaceOnUse"><circle cx="11" cy="11" r="1" fill="${stage.dot}"/></pattern>
-    <filter id="shadow" x="-10%" y="-10%" width="120%" height="125%"><feDropShadow dx="0" dy="18" stdDeviation="20" flood-color="#000" flood-opacity="${dark ? 0.55 : 0.16}"/></filter>
-    <filter id="lift" x="-30%" y="-80%" width="160%" height="300%"><feDropShadow dx="0" dy="6" stdDeviation="7" flood-color="#000" flood-opacity="0.3"/></filter>
-    <clipPath id="frame"><rect width="${W}" height="${H}" rx="18"/></clipPath>
-    <clipPath id="term"><rect x="${PAD}" y="${TOP}" width="${TW}" height="${WH}" rx="12"/></clipPath>
-    <clipPath id="review"><rect x="${RX}" y="${TOP}" width="${RW}" height="${WH}" rx="12"/></clipPath>
-  </defs>
-  <g clip-path="url(#frame)">
-    <rect width="${W}" height="${H}" fill="url(#stage)"/>
-    <rect width="${W}" height="${H}" fill="url(#dots)"/>
-    <rect width="${W}" height="${H}" fill="url(#glow)"/>
-    ${term}
-    ${review}
-    ${flights}
-  </g>
-</svg>
-`
+  return svg(
+    "The Diffo loop: in the agent's terminal you type /diffo and the review opens; your question on line 14 flies to the agent, which fixes the code and answers; the answer and the fix fly back and land in the thread and the diff",
+    `${term}\n    ${review}\n    ${flights}`,
+  )
 }
 
-const out = join(import.meta.dirname, '..', 'assets')
+/* ── Layers: the change as ordered steps ──────────────────────────────── */
+
+/*
+ * The agent suggests layers, you accept, and it outlines the change from its own
+ * session: the request crosses to the terminal, `diffo layers` posts the outline, and
+ * four layers land in the rail. The first layer's card draws its diagram, its files are
+ * read and ticked, and `]` steps to the next layer, twice.
+ */
+function layers(a: App, dark: boolean) {
+  const {
+    RX,
+    RW,
+    PAD,
+    TW,
+    TOP,
+    WH,
+    css,
+    nextId,
+    show,
+    between,
+    flight,
+    tx,
+    mono,
+    tline,
+    bullet,
+    termFrame,
+    amber,
+    svg,
+  } = kit(a, dark)
+
+  // The scene's clock, in % of the loop.
+  const C = {
+    cursorIn: 2,
+    click: 7,
+    ask: [8.5, 13] as const, // the request crosses to the agent
+    poll: 13.5,
+    outline: 16,
+    post: 19.5,
+    posted: 22,
+    land: [22.5, 27] as const, // four layers cross back
+    rail: 27.5,
+    card1: 29,
+    up: 31,
+    files1: 31,
+    read1: [38, 40] as const,
+    done1: 42,
+    key1: 43.5,
+    card2: 45.5,
+    read2: [53, 55] as const,
+    done2: 57,
+    key2: 58.5,
+    card3: 60.5,
+  }
+
+  const HEAD = 52
+  const RAIL = 214
+  const PX = RX + RAIL + 16 // pane left
+  const PR = RX + RW - 16 // pane right
+
+  /* ── terminal ── */
+  const term = termFrame(`
+    ${bullet(TOP + 136, 'Recurring todos are in: rules, parsing,', 's-on')}
+    ${tline(TOP + 157, '  storage and tests, across 13 files.', 's-on')}
+    ${tline(TOP + 182, '  Edited 13 files · tests pass', 's-on', TERM.dim)}
+    <rect x="${tx - 8}" y="${TOP + 206}" width="${TW - 28}" height="26" fill="${TERM.promptBg}"/>
+    <text x="${tx}" y="${TOP + 224}" ${mono} fill="${TERM.dim}">❯ <tspan fill="${TERM.ink}" font-weight="700">/diffo</tspan></text>
+    ${tline(TOP + 258, '  Ran 3 shell commands', 's-on', TERM.dim)}
+    ${bullet(TOP + 288, 'Review is open. I’m listening.', 's-on')}
+    <text x="${tx + 18}" y="${TOP + 310}" ${mono} fill="${TERM.link}" text-decoration="underline">http://localhost:4949</text>
+
+    <text class="${between(-1, C.poll - 0.5)}" x="${tx}" y="${TOP + 344}" ${mono} fill="${TERM.claude}">✻ Listening for your comments…</text>
+    <g class="${show(C.poll)}">
+      <circle cx="${tx + 4}" cy="${TOP + 339}" r="3.5" fill="${TERM.ink}"/>
+      <text x="${tx + 18}" y="${TOP + 344}" ${mono} fill="${TERM.ink}">diffo poll <tspan fill="${TERM.dim}">→ you asked for layers</tspan></text>
+    </g>
+    ${bullet(TOP + 376, 'Outlining 13 files as 4 steps,', show(C.outline))}
+    ${tline(TOP + 398, '  in the order to read them.', show(C.outline + 0.6), TERM.dim)}
+    <g class="${show(C.post)}">
+      <circle cx="${tx + 4}" cy="${TOP + 425}" r="3.5" fill="${TERM.add}"/>
+      <text x="${tx + 18}" y="${TOP + 430}" ${mono} fill="${TERM.ink}"><tspan font-weight="700">Bash</tspan>(diffo layers --stdin)</text>
+    </g>
+    ${tline(TOP + 452, '  ⎿ posted 4 layers', show(C.posted), TERM.add)}
+    ${bullet(TOP + 494, 'Layers are up. Start with the', show(C.up))}
+    ${tline(TOP + 516, '  recurrence rule.', show(C.up + 0.4))}
+    <text class="${show(C.up + 3)}" x="${tx}" y="${TOP + 550}" ${mono} fill="${TERM.claude}">✻ Listening for your comments…</text>`)
+
+  /* ── review ── */
+  const tick = (x: number, y: number, cls: string) => `<g class="${cls}">
+      <rect x="${x}" y="${y}" width="14" height="14" rx="3.5" fill="${a.brand}"/>
+      <path d="M${x + 3.2} ${y + 7.4}l2.8 2.8 4.8-5.4" fill="none" stroke="#fff" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+    </g>`
+  const box = (x: number, y: number) =>
+    `<rect x="${x + 0.5}" y="${y + 0.5}" width="13" height="13" rx="3.5" fill="none" stroke="${a.ink3}"/>`
+  // A one-off keyframe, for the few things that move rather than fade.
+  const keyframes = (body: string) => {
+    const name = `k${nextId()}`
+    css.push(`.${name} { animation-name: ${name}; }\n    @keyframes ${name} { ${body} }`)
+    return name
+  }
+
+  const L = [
+    {
+      title: 'The recurrence rule',
+      sum: [
+        'Everything hangs off recurrence.ts: a Rule is daily,',
+        'weekly, or every n days, and nextOccurrence dates it.',
+      ],
+      flow: ['Todo', 'repeat', 'Rule', 'dueAt'],
+      files: [
+        ['src/model/', 'recurrence.ts', 'added', '+28', ''],
+        ['src/model/', 'todo.ts', '', '+6', '−2'],
+      ],
+    },
+    {
+      title: 'Parsing “every …”',
+      sum: [
+        'parseRepeat reads “every monday” or “every 3 days”',
+        'into a Rule; anything else is a 400.',
+      ],
+      flow: ['input', 'parseRepeat', 'Rule'],
+      files: [
+        ['src/parse/', 'repeat.ts', 'added', '+41', ''],
+        ['src/', 'routes.ts', '', '+9', '−1'],
+      ],
+    },
+    {
+      title: 'Storage: a repeat column',
+      sum: ['A repeat column on todos, written on create and', 'read back on list.'],
+      flow: ['create', 'todos.repeat', 'list'],
+      files: [
+        ['db/migrations/', '004_repeat.sql', 'added', '+3', ''],
+        ['src/', 'db.ts', '', '+12', '−2'],
+        ['src/', 'store.ts', '', '+5', '−1'],
+      ],
+    },
+    { title: 'Tests', sum: [], flow: [], files: [] },
+  ]
+  const counts = [2, 2, 3, 6]
+
+  // A folded file, as a row: chevron, path, status, counts, Viewed.
+  const fileRow = (
+    y: number,
+    [dir, name, status, plus, minus]: string[],
+    viewedAt?: number,
+    until?: number,
+  ) => {
+    const w = (dir.length + name.length) * 7.6
+    return `
+      <rect x="${PX + 0.5}" y="${y + 0.5}" width="${PR - PX - 1}" height="38" rx="8" fill="${a.fill}" stroke="${a.hair}"/>
+      <path d="M${PX + 14} ${y + 15}l4 4.5-4 4.5" fill="none" stroke="${a.ink3}" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+      <text x="${PX + 30}" y="${y + 24}" font-family="${MONO}" font-size="12.5" fill="${a.ink3}">${dir}<tspan font-weight="700" fill="${a.ink}">${name}</tspan></text>
+      ${status ? `<text x="${PX + 38 + w}" y="${y + 24}" font-family="${SANS}" font-size="12" fill="${a.add}">${status}</text>` : ''}
+      <text x="${PR - 108}" y="${y + 24}" text-anchor="end" font-family="${MONO}" font-size="12"><tspan fill="${a.add}">${plus}</tspan>${minus ? ` <tspan fill="${a.del}">${minus}</tspan>` : ''}</text>
+      <rect x="${PR - 94.5}" y="${y + 7.5}" width="84" height="23" rx="6" fill="${a.paper}" stroke="${a.hair}"/>
+      ${box(PR - 86, y + 12)}
+      ${viewedAt !== undefined ? tick(PR - 86, y + 12, until ? between(viewedAt, until) : show(viewedAt, 'scale(0.6)')) : ''}
+      <text x="${PR - 66}" y="${y + 24}" font-family="${SANS}" font-size="12.5" fill="${a.ink}">Viewed</text>`
+  }
+
+  // The layer card, then its files under it.
+  const cardTop = TOP + HEAD + 50
+  const layerView = (
+    i: number,
+    from: number,
+    to: number | null,
+    readAt: readonly [number, number],
+  ) => {
+    const l = L[i]
+    const flowW = PR - PX - 32
+    const n = l.flow.length
+    const boxW = Math.min(100, (flowW - (n - 1) * 26) / n)
+    const span = n * boxW + (n - 1) * 26
+    const fx0 = PX + 16 + (flowW - span) / 2
+    const nodes = l.flow
+      .map((label, j) => {
+        const x = fx0 + j * (boxW + 26)
+        const y = cardTop + 112
+        const edge =
+          j < n - 1
+            ? `<g class="${show(from + 1.2 + j * 0.6, 'none')}"><path d="M${x + boxW + 3} ${y + 13}h18" stroke="${a.ink3}" stroke-width="1.2"/><path d="M${x + boxW + 17} ${y + 9.5}l4.5 3.5-4.5 3.5" fill="none" stroke="${a.ink3}" stroke-width="1.2"/></g>`
+            : ''
+        return `<g class="${show(from + 0.8 + j * 0.6)}">
+          <rect x="${x + 0.5}" y="${y + 0.5}" width="${boxW}" height="26" rx="4" fill="${a.paper}" stroke="${a.hair}"/>
+          <text x="${x + boxW / 2}" y="${y + 17.5}" text-anchor="middle" font-family="${MONO}" font-size="11.5" fill="${a.ink}">${escapeXml(label)}</text>
+        </g>${edge}`
+      })
+      .join('')
+    const filesTop = cardTop + 172
+    const rows = l.files
+      .map(
+        (f, j) =>
+          `<g class="${show(from + 2 + j * 0.5)}">${fileRow(filesTop + j * 46, f, readAt[0] + j * (readAt[1] - readAt[0]))}</g>`,
+      )
+      .join('')
+    return `<g class="${to === null ? show(from, 'translateX(10px)') : between(from, to)}">
+      <rect x="${PX + 0.5}" y="${cardTop + 0.5}" width="${PR - PX - 1}" height="158" rx="10" fill="${a.paper}" stroke="${a.hair}"/>
+      <text x="${PX + 16}" y="${cardTop + 24}" font-family="${SANS}" font-size="11.5" fill="${a.ink3}">Layer ${i + 1} of 4</text>
+      <text x="${PX + 16}" y="${cardTop + 50}" font-family="${SANS}" font-size="18" font-weight="600" letter-spacing="-0.2" fill="${a.ink}">${escapeXml(l.title)}</text>
+      <text x="${PX + 16}" y="${cardTop + 74}" font-family="${SANS}" font-size="13" fill="${a.ink2}">${escapeXml(l.sum[0])}</text>
+      <text x="${PX + 16}" y="${cardTop + 93}" font-family="${SANS}" font-size="13" fill="${a.ink2}">${escapeXml(l.sum[1])}</text>
+      <rect x="${PX + 12}" y="${cardTop + 104}" width="${PR - PX - 24}" height="42" rx="6" fill="${a.fill}"/>
+      ${nodes}
+      ${rows}
+    </g>`
+  }
+
+  // Before the outline: every file, alphabetically.
+  const alpha = [
+    ['db/migrations/', '004_repeat.sql', 'added', '+3', ''],
+    ['src/', 'cli.ts', '', '+4', '−1'],
+    ['src/', 'db.ts', '', '+12', '−2'],
+    ['src/model/', 'recurrence.ts', 'added', '+28', ''],
+    ['src/model/', 'todo.ts', '', '+6', '−2'],
+    ['src/parse/', 'repeat.ts', 'added', '+41', ''],
+    ['src/', 'routes.ts', '', '+9', '−1'],
+    ['src/', 'store.ts', '', '+5', '−1'],
+    ['test/', 'recurrence.test.ts', 'added', '+64', ''],
+    ['test/', 'repeat.test.ts', 'added', '+52', ''],
+  ]
+  const alphaList = alpha.map((f, j) => fileRow(TOP + HEAD + 50 + j * 46, f)).join('')
+
+  // The rail: the files first, then the layers.
+  const railRow = (i: number) => TOP + HEAD + 56 + i * 52
+  const railFiles = alpha
+    .map(
+      ([, name], j) =>
+        `<text x="${RX + 20}" y="${TOP + HEAD + 74 + j * 26}" font-family="${MONO}" font-size="12" fill="${a.ink2}">${escapeXml(name)}</text>`,
+    )
+    .join('')
+  const railLayers = L.map((l, i) => {
+    const y = railRow(i)
+    const doneAt = [C.done1, C.done2][i]
+    return `<g class="${show(C.rail + i * 0.5, 'translateX(-8px)')}">
+      ${box(RX + 14, y + 4)}
+      ${doneAt ? tick(RX + 14, y + 4, show(doneAt, 'scale(0.6)')) : ''}
+      <text x="${RX + 38}" y="${y + 16}" font-family="${SANS}" font-size="13" font-weight="500" fill="${a.ink}">${escapeXml(l.title)}</text>
+      <rect x="${RX + 38}" y="${y + 26}" width="40" height="2" rx="1" fill="${a.fill2}"/>
+      ${doneAt ? `<rect class="${show(doneAt, 'none')}" x="${RX + 38}" y="${y + 26}" width="40" height="2" rx="1" fill="${a.brand}"/>` : ''}
+      <text x="${RX + 86}" y="${y + 30}" font-family="${SANS}" font-size="11.5" fill="${a.ink3}">${counts[i]} files</text>
+    </g>`
+  }).join('')
+  const cursorRow = keyframes(
+    `0%, ${C.rail}% { opacity: 0; transform: none; } ${C.rail + 1}%, ${C.card2 - 1}% { opacity: 1; transform: none; } ${C.card2}%, ${C.card3 - 1}% { opacity: 1; transform: translateY(52px); } ${C.card3}%, ${RESET}% { opacity: 1; transform: translateY(104px); } ${RESET + 3}%, 100% { opacity: 0; transform: translateY(104px); }`,
+  )
+  const tabs = ['Files 13', 'Threads 0', 'Layers 4']
+  const tabW = (RAIL - 20) / 3
+  const tabKnob = keyframes(
+    `0%, ${C.rail - 1}% { transform: none; } ${C.rail}%, ${RESET}% { transform: translateX(${tabW * 2}px); } ${RESET + 3}%, 100% { transform: none; }`,
+  )
+
+  // The header chip: it suggests layers and pulses until clicked, then works, then listens.
+  const pulse = keyframes(
+    `0%, ${C.click}% { opacity: 0.7; transform: scale(1); } ${C.click + 0.1}%, 100% { opacity: 0; transform: scale(1); }`,
+  )
+  css.push(`.halo { animation: halo 1.4s ease-out infinite; transform-box: fill-box; transform-origin: center; }
+    @keyframes halo { from { opacity: 0.6; transform: scale(1); } to { opacity: 0; transform: scale(1.18, 1.5); } }`)
+  const chipX = RX + RW - 300
+  const chip = `
+      <g class="${pulse}"><rect class="halo" x="${chipX}" y="${TOP + 12}" width="168" height="29" rx="14.5" fill="none" stroke="${amber}" stroke-width="1.5"/></g>
+      <rect x="${chipX + 0.5}" y="${TOP + 12.5}" width="168" height="28" rx="14" fill="${a.attnWash}" stroke="${a.attnLine}"/>
+      <g fill="${a.attn}"><rect x="${chipX + 14}" y="${TOP + 24}" width="2" height="5" rx="1"/><rect x="${chipX + 18}" y="${TOP + 22}" width="2" height="9" rx="1"/><rect x="${chipX + 22}" y="${TOP + 24}" width="2" height="5" rx="1"/></g>
+      <text class="${between(-1, C.click)}" x="${chipX + 32}" y="${TOP + 31}" font-family="${SANS}" font-size="12.5" fill="${a.attn}">agent · suggests layers</text>
+      <text class="${between(C.click, C.land[1])}" x="${chipX + 32}" y="${TOP + 31}" font-family="${SANS}" font-size="12.5" fill="${a.attn}">agent · working</text>
+      <text class="${show(C.land[1], 'none')}" x="${chipX + 32}" y="${TOP + 31}" font-family="${SANS}" font-size="12.5" fill="${a.attn}">agent · listening</text>`
+
+  // The reviewer's pointer: in from below, onto the chip, a click.
+  const cursorMove = keyframes(
+    `0%, ${C.cursorIn}% { opacity: 0; transform: translate(-150px, 260px); } ${C.cursorIn + 1}% { opacity: 1; } ${C.click - 0.6}% { transform: none; } ${C.click}% { transform: scale(0.88); } ${C.click + 0.6}% { transform: none; opacity: 1; } ${C.click + 4}%, 100% { opacity: 0; transform: translate(20px, 40px); }`,
+  )
+  const pointer = `
+    <g transform="translate(${chipX + 120} ${TOP + 22})">
+      <g class="${cursorMove}">
+        <path d="M0 0v17l4.4-4.1 3 6.6 2.7-1.2-3-6.5H13z" fill="${dark ? '#fff' : '#111'}" stroke="${dark ? '#000' : '#fff'}" stroke-width="1.2" stroke-linejoin="round"/>
+      </g>
+      <circle class="${show(C.click, 'scale(0.4)')} ${between(C.click, C.click + 2)}" r="12" fill="none" stroke="${amber}" stroke-width="1.5"/>
+    </g>`
+
+  // `]` steps to the next layer.
+  const keycap = (at: number) => `
+    <g class="${between(at - 1, at + 2.5)}">
+      <rect x="${PR - 132.5}" y="${TOP + WH - 56.5}" width="30" height="30" rx="7" fill="${a.paper}" stroke="${a.hair}" stroke-width="1.5" filter="url(#lift)"/>
+      <text x="${PR - 117.5}" y="${TOP + WH - 35.5}" text-anchor="middle" font-family="${MONO}" font-size="15" font-weight="700" fill="${a.ink}">]</text>
+      <text x="${PR - 94}" y="${TOP + WH - 36}" font-family="${SANS}" font-size="13" fill="${a.ink2}">next layer</text>
+    </g>`
+
+  const review = `
+  <g filter="url(#shadow)"><rect x="${RX}" y="${TOP}" width="${RW}" height="${WH}" rx="12" fill="${a.paper}"/></g>
+  <g clip-path="url(#review)" font-family="${SANS}">
+    <path d="M${RX + 20} ${TOP + 21}h14M${RX + 20} ${TOP + 27}h10M${RX + 20} ${TOP + 33}h14" stroke="${a.ink}" stroke-width="1.8" stroke-linecap="round"/>
+    <text x="${RX + 44}" y="${TOP + 33}" font-size="17" font-weight="600" fill="${a.ink}">Diffo</text>
+    <text x="${RX + 102}" y="${TOP + 32}" font-family="${MONO}" font-size="13" fill="${a.ink}">working tree → HEAD</text>
+    ${chip}
+    <rect x="${RX + RW - 124}" y="${TOP + 11}" width="110" height="31" rx="15.5" fill="${a.finishBg}"/>
+    <text x="${RX + RW - 69}" y="${TOP + 31}" text-anchor="middle" font-size="13" font-weight="600" fill="${a.finishFg}">Finish review</text>
+    <path d="M${RX} ${TOP + HEAD + 0.5}h${RW}" stroke="${a.hair}"/>
+
+    <!-- Rail -->
+    <path d="M${RX + RAIL + 0.5} ${TOP + HEAD}v${WH}" stroke="${a.hair}"/>
+    <rect x="${RX + 10}" y="${TOP + HEAD + 10}" width="${RAIL - 20}" height="28" rx="7" fill="${a.fill}"/>
+    <rect class="${tabKnob}" x="${RX + 12}" y="${TOP + HEAD + 12}" width="${tabW - 4}" height="24" rx="5.5" fill="${a.paper}"/>
+    ${tabs.map((t, i) => `<text x="${RX + 10 + tabW * (i + 0.5)}" y="${TOP + HEAD + 28.5}" text-anchor="middle" font-size="12" fill="${a.ink2}">${t}</text>`).join('')}
+    <g class="${between(-1, C.rail - 0.5)}">${railFiles}</g>
+    <rect class="${cursorRow}" x="${RX}" y="${railRow(0) - 6}" width="${RAIL}" height="48" fill="${a.fill}"/>
+    ${railLayers}
+
+    <!-- Pane -->
+    <g class="${between(-1, C.rail - 1)}">
+      <text x="${PX}" y="${TOP + HEAD + 30}" font-family="${MONO}" font-size="12.5" fill="${a.ink3}">13 files · alphabetical</text>
+      ${alphaList}
+    </g>
+    <g class="${show(C.rail, 'none')}">
+      <text class="${between(C.rail, C.card2 - 1)}" x="${PX}" y="${TOP + HEAD + 30}" font-family="${MONO}" font-size="12.5" fill="${a.ink3}">layer 1 / 4 · 2 files</text>
+      <text class="${between(C.card2 - 1, C.card3 - 1)}" x="${PX}" y="${TOP + HEAD + 30}" font-family="${MONO}" font-size="12.5" fill="${a.ink3}">layer 2 / 4 · 2 files</text>
+      <text class="${show(C.card3 - 1, 'none')}" x="${PX}" y="${TOP + HEAD + 30}" font-family="${MONO}" font-size="12.5" fill="${a.ink3}">layer 3 / 4 · 3 files</text>
+    </g>
+    ${layerView(0, C.card1, C.card2 - 1, C.read1)}
+    ${layerView(1, C.card2, C.card3 - 1, C.read2)}
+    ${layerView(2, C.card3, null, [C.card3 + 20, C.card3 + 21])}
+    ${keycap(C.key1)}
+    ${keycap(C.key2)}
+  </g>
+  <rect x="${RX + 0.5}" y="${TOP + 0.5}" width="${RW - 1}" height="${WH - 1}" rx="11.5" fill="none" stroke="${a.hair}"/>
+  ${pointer}`
+
+  const flights = `
+  ${flight({ x: RX + 8, y: TOP + 26 }, { x: PAD + TW - 10, y: TOP + 339 }, C.ask[0], C.ask[1], 'layers, please', amber, 'arrow-amber')}
+  ${flight({ x: PAD + TW - 10, y: TOP + 447 }, { x: RX + 8, y: railRow(0) + 16 }, C.land[0], C.land[1], '4 layers', a.brand, 'arrow-brand')}`
+
+  return svg(
+    'Layers in Diffo: the header chip suggests layers and the reviewer accepts; the request crosses to the agent, which outlines the 13-file change as four ordered steps and posts them with diffo layers; the layers land in the rail, the first layer’s card draws its diagram, its files are read and ticked, and ] steps to the second and third layers.',
+    `${term}\n    ${review}\n    ${flights}`,
+  )
+}
+
+const root = join(import.meta.dirname, '..')
 for (const [suffix, theme] of [
   ['', light],
   ['-dark', dark],
 ] as const) {
-  writeFileSync(join(out, `readme-hero${suffix}.svg`), hero(theme))
-  writeFileSync(join(out, `readme-demo${suffix}.svg`), demo(suffix ? appDark : appLight, !!suffix))
+  const app = suffix ? appDark : appLight
+  writeFileSync(join(root, 'assets', `readme-hero${suffix}.svg`), hero(theme))
+  // The scenes live with the docs' clips, so the site and the README share one file.
+  writeFileSync(join(root, 'docs/assets', `readme-demo${suffix}.svg`), demo(app, !!suffix))
+  writeFileSync(join(root, 'docs/assets', `readme-layers${suffix}.svg`), layers(app, !!suffix))
 }
-console.log('wrote assets/readme-{hero,demo}{,-dark}.svg')
+console.log('wrote assets/readme-hero{,-dark}.svg and docs/assets/readme-{demo,layers}{,-dark}.svg')

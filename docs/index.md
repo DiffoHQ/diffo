@@ -70,10 +70,8 @@ CI to wait for. Installed from one agent and want them all? `diffo setup`
 
 ## Read it in layers
 
-<video class="clip clip-light home-clip" src="./assets/layers.mp4" muted loop playsinline width="1440" height="1102" poster="./assets/layers-poster.jpg" preload="none"
-  aria-label="A 23-file change, every file folded. The header chip reads agent · suggests layers; the reviewer clicks it, eight layers land, and picking the first shows its summary card. ] steps to layers 2 and 3, where the reviewer asks on a line and the agent answers in the thread."></video>
-<video class="clip clip-dark home-clip" src="./assets/layers-dark.mp4" muted loop playsinline width="1440" height="1102" poster="./assets/layers-dark-poster.jpg" preload="none"
-  aria-label="A 23-file change, every file folded. The header chip reads agent · suggests layers; the reviewer clicks it, eight layers land, and picking the first shows its summary card. ] steps to layers 2 and 3, where the reviewer asks on a line and the agent answers in the thread."></video>
+![Layers in Diffo: the header chip suggests layers and the reviewer accepts; the request crosses to the agent, which outlines the 13-file change as four ordered steps and posts them with diffo layers; the layers land in the rail, the first layer's card draws its diagram, its files are read and ticked, and \] steps to the second and third layers.](./assets/readme-layers.svg){.clip .clip-light .home-clip}
+![Layers in Diffo: the header chip suggests layers and the reviewer accepts; the request crosses to the agent, which outlines the 13-file change as four ordered steps and posts them with diffo layers; the layers land in the rail, the first layer's card draws its diagram, its files are read and ticked, and \] steps to the second and third layers.](./assets/readme-layers-dark.svg){.clip .clip-dark .home-clip}
 
 A diff arrives alphabetically, which is almost never the order to read it in. Ask, and
 the agent posts **layers**: the change as ordered steps, each with a title, a summary,
