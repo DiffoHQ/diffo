@@ -81,7 +81,7 @@ describe('ui settings', () => {
   it('answers null without a store, and refuses writes', async () => {
     const app = createApp(ctx)
     const res = await app.request('/api/settings')
-    expect(await res.json()).toEqual({ theme: null })
+    expect(await res.json()).toEqual({ theme: null, critter: null })
     expect((await put(app, '{"theme":"dark"}')).status).toBe(503)
   })
 
@@ -90,7 +90,7 @@ describe('ui settings', () => {
     expect((await put(app, '{"theme":"dark"}')).status).toBe(200)
     expect(kv.get('theme')).toBe('dark')
     const res = await app.request('/api/settings')
-    expect(await res.json()).toEqual({ theme: 'dark' })
+    expect(await res.json()).toEqual({ theme: 'dark', critter: null })
   })
 
   it('rejects a theme outside the three real values', async () => {
@@ -103,7 +103,24 @@ describe('ui settings', () => {
   it('reads a stored junk value as null, never as a theme', async () => {
     const { app, kv } = withStore()
     kv.set('theme', 'neon')
+    kv.set('critter', 'maybe')
     const res = await app.request('/api/settings')
-    expect(await res.json()).toEqual({ theme: null })
+    expect(await res.json()).toEqual({ theme: null, critter: null })
+  })
+
+  it('round-trips the critter switch on its own, leaving the theme alone', async () => {
+    const { app, kv } = withStore()
+    kv.set('theme', 'dark')
+    expect((await put(app, '{"critter":"off"}')).status).toBe(200)
+    const res = await app.request('/api/settings')
+    expect(await res.json()).toEqual({ theme: 'dark', critter: 'off' })
+  })
+
+  it('rejects a critter value other than on or off, and writes nothing', async () => {
+    const { app, kv } = withStore()
+    expect((await put(app, '{"critter":"maybe"}')).status).toBe(400)
+    expect((await put(app, '{"theme":"dark","critter":"maybe"}')).status).toBe(400)
+    expect((await put(app, '{}')).status).toBe(400)
+    expect(kv.size).toBe(0)
   })
 })

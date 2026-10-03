@@ -8128,3 +8128,531 @@ i.q-now {
 .privacy-confirm {
   margin-top: var(--s-3);
 }
+
+/* ---------- the critter: the agent, acted out in the header ---------- */
+
+/* The header's flexible gap doubles as the critter's floor: it walks along the
+   header's bottom border, so the track spans the header's full height. */
+.critter-track {
+  flex: 1;
+  min-width: var(--s-3);
+  align-self: stretch;
+  position: relative;
+}
+
+/* Feet sit 3 of 24 units above the box's bottom; this lands them on the border. */
+.critter-walker {
+  position: absolute;
+  left: 0;
+  bottom: -4px;
+  display: flex;
+}
+
+/* Presence sets the colour; the act (critter-act-*) sets the pose and props. */
+.critter {
+  flex: none;
+  overflow: visible;
+  color: var(--brand);
+  transition: transform var(--dur-move) var(--ease-out);
+}
+
+.critter-waiting {
+  color: var(--ink-3);
+}
+
+.critter-working {
+  color: var(--attn);
+}
+
+/* Each part moves about its own box, so a leg can step from its hip. */
+.critter * {
+  transform-box: fill-box;
+  transform-origin: center;
+}
+
+.critter .critter-leg {
+  transform-origin: top;
+}
+
+.critter .critter-torso {
+  transform-origin: bottom;
+}
+
+.critter-body,
+.critter-leg,
+.critter-hands,
+.critter-pen circle,
+.critter-mag-hand,
+.critter-thought {
+  fill: currentColor;
+}
+
+/* Cut out of the body in the page colour, the header's ground: eyes, glasses. */
+.critter-eyes,
+.critter-glasses {
+  fill: none;
+  stroke: var(--paper);
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.critter-eyes {
+  stroke-width: 1.6;
+}
+
+.critter-glasses {
+  stroke-width: 0.6;
+}
+
+.critter-eyes-open {
+  fill: var(--paper);
+}
+
+/* The props: a diff page in the review's own red and green, a pen, a magnifier. */
+.critter-page rect {
+  fill: var(--paper);
+  stroke: currentColor;
+  stroke-width: 1.1;
+}
+
+.critter-page path,
+.critter-pen path,
+.critter-mag path,
+.critter-lens {
+  fill: none;
+  stroke-linecap: round;
+}
+
+.critter-page path {
+  stroke-width: 1.1;
+}
+
+.critter-line-del {
+  stroke: var(--del);
+}
+
+.critter-line-ctx {
+  stroke: var(--ink-3);
+}
+
+.critter-line-add {
+  stroke: var(--add);
+}
+
+.critter-pen path {
+  stroke: var(--ink-2);
+  stroke-width: 1.3;
+}
+
+.critter-lens {
+  fill: var(--paper);
+  fill-opacity: 0.55;
+  stroke: var(--ink-2);
+  stroke-width: 1.2;
+}
+
+.critter-mag path {
+  stroke: var(--ink-2);
+  stroke-width: 1.7;
+}
+
+.critter-z,
+.critter-spark {
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.critter-badge circle {
+  fill: var(--brand);
+}
+
+.critter-badge path {
+  fill: none;
+  stroke: var(--paper);
+  stroke-width: 1.3;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+/* Everything optional starts hidden; each act turns on what it needs. */
+.critter-eyes-shut,
+.critter-eyes-plus,
+.critter-eyes-happy,
+.critter-page,
+.critter-hands,
+.critter-pen,
+.critter-mag,
+.critter-z,
+.critter-thought,
+.critter-spark,
+.critter-badge {
+  display: none;
+}
+
+/* Eyes: dots by default, + + writing (and on the move at work), − − asleep,
+   ^ ^ when touched or pleased. */
+.critter-act-write .critter-eyes-open,
+.critter-working.critter-act-walk .critter-eyes-open,
+.critter-act-sleep .critter-eyes-open,
+.critter-act-poke .critter-eyes-open,
+.critter-act-approve .critter-eyes-open {
+  display: none;
+}
+
+.critter-act-write .critter-eyes-plus,
+.critter-working.critter-act-walk .critter-eyes-plus,
+.critter-act-sleep .critter-eyes-shut,
+.critter-act-poke .critter-eyes-happy,
+.critter-act-approve .critter-eyes-happy {
+  display: inline;
+}
+
+/* Leaning into the step says which way it is headed. */
+.critter-right .critter {
+  transform: rotate(5deg);
+}
+
+.critter-left .critter {
+  transform: rotate(-5deg);
+}
+
+/* sleep and sit: down on the floor, legs tucked; glasses off to sleep */
+.critter-act-sleep .critter-leg,
+.critter-act-sit .critter-leg,
+.critter-act-sleep .critter-glasses {
+  display: none;
+}
+
+.critter-act-sleep .critter-figure,
+.critter-act-sit .critter-figure {
+  transform: translateY(3px);
+}
+
+.critter-act-sleep .critter-torso {
+  animation: critter-breathe 3s ease-in-out infinite;
+}
+
+.critter-act-sleep .critter-z {
+  display: inline;
+  stroke: var(--ink-2);
+  stroke-width: 1.5;
+}
+
+.critter-act-sleep .critter-z path {
+  animation: critter-rise 3s ease-out infinite;
+}
+
+.critter-act-sleep .critter-z-b {
+  animation-delay: 1.5s;
+}
+
+/* stand and sit: a blink now and then (the eyes follow the cursor from JS) */
+.critter-act-stand .critter-eyes-open rect,
+.critter-act-sit .critter-eyes-open rect {
+  animation: critter-blink 4s infinite;
+}
+
+.critter-act-stand .critter-torso {
+  animation: critter-sway 3.2s ease-in-out infinite;
+}
+
+/* walk: legs step in turn, the body bobs */
+.critter-act-walk .critter-leg-l {
+  animation: critter-step 0.4s steps(2) infinite;
+}
+
+.critter-act-walk .critter-leg-r {
+  animation: critter-step 0.4s steps(2) infinite reverse;
+}
+
+.critter-act-walk .critter-torso {
+  animation: critter-bob 0.4s steps(2) infinite;
+}
+
+/* read: the page up in both hands, eyes scanning it line by line, a slow nod */
+.critter-act-read .critter-page,
+.critter-act-read .critter-hands,
+.critter-act-write .critter-page,
+.critter-act-write .critter-pen {
+  display: inline;
+}
+
+.critter-act-read .critter-eyes-open {
+  animation: critter-scan 2.4s steps(1) infinite;
+}
+
+.critter-act-read .critter-page {
+  animation: critter-nod 2.4s ease-in-out infinite;
+}
+
+/* inspect: the magnifier sweeps over the code, eyes following it */
+.critter-act-inspect .critter-mag {
+  display: inline;
+  animation: critter-sweep 1.8s ease-in-out infinite;
+}
+
+.critter-act-inspect .critter-eyes-open {
+  animation: critter-follow 1.8s ease-in-out infinite;
+}
+
+/* write: the pen scribbles, the green line writes itself, +s rise off it */
+.critter-act-write .critter-pen {
+  animation: critter-scribble 0.25s steps(2) infinite;
+}
+
+.critter-act-write .critter-line-add {
+  stroke-dasharray: 1;
+  animation: critter-draw 1.6s steps(6) infinite;
+}
+
+.critter-act-write .critter-eyes-plus {
+  transform: translate(0.6px, 0.9px);
+}
+
+.critter-act-write .critter-spark {
+  display: inline;
+  animation: critter-rise 1.2s ease-out infinite;
+}
+
+.critter-act-write .critter-spark-b {
+  animation-delay: 0.6s;
+}
+
+/* think: a tilt, eyes up and away, a bubble filling dot by dot */
+.critter-act-think .critter-torso {
+  transform: rotate(-6deg);
+}
+
+.critter-act-think .critter-eyes-open {
+  transform: translate(1px, -1.2px);
+}
+
+.critter-act-think .critter-thought {
+  display: inline;
+}
+
+.critter-act-think .critter-thought circle {
+  opacity: 0;
+  animation: critter-dot 1.8s steps(1) infinite;
+}
+
+.critter-act-think .critter-thought circle:nth-child(2) {
+  animation-delay: 0.3s;
+}
+
+.critter-act-think .critter-thought circle:nth-child(3) {
+  animation-delay: 0.6s;
+}
+
+/* poke: a happy hop, twice. approve: hops while a check pops overhead. */
+.critter-act-poke .critter-figure {
+  animation: critter-hop 0.5s var(--ease-out) 2;
+}
+
+.critter-act-approve .critter-figure {
+  animation: critter-hop 0.6s var(--ease-out) 2;
+}
+
+.critter-act-approve .critter-badge {
+  display: inline;
+  animation: critter-pop 0.6s var(--ease-out) both;
+}
+
+/* calm (the reviewer is busy): no sway, no nod — eyes and hands still work */
+.critter-calm .critter-act-stand .critter-torso,
+.critter-calm .critter-act-read .critter-page {
+  animation: none;
+}
+
+@keyframes critter-breathe {
+  0%,
+  100% {
+    transform: scaleY(1);
+  }
+  50% {
+    transform: scaleY(0.94);
+  }
+}
+
+@keyframes critter-rise {
+  0% {
+    transform: translate(0, 2px) scale(0.6);
+    opacity: 0;
+  }
+  30% {
+    opacity: 1;
+  }
+  100% {
+    transform: translate(2px, -5px) scale(1);
+    opacity: 0;
+  }
+}
+
+@keyframes critter-sway {
+  0%,
+  100% {
+    transform: rotate(0);
+  }
+  30% {
+    transform: rotate(-4deg);
+  }
+  60% {
+    transform: rotate(4deg);
+  }
+}
+
+@keyframes critter-blink {
+  0%,
+  40%,
+  44%,
+  100% {
+    transform: scaleY(1);
+  }
+  42% {
+    transform: scaleY(0.1);
+  }
+}
+
+@keyframes critter-step {
+  0%,
+  100% {
+    transform: scaleY(1);
+  }
+  50% {
+    transform: scaleY(0.5);
+  }
+}
+
+@keyframes critter-bob {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-1px);
+  }
+}
+
+/* Line by line: across the first line, then across the next, then a beat. */
+@keyframes critter-scan {
+  0% {
+    transform: translate(-1px, 0.9px);
+  }
+  15% {
+    transform: translate(0, 0.9px);
+  }
+  30% {
+    transform: translate(1px, 0.9px);
+  }
+  45% {
+    transform: translate(-1px, 1.5px);
+  }
+  60% {
+    transform: translate(0, 1.5px);
+  }
+  75%,
+  100% {
+    transform: translate(1px, 1.5px);
+  }
+}
+
+@keyframes critter-nod {
+  0%,
+  100% {
+    transform: rotate(0);
+  }
+  50% {
+    transform: rotate(-3deg);
+  }
+}
+
+@keyframes critter-sweep {
+  0%,
+  100% {
+    transform: translate(-2.5px, 1px) rotate(-8deg);
+  }
+  50% {
+    transform: translate(1px, -0.5px) rotate(6deg);
+  }
+}
+
+@keyframes critter-follow {
+  0%,
+  100% {
+    transform: translate(-0.4px, 0.4px);
+  }
+  50% {
+    transform: translate(1px, 0);
+  }
+}
+
+@keyframes critter-scribble {
+  0%,
+  100% {
+    transform: translate(0, 0);
+  }
+  50% {
+    transform: translate(-0.8px, 0.4px);
+  }
+}
+
+@keyframes critter-draw {
+  0% {
+    stroke-dashoffset: 1;
+  }
+  70%,
+  100% {
+    stroke-dashoffset: 0;
+  }
+}
+
+@keyframes critter-dot {
+  0%,
+  100% {
+    opacity: 0;
+  }
+  10%,
+  80% {
+    opacity: 1;
+  }
+}
+
+@keyframes critter-hop {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  40% {
+    transform: translateY(-5px);
+  }
+}
+
+@keyframes critter-pop {
+  0% {
+    transform: scale(0);
+    opacity: 0;
+  }
+  60% {
+    transform: scale(1.25);
+    opacity: 1;
+  }
+  100% {
+    transform: scale(1);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  /* Outranks every act rule above, the eye rects included. */
+  .critter-track .critter-walker .critter * {
+    animation: none;
+  }
+  .critter-act-think .critter-thought circle {
+    opacity: 1;
+  }
+  .critter-act-write .critter-line-add {
+    stroke-dashoffset: 0;
+  }
+}

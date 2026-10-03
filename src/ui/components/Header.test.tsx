@@ -138,6 +138,16 @@ describe('Header', () => {
       expect(items).toEqual(['System', 'Light', 'Dark', 'Shortcuts'])
     })
 
+    it('switches the companion, its state marked', () => {
+      const onSetCritter = vi.fn()
+      render(<Header changeset={changeset()} settings={{ critter: true, onSetCritter }} />)
+      fireEvent.click(screen.getByLabelText('Settings'))
+      const item = screen.getByText('Companion').closest('button')!
+      expect(item.getAttribute('aria-checked')).toBe('true')
+      fireEvent.click(item)
+      expect(onSetCritter).toHaveBeenCalledWith(false)
+    })
+
     it('closes on Escape even with an item focused', () => {
       const { container } = render(
         <Header changeset={changeset()} settings={{ onShowShortcuts: () => {} }} />,
@@ -183,6 +193,22 @@ describe('Header', () => {
     expect(line2.getAttribute('title')).toContain("linked worktree 'wt-fix'")
     expect(line2.getAttribute('title')).toContain('on branch fix/scope')
     expect(document.querySelector('.where-bit')).toBeNull()
+  })
+
+  it('the companion roams the header gap while an agent is in play, and leaves when switched off', () => {
+    const on = render(<Header changeset={changeset()} agent={{ presence: 'listening' }} />)
+    expect(on.container.querySelector('.critter-track svg.critter')).toBeTruthy()
+    expect(on.container.querySelector('.critter')!.getAttribute('aria-hidden')).toBe('true')
+    cleanup()
+    const off = render(
+      <Header
+        changeset={changeset()}
+        agent={{ presence: 'listening' }}
+        settings={{ critter: false, onSetCritter: () => {} }}
+      />,
+    )
+    expect(off.container.querySelector('.critter')).toBeNull()
+    expect(off.container.querySelector('.grow')).toBeTruthy()
   })
 
   it('presence with nothing attached offers the invite; attached states just state', () => {

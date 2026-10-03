@@ -4,6 +4,7 @@ import type { Presence, PresenceReason } from '../api.js'
 import { isDevServer } from '../devMode.js'
 import { shortAgo } from '../markdown.js'
 import type { Theme } from '../theme.js'
+import { CritterTrack } from './Critter.js'
 import { Icon } from './Icon.js'
 import { LivingMark } from './LivingMark.js'
 import { Menu, MenuItem, MenuLabel, MenuSep } from './Menu.js'
@@ -433,6 +434,9 @@ export interface HeaderReview {
 export interface HeaderSettings {
   theme?: Theme
   onSetTheme?: (theme: Theme) => void
+  /** Whether the header critter shows; on unless switched off. */
+  critter?: boolean
+  onSetCritter?: (on: boolean) => void
   onShowShortcuts?: () => void
   /** Opens the Privacy dialog, where the usage-data switch lives. */
   onShowPrivacy?: () => void
@@ -450,7 +454,14 @@ export function Header({
   settings?: HeaderSettings
 }) {
   const { openComments = 0, publicDrafts = 0, onFinishReview } = review
-  const { theme, onSetTheme, onShowShortcuts, onShowPrivacy } = settings
+  const {
+    theme,
+    onSetTheme,
+    critter = true,
+    onSetCritter,
+    onShowShortcuts,
+    onShowPrivacy,
+  } = settings
   return (
     <header className="top">
       <span className="mark">
@@ -479,7 +490,11 @@ export function Header({
       </span>
       {changeset.pr && <PrChips pr={changeset.pr} />}
       <Comparison changeset={changeset} />
-      <span className="grow" />
+      {agent.presence && critter ? (
+        <CritterTrack presence={agent.presence} reason={agent.reason} />
+      ) : (
+        <span className="grow" />
+      )}
       {agent.presence && (
         <PresenceChip
           presence={agent.presence}
@@ -555,9 +570,24 @@ export function Header({
                 </MenuItem>
               </>
             )}
-            {onShowShortcuts && (
+            {onSetCritter && (
               <>
                 {onSetTheme && <MenuSep />}
+                <MenuItem
+                  icon="sparkle"
+                  checked={critter}
+                  onClick={() => {
+                    close()
+                    onSetCritter(!critter)
+                  }}
+                >
+                  Companion
+                </MenuItem>
+              </>
+            )}
+            {onShowShortcuts && (
+              <>
+                {(onSetTheme || onSetCritter) && <MenuSep />}
                 <MenuItem
                   icon="keys"
                   kbd="?"
@@ -572,7 +602,7 @@ export function Header({
             )}
             {onShowPrivacy && (
               <>
-                {(onSetTheme || onShowShortcuts) && <MenuSep />}
+                {(onSetTheme || onSetCritter || onShowShortcuts) && <MenuSep />}
                 <MenuItem
                   icon="lock"
                   onClick={() => {

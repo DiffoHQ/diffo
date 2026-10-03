@@ -227,19 +227,41 @@ export function createApp(
   // shared DB holds the durable copy; localStorage stays only as the
   // before-first-paint cache.
   const THEME_VALUES = new Set(['system', 'light', 'dark'])
+  // The header critter: on unless the reviewer switched it off.
+  const CRITTER_VALUES = new Set(['on', 'off'])
+  const stored = (key: string, values: Set<string>) => {
+    const value = ctx.uiSettings?.get(key) ?? null
+    return value !== null && values.has(value) ? value : null
+  }
   app.get('/api/settings', (c) => {
-    const theme = ctx.uiSettings?.get('theme') ?? null
-    return c.json({ theme: theme !== null && THEME_VALUES.has(theme) ? theme : null })
+    return c.json({
+      theme: stored('theme', THEME_VALUES),
+      critter: stored('critter', CRITTER_VALUES),
+    })
   })
 
   app.put('/api/settings', async (c) => {
     if (!ctx.uiSettings) return c.json({ error: 'settings unavailable' }, 503)
     const body = await c.req.json().catch(() => null)
     const theme: unknown = body?.theme
-    if (typeof theme !== 'string' || !THEME_VALUES.has(theme)) {
-      return c.json({ error: 'need {theme: "system" | "light" | "dark"}' }, 400)
+    const critter: unknown = body?.critter
+    const themeOk = typeof theme === 'string' && THEME_VALUES.has(theme)
+    const critterOk = typeof critter === 'string' && CRITTER_VALUES.has(critter)
+    // Each key is optional, but one must be there and whatever is there must be valid.
+    if (
+      (theme !== undefined && !themeOk) ||
+      (critter !== undefined && !critterOk) ||
+      !(themeOk || critterOk)
+    ) {
+      return c.json(
+        {
+          error: 'need {theme?: "system" | "light" | "dark", critter?: "on" | "off"}, at least one',
+        },
+        400,
+      )
     }
-    ctx.uiSettings.set('theme', theme)
+    if (themeOk) ctx.uiSettings.set('theme', theme)
+    if (critterOk) ctx.uiSettings.set('critter', critter)
     return c.json({ ok: true })
   })
 
