@@ -60,7 +60,7 @@ html.dark .clip-light {
 /* Whitespace separates the sections; the default rule's border-top reads as a
  * seam once there are only four of them. */
 .VPHome .vp-doc h2 {
-  margin: 72px 0 20px;
+  margin: 140px 0 24px;
   padding-top: 0;
   border-top: 0;
   letter-spacing: -0.02em;
@@ -80,51 +80,6 @@ html.dark .clip-light {
 
 .home-clip {
   border: 1px solid var(--vp-c-divider);
-}
-
-/* The loop, in four steps: a 2x2 so no step is left orphaned on its own row. */
-.home-steps {
-  display: grid;
-  grid-template-columns: repeat(2, 1fr);
-  gap: 16px;
-  margin-top: 24px;
-}
-
-.VPHome .home-step {
-  padding: 22px;
-  border: 1px solid var(--vp-c-divider);
-  border-radius: 12px;
-  background-color: var(--vp-c-bg-soft);
-}
-
-.VPHome .home-step-n {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 28px;
-  height: 28px;
-  margin-bottom: 14px;
-  border-radius: 8px;
-  background-color: var(--vp-c-default-soft);
-  color: var(--vp-c-brand-1);
-  font-size: 13px;
-  font-weight: 600;
-  font-variant-numeric: tabular-nums;
-}
-
-.VPHome .home-step h3 {
-  margin: 0 0 8px;
-  font-size: 16px;
-  font-weight: 600;
-  line-height: 1.4;
-  letter-spacing: normal;
-}
-
-.VPHome .home-step p {
-  margin: 0;
-  font-size: 14px;
-  line-height: 1.7;
-  color: var(--vp-c-text-2);
 }
 
 /* Read next: a markdown list, laid out as cards. The list stays markdown so the
@@ -171,20 +126,18 @@ html.dark .clip-light {
 }
 
 @media (max-width: 960px) {
-  .home-steps,
   .VPHome .home-next ul {
     grid-template-columns: repeat(2, 1fr);
   }
 }
 
 @media (max-width: 640px) {
-  .home-steps,
   .VPHome .home-next ul {
     grid-template-columns: 1fr;
   }
 
   .VPHome .vp-doc h2 {
-    margin-top: 56px;
+    margin-top: 88px;
   }
 }
 
@@ -271,57 +224,258 @@ html.dark .clip-light {
   background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12'%3E%3Cpath d='M2.5 6.5l2.5 2.5 4.5-5' fill='none' stroke='white' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
 }
 
-/*
- * The install command types itself when it scrolls into view. The line is clipped to
- * nothing and swept open in character-sized steps; a caret rides the right edge and
- * blinks a few times once the line is complete. `.is-in` comes from the same observer
- * as `.reveal`, so without JavaScript the command is simply there.
- */
-.home-install.reveal .line {
-  display: inline-block;
-  clip-path: inset(0 100% 0 -2px);
-}
-
-.home-install.reveal.is-in .line {
-  animation: home-type 1.4s steps(42, end) 0.2s forwards;
-}
-
-.home-install.reveal.is-in .line::after {
-  content: '';
-  display: inline-block;
-  width: 2px;
-  height: 1.1em;
-  margin-left: 2px;
-  vertical-align: text-bottom;
-  background: var(--vp-c-brand-1);
-  animation: home-caret 1s steps(1, end) 1.6s 3;
-  opacity: 0;
-}
-
-@keyframes home-type {
-  to {
-    clip-path: inset(0 -4px 0 -2px);
-  }
-}
-
-@keyframes home-caret {
-  0%, 50% { opacity: 1; }
-  51%, 100% { opacity: 0; }
-}
-
 @media (prefers-reduced-motion: reduce) {
   .reveal {
     opacity: 1;
     transform: none;
     transition: none;
   }
+}
 
-  .home-install.reveal .line {
-    clip-path: none;
-    animation: none;
+/* ──────────────────────────────────────────────────────────────────────────
+ * The opening shot.
+ *
+ * The hero plays in like a title sequence: the particle field (theme/HeroField.vue)
+ * fades up behind it, then the name, the headline, the tagline and the actions rise
+ * out of a blur one after another, and the mark scales in last. CSS only, ending on
+ * the resting state, so a page without JavaScript gets the same sequence.
+ * ────────────────────────────────────────────────────────────────────────── */
+.VPHome {
+  position: relative;
+}
+
+.VPHome .VPHero {
+  position: relative;
+  z-index: 1;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .VPHero .name,
+  .VPHero .text,
+  .VPHero .tagline,
+  .VPHero .actions {
+    animation: hero-in 0.9s cubic-bezier(0.2, 0.7, 0.2, 1) both;
   }
 
-  .home-install.reveal.is-in .line::after {
-    display: none;
+  .VPHero .name { animation-delay: 0.1s; }
+  .VPHero .text { animation-delay: 0.22s; }
+  .VPHero .tagline { animation-delay: 0.38s; }
+  .VPHero .actions { animation-delay: 0.52s; }
+
+  .VPHero .image-container {
+    animation: hero-mark-in 1.2s cubic-bezier(0.2, 0.7, 0.2, 1) 0.3s both;
+  }
+}
+
+@keyframes hero-in {
+  from {
+    opacity: 0;
+    filter: blur(10px);
+    transform: translateY(18px);
+  }
+}
+
+@keyframes hero-mark-in {
+  from {
+    opacity: 0;
+    filter: blur(12px);
+    transform: scale(0.86);
+  }
+}
+
+/* The brand action breathes a soft green glow on hover. */
+.VPHero .VPButton.brand {
+  transition:
+    box-shadow 0.3s,
+    transform 0.3s,
+    background-color 0.25s;
+}
+
+.VPHero .VPButton.brand:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 8px 30px -6px var(--vp-c-brand-1);
+}
+
+/* ──────────────────────────────────────────────────────────────────────────
+ * Chapters.
+ *
+ * Every home section is numbered like a scene, [01], [02], …, and its heading rises
+ * in word by word through a mask (the words are wrapped by theme/index.ts).
+ * ────────────────────────────────────────────────────────────────────────── */
+.VPHome .vp-doc {
+  counter-reset: scene;
+}
+
+.VPHome .vp-doc h2 {
+  counter-increment: scene;
+  font-size: clamp(28px, 4vw, 40px);
+  line-height: 1.15;
+}
+
+.VPHome .vp-doc h2::before {
+  content: '[' counter(scene, decimal-leading-zero) ']';
+  display: block;
+  margin-bottom: 14px;
+  font-family: var(--vp-font-family-mono);
+  font-size: 12px;
+  font-weight: 500;
+  letter-spacing: 0.06em;
+  color: var(--vp-c-brand-1);
+}
+
+.VPHome .vp-doc h2 .word {
+  display: inline-block;
+  overflow: hidden;
+  padding-bottom: 0.08em;
+  margin-bottom: -0.08em;
+  vertical-align: bottom;
+}
+
+.VPHome .vp-doc h2 .word > span {
+  display: inline-block;
+}
+
+.VPHome .vp-doc h2.reveal {
+  opacity: 1;
+  transform: none;
+}
+
+.VPHome .vp-doc h2.reveal::before {
+  opacity: 0;
+  transition: opacity 0.6s;
+}
+
+.VPHome .vp-doc h2.reveal.is-in::before {
+  opacity: 1;
+}
+
+.VPHome .vp-doc h2.reveal .word > span {
+  transform: translateY(105%);
+  transition: transform 0.8s cubic-bezier(0.2, 0.7, 0.2, 1);
+  transition-delay: calc(var(--w, 0) * 55ms + 0.1s);
+}
+
+.VPHome .vp-doc h2.reveal.is-in .word > span {
+  transform: none;
+}
+
+/* ──────────────────────────────────────────────────────────────────────────
+ * The recorded clips enter tilted back, like a screen being lifted into view, and
+ * settle flat as they reach the middle of the viewport. --p comes from theme/index.ts.
+ * ────────────────────────────────────────────────────────────────────────── */
+.VPHome .home-clip {
+  border-radius: 12px;
+  transform-origin: 50% 0;
+  transform: perspective(1400px) rotateX(calc((1 - var(--p, 1)) * 22deg))
+    scale(calc(0.88 + var(--p, 1) * 0.12));
+  opacity: calc(0.35 + var(--p, 1) * 0.65);
+  box-shadow: 0 40px 100px -50px rgba(0, 0, 0, 0.55);
+  will-change: transform;
+}
+
+/* ──────────────────────────────────────────────────────────────────────────
+ * Spotlight: cards catch a soft light where the pointer is (--mx/--my from index.ts).
+ * ────────────────────────────────────────────────────────────────────────── */
+.VPHome .VPFeature,
+.VPHome .home-next li > a,
+.install-term {
+  position: relative;
+  isolation: isolate;
+}
+
+.VPHome .VPFeature::before,
+.VPHome .home-next li > a::before,
+.install-term::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  border-radius: inherit;
+  background: radial-gradient(
+    360px circle at var(--mx, 50%) var(--my, 50%),
+    var(--vp-c-brand-soft),
+    transparent 60%
+  );
+  opacity: 0;
+  transition: opacity 0.35s;
+  pointer-events: none;
+}
+
+.VPHome .VPFeature:hover::before,
+.VPHome .home-next li > a:hover::before,
+.install-term:hover::before {
+  opacity: 1;
+}
+
+.VPHome .VPFeature {
+  transition:
+    border-color 0.3s,
+    transform 0.3s cubic-bezier(0.2, 0.7, 0.2, 1);
+}
+
+.VPHome .VPFeature:hover {
+  transform: translateY(-3px);
+}
+
+/* The reading bar: a hairline of brand green under the nav, as long as you've read. */
+.VPHome::after {
+  content: '';
+  position: fixed;
+  top: var(--vp-nav-height);
+  left: 0;
+  right: 0;
+  z-index: 30;
+  height: 2px;
+  background: linear-gradient(90deg, var(--vp-c-brand-3), var(--vp-c-brand-2));
+  transform-origin: left;
+  transform: scaleX(var(--home-progress, 0));
+  pointer-events: none;
+}
+
+/* ──────────────────────────────────────────────────────────────────────────
+ * Doc pages: each page arrives rather than appears, and the sidebar marks where you are.
+ * ────────────────────────────────────────────────────────────────────────── */
+@media (prefers-reduced-motion: no-preference) {
+  .VPDoc .content-container > .vp-doc > div {
+    animation: page-in 0.55s cubic-bezier(0.2, 0.7, 0.2, 1) both;
+  }
+
+  .VPDoc .aside-container {
+    animation: page-in 0.55s cubic-bezier(0.2, 0.7, 0.2, 1) 0.12s both;
+  }
+}
+
+@keyframes page-in {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+}
+
+.VPSidebarItem.is-active > .item > .indicator {
+  transition:
+    background-color 0.25s,
+    transform 0.35s cubic-bezier(0.2, 0.7, 0.2, 1);
+}
+
+.VPSidebarItem .item > .link > .text {
+  transition:
+    color 0.25s,
+    transform 0.25s cubic-bezier(0.2, 0.7, 0.2, 1);
+}
+
+.VPSidebarItem .item > .link:hover > .text {
+  transform: translateX(3px);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .VPHome .home-clip {
+    transform: none;
+    opacity: 1;
+  }
+
+  .VPHome .vp-doc h2.reveal .word > span {
+    transform: none;
+    transition: none;
   }
 }

@@ -37,6 +37,7 @@
   "scripts": {
     "build": "vite build && tsdown",
     "build:skill": "tsx scripts/build-skill.ts",
+    "readme:art": "tsx scripts/build-readme-art.ts",
     "check": "pnpm typecheck && pnpm test && pnpm build && pnpm lint && pnpm docs:build",
     "dev": "pnpm run \"/^dev:(client|server)$/\"",
     "dev:client": "vite",

@@ -2,14 +2,10 @@
 
 <a href="https://diffohq.github.io/diffo/">
   <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="assets/logo-dark.svg">
-    <img src="assets/logo.svg" alt="Diffo" width="76" height="76">
+    <source media="(prefers-color-scheme: dark)" srcset="assets/readme-hero-dark.svg">
+    <img src="assets/readme-hero.svg" alt="Diffo: the human way to review agent-written code" width="100%">
   </picture>
 </a>
-
-# Diffo
-
-### The human way to review agent-written code.
 
 Ask your agent for a review. You get the change in **layers**, in the order it should be
 read, and **the agent on the other end of every comment**: it answers on the line and fixes
@@ -18,12 +14,10 @@ review to GitHub.
 
 [Quick start](#quick-start) · [The conversation](#talk-to-the-agent-on-the-line) · [Layers](#read-it-in-layers) · [Pull requests](#review-a-pull-request) · [Docs](#docs) · [Contributing](#contributing)
 
-[![CI](https://img.shields.io/github/actions/workflow/status/DiffoHQ/diffo/ci.yml?branch=main&label=CI)](https://github.com/DiffoHQ/diffo/actions/workflows/ci.yml)
-[![npm](https://img.shields.io/npm/v/%40diffohq%2Fdiffo?label=npm&color=cb3837)](https://www.npmjs.com/package/@diffohq/diffo)
-[![License](https://img.shields.io/badge/license-Apache--2.0-blue)](LICENSE)
-[![Node](https://img.shields.io/badge/node-%E2%89%A5%2024-brightgreen)](#quick-start)
-[![Docs](https://img.shields.io/badge/docs-diffo-8b5cf6)](https://diffohq.github.io/diffo/)
-[![Tests](https://img.shields.io/badge/tests-1327-brightgreen)](#contributing)
+[![CI](https://img.shields.io/github/actions/workflow/status/DiffoHQ/diffo/ci.yml?branch=main&label=CI&style=flat-square)](https://github.com/DiffoHQ/diffo/actions/workflows/ci.yml)
+[![npm](https://img.shields.io/npm/v/%40diffohq%2Fdiffo?label=npm&style=flat-square&color=1f883d)](https://www.npmjs.com/package/@diffohq/diffo)
+[![License](https://img.shields.io/badge/license-Apache--2.0-1f883d?style=flat-square)](LICENSE)
+[![Docs](https://img.shields.io/badge/docs-diffohq.github.io-1f883d?style=flat-square)](https://diffohq.github.io/diffo/)
 
 </div>
 
@@ -77,6 +71,11 @@ had already moved on.
 
 Diffo keeps the conversation open through the review. The judgement stays yours. You just
 stop reading alone.
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="assets/readme-loop-dark.svg">
+  <img alt="One round trip in the Diffo review: the reviewer asks a Question on line 14, the agent chip turns to working, the agent answers in the thread, and the fix lands in the diff under it, with changed since you read it on the file and Viewed unticked." src="assets/readme-loop.svg" width="100%">
+</picture>
 
 - **Ask on any line.** The agent that wrote the code answers in the thread, with a
   diagram when the shape needs one. Mark a thread a **Question** and it explains; mark it
