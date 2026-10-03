@@ -111,6 +111,7 @@ describe('parseCliArgs — agent verbs', () => {
       message: 'done',
       more: false,
       suggestReply: null,
+      prComment: null,
     })
     expect(parseCliArgs(['reply', 't-1', '-m', 'done'])).toMatchObject({ message: 'done' })
     expect(parseCliArgs(['reply', 't-1'])).toEqual({
@@ -119,6 +120,7 @@ describe('parseCliArgs — agent verbs', () => {
       message: null,
       more: false,
       suggestReply: null,
+      prComment: null,
     })
     expect(parseCliArgs(['reply'])).toMatchObject({ kind: 'error' })
     expect(parseCliArgs(['reply', 't-1', 'oops'])).toMatchObject({ kind: 'error' })
@@ -157,6 +159,43 @@ describe('parseCliArgs — agent verbs', () => {
     expect(parseCliArgs(['end', '--suggest-reply', 'x'])).toMatchObject({ kind: 'error' })
   })
 
+  it('reply and comment take --pr-comment, multi-line and trimmed; other verbs refuse it', () => {
+    expect(
+      parseCliArgs([
+        'reply',
+        't-1',
+        '-m',
+        'you are right',
+        '--pr-comment',
+        ' Keep the streak?\n\n```suggestion\nx\n``` ',
+      ]),
+    ).toMatchObject({ kind: 'reply', prComment: 'Keep the streak?\n\n```suggestion\nx\n```' })
+    expect(
+      parseCliArgs([
+        'comment',
+        'a.ts',
+        '--line',
+        '3',
+        '-m',
+        'bug',
+        '--pr-comment',
+        'Loops forever on 0',
+      ]),
+    ).toMatchObject({
+      kind: 'comment',
+      prComment: 'Loops forever on 0',
+    })
+    expect(parseCliArgs(['reply', 't-1', '-m', 'x'])).toMatchObject({
+      kind: 'reply',
+      prComment: null,
+    })
+    expect(parseCliArgs(['reply', 't-1', '-m', 'x', '--pr-comment', '  '])).toMatchObject({
+      kind: 'error',
+    })
+    expect(parseCliArgs(['poll', '--pr-comment', 'x'])).toMatchObject({ kind: 'error' })
+    expect(parseCliArgs(['layers', '--pr-comment', 'x'])).toMatchObject({ kind: 'error' })
+  })
+
   it('comment anchors to a line, a file, or (no file) the changeset', () => {
     expect(parseCliArgs(['comment', 'src/a.ts', '--line', '12', '--message', 'name this'])).toEqual(
       {
@@ -165,6 +204,7 @@ describe('parseCliArgs — agent verbs', () => {
         line: 12,
         message: 'name this',
         suggestReply: null,
+        prComment: null,
       },
     )
     expect(parseCliArgs(['comment', 'src/a.ts'])).toEqual({
@@ -173,6 +213,7 @@ describe('parseCliArgs — agent verbs', () => {
       line: null,
       message: null,
       suggestReply: null,
+      prComment: null,
     })
     expect(parseCliArgs(['comment', '--message', 'read review.ts first'])).toEqual({
       kind: 'comment',
@@ -180,6 +221,7 @@ describe('parseCliArgs — agent verbs', () => {
       line: null,
       message: 'read review.ts first',
       suggestReply: null,
+      prComment: null,
     })
     // A line with no file has nothing to anchor to.
     expect(parseCliArgs(['comment', '--line', '3', '--message', 'x'])).toMatchObject({

@@ -4,6 +4,7 @@ import {
   type Author,
   anchorSpan,
   isPublic,
+  liveSuggestion,
   type ReviewMessage,
   type ReviewThread,
   seenByAgent,
@@ -25,7 +26,12 @@ export interface ReviewActions {
     anchor: import('../../shared/review.js').Anchor,
     text: string,
     intent?: import('../../shared/review.js').ThreadIntent,
-    options?: { audience?: Audience; parentId?: string },
+    options?: {
+      audience?: Audience
+      parentId?: string
+      /** The agent's suggestion this public draft is made from. */
+      origin?: { threadId: string; messageId: string }
+    },
   ) => Promise<ReviewThread>
   reply: (threadId: string, text: string, deliver?: boolean) => Promise<unknown>
   /** Rewrite one of the reviewer's own messages; see `ReviewStore.editMessage`. */
@@ -34,6 +40,10 @@ export interface ReviewActions {
   resolve: (threadId: string) => Promise<unknown>
   reopen: (threadId: string) => Promise<unknown>
   remove?: (threadId: string) => Promise<unknown>
+  /** Pass on the agent's suggested PR comment; the thread stays open. */
+  dismissPrComment?: (threadId: string, messageId: string) => Promise<unknown>
+  /** Take a dismissal back: the suggestion returns live. */
+  restorePrComment?: (threadId: string, messageId: string) => Promise<unknown>
 }
 
 /** The kind the reviewer declared, as the card shows it — the composer's own
@@ -213,6 +223,137 @@ function Body({ text, links }: { text: string; links?: RefLinks }) {
 
 export { CommentBox }
 
+/**
+ * The review comment the agent drafted for the author, nested under its reply.
+ * Blue — where it is going — inside the amber card, because it has not gone
+ * anywhere yet. Live: Add to review / Edit / Dismiss. Editing: the block is the
+ * PR composer, in place. Decided or superseded: a one-line receipt, so a folded
+ * thread never hides that a suggestion was here.
+ */
+function SuggestedPrComment({
+  message,
+  live,
+  editing,
+  agentConnected,
+  onEdit,
+  onCancelEdit,
+  onAdd,
+  onDismiss,
+  onRestore,
+}: {
+  message: ReviewMessage
+  live: boolean
+  editing: boolean
+  agentConnected: boolean
+  onEdit: () => void
+  onCancelEdit: () => void
+  onAdd: (text: string) => Promise<unknown>
+  onDismiss?: () => void
+  onRestore?: () => void
+}) {
+  const suggestion = message.prComment!
+  const outcome = suggestion.outcome
+  // The receipt folds the agent's words away; Show brings them back to read,
+  // since the draft may have been edited past recognition.
+  const [shown, setShown] = useState(false)
+  if (outcome || !live) {
+    const kind = outcome ? outcome.kind : 'superseded'
+    const status = outcome
+      ? outcome.kind === 'added'
+        ? outcome.edited
+          ? 'added to your review, edited'
+          : 'added to your review'
+        : 'dismissed'
+      : 'superseded by the reply below'
+    return (
+      <div className={`psc psc-done psc-${kind}`} data-testid="pr-suggestion-receipt">
+        <div className="psc-done-line">
+          <button
+            type="button"
+            className={`thread-shut chevron${shown ? '' : ' chevron-shut'}`}
+            aria-expanded={shown}
+            aria-label={shown ? 'hide the suggested comment' : 'show the suggested comment'}
+            data-tip={shown ? 'hide the suggested comment' : 'show the suggested comment'}
+            onClick={() => setShown(!shown)}
+          >
+            <Icon name="chev" size="sm" />
+          </button>
+          <Icon name="globe" size="sm" />
+          <span className="psc-done-text">
+            Suggested PR comment <span className="psc-done-status">· {status}</span>
+          </span>
+          {kind === 'dismissed' && onRestore && (
+            <button
+              type="button"
+              className="btn btn-ghost btn-sm"
+              title="bring the suggestion back, with its buttons"
+              onClick={onRestore}
+            >
+              Undo
+            </button>
+          )}
+        </div>
+        {shown && <Markdown className="psc-body markdown" text={suggestion.text} />}
+      </div>
+    )
+  }
+  if (editing) {
+    return (
+      <div className="psc psc-editing">
+        <CommentBox
+          title="Suggested PR comment"
+          placeholder="The review comment as GitHub will show it…"
+          fixedAudience="pr"
+          initialText={suggestion.text}
+          agentConnected={agentConnected}
+          onSubmit={(text) => void onAdd(text)}
+          onCancel={onCancelEdit}
+        />
+      </div>
+    )
+  }
+  return (
+    <div className="psc" data-testid="pr-suggestion">
+      <div className="psc-head">
+        <Icon name="globe" size="sm" />
+        <span>Suggested PR comment</span>
+        <span className="psc-head-note">for the author, in your words</span>
+      </div>
+      <Markdown className="psc-body markdown" text={suggestion.text} />
+      <div className="psc-foot">
+        <span className="psc-hint">Draft · posts when you submit the review</span>
+        <button
+          type="button"
+          className="btn btn-primary btn-sm psc-add"
+          title="add it to your review as a draft on these lines; it posts when you submit"
+          onClick={() => void onAdd(suggestion.text)}
+        >
+          Add to review
+        </button>
+        <button
+          type="button"
+          className="btn btn-sm"
+          title="rewrite it before it joins the review"
+          onClick={onEdit}
+        >
+          Edit
+        </button>
+        {onDismiss && (
+          <button
+            type="button"
+            className="btn btn-ghost btn-icon btn-sm"
+            aria-label="dismiss this suggested comment"
+            title="pass on it; the thread stays open"
+            onClick={onDismiss}
+          >
+            <Icon name="x" size="sm" />
+          </button>
+        )}
+      </div>
+    </div>
+  )
+}
+
 export function ThreadCard({
   thread,
   actions,
@@ -245,6 +386,9 @@ export function ThreadCard({
   const draft = publicThread && thread.state === 'open' && gh === undefined
   const imported = gh !== undefined && thread.id.startsWith('gh:')
   const [promote, setPromote] = useState<string | null>(null)
+  // The suggested PR comment being rewritten before it joins the review: the
+  // block becomes the composer, in place. One at a time, like `editing`.
+  const [prEdit, setPrEdit] = useState(false)
   const [reply, setReply] = useState('')
   const [copied, setCopied] = useState(false)
   // The prompt to show when the clipboard refuses — copying is the whole point of
@@ -332,6 +476,31 @@ export function ThreadCard({
         copyTimer.current = setTimeout(() => setCopied(false), 2500)
       })
       .catch(() => setActionFailed(true))
+  }
+  // The agent drafted a review comment for the author under one of its
+  // replies: the reviewer adds it (a public draft on this anchor, the
+  // suggestion stamped as added by the server), edits it first, or dismisses
+  // it. Only the latest undecided one is live; earlier ones read as superseded.
+  const live = liveSuggestion(thread)
+  const addPrComment = (messageId: string, text: string) => {
+    setActionFailed(false)
+    return actions
+      .create(thread.anchor, text, undefined, {
+        audience: 'pr',
+        origin: { threadId: thread.id, messageId },
+      })
+      .then(() => setPrEdit(false))
+      .catch(() => setActionFailed(true))
+  }
+  const dismissPrComment = (messageId: string) => {
+    if (!actions.dismissPrComment) return
+    setActionFailed(false)
+    void actions.dismissPrComment(thread.id, messageId).catch(() => setActionFailed(true))
+  }
+  const restorePrComment = (messageId: string) => {
+    if (!actions.restorePrComment) return
+    setActionFailed(false)
+    void actions.restorePrComment(thread.id, messageId).catch(() => setActionFailed(true))
   }
   const lastAuthor = thread.messages[thread.messages.length - 1]?.author
   const withheld = thread.withheld === true
@@ -434,6 +603,14 @@ export function ThreadCard({
         </span>
       )}
       {thread.closingNote && <span className="thread-badge">closing note</span>}
+      {live !== null && (
+        <span
+          className="thread-badge thread-badge-pr"
+          title="your agent drafted a review comment for the author; it is under its reply"
+        >
+          <Icon name="globe" size="sm" /> suggests a PR comment
+        </span>
+      )}
       {gh?.reviewState && (
         <span className={`thread-badge thread-badge-${gh.reviewState.toLowerCase()}`}>
           {REVIEW_STATE_LABEL[gh.reviewState]}
@@ -535,7 +712,7 @@ export function ThreadCard({
   // agent's reaches GitHub on its own. A public card offers no way to the
   // agent: its row is GitHub's, and a private question about the same lines
   // starts from the composer's Ask agent side.
-  const promoteButton = pr && !publicThread && thread.messages.length > 0 && (
+  const promoteButton = pr && !publicThread && live === null && thread.messages.length > 0 && (
     <button
       type="button"
       className="btn btn-ghost btn-sm thread-promote"
@@ -744,6 +921,16 @@ export function ThreadCard({
                         publicThread &&
                         !m.github &&
                         (draft ? ' · draft' : ' · posts when you submit')}
+                      {i === 0 && publicThread && thread.origin && (
+                        <span
+                          className="cmt-origin"
+                          title="your agent wrote the first version of this comment; it posts as yours"
+                        >
+                          {thread.origin.edited
+                            ? ' · from your agent, edited'
+                            : ' · from your agent'}
+                        </span>
+                      )}
                     </span>
                     {canEdit(m) && editing?.id !== m.id && (
                       <button
@@ -836,6 +1023,23 @@ export function ThreadCard({
                     </div>
                   ) : (
                     <Body text={m.text} links={links} />
+                  )}
+                  {m.author === 'agent' && m.prComment && (
+                    <SuggestedPrComment
+                      message={m}
+                      live={live?.id === m.id}
+                      editing={prEdit && live?.id === m.id}
+                      agentConnected={agentConnected}
+                      onEdit={() => setPrEdit(true)}
+                      onCancelEdit={() => setPrEdit(false)}
+                      onAdd={(text) => addPrComment(m.id, text)}
+                      onDismiss={
+                        actions.dismissPrComment ? () => dismissPrComment(m.id) : undefined
+                      }
+                      onRestore={
+                        actions.restorePrComment ? () => restorePrComment(m.id) : undefined
+                      }
+                    />
                   )}
                 </div>
                 {/* The rewind point: a rule across the thread where the cut

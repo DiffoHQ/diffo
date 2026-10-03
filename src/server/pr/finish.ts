@@ -9,6 +9,7 @@ import {
   unpostedReplies,
 } from '../../shared/review.js'
 import type { FileChange, PrInfo } from '../../shared/types.js'
+import type { Submitted } from '../delivery.js'
 import type { ReviewStore } from '../review.js'
 
 // Finish's second leg: what the reviewer drafted for GitHub, and posting it.
@@ -74,6 +75,34 @@ export function planPublicLeg(
   return { drafts, replies, resolves }
 }
 
+/**
+ * What became of the agent's suggested review comments, counted at submit:
+ * a suggestion is `posted` when the draft it became is still in the review
+ * (a discarded draft takes the thread with it), `edited` when the reviewer
+ * changed the words first. The agent hears this once, in the submit notice.
+ */
+export function suggestionsSummary(
+  threads: readonly ReviewThread[],
+): NonNullable<Submitted['suggestions']> {
+  const ids = new Set(threads.map((t) => t.id))
+  const s = { total: 0, posted: 0, edited: 0, dismissed: 0, undecided: 0 }
+  for (const t of threads) {
+    if (isPublic(t)) continue
+    for (const m of t.messages) {
+      if (m.author !== 'agent' || !m.prComment) continue
+      s.total++
+      const o = m.prComment.outcome
+      if (!o) s.undecided++
+      else if (o.kind === 'dismissed') s.dismissed++
+      else if (ids.has(o.draftThreadId)) {
+        s.posted++
+        if (o.edited) s.edited++
+      } else s.undecided++
+    }
+  }
+  return s
+}
+
 export function legIsEmpty(leg: PublicLeg): boolean {
   return leg.drafts.length === 0 && leg.replies.length === 0 && leg.resolves.length === 0
 }
@@ -87,6 +116,7 @@ export function describeLeg(leg: PublicLeg) {
       text: d.text,
       downgraded: d.downgraded,
       conversation: d.position === null,
+      ...(d.thread.origin ? { fromAgent: { edited: d.thread.origin.edited } } : {}),
     })),
     replies: leg.replies.map((r) => ({
       id: r.thread.id,

@@ -8,12 +8,15 @@ import {
   type Audience,
   type Author,
   type Coverage,
+  type DraftOrigin,
   EMPTY_REVIEW,
   type GithubThread,
   type Landed,
   type LastFinish,
   type Layers,
   normalizeTitle,
+  type PrCommentOutcome,
+  type PrCommentSuggestion,
   type ReviewMessage,
   type ReviewState,
   type ReviewThread,
@@ -85,7 +88,13 @@ export class ReviewStore {
     capture: ThreadCapture | null,
     intent?: ThreadIntent,
     author: Author = 'reviewer',
-    options: { audience?: Audience; parentId?: string; suggestedReply?: string } = {},
+    options: {
+      audience?: Audience
+      parentId?: string
+      suggestedReply?: string
+      prComment?: string
+      origin?: DraftOrigin
+    } = {},
   ): ReviewThread {
     const now = new Date().toISOString()
     return this.insert({
@@ -95,6 +104,7 @@ export class ReviewStore {
       // A public draft has no intent: it is a review comment, not an ask of the agent.
       ...(options.audience === 'pr' ? { audience: 'pr' as const } : intent ? { intent } : {}),
       ...(options.parentId ? { parentId: options.parentId } : {}),
+      ...(options.audience === 'pr' && options.origin ? { origin: options.origin } : {}),
       codeContext: capture?.codeContext ?? null,
       ...(capture?.anchored ? { anchored: capture.anchored } : {}),
       ...(capture?.anchoredLayer ? { anchoredLayer: capture.anchoredLayer } : {}),
@@ -108,11 +118,67 @@ export class ReviewStore {
           ...(author === 'agent' && options.suggestedReply
             ? { suggestedReply: options.suggestedReply }
             : {}),
+          ...(author === 'agent' && options.prComment
+            ? { prComment: { text: options.prComment } }
+            : {}),
         },
       ],
       createdAt: now,
       updatedAt: now,
     })
+  }
+
+  /**
+   * The reviewer's decision on a suggested PR comment: added to their review
+   * (the public draft it became is named) or dismissed. Stamped once — a
+   * decided suggestion is history, and the card shows it as such. Null when
+   * the thread or message is not a live suggestion.
+   */
+  decidePrComment(
+    threadId: string,
+    messageId: string,
+    outcome: PrCommentOutcome,
+  ): ReviewThread | null {
+    const current = this.state.threads.find((t) => t.id === threadId)
+    const message = current?.messages.find((m) => m.id === messageId)
+    if (!current || !message || message.author !== 'agent' || !message.prComment) return null
+    if (message.prComment.outcome !== undefined) return null
+    return this.setPrCommentOutcome(threadId, messageId, outcome)
+  }
+
+  /**
+   * The decision taken back: a dismissed suggestion returns live, with its
+   * buttons. An added one does too, but only once the draft it became is gone
+   * (discarded) — while the draft stands, reviving the suggestion would offer
+   * the same comment twice. Null when there is nothing to restore.
+   */
+  restorePrComment(threadId: string, messageId: string): ReviewThread | null {
+    const current = this.state.threads.find((t) => t.id === threadId)
+    const message = current?.messages.find((m) => m.id === messageId)
+    const outcome = message?.prComment?.outcome
+    if (!current || !message || !outcome) return null
+    if (
+      outcome.kind === 'added' &&
+      this.state.threads.some((t) => t.id === outcome.draftThreadId)
+    ) {
+      return null
+    }
+    return this.setPrCommentOutcome(threadId, messageId, undefined)
+  }
+
+  private setPrCommentOutcome(
+    threadId: string,
+    messageId: string,
+    outcome: PrCommentOutcome | undefined,
+  ): ReviewThread | null {
+    return this.update(threadId, (thread) => ({
+      ...thread,
+      messages: thread.messages.map((m) => {
+        if (m.id !== messageId) return m
+        const { outcome: _was, ...rest } = m.prComment!
+        return { ...m, prComment: outcome ? { ...rest, outcome } : rest }
+      }),
+    }))
   }
 
   /**
@@ -159,6 +225,7 @@ export class ReviewStore {
     seenThroughMs?: number,
     followUp = false,
     suggestedReply?: string,
+    prComment?: string,
   ): ReviewThread | null {
     return this.update(threadId, ({ unanswered: _answered, ...thread }) => {
       const message: ReviewMessage = {
@@ -167,6 +234,7 @@ export class ReviewStore {
         text,
         at: new Date().toISOString(),
         ...(author === 'agent' && suggestedReply ? { suggestedReply } : {}),
+        ...(author === 'agent' && prComment ? { prComment: { text: prComment } } : {}),
       }
       // Raced = a reviewer message the agent has not seen. The agent's own
       // messages are never raced past — an interim reply postdates the delivery
@@ -310,10 +378,14 @@ export class ReviewStore {
   }
 
   removeThread(threadId: string): boolean {
-    const threads = this.state.threads.filter((t) => t.id !== threadId)
-    if (threads.length === this.state.threads.length) return false
-    this.state = { ...this.state, threads }
+    const removed = this.state.threads.find((t) => t.id === threadId)
+    if (!removed) return false
+    this.state = { ...this.state, threads: this.state.threads.filter((t) => t.id !== threadId) }
     this.commit()
+    // A discarded draft that began as the agent's suggestion hands the
+    // suggestion back: the words are still in the private thread, and the
+    // reviewer may want them again, edited differently, or dismissed for good.
+    if (removed.origin) this.restorePrComment(removed.origin.threadId, removed.origin.messageId)
     return true
   }
 
@@ -915,6 +987,30 @@ function normalizeAnchoredLayer(value: unknown): AnchoredLayer | null {
   }
 }
 
+function normalizePrComment(value: unknown): PrCommentSuggestion | null {
+  if (typeof value !== 'object' || value === null) return null
+  const v = value as Record<string, unknown>
+  if (typeof v.text !== 'string' || v.text.trim() === '') return null
+  const o = v.outcome
+  let outcome: PrCommentOutcome | undefined
+  if (typeof o === 'object' && o !== null) {
+    const r = o as Record<string, unknown>
+    const at = typeof r.at === 'string' ? r.at : new Date().toISOString()
+    if (r.kind === 'dismissed') outcome = { kind: 'dismissed', at }
+    else if (r.kind === 'added' && typeof r.draftThreadId === 'string') {
+      outcome = { kind: 'added', draftThreadId: r.draftThreadId, edited: r.edited === true, at }
+    }
+  }
+  return { text: v.text, ...(outcome ? { outcome } : {}) }
+}
+
+function normalizeOrigin(value: unknown): DraftOrigin | null {
+  if (typeof value !== 'object' || value === null) return null
+  const v = value as Record<string, unknown>
+  if (typeof v.threadId !== 'string' || typeof v.messageId !== 'string') return null
+  return { threadId: v.threadId, messageId: v.messageId, edited: v.edited === true }
+}
+
 function normalizeThread(value: unknown, now: string): ReviewThread | null {
   if (typeof value !== 'object' || value === null) return null
   const t = value as Record<string, unknown>
@@ -942,6 +1038,9 @@ function normalizeThread(value: unknown, now: string): ReviewThread | null {
       ...(msg.author === 'agent' && typeof msg.suggestedReply === 'string' && msg.suggestedReply
         ? { suggestedReply: msg.suggestedReply }
         : {}),
+      ...(msg.author === 'agent' && normalizePrComment(msg.prComment)
+        ? { prComment: normalizePrComment(msg.prComment)! }
+        : {}),
       ...(typeof msg.editedAt === 'string' ? { editedAt: msg.editedAt } : {}),
       ...(github ? { github } : {}),
     })
@@ -955,6 +1054,9 @@ function normalizeThread(value: unknown, now: string): ReviewThread | null {
     ...(t.audience === 'pr' ? { audience: 'pr' as const } : {}),
     ...(typeof t.parentId === 'string' && t.parentId !== '' ? { parentId: t.parentId } : {}),
     ...(github ? { github } : {}),
+    ...(t.audience === 'pr' && normalizeOrigin(t.origin)
+      ? { origin: normalizeOrigin(t.origin)! }
+      : {}),
     ...(queued ? { queued } : {}),
     ...(THREAD_INTENTS.includes(t.intent as ThreadIntent)
       ? { intent: t.intent as ThreadIntent }

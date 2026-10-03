@@ -1,5 +1,11 @@
 import { type ReactElement, useMemo, useState } from 'react'
-import { isDraft, isPublic, type ReviewThread, unpostedReplies } from '../../shared/review.js'
+import {
+  isDraft,
+  isPublic,
+  liveSuggestion,
+  type ReviewThread,
+  unpostedReplies,
+} from '../../shared/review.js'
 import { shortAgo } from '../markdown.js'
 import { usePr } from '../prMode.js'
 import {
@@ -90,6 +96,14 @@ function Row({
         <span className="crow-sub">
           {item.turn === 'note' && isPublic(item.thread) && (
             <span className="crow-pill">Draft</span>
+          )}
+          {liveSuggestion(item.thread) !== null && (
+            <span
+              className="crow-pill crow-pill-pr"
+              title="your agent drafted a review comment for the author"
+            >
+              <Icon name="globe" size="sm" /> suggests
+            </span>
           )}
           {item.thread.intent && item.turn !== 'proposed' && (
             <>

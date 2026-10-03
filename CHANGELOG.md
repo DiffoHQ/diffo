@@ -17,6 +17,23 @@ Until 1.0, minor versions may break things. When they do, the entry says how to 
   letter by letter in the same two colours on the same beat. It is drawn at
   36px, up from 19, and the loading screen carries the same mark. A reader
   with `prefers-reduced-motion` set sees the still mark.
+- **The agent suggests the review comment, inside the private thread.** On a
+  pull request, a private message that states a finding ("this resets the
+  streak on late completions") is a review comment in the making, and the
+  agent now writes it: its reply carries a **Suggested PR comment** under it,
+  the comment you would leave the author in your voice, with none of the
+  agent's evidence in it. **Add to review** makes it a blue draft on the same
+  lines (it posts when you submit, under your login, tagged *from your
+  agent*); **Edit** turns the block into the PR composer in place; **✕** passes
+  on it. The thread stays open either way, a receipt keeps the agent's
+  version a click away, Undo takes a dismissal back, discarding the draft
+  hands the suggestion back, a reply redrafts, and the rail marks a thread
+  carrying a live suggestion. For the agent: `--pr-comment
+  "<text>"` on `diffo reply` and `diffo comment`, pull requests only; the
+  protocol says when to attach one, payloads quote your own review comments
+  and the suggestions you edited under *The reviewer's voice*, and the submit
+  notice says what became of each. See
+  [Reviewing a pull request](https://diffohq.github.io/diffo/guide/pr-review#the-agent-suggests-the-comment).
 
 ### Changed
 

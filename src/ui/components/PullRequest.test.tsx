@@ -250,6 +250,160 @@ describe('public and private cards on a pull request', () => {
   })
 })
 
+describe("the agent's suggested PR comment inside a private thread", () => {
+  const at = '2026-09-24T10:01:00Z'
+  const suggested = (over: Partial<ReviewThread> = {}) =>
+    thread({
+      state: 'addressed',
+      messages: [
+        {
+          id: 'm1',
+          author: 'reviewer',
+          text: 'resets the streak if late?',
+          at: '2026-09-24T10:00:00Z',
+        },
+        {
+          id: 'm2',
+          author: 'agent',
+          text: 'Yes — no test covers the late case. Worktree restored.',
+          at,
+          prComment: {
+            text: 'Late completions reset the streak here.\n\n```suggestion\nconst streak = today > due ? streak : 0\n```',
+          },
+        },
+      ],
+      ...over,
+    })
+
+  it('renders under the reply with Add to review, Edit and Dismiss; the foot bridge steps aside', () => {
+    const acts = actions({ dismissPrComment: vi.fn(async () => ({})) })
+    const { container } = render(onPr(<ThreadList threads={[suggested()]} actions={acts} />))
+    const block = screen.getByTestId('pr-suggestion')
+    expect(block.textContent).toContain('Suggested PR comment')
+    expect(block.textContent).toContain('Late completions reset the streak here.')
+    // The comment renders as GitHub will show it: the suggestion block is a code block, not raw fences.
+    expect(block.querySelector('pre, code')).toBeTruthy()
+    expect(container.querySelector('.thread-badge-pr')!.textContent).toContain(
+      'suggests a PR comment',
+    )
+    expect(screen.queryByRole('button', { name: /Post as PR comment/ })).toBeNull()
+
+    fireEvent.click(within(block).getByRole('button', { name: /^Add to review$/ }))
+    expect(acts.create).toHaveBeenCalledWith(
+      suggested().anchor,
+      expect.stringContaining('Late completions reset the streak here.'),
+      undefined,
+      { audience: 'pr', origin: { threadId: 't1', messageId: 'm2' } },
+    )
+  })
+
+  it('Edit opens the PR composer in place, prefilled; the edited text is what joins the review', () => {
+    const acts = actions()
+    render(onPr(<ThreadList threads={[suggested()]} actions={acts} />))
+    fireEvent.click(
+      within(screen.getByTestId('pr-suggestion')).getByRole('button', { name: /^Edit$/ }),
+    )
+    const box = screen.getByPlaceholderText(/as GitHub will show it/) as HTMLTextAreaElement
+    expect(box.value).toContain('```suggestion')
+    fireEvent.change(box, { target: { value: 'Keep the streak when late?' } })
+    fireEvent.click(screen.getByRole('button', { name: /Add to review/ }))
+    expect(acts.create).toHaveBeenCalledWith(
+      suggested().anchor,
+      'Keep the streak when late?',
+      undefined,
+      {
+        audience: 'pr',
+        origin: { threadId: 't1', messageId: 'm2' },
+      },
+    )
+  })
+
+  it('Dismiss passes on it and leaves the thread open; a decided or superseded one is a receipt', () => {
+    const acts = actions({ dismissPrComment: vi.fn(async () => ({})) })
+    render(onPr(<ThreadList threads={[suggested()]} actions={acts} />))
+    fireEvent.click(screen.getByRole('button', { name: /dismiss this suggested comment/ }))
+    expect(acts.dismissPrComment).toHaveBeenCalledWith('t1', 'm2')
+    expect(acts.resolve).not.toHaveBeenCalled()
+    cleanup()
+
+    const decided = suggested()
+    decided.messages[1]!.prComment!.outcome = {
+      kind: 'added',
+      draftThreadId: 'd',
+      edited: true,
+      at,
+    }
+    const { container } = render(onPr(<ThreadList threads={[decided]} actions={acts} />))
+    expect(screen.getByTestId('pr-suggestion-receipt').textContent).toContain(
+      'Suggested PR comment · added to your review, edited',
+    )
+    expect(screen.queryByTestId('pr-suggestion')).toBeNull()
+    // With nothing live, the manual bridge is back.
+    expect(screen.getByRole('button', { name: /Post as PR comment/ })).toBeTruthy()
+    expect(container.querySelector('.thread-badge-pr')).toBeNull()
+    cleanup()
+
+    const redrafted = suggested({
+      messages: [
+        ...suggested().messages,
+        { id: 'm3', author: 'reviewer', text: 'mention the until bound too', at },
+        {
+          id: 'm4',
+          author: 'agent',
+          text: 'done',
+          at,
+          prComment: { text: 'v2, with the until bound.' },
+        },
+      ],
+    })
+    render(onPr(<ThreadList threads={[redrafted]} actions={acts} />))
+    expect(screen.getByTestId('pr-suggestion-receipt').textContent).toContain('superseded')
+    expect(screen.getByTestId('pr-suggestion').textContent).toContain('v2, with the until bound.')
+  })
+
+  it('a draft made from the suggestion wears its origin', () => {
+    const draft = thread({
+      id: 'd',
+      audience: 'pr',
+      origin: { threadId: 't1', messageId: 'm2', edited: true },
+      messages: [{ id: 'x', author: 'reviewer', text: 'Keep the streak when late?', at }],
+    })
+    const { container } = render(onPr(<ThreadList threads={[draft]} actions={actions()} />))
+    // In the byline, beside "draft" — not a third badge on the head.
+    expect(container.querySelector('.cmt-origin')!.textContent).toBe(' · from your agent, edited')
+    expect(container.querySelectorAll('.thread-head .thread-badge')).toHaveLength(1)
+  })
+
+  it("a receipt shows the agent's version on request, and a dismissal can be undone", () => {
+    const acts = actions({ restorePrComment: vi.fn(async () => ({})) })
+    const dismissed = suggested()
+    dismissed.messages[1]!.prComment!.outcome = { kind: 'dismissed', at }
+    render(onPr(<ThreadList threads={[dismissed]} actions={acts} />))
+    const receipt = screen.getByTestId('pr-suggestion-receipt')
+    expect(receipt.textContent).not.toContain('Late completions reset the streak here.')
+    fireEvent.click(within(receipt).getByRole('button', { name: /show the suggested comment/ }))
+    expect(receipt.textContent).toContain('Late completions reset the streak here.')
+    fireEvent.click(within(receipt).getByRole('button', { name: /hide the suggested comment/ }))
+    expect(receipt.textContent).not.toContain('Late completions reset the streak here.')
+    fireEvent.click(within(receipt).getByRole('button', { name: /^Undo$/ }))
+    expect(acts.restorePrComment).toHaveBeenCalledWith('t1', 'm2')
+    cleanup()
+
+    // Added: no Undo — the draft is the way back (discarding it restores the suggestion).
+    const added = suggested()
+    added.messages[1]!.prComment!.outcome = { kind: 'added', draftThreadId: 'd', edited: false, at }
+    render(onPr(<ThreadList threads={[added]} actions={acts} />))
+    expect(screen.queryByRole('button', { name: /^Undo$/ })).toBeNull()
+    expect(screen.getByRole('button', { name: /show the suggested comment/ })).toBeTruthy()
+  })
+
+  it('the rail row says the thread suggests a comment', () => {
+    const items = threadItems([suggested()])
+    render(onPr(<ThreadRail items={items} pr />))
+    expect(document.querySelector('.crow-pill-pr')!.textContent).toContain('suggests')
+  })
+})
+
 describe('replying on a posted public thread', () => {
   it('is a GitHub reply, never a hand-over to the agent, even with an agent attached', () => {
     const posted = thread({

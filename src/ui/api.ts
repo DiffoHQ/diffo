@@ -112,9 +112,20 @@ export function useInvite(enabled: boolean) {
 
 /** What Finish will post to GitHub, in words — present only on a pull request. */
 export interface PublicPreview {
-  drafts: { id: string; anchor: string; text: string; downgraded: boolean; conversation: boolean }[]
+  drafts: {
+    id: string
+    anchor: string
+    text: string
+    downgraded: boolean
+    conversation: boolean
+    /** The agent wrote the first version of this draft. */
+    fromAgent?: { edited: boolean }
+  }[]
   replies: { id: string; anchor: string; count: number; text: string }[]
   resolves: { id: string; anchor: string; resolve: boolean }[]
+  /** Suggested comments from the agent the reviewer has not decided on. They
+   * stay private; the dialog says so. */
+  undecidedSuggestions?: number
   canApprove: boolean
   pendingReview: boolean
 }
@@ -138,6 +149,9 @@ export interface PublicOutcome {
 export interface CreateThreadOptions {
   audience?: Audience
   parentId?: string
+  /** A public draft made from the agent's suggestion: the private thread and
+   * message it came from. The server stamps the suggestion as added. */
+  origin?: { threadId: string; messageId: string }
 }
 
 export function useFinishPreview(enabled: boolean, coverage: Coverage) {
@@ -171,6 +185,15 @@ export const reviewApi = {
     ),
   setState: (threadId: string, state: 'open' | 'resolved') =>
     post<ReviewThread>(`/api/review/threads/${threadId}/state`, { state }),
+  /** Pass on a suggested PR comment, or take that back; the thread stays open. */
+  dismissPrComment: (threadId: string, messageId: string) =>
+    post<ReviewThread>(`/api/review/threads/${threadId}/messages/${messageId}/pr-comment`, {
+      outcome: 'dismissed',
+    }),
+  restorePrComment: (threadId: string, messageId: string) =>
+    post<ReviewThread>(`/api/review/threads/${threadId}/messages/${messageId}/pr-comment`, {
+      outcome: 'restored',
+    }),
   send: (threadId: string) =>
     post<{ thread: ReviewThread; prompt: string } & DeliveryResult>(
       `/api/review/threads/${threadId}/send`,

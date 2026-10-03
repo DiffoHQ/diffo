@@ -4,6 +4,7 @@ import {
   type AnchoredLayer,
   type Coverage,
   describeAnchor,
+  isPublic,
   type Layer,
   type Layers,
   layerFilePath,
@@ -204,6 +205,8 @@ export const ACK_NEXT_STEP = {
   replyMore:
     'Interim reply posted — the reviewer still sees you working on this thread. Post the follow-up as a plain reply (no --more) BEFORE your next poll: re-polling closes the batch and counts the promise as never kept.',
   comment: `It's in the review as your comment, labeled as yours — the reviewer replies to take it up, or resolves it. Continue with the review threads, then run \`${CLI_COMMANDS.poll}\`.`,
+  replyPrComment: `Reply posted, with the suggested review comment under it. The reviewer adds it to their review, edits it first, or dismisses it — nothing posts on its own, and you will hear what happened when they submit. When every thread is handled, run \`${CLI_COMMANDS.poll}\` again to keep listening (${POLL_STANCE}).`,
+  commentPrComment: `It's in the review as your comment, with the suggested review comment under it. The reviewer adds it to their review, edits it first, or dismisses it — nothing posts on its own. Continue with the review threads, then run \`${CLI_COMMANDS.poll}\`.`,
   layers: `The outline is live in the reviewer's Layers tab, resolved against the changeset as it moves. Files you touch later land in a trailing "Since your review" layer until you re-post the whole list. Continue with the review threads, then run \`${CLI_COMMANDS.poll}\`.`,
   layersSuggested: `The review now offers the outline to the reviewer. Mention it in your handoff too — "say layers and I'll outline it" — and post it with \`${CLI_COMMANDS.layers}\` when they ask. Then run \`${CLI_COMMANDS.poll}\`.`,
   layersAlready: `This review already carries layers, so there is nothing to suggest — re-post the whole list with \`${CLI_COMMANDS.layers}\` if the outline is stale. Then run \`${CLI_COMMANDS.poll}\`.`,
@@ -222,6 +225,18 @@ export const HELP_AGENT_PR = `Reviewing a pull request (\`diffo <PR URL | owner/
   label: read what the reviewer wants from the words. When the answer is a
   fix, put it in a \`\`\`suggestion block in your reply, not an edit to the
   worktree — the reviewer can post your reply to GitHub from there.
+- Read who each private message is for. A question ("what calls this?")
+  wants an answer. A finding stated about the code ("this resets the streak
+  on late completions") is a thought on its way to the author: write the
+  review comment they would leave, in their voice, and attach it with
+  \`--pr-comment "<text>"\` on your reply (or your comment). It shows under
+  your reply with Add to review / Edit / Dismiss; your evidence stays in the
+  reply, never in the comment. Attach one when they state a finding, when
+  their hunch proves right, when they ask you to draft it, or when a plain
+  question turns up a bug you can show. Not when they were wrong (say so
+  privately), not on pushback against your own reply — redraft the one
+  already in the thread instead — and not when asked but you have nothing
+  worth saying to the author: say so privately, never invent one.
 - The guide and layers work as above, built from the description, the commits
   and the diff; skip the guide when the description already orients.
 - When the reviewer submits, a poll returns a \`"kind": "submitted"\` notice:
@@ -324,6 +339,10 @@ export interface Doctrine {
   layers: { [K in keyof typeof LAYERS]: string }
   /** The intent contract for `fix` threads. */
   fix: string
+  /** Pull requests only: when and how to attach a review comment for the
+   * author to a reply. Absent on the author's own doctrine, where there is
+   * no author to write to. */
+  prComment?: string
 }
 
 export const AUTHOR_DOCTRINE: Doctrine = {
@@ -331,6 +350,45 @@ export const AUTHOR_DOCTRINE: Doctrine = {
   layers: LAYERS,
   fix: '- `issue` threads want a code change. Address each one, or push back in the thread with your reasoning.',
 }
+
+/**
+ * The one piece of PR doctrine with no analogue for an author: the reviewer's
+ * private words are often a review comment in the making, and the agent is the
+ * one who can write it while the reviewer is still reading. The comment is
+ * addressed to the author in the reviewer's voice; nothing of it posts until the
+ * reviewer adds it to their review and submits.
+ */
+export const PR_COMMENT_DOCTRINE = `## Drafting a review comment for the author
+
+The reviewer's private messages are of two kinds. A question to you ("what
+calls this?") wants an answer. A finding stated about the code ("this resets
+the streak on late completions") is a thought on its way to the author: the
+reviewer is thinking out loud at the line, and the next thing they would type
+is a review comment. Write that comment for them, attached to your reply:
+
+    ${CLI} reply <threadId> --message "<your private answer>" --pr-comment "<the comment>"
+
+Attach one when: they state a finding (always, a nit included); their hunch
+phrased as a question turns out right; they ask you to draft it ("write this
+up for the author"); or your answer to a plain question is a bug with a case
+to show. Do not attach one when they were wrong — say so privately — or when
+they are pushing back on your own reply; then redraft the comment already in
+the thread, which replaces it. Asked to suggest a change where you find
+nothing worth saying to the author, say so privately and attach nothing: a
+comment invented to fill the request is the one thing the reviewer cannot
+tell apart from a finding. On a comment of your own (\`${CLI} comment\`), the
+same flag carries a finding you can show, never a hunch.
+
+The comment is in the reviewer's voice, to the author: state the finding, why
+it matters, and what would fix it. A \`\`\`suggestion block when the fix is local
+to the anchored lines. Nothing about you, the worktree, tests you ran, or
+Diffo — that evidence goes in --message, where the reviewer reads it. Match
+how this reviewer writes: their own review comments on this pull request are
+quoted under "The reviewer's voice" when there are any.
+
+Nothing you attach reaches GitHub. It appears under your reply with Add to
+review / Edit / Dismiss; the reviewer decides, and the submit notice tells you
+what happened to each.`
 
 export const PR_DOCTRINE: Doctrine = {
   guide: {
@@ -345,6 +403,7 @@ export const PR_DOCTRINE: Doctrine = {
       'the order you would explain it in after reading the description and the commits — the file that explains the rest first, mechanical consequences last; for a feature, follow the request from entry point to effect; for a refactor, contract first, then consumers',
   },
   fix: '- `issue` threads want a fix you cannot push: work it out in the worktree, verify it the cheapest honest way, restore the worktree (`git checkout -- .`), and reply with a ```suggestion block plus what you checked. Never commit or push to the pull request.',
+  prComment: PR_COMMENT_DOCTRINE,
 }
 
 export function doctrineFor(changeset: Pick<Changeset, 'pr'> | null | undefined): Doctrine {
@@ -488,7 +547,11 @@ ${intentContract(threads, D)
 
 Change only what these threads ask about — the reviewer is mid-read. Re-read
 the current file before editing; the code may have moved. Resolving a thread
-is the reviewer's call, never yours.`
+is the reviewer's call, never yours.${
+    D.prComment
+      ? `\n\nA private message that states a finding about the code is a review comment in the making: attach the comment the reviewer would leave the author, in their voice, with \`--pr-comment "<text>"\` on your reply (evidence stays in --message). Not when they were wrong, not on pushback against your reply. \`${CLI} help agent\` has the whole rule.`
+      : ''
+  }`
 }
 
 export type ProtocolMode = 'full' | 'compact'
@@ -557,7 +620,7 @@ Rules:
 - Each "commented change" above was frozen when the comment was written —
   re-read the current file before editing; the code may have moved since.
 - Your code edits are detected automatically and the reviewer's diff updates
-  live. Resolving a thread is the reviewer's call, never yours.`
+  live. Resolving a thread is the reviewer's call, never yours.${D.prComment ? `\n\n${D.prComment}` : ''}`
 }
 
 export interface PromptContext {
@@ -566,6 +629,83 @@ export interface PromptContext {
   siblings?: ReviewThread[]
   /** 'compact' when this session already received the full protocol; defaults to full. */
   protocol?: ProtocolMode
+  /** Every thread of the review, for "The reviewer's voice" on a pull request:
+   * how this reviewer writes to authors, and how they edited what the agent
+   * suggested. Ignored off a pull request. */
+  voice?: ReviewThread[]
+}
+
+const VOICE_COMMENT_CAP = 5
+const VOICE_EDIT_CAP = 3
+const VOICE_TEXT_CAP = 400
+
+function voiceQuote(text: string): string {
+  const flat = text.replace(/\s+/g, ' ').trim()
+  return flat.length > VOICE_TEXT_CAP ? `${flat.slice(0, VOICE_TEXT_CAP - 1)}…` : flat
+}
+
+/**
+ * The reviewer's own review comments on this pull request, newest first, and
+ * for each suggestion of the agent's they edited before adding, both versions.
+ * The agent sees "I wrote X, they posted Y" and the next suggestion sounds like
+ * the reviewer. Null when there is nothing of theirs yet.
+ */
+export function voiceLines(threads: readonly ReviewThread[]): string | null {
+  const byId = new Map(threads.map((t) => [t.id, t]))
+  const comments = threads
+    .filter((t) => isPublic(t) && t.messages[0]?.author === 'reviewer')
+    .map((t) => ({
+      at: t.createdAt,
+      line: `- ${describeAnchor(t.anchor)} — "${voiceQuote(t.messages[0]!.text)}"`,
+    }))
+    .sort((a, b) => b.at.localeCompare(a.at))
+    .slice(0, VOICE_COMMENT_CAP)
+  const edits: { at: string; lines: string[] }[] = []
+  for (const t of threads) {
+    if (isPublic(t)) continue
+    for (const m of t.messages) {
+      const o = m.prComment?.outcome
+      if (m.author !== 'agent' || !o || o.kind !== 'added' || !o.edited) continue
+      const draft = byId.get(o.draftThreadId)
+      const theirs = draft?.messages[0]?.text
+      if (!theirs) continue
+      edits.push({
+        at: o.at,
+        lines: [
+          `- ${describeAnchor(t.anchor)}`,
+          `  - yours: "${voiceQuote(m.prComment!.text)}"`,
+          `  - theirs: "${voiceQuote(theirs)}"`,
+        ],
+      })
+    }
+  }
+  edits.sort((a, b) => b.at.localeCompare(a.at))
+  const pairs = edits.slice(0, VOICE_EDIT_CAP).flatMap((e) => e.lines)
+  if (comments.length === 0 && pairs.length === 0) return null
+  return [
+    "## The reviewer's voice",
+    '',
+    ...(comments.length > 0
+      ? [
+          'Their review comments on this pull request so far (posted or drafted):',
+          ...comments.map((c) => c.line),
+        ]
+      : []),
+    ...(pairs.length > 0
+      ? [
+          ...(comments.length > 0 ? [''] : []),
+          'What you suggested, and what they posted after editing it:',
+          ...pairs,
+        ]
+      : []),
+  ].join('\n')
+}
+
+/** The voice block, when the review is a pull request and the reviewer has written anything. */
+function voiceBlock(ctx: PromptContext): string[] {
+  if (!ctx.changeset?.pr || !ctx.voice) return []
+  const block = voiceLines(ctx.voice)
+  return block ? [block, ''] : []
 }
 
 const FRAME_FILE_CAP = 40
@@ -784,6 +924,7 @@ export function buildThreadPrompt(thread: ReviewThread, ctx: PromptContext): str
     threadBlock(thread, 0),
     '',
     ...(siblings ? [siblings, ''] : []),
+    ...voiceBlock(ctx),
     replyProtocol([thread], ctx.protocol, D),
     '',
   ].join('\n')
@@ -802,6 +943,7 @@ export function buildCoalescedPrompt(threads: ReviewThread[], ctx: PromptContext
     ...(ctx.changeset ? [specLine(ctx.changeset), ''] : []),
     ...threads.map((t, i) => `${threadBlock(t, i)}\n`),
     ...(siblings ? [siblings, ''] : []),
+    ...voiceBlock(ctx),
     replyProtocol(threads, ctx.protocol, D),
     '',
   ].join('\n')
@@ -811,6 +953,20 @@ export function buildCoalescedPrompt(threads: ReviewThread[], ctx: PromptContext
  * The reviewer submitted the pull-request review on GitHub. Context, not work:
  * the agent learns the review ended and what it said, and owes nothing.
  */
+/** What became of the agent's suggested review comments, in one line: the
+ * feedback that lets it calibrate, aggregate so it never argues for one. */
+function suggestionsLine(s: NonNullable<Submitted['suggestions']>): string {
+  const n = (count: number, word: string) => `${count} ${word}`
+  const parts = [
+    `${n(s.posted, 'posted')}${s.edited > 0 ? ` (${s.edited} edited first)` : ''}`,
+    ...(s.dismissed > 0 ? [n(s.dismissed, 'dismissed')] : []),
+    ...(s.undecided > 0
+      ? [`${s.undecided} left undecided (they stay private and never post)`]
+      : []),
+  ]
+  return `Of the ${s.total} review comment${s.total === 1 ? '' : 's'} you suggested: ${parts.join(', ')}.`
+}
+
 export function buildSubmittedPrompt(ctx: PromptContext, submitted: Submitted): string {
   const pr = ctx.changeset?.pr
   const where = pr
@@ -827,6 +983,9 @@ export function buildSubmittedPrompt(ctx: PromptContext, submitted: Submitted): 
     '',
     ...(submitted.body.trim() !== ''
       ? ['Their review body:', ...submitted.body.split('\n').map((l) => `> ${l}`), '']
+      : []),
+    ...(submitted.suggestions && submitted.suggestions.total > 0
+      ? [suggestionsLine(submitted.suggestions), '']
       : []),
     'Nothing to act on — this is context so you know where the review stands. Mention it to the user in one line.',
     `Run \`${CLI_COMMANDS.poll}\` again to keep listening (${POLL_STANCE}); the reviewer may follow up. If the user is done, \`${CLI_COMMANDS.end}\`.`,

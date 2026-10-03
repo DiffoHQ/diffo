@@ -230,6 +230,106 @@ describe('ReviewStore', () => {
     expect(reloaded[1]!.messages[1]!.suggestedReply).toBe('yes, rename')
   })
 
+  it("a suggested PR comment rides the agent's message, is decided once, and survives a reload", () => {
+    const root = tempRoot()
+    const store = makeStore(root)
+    const asked = store.createThread(hunkAnchor('h1'), 'does this reset the streak?', null)
+    store.addMessage(
+      asked.id,
+      'agent',
+      'yes',
+      false,
+      undefined,
+      false,
+      undefined,
+      'Keep the streak?',
+    )
+    const message = store.get().threads[0]!.messages[1]!
+    expect(message.prComment).toEqual({ text: 'Keep the streak?' })
+
+    // The reviewer cannot carry one; a reviewer-side origin is only for public drafts.
+    store.addMessage(asked.id, 'reviewer', 'ok', false, undefined, false, undefined, 'ignored')
+    expect(store.get().threads[0]!.messages[2]!.prComment).toBeUndefined()
+    const own = store.createThread(hunkAnchor('h2'), 'draft', null, undefined, 'reviewer', {
+      prComment: 'ignored',
+      origin: { threadId: asked.id, messageId: message.id, edited: true },
+    })
+    expect(own.messages[0]!.prComment).toBeUndefined()
+    expect(own.origin).toBeUndefined()
+
+    const draft = store.createThread(
+      hunkAnchor('h1'),
+      'Keep the streak!',
+      null,
+      undefined,
+      'reviewer',
+      {
+        audience: 'pr',
+        origin: { threadId: asked.id, messageId: message.id, edited: true },
+      },
+    )
+    expect(draft.origin).toEqual({ threadId: asked.id, messageId: message.id, edited: true })
+
+    const at = '2026-10-02T00:00:00Z'
+    const decided = store.decidePrComment(asked.id, message.id, {
+      kind: 'added',
+      draftThreadId: draft.id,
+      edited: true,
+      at,
+    })
+    expect(decided!.messages[1]!.prComment!.outcome).toMatchObject({
+      kind: 'added',
+      draftThreadId: draft.id,
+    })
+    // Decided once: a second decision is refused, as is one on a message without a suggestion.
+    expect(store.decidePrComment(asked.id, message.id, { kind: 'dismissed', at })).toBeNull()
+    expect(
+      store.decidePrComment(asked.id, asked.messages[0]!.id, { kind: 'dismissed', at }),
+    ).toBeNull()
+
+    const reloaded = makeStore(root).get().threads
+    expect(reloaded[0]!.messages[1]!.prComment).toEqual({
+      text: 'Keep the streak?',
+      outcome: { kind: 'added', draftThreadId: draft.id, edited: true, at },
+    })
+    expect(reloaded.find((t) => t.id === draft.id)!.origin).toEqual({
+      threadId: asked.id,
+      messageId: message.id,
+      edited: true,
+    })
+  })
+
+  it('a dismissed suggestion can be restored; an added one only once its draft is discarded', () => {
+    const store = makeStore(tempRoot())
+    const asked = store.createThread(hunkAnchor('h1'), 'hm?', null)
+    store.addMessage(asked.id, 'agent', 'yes', false, undefined, false, undefined, 'Keep it?')
+    const message = store.get().threads[0]!.messages[1]!
+    const at = '2026-10-02T00:00:00Z'
+
+    store.decidePrComment(asked.id, message.id, { kind: 'dismissed', at })
+    expect(store.restorePrComment(asked.id, message.id)!.messages[1]!.prComment).toEqual({
+      text: 'Keep it?',
+    })
+    // Nothing to restore on a live one.
+    expect(store.restorePrComment(asked.id, message.id)).toBeNull()
+
+    const draft = store.createThread(hunkAnchor('h1'), 'Keep it!', null, undefined, 'reviewer', {
+      audience: 'pr',
+      origin: { threadId: asked.id, messageId: message.id, edited: true },
+    })
+    store.decidePrComment(asked.id, message.id, {
+      kind: 'added',
+      draftThreadId: draft.id,
+      edited: true,
+      at,
+    })
+    // The draft stands: restoring would offer the same comment twice.
+    expect(store.restorePrComment(asked.id, message.id)).toBeNull()
+    // Discarding the draft hands the suggestion back on its own.
+    expect(store.removeThread(draft.id)).toBe(true)
+    expect(store.get().threads[0]!.messages[1]!.prComment).toEqual({ text: 'Keep it?' })
+  })
+
   it('annotateAgentReplies stamps the newest unstamped agent message only', () => {
     const root = tempRoot()
     const store = makeStore(root)

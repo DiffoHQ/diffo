@@ -614,9 +614,12 @@ if (command.kind === 'reply') {
       text: message,
       ...(command.more ? { more: true } : {}),
       ...(command.suggestReply ? { suggestedReply: command.suggestReply } : {}),
+      ...(command.prComment ? { prComment: command.prComment } : {}),
     },
   )
   if (status === 404) fail(`no thread with id '${command.threadId}'`)
+  if (status === 400)
+    fail(`reply refused: ${(body as { error?: string } | null)?.error ?? 'bad request'}`)
   if (status !== 200) fail(`reply failed (${status})`)
   const thread = (body as { thread: { id: string; state: string } }).thread
   console.log(
@@ -624,7 +627,12 @@ if (command.kind === 'reply') {
       ok: true,
       threadId: thread.id,
       state: thread.state,
-      next_step: command.more ? ACK_NEXT_STEP.replyMore : ACK_NEXT_STEP.reply,
+      ...(command.prComment ? { prComment: 'suggested' } : {}),
+      next_step: command.more
+        ? ACK_NEXT_STEP.replyMore
+        : command.prComment
+          ? ACK_NEXT_STEP.replyPrComment
+          : ACK_NEXT_STEP.reply,
     }),
   )
   process.exit(0)
@@ -643,14 +651,18 @@ if (command.kind === 'comment') {
     line: command.line,
     text: message,
     ...(command.suggestReply ? { suggestedReply: command.suggestReply } : {}),
+    ...(command.prComment ? { prComment: command.prComment } : {}),
   })
+  if (status === 400)
+    fail(`comment refused: ${(body as { error?: string } | null)?.error ?? 'bad request'}`)
   if (status !== 200) fail(`comment failed (${status})`)
   const thread = body as { id: string }
   console.log(
     JSON.stringify({
       ok: true,
       threadId: thread.id,
-      next_step: ACK_NEXT_STEP.comment,
+      ...(command.prComment ? { prComment: 'suggested' } : {}),
+      next_step: command.prComment ? ACK_NEXT_STEP.commentPrComment : ACK_NEXT_STEP.comment,
     }),
   )
   process.exit(0)

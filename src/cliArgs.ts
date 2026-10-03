@@ -260,7 +260,7 @@ Examples:
   diffo poll`,
   reply: `diffo reply: post a reply to a review thread
 
-Usage: diffo reply <threadId> --message "<text>" [--suggest-reply "<one line>"]
+Usage: diffo reply <threadId> --message "<text>" [--suggest-reply "<one line>"] [--pr-comment "<text>"]
        … | diffo reply <threadId>            (long replies: pipe on stdin)
 
 Thread ids arrive in poll payloads. Each run posts one message, so don't
@@ -274,6 +274,12 @@ ghost text in their reply box, taken with Tab, edited or ignored at will.
 Use it when your message ends in a decision that is theirs to make
 ("want me to extract this?" → --suggest-reply "yes, extract it"); never
 on a message that only reports.
+--pr-comment, on a pull request only, attaches the review comment the
+reviewer would leave the author: in their voice, to the author, as GitHub
+will show it (Markdown; a \`\`\`suggestion block when the fix is local to the
+anchored lines). It appears under your reply with Add to review / Edit /
+Dismiss; nothing posts until the reviewer submits. Your evidence goes in
+--message, never in the comment. \`diffo help agent\` says when to attach one.
 Messages render GitHub-flavored markdown; a \`\`\`mermaid fence renders as a
 diagram in the review.
 
@@ -283,7 +289,7 @@ Example:
   diffo reply t-3 --message "fixed: the guard now covers the empty case"`,
   comment: `diffo comment: start a comment thread as the agent
 
-Usage: diffo comment [<file>] [--line <n>] --message "<text>" [--suggest-reply "<one line>"]
+Usage: diffo comment [<file>] [--line <n>] --message "<text>" [--suggest-reply "<one line>"] [--pr-comment "<text>"]
        … | diffo comment [<file>] [--line <n>]  (long comments: pipe on stdin)
 
 Anchors to a line (--line), a file, or, with no file, the whole changeset.
@@ -295,6 +301,10 @@ Spend these sparingly; an agent that annotates everything gets skimmed.
 ghost text in their reply box, taken with Tab, edited or ignored at will.
 Use it when the comment proposes something and the call is theirs; the
 reply they take hands the thread to you like any other.
+--pr-comment, on a pull request only, attaches the review comment the
+reviewer would leave the author about this: same rules as on \`reply\`. For a
+finding you can show (a case you ran, a call site the change misses), not
+for a hunch.
 Messages render GitHub-flavored markdown; a \`\`\`mermaid fence renders as a
 diagram in the review.
 
@@ -433,6 +443,7 @@ export type CliCommand =
       message: string | null
       more: boolean
       suggestReply: string | null
+      prComment: string | null
     }
   | {
       kind: 'comment'
@@ -440,6 +451,7 @@ export type CliCommand =
       line: number | null
       message: string | null
       suggestReply: string | null
+      prComment: string | null
     }
   | { kind: 'layers'; source: LayersSource }
   | { kind: 'end' }
@@ -743,6 +755,7 @@ function parseVerb(verb: string, rest: string[]): CliCommand {
         title: { type: 'string' },
         more: { type: 'boolean' },
         'suggest-reply': { type: 'string' },
+        'pr-comment': { type: 'string' },
         json: { type: 'boolean' },
         help: { type: 'boolean', short: 'h' },
       },
@@ -751,6 +764,7 @@ function parseVerb(verb: string, rest: string[]): CliCommand {
   if (!parsed.ok) return { kind: 'error', message: parsed.message }
   const { values, positionals } = parsed.value
   const suggestReply = values['suggest-reply']
+  const prComment = values['pr-comment']
 
   // A help request is never an error, whatever else is on the line.
   if (values.help) return { kind: 'help', topic: verb }
@@ -772,6 +786,15 @@ function parseVerb(verb: string, rest: string[]): CliCommand {
     }
     if (suggestReply.includes('\n')) {
       return { kind: 'error', message: '--suggest-reply is one line — the reviewer completes it' }
+    }
+  }
+
+  if (prComment !== undefined) {
+    if (verb !== 'reply' && verb !== 'comment') {
+      return { kind: 'error', message: `'${verb}' takes no --pr-comment` }
+    }
+    if (!prComment.trim()) {
+      return { kind: 'error', message: '--pr-comment needs the review comment you are suggesting' }
     }
   }
 
@@ -822,6 +845,7 @@ function parseVerb(verb: string, rest: string[]): CliCommand {
       message: values.message ?? null,
       more: values.more === true,
       suggestReply: suggestReply?.trim() ?? null,
+      prComment: prComment?.trim() ?? null,
     }
   }
 
@@ -848,5 +872,6 @@ function parseVerb(verb: string, rest: string[]): CliCommand {
     line,
     message: values.message ?? null,
     suggestReply: suggestReply?.trim() ?? null,
+    prComment: prComment?.trim() ?? null,
   }
 }

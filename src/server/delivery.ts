@@ -67,6 +67,16 @@ export interface Submitted {
   comments: number
   body: string
   url?: string
+  /** The agent's suggested review comments on this review, and what became of
+   * them: posted (added and still a draft at submit), edited among those,
+   * dismissed, or never decided. */
+  suggestions?: {
+    total: number
+    posted: number
+    edited: number
+    dismissed: number
+    undecided: number
+  }
 }
 
 /** Where the reviewer's request for layers stands: parked for the next poll,

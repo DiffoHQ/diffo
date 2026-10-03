@@ -2,8 +2,11 @@ import { describe, expect, it } from 'vitest'
 import {
   anchorSpan,
   describeAnchor,
+  liveSuggestion,
   MAX_TITLE_LEN,
   normalizeTitle,
+  PR_COMMENT_MAX,
+  parsePrComment,
   type ReviewThread,
   threadsInChangeset,
   undeliveredThreadIds,
@@ -173,5 +176,62 @@ describe("normalizeTitle — an agent's words, made fit to be a tab name", () =>
     expect(normalizeTitle('   \n  ')).toBeNull()
     expect(normalizeTitle(undefined)).toBeNull()
     expect(normalizeTitle(7)).toBeNull()
+  })
+})
+
+describe('liveSuggestion — the one suggested PR comment the reviewer can still act on', () => {
+  const at = '2026-10-02T00:00:00Z'
+  const agent = (id: string, prComment?: ReviewThread['messages'][number]['prComment']) => ({
+    id,
+    author: 'agent' as const,
+    text: 'answer',
+    at,
+    ...(prComment ? { prComment } : {}),
+  })
+  const priv = (messages: ReviewThread['messages'], over: Partial<ReviewThread> = {}) => ({
+    ...thread('t', { kind: 'changeset' }),
+    messages,
+    ...over,
+  })
+
+  it('is the latest undecided suggestion, and nothing on a thread without one', () => {
+    expect(liveSuggestion(priv([agent('a')]))).toBeNull()
+    const one = priv([agent('a', { text: 'Keep the streak?' })])
+    expect(liveSuggestion(one)?.id).toBe('a')
+  })
+
+  it('a redraft replaces the earlier suggestion; a plain later reply does not', () => {
+    const redrafted = priv([agent('a', { text: 'v1' }), agent('b', { text: 'v2' })])
+    expect(liveSuggestion(redrafted)?.id).toBe('b')
+    const answered = priv([agent('a', { text: 'v1' }), agent('b')])
+    expect(liveSuggestion(answered)?.id).toBe('a')
+  })
+
+  it('a decided suggestion is history, even when it is the latest', () => {
+    const added = priv([
+      agent('a', {
+        text: 'v1',
+        outcome: { kind: 'added', draftThreadId: 'd', edited: false, at },
+      }),
+    ])
+    expect(liveSuggestion(added)).toBeNull()
+    const dismissedThenEarlier = priv([
+      agent('a', { text: 'v1' }),
+      agent('b', { text: 'v2', outcome: { kind: 'dismissed', at } }),
+    ])
+    expect(liveSuggestion(dismissedThenEarlier)).toBeNull()
+  })
+
+  it('never on a public thread or a resolved one', () => {
+    const m = [agent('a', { text: 'v1' })]
+    expect(liveSuggestion(priv(m, { audience: 'pr' }))).toBeNull()
+    expect(liveSuggestion(priv(m, { state: 'resolved' }))).toBeNull()
+  })
+
+  it('parsePrComment trims, keeps newlines, caps, and drops junk', () => {
+    expect(parsePrComment('  a\n\n```suggestion\nb\n```  ')).toBe('a\n\n```suggestion\nb\n```')
+    expect(parsePrComment('   ')).toBeUndefined()
+    expect(parsePrComment(42)).toBeUndefined()
+    expect(parsePrComment('x'.repeat(PR_COMMENT_MAX + 5))).toHaveLength(PR_COMMENT_MAX)
   })
 })

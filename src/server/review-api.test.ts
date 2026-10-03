@@ -318,6 +318,29 @@ describe('review API', () => {
     expect('suggestedReply' in theirs.messages.at(-1)!).toBe(false)
   })
 
+  it('a suggested PR comment is refused off a pull request, and the words are not lost silently', async () => {
+    const { app, review } = setup()
+    const created = await post(app, '/api/review/threads', {
+      anchor: { kind: 'changeset' },
+      text: 'why?',
+    })
+    const { id } = (await created.json()) as ReviewThread
+    const res = await post(app, `/api/review/threads/${id}/messages`, {
+      author: 'agent',
+      text: 'because',
+      prComment: 'Keep the streak?',
+    })
+    expect(res.status).toBe(400)
+    expect(((await res.json()) as { error: string }).error).toMatch(/pull request/)
+    expect(review.get().threads[0]!.messages).toHaveLength(1)
+    const comment = await post(app, '/api/review/threads', {
+      author: 'agent',
+      text: 'bug here',
+      prComment: 'Loops forever',
+    })
+    expect(comment.status).toBe(400)
+  })
+
   it("a withheld reply to the agent's comment keeps it open for Send", async () => {
     const { app, review } = setup()
     const created = await post(app, '/api/review/threads', { author: 'agent', text: 'rename?' })

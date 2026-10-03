@@ -180,6 +180,115 @@ describe('a pull request in the review API', () => {
     expect(queue.queuedThreadIds()).toEqual([thread.id])
   })
 
+  it("the agent's suggested PR comment becomes the reviewer's draft only by their hand, and the decision is stamped", async () => {
+    const { app, review } = setup()
+    const asked = await post(app, '/api/review/threads', {
+      anchor: { kind: 'file', path: 'app.ts' },
+      text: 'does this reset the streak?',
+      audience: 'agent',
+    })
+    const { id } = (await asked.json()) as ReviewThread
+    const replied = await post(app, `/api/review/threads/${id}/messages`, {
+      author: 'agent',
+      text: 'yes — no test covers the late case',
+      prComment: 'Late completions reset the streak here. Keep it?',
+    })
+    expect(replied.status).toBe(200)
+    const { thread } = (await replied.json()) as { thread: ReviewThread }
+    const message = thread.messages.at(-1)!
+    expect(message.prComment).toEqual({ text: 'Late completions reset the streak here. Keep it?' })
+    // Nothing public exists yet: the suggestion is not a draft and Finish does not see it.
+    expect(review.get().threads.filter((t) => t.audience === 'pr' && !t.github)).toHaveLength(0)
+
+    // A stale origin is refused: wrong message, or a decided one.
+    const bad = await post(app, '/api/review/threads', {
+      anchor: { kind: 'file', path: 'app.ts' },
+      text: 'x',
+      audience: 'pr',
+      origin: { threadId: id, messageId: thread.messages[0]!.id },
+    })
+    expect(bad.status).toBe(409)
+
+    const added = await post(app, '/api/review/threads', {
+      anchor: { kind: 'file', path: 'app.ts' },
+      text: 'Late completions reset the streak here — the description says they keep it. Keep it?',
+      audience: 'pr',
+      origin: { threadId: id, messageId: message.id },
+    })
+    expect(added.status).toBe(200)
+    const draft = (await added.json()) as ReviewThread
+    expect(draft.audience).toBe('pr')
+    expect(draft.origin).toEqual({ threadId: id, messageId: message.id, edited: true })
+    const source = review.get().threads.find((t) => t.id === id)!
+    expect(source.state).not.toBe('resolved')
+    expect(source.messages.at(-1)!.prComment!.outcome).toMatchObject({
+      kind: 'added',
+      draftThreadId: draft.id,
+      edited: true,
+    })
+
+    // Decided: adding it again is refused, and so is dismissing it.
+    const again = await post(app, '/api/review/threads', {
+      anchor: { kind: 'file', path: 'app.ts' },
+      text: 'x',
+      audience: 'pr',
+      origin: { threadId: id, messageId: message.id },
+    })
+    expect(again.status).toBe(409)
+    const dismiss = await post(app, `/api/review/threads/${id}/messages/${message.id}/pr-comment`, {
+      outcome: 'dismissed',
+    })
+    expect(dismiss.status).toBe(404)
+
+    // The preview names the draft's origin; a fresh suggestion counts as undecided.
+    await post(app, `/api/review/threads/${id}/messages`, {
+      author: 'agent',
+      text: 'also: `every: 0` loops forever',
+      prComment: 'This loops forever when `every` is 0.',
+    })
+    const preview = await post(app, '/api/review/finish/preview', { coverage: {} })
+    const { public: pub } = (await preview.json()) as {
+      public: {
+        drafts: { id: string; fromAgent?: { edited: boolean } }[]
+        undecidedSuggestions: number
+      }
+    }
+    expect(pub.drafts.find((d) => d.id === draft.id)!.fromAgent).toEqual({ edited: true })
+    expect(pub.undecidedSuggestions).toBe(1)
+
+    // Dismissing the live one leaves the thread open.
+    const live = review
+      .get()
+      .threads.find((t) => t.id === id)!
+      .messages.at(-1)!
+    const dismissed = await post(app, `/api/review/threads/${id}/messages/${live.id}/pr-comment`, {
+      outcome: 'dismissed',
+    })
+    expect(dismissed.status).toBe(200)
+    const after = (await dismissed.json()) as ReviewThread
+    expect(after.state).not.toBe('resolved')
+    expect(after.messages.at(-1)!.prComment!.outcome).toMatchObject({ kind: 'dismissed' })
+
+    // Undo brings it back live; while the first one's draft stands, it cannot be restored.
+    const restored = await post(app, `/api/review/threads/${id}/messages/${live.id}/pr-comment`, {
+      outcome: 'restored',
+    })
+    expect(restored.status).toBe(200)
+    expect(((await restored.json()) as ReviewThread).messages.at(-1)!.prComment).toEqual({
+      text: 'This loops forever when `every` is 0.',
+    })
+    const held = await post(app, `/api/review/threads/${id}/messages/${message.id}/pr-comment`, {
+      outcome: 'restored',
+    })
+    expect(held.status).toBe(404)
+
+    // Discarding the draft restores the suggestion it came from.
+    const gone = await app.request(`/api/review/threads/${draft.id}`, { method: 'DELETE' })
+    expect(gone.status).toBe(200)
+    const source2 = review.get().threads.find((t) => t.id === id)!
+    expect(source2.messages.find((m) => m.id === message.id)!.prComment!.outcome).toBeUndefined()
+  })
+
   it('a reply on an imported thread is held for GitHub, never delivered to the agent', async () => {
     const { app, queue } = setup()
     const res = await post(app, '/api/review/threads/gh:T_existing/messages', {
