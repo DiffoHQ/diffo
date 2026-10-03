@@ -50,13 +50,7 @@ context of the change: the agent that just wrote it.
 
 ## Start in one command
 
-<div class="home-install">
-
-```bash
-npx skills add DiffoHQ/diffo --skill diffo
-```
-
-</div>
+<InstallTerminal />
 
 Then, in any agent session, one command:
 
@@ -72,38 +66,7 @@ CI to wait for. Installed from one agent and want them all? `diffo setup`
 
 ## The loop
 
-<div class="home-steps">
-  <div class="home-step">
-    <div class="home-step-n">1</div>
-    <h3>The agent orients you</h3>
-    <p>On a multi-file or structural change it leaves one guide comment at the top of the review:
-    what the change does, plus a <a href="https://mermaid.js.org">mermaid</a> diagram when
-    the shape is easier to see than to read. Ask, and it posts <a href="./guide/layers">layers</a>:
-    the change as ordered steps, so you read it in the order it should be read in, not
-    alphabetically. It orients your reading and stops there, with no verdicts.</p>
-  </div>
-  <div class="home-step">
-    <div class="home-step-n">2</div>
-    <h3>You read</h3>
-    <p>Syntax-highlighted unified or split diffs, keyboard-first navigation, per-file
-    viewed tracking. The changeset stays live: fresh hunks appear as the agent works,
-    and a hunk you already read says <em>changed since you read it</em>.</p>
-  </div>
-  <div class="home-step">
-    <div class="home-step-n">3</div>
-    <h3>You comment</h3>
-    <p>On a line, a file, or the whole changeset. Every thread is marked
-    <strong>Change</strong> (edit the code) or <strong>Question</strong> (answer it,
-    touch nothing), so a question never turns into an unrequested refactor.</p>
-  </div>
-  <div class="home-step">
-    <div class="home-step-n">4</div>
-    <h3>The agent answers</h3>
-    <p>Send one thread now, or hand back the whole batch with honest coverage stats.
-    Answers land inline in your threads; fixes land in the diff you're reading, so
-    you're reading the fix itself, not a promise of one.</p>
-  </div>
-</div>
+<LoopScene />
 
 ## Read it in layers
 
