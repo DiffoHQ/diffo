@@ -9,6 +9,8 @@
               it is never used for anything else; secondary actions stay in ink.
      --attn   attention — changed-since-read, agent in flight. Amber, the one
               other hue in the chrome.
+   --here is the one muted green outside them: an agent that is here and
+   listening, on the chip's face and the companion. Never an action.
 
    --add / --del may also appear in the rail, on a file's git status (`+` born,
    `−` died) and nowhere else — always doubled by shape, so nothing depends on
@@ -48,6 +50,8 @@
   --attn: #9a6206;
   --attn-wash: #faf1e2;
   --attn-line: #e6cfa0;
+  --here: #3d8a5c;
+  --here-line: rgba(61, 138, 92, 0.42);
 
   /* ---------- the diff: the one place colour is the content ---------- */
   --add: #248a3d;
@@ -142,6 +146,8 @@
     --attn: #e0a83c;
     --attn-wash: #2a2214;
     --attn-line: #5c4818;
+    --here: #5cb87e;
+    --here-line: rgba(92, 184, 126, 0.45);
     --add: #30d158;
     --add-tint: rgba(48, 209, 88, 0.075);
     --add-row: rgba(48, 209, 88, 0.13);
@@ -183,6 +189,8 @@
   --attn: #e0a83c;
   --attn-wash: #2a2214;
   --attn-line: #5c4818;
+  --here: #5cb87e;
+  --here-line: rgba(92, 184, 126, 0.45);
   --add: #30d158;
   --add-tint: rgba(48, 209, 88, 0.075);
   --add-row: rgba(48, 209, 88, 0.13);
@@ -223,6 +231,8 @@
   --attn: #9a6206;
   --attn-wash: #faf1e2;
   --attn-line: #e6cfa0;
+  --here: #3d8a5c;
+  --here-line: rgba(61, 138, 92, 0.42);
   --add: #248a3d;
   --add-tint: rgba(36, 138, 61, 0.055);
   --add-row: rgba(36, 138, 61, 0.1);
@@ -5894,11 +5904,17 @@ select.input {
 
 /* ---------- presence: the agent on the pull loop ---------- */
 
+/* The chip is the agent in one line: the companion's face, a verb that carries
+   the state, and the detail after it. Tone answers "what happens if I send now":
+   grey nobody gets it, green it lands now, amber it waits. Quieter than Finish
+   review — a hairline in the tone and a wash at most, never a fill. */
 .presence {
+  --face-cut: var(--fill);
+  position: relative;
   display: inline-flex;
   align-items: center;
   gap: var(--s-2);
-  padding: 4px var(--s-4);
+  padding: 4px var(--s-4) 4px var(--s-3);
   border: 1px solid var(--hair);
   border-radius: var(--r-pill);
   background: var(--fill);
@@ -5906,22 +5922,81 @@ select.input {
   font-size: var(--t-12);
   color: var(--ink-2);
   white-space: nowrap;
+  overflow: hidden;
   transition:
     background-color var(--dur-move) var(--ease-out),
     border-color var(--dur-move) var(--ease-out),
     color var(--dur-move) var(--ease-out);
 }
 
-/* The label carries live activity ("working on db.ts:42"), and a path can be any
+/* The label carries live activity ("Working on db.ts:42"), and a path can be any
    length — the chip clips it rather than squeezing the header. */
 .presence-label {
+  position: relative;
   max-width: 34ch;
   overflow: hidden;
   text-overflow: ellipsis;
 }
 
-/* A lamp, for the invite modal's one-line statements. The chip in the header uses
-   the meter below instead — it has three states to tell apart, not two. */
+.presence-verb {
+  font-weight: 600;
+  color: var(--ink);
+}
+
+.presence-detail,
+.presence-ago {
+  color: var(--ink-3);
+}
+
+/* The companion's seat. Its face is the companion's own, so when the companion
+   is out on the header floor the seat keeps only a faint one. */
+.presence-face {
+  position: relative;
+  display: inline-flex;
+  flex: none;
+  color: var(--ink-3);
+  transition:
+    opacity var(--dur-move) var(--ease-out),
+    color var(--dur-move) var(--ease-out);
+}
+
+.presence-face-away {
+  opacity: 0.35;
+}
+
+.presence-face-cheer {
+  animation: face-cheer 0.6s var(--ease-out) 2;
+}
+
+@keyframes face-cheer {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  35% {
+    transform: translateY(-3px);
+  }
+}
+
+.critter-face {
+  display: block;
+  fill: currentColor;
+}
+
+/* Eyes cut out of the body in the chip's own ground. */
+.critter-face-open rect {
+  fill: var(--face-cut);
+}
+
+.critter-face-eyes {
+  fill: none;
+  stroke: var(--face-cut);
+  stroke-width: 1.6;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+/* A lamp, for the invite modal's one-line statements. */
 .presence-dot {
   width: 7px;
   height: 7px;
@@ -5930,146 +6005,99 @@ select.input {
   flex: none;
 }
 
-.presence-live {
-  display: inline-flex;
-  align-items: center;
-  gap: 2.5px;
-  height: 12px;
-  flex: none;
-}
-
-/* Short–tall–short, so the glyph is legibly a meter even frozen at its lowest —
-   and low-and-grey is what an unattached agent looks like, before any colour. */
-.presence-live i {
-  width: 2px;
-  height: 8px;
-  border-radius: 1px;
-  background: var(--ink-3);
-  transform: scaleY(0.34);
-  transform-origin: center;
-}
-
-.presence-live i:nth-child(2) {
-  height: 12px;
-}
-
-@keyframes live-breathe {
-  0%,
-  100% {
-    transform: scaleY(0.34);
-    box-shadow: none;
-  }
-  50% {
-    transform: scaleY(0.92);
-    box-shadow: 0 0 6px -1px var(--glow);
-  }
-}
-
-@keyframes live-work {
-  0%,
-  100% {
-    transform: scaleY(0.34);
-    box-shadow: none;
-  }
-  45% {
-    transform: scaleY(1);
-    box-shadow: 0 0 7px -1px var(--glow);
-  }
-}
-
-.presence-invite {
-  font: inherit;
+/* The button forms keep the chip's own type: they sit in the monitor's anchor,
+   whose mono would otherwise leak in through an inherited font. */
+.presence-invite,
+.presence-suggests,
+.presence-batch {
+  line-height: inherit;
   cursor: pointer;
 }
 
 .presence-invite:hover,
-.presence-invite:focus-visible {
-  color: var(--ink);
+.presence-invite:focus-visible,
+.presence-suggests:hover,
+.presence-suggests:focus-visible {
   border-color: var(--ink-3);
 }
 
 .presence-invite:focus-visible,
+.presence-suggests:focus-visible,
 .presence-batch:focus-visible {
   outline: 2px solid var(--acc);
   outline-offset: 2px;
 }
 
+/* Nobody here: the verb is the call to action. */
+.presence-invite .presence-verb {
+  color: var(--acc);
+}
+
 .presence-cta {
+  position: relative;
+  margin-left: var(--s-1);
+  padding-left: var(--s-3);
+  border-left: 1px solid var(--hair);
   font-weight: 600;
   color: var(--acc);
 }
 
-/* Listening and working are one hue at two strengths — the palette's amber, held
-   back. Attached is amber at a little over half, on the glyph only: no wash, no
-   amber text, a warmed hairline. Working then reads as the same light turned all
-   the way up, which is the difference a reviewer actually needs to feel. */
+/* Listening: here, and a send lands now. Green on the face and the hairline —
+   --here, not --brand, which stays the primary action's. */
 .presence-listening {
-  color: var(--ink);
-  border-color: var(--attn-line);
+  border-color: var(--here-line);
 }
 
-.presence-listening .presence-live i {
-  --glow: var(--attn);
-  background: var(--attn);
-  opacity: 0.55;
-  animation: live-breathe 2.6s var(--ease-out) infinite;
+.presence-listening .presence-face {
+  color: var(--here);
 }
 
-/* The centre carries it, so three bars read as one glyph with a core. */
-.presence-listening .presence-live i:nth-child(2) {
-  opacity: 0.82;
-  animation-delay: 0.22s;
-}
-
-.presence-listening .presence-live i:nth-child(3) {
-  animation-delay: 0.44s;
-}
-
+/* Working: the same light turned to amber, a send waits behind it. */
 .presence-working {
-  color: var(--attn);
+  --face-cut: var(--attn-wash);
   border-color: var(--attn-line);
   background: var(--attn-wash);
 }
 
-/* Working travels: same three bars, faster and fuller, the stagger tight enough
-   to read as a wave crossing the glyph rather than three separate blinks. */
-.presence-working .presence-live i {
-  --glow: var(--attn);
-  background: var(--attn);
-  animation: live-work 0.85s var(--ease-out) infinite;
+.presence-working .presence-face,
+.presence-working .presence-verb {
+  color: var(--attn);
 }
 
-.presence-working .presence-live i:nth-child(2) {
-  animation-delay: 0.11s;
-}
-
-.presence-working .presence-live i:nth-child(3) {
-  animation-delay: 0.22s;
-}
-
+/* With a batch out, the pill fills as threads come back: the wash is the
+   progress, its leading edge a 1px amber line so it reads without hue. */
 .presence-batch {
-  font: inherit;
-  cursor: pointer;
+  --face-cut: var(--fill);
+  background: var(--fill);
 }
 
-.presence-batch:hover .presence-label,
-.presence-batch:focus-visible .presence-label {
+.presence-fill {
+  position: absolute;
+  inset: 0 auto 0 0;
+  background: var(--attn-wash);
+  box-shadow: inset -1px 0 0 var(--attn);
+  transition: width var(--dur-move) var(--ease-out);
+}
+
+.presence-batch:hover .presence-verb,
+.presence-batch:focus-visible .presence-verb {
   text-decoration: underline;
   text-underline-offset: 2px;
 }
 
-.presence-qbar,
+.presence-batch-n {
+  position: relative;
+  font-size: var(--t-11);
+  font-weight: 650;
+  font-variant-numeric: tabular-nums;
+  color: var(--ink-3);
+}
+
 .monitor-qbar {
   display: flex;
   gap: 2px;
 }
 
-.presence-qbar {
-  width: 44px;
-  height: 5px;
-}
-
-.presence-qbar i,
 .monitor-qbar i {
   flex: 1;
   border-radius: 2px;
@@ -6082,12 +6110,6 @@ i.q-done {
 
 i.q-now {
   background: var(--attn);
-}
-
-.presence-batch-n {
-  font-size: var(--t-11);
-  font-weight: 650;
-  color: var(--ink-3);
 }
 
 /* ---------- the monitor: your review, in the agent's hands ---------- */
@@ -6346,14 +6368,8 @@ i.q-now {
 
 @media (prefers-reduced-motion: reduce) {
   .invite-live .presence-dot,
-  .presence-live i {
+  .presence-face-cheer {
     animation: none;
-  }
-
-  /* Without motion the states still differ: a listening channel stands taller. */
-  .presence-listening .presence-live i,
-  .presence-working .presence-live i {
-    transform: scaleY(0.8);
   }
 }
 
@@ -8140,19 +8156,33 @@ i.q-now {
   position: relative;
 }
 
-/* Feet sit 3 of 24 units above the box's bottom; this lands them on the border. */
+/* Feet sit 3 of 24 units above the box's bottom; this lands them on the border.
+   It scales from its corner, so the hop can shrink it exactly onto the chip's face. */
 .critter-walker {
   position: absolute;
   left: 0;
   bottom: -4px;
+  z-index: 1;
   display: flex;
+  transform-origin: 0 0;
+}
+
+/* Hopping between floor and seat: legs and glasses fold away, leaving the face. */
+.critter-tucked .critter-leg,
+.critter-tucked .critter-glasses {
+  opacity: 0;
+}
+
+.critter-leg,
+.critter-glasses {
+  transition: opacity 0.2s var(--ease-out);
 }
 
 /* Presence sets the colour; the act (critter-act-*) sets the pose and props. */
 .critter {
   flex: none;
   overflow: visible;
-  color: var(--brand);
+  color: var(--here);
   transition: transform var(--dur-move) var(--ease-out);
 }
 

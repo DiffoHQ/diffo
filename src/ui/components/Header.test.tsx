@@ -222,7 +222,7 @@ describe('Header', () => {
 
     rerender(<Header changeset={changeset()} agent={{ presence: 'listening', onInvite }} />)
     expect(container.querySelector('button.presence')).toBeNull()
-    expect(container.querySelector('.presence')!.textContent).toContain('agent · listening')
+    expect(container.querySelector('.presence')!.textContent).toBe('Listening')
   })
 
   it('a working chip narrates the activity in place of the static label', () => {
@@ -233,12 +233,12 @@ describe('Header', () => {
       />,
     )
     const label = () => container.querySelector('.presence-label')!.textContent
-    expect(label()).toContain('working on db.ts:42')
-    expect(label()).not.toContain('agent · working')
+    expect(container.querySelector('.presence-verb')!.textContent).toBe('Working on')
+    expect(container.querySelector('.presence-detail')!.textContent).toBe('db.ts:42')
 
-    // No activity to report → the label falls back to what it says today.
+    // No activity to report → the bare verb.
     rerender(<Header changeset={changeset()} agent={{ presence: 'working', activity: null }} />)
-    expect(label()).toContain('agent · working')
+    expect(label()).toBe('Working')
 
     // Activity is the working state's voice alone — listening never borrows it.
     rerender(
@@ -247,7 +247,45 @@ describe('Header', () => {
         agent={{ presence: 'listening', activity: 'working on db.ts:42' }}
       />,
     )
-    expect(label()).toContain('agent · listening')
+    expect(label()).toBe('Listening')
+  })
+
+  it('wears the companion’s face: asleep, listening, writing — and happy when a batch is answered', () => {
+    const eyes = () => {
+      const face = document.querySelector('.presence-face svg.critter-face')!
+      if (face.querySelector('.critter-face-open')) return 'open'
+      return face.querySelector('.critter-face-eyes')!.getAttribute('d')
+    }
+    const { rerender } = render(<Header changeset={changeset()} agent={{ presence: 'waiting' }} />)
+    expect(document.querySelector('.presence-face')!.getAttribute('aria-hidden')).toBe('true')
+    expect(eyes()).toBe('M7.8 10.4h2.4M13.8 10.4h2.4')
+    rerender(<Header changeset={changeset()} agent={{ presence: 'listening' }} />)
+    expect(eyes()).toBe('open')
+    rerender(
+      <Header changeset={changeset()} agent={{ presence: 'working', reason: 'delivered' }} />,
+    )
+    expect(eyes()).toContain('M9 9v2.4')
+    expect(document.querySelector('.presence-face-cheer')).toBeNull()
+    rerender(<Header changeset={changeset()} agent={{ presence: 'working', reason: 'replied' }} />)
+    expect(document.querySelector('.presence-face-cheer')).toBeTruthy()
+    expect(eyes()).toContain('M7.8 11l1.2-1.4')
+  })
+
+  it('a batch fills the pill as threads come back, and says how far', () => {
+    render(
+      <Header
+        changeset={changeset()}
+        agent={{
+          presence: 'working',
+          activity: 'working on db.ts:42',
+          batch: { segments: ['done', 'done', 'now', 'wait', 'wait'], done: 2 },
+          onOpenMonitor: vi.fn(),
+        }}
+      />,
+    )
+    const chip = document.querySelector('.presence-batch')!
+    expect((chip.querySelector('.presence-fill') as HTMLElement).style.width).toBe('40%')
+    expect(chip.querySelector('.presence-batch-n')!.textContent).toBe('2/5')
   })
 
   it('without an invite handler the waiting chip stays a plain statement', () => {
@@ -289,7 +327,7 @@ describe('Header — the layers suggestion', () => {
     )
     expect(container.querySelector('button.presence')).toBeNull()
     const chip = container.querySelector('.presence')!
-    expect(chip.textContent).toContain('agent · working')
+    expect(chip.textContent).toBe('Paused sends wait')
     expect(chip.textContent).not.toContain('Invite')
     expect(chip.getAttribute('title')).toMatch(/polls again/)
   })
@@ -303,9 +341,9 @@ describe('Header — the layers suggestion', () => {
     )
     expect(container.querySelector('button.presence')).toBeNull()
     const chip = container.querySelector('.presence')!
-    expect(chip.textContent).toContain('agent · reading the change')
+    expect(chip.textContent).toContain('Reading the change')
     expect(chip.textContent).not.toContain('Invite')
-    expect(chip.textContent).not.toContain('no agent')
+    expect(chip.textContent).not.toContain('No agent')
     expect(chip.getAttribute('title')).toMatch(/first poll/)
   })
 
@@ -320,7 +358,7 @@ describe('Header — the layers suggestion', () => {
         }}
       />,
     )
-    const chip = screen.getByRole('button', { name: /suggests layers/ })
+    const chip = screen.getByRole('button', { name: /Suggests layers/ })
     expect(chip.className).toContain('presence-suggests')
     expect(chip.querySelector('.presence-cta')?.textContent).toBe('Ask it')
     expect(chip.getAttribute('title')).toContain('“the parser change explains the rest”')
