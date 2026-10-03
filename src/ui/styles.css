@@ -6713,6 +6713,134 @@ i.q-now {
   box-shadow: inset 0 0 0 1px var(--gh-line);
 }
 
+/* The review comment the agent drafted for the author, nested under its
+   reply: blue, where it is going, inside the amber card, because it has not
+   gone anywhere yet. Indented to the message body's column. */
+.psc {
+  margin: var(--s-3) 0 var(--s-2) 30px;
+  max-width: 88ch;
+  border: 1px solid var(--gh-line);
+  border-left: 3px solid var(--gh);
+  border-radius: var(--r-sm);
+  background: var(--paper);
+  overflow: hidden;
+}
+
+.psc-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px var(--s-4);
+  background: var(--gh-wash);
+  color: var(--gh);
+  font-size: var(--t-11);
+  font-weight: 600;
+}
+
+.psc-head-note {
+  margin-left: auto;
+  color: var(--ink-3);
+  font-weight: 500;
+}
+
+.psc .psc-body {
+  padding: var(--s-3) var(--s-4) 0;
+  font-size: var(--t-14);
+  line-height: 1.6;
+  color: var(--ink);
+}
+
+.psc-foot {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+  padding: 6px var(--s-4);
+  border-top: 1px solid var(--gh-line);
+  background: color-mix(in srgb, var(--gh-wash) 35%, var(--paper));
+}
+
+.psc-hint {
+  margin-right: auto;
+  color: var(--gh);
+  font-size: var(--t-11);
+}
+
+.psc .psc-add {
+  background: var(--gh);
+  color: #fff;
+}
+
+/* Editing: the block IS the PR composer, in place; the composer wears the
+   blue frame itself, so the wrapper adds nothing. */
+.psc-editing {
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  overflow: visible;
+}
+
+/* Decided or superseded: one line, so a folded thread never hides that a
+   suggestion was here; Show unfolds the agent's words under it. */
+.psc-done {
+  font-size: var(--t-125);
+  color: var(--ink-2);
+  background: color-mix(in srgb, var(--gh-wash) 25%, var(--paper));
+}
+
+.psc-done-line {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px var(--s-2) 3px var(--s-4);
+  min-height: 30px;
+}
+
+.psc-done-text {
+  flex: 1 1 auto;
+}
+
+.psc-done .psc-body {
+  padding-bottom: var(--s-3);
+  border-top: 1px solid var(--gh-line);
+}
+
+.psc-done-line > svg {
+  color: var(--gh);
+}
+
+.psc-done-status {
+  color: var(--ink-3);
+}
+
+.psc-dismissed .psc-done-text,
+.psc-superseded .psc-done-text {
+  opacity: 0.7;
+}
+
+.cmt-origin {
+  color: var(--ink-3);
+}
+
+.crow-pill-pr {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+}
+
+.sub-pending-origin {
+  color: var(--ink-3);
+}
+
+.sub-undecided {
+  margin: var(--s-3) 0 0;
+  padding: var(--s-3) var(--s-4);
+  border: 1px dashed var(--attn-line);
+  border-radius: var(--r-sm);
+  font-size: var(--t-125);
+  color: var(--ink-2);
+}
+
 /* The composer's audience switch: two tabs along the top edge, the live one
  * filled in its side's color. The whole composer then wears that side — blue
  * solid for GitHub, amber dashed for the agent — the same language as the

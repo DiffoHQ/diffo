@@ -10,9 +10,12 @@ import { parseLayersInput, parseSuggestReason } from '../shared/layers.js'
 import {
   type Anchor,
   type Coverage,
+  type DraftOrigin,
   isPublic,
+  liveSuggestion,
   normalizeTitle,
   type OutgoingThread,
+  parsePrComment,
   parseSuggestedReply,
   type ReviewThread,
   seenByAgent,
@@ -44,6 +47,7 @@ import {
   planPublicLeg,
   REVIEW_EVENTS,
   runPublicLeg,
+  suggestionsSummary,
 } from './pr/finish.js'
 import { PrPuller } from './pr/puller.js'
 import { removeWorktree } from './pr/worktree.js'
@@ -281,6 +285,7 @@ export function createApp(
   const promptCtx = (...excludeThreadIds: string[]): PromptContext => ({
     repo: repoInfo(),
     changeset: store?.get() ?? null,
+    ...(ctx.pr && review ? { voice: review.get().threads } : {}),
     siblings:
       review
         ?.get()
@@ -337,10 +342,17 @@ export function createApp(
           ? body.line
           : null
       const anchor = agentAnchor(file, line)
+      // A suggested review comment has nowhere to go off a pull request; refusing
+      // it tells the agent so, rather than dropping its words on the floor.
+      const prComment = parsePrComment(body?.prComment)
+      if (body?.prComment !== undefined && !ctx.pr) {
+        return c.json({ error: 'a suggested PR comment needs a pull request under review' }, 400)
+      }
       const capture = store ? captureAnchor(store.get(), anchor) : null
       return c.json(
         review.createThread(anchor, text, capture, undefined, 'agent', {
           suggestedReply: parseSuggestedReply(body?.suggestedReply),
+          ...(prComment ? { prComment } : {}),
         }),
       )
     }
@@ -370,13 +382,66 @@ export function createApp(
       typeof body?.parentId === 'string' && review.get().threads.some((t) => t.id === body.parentId)
         ? (body.parentId as string)
         : undefined
+    // A draft made from the agent's suggestion names where it came from; the
+    // suggestion is stamped as added in the same breath, so the two never
+    // disagree. A stale or unknown origin is refused rather than guessed.
+    let origin: DraftOrigin | undefined
+    if (body?.origin !== undefined) {
+      const o = body.origin
+      const source =
+        audience && typeof o?.threadId === 'string'
+          ? review.get().threads.find((t) => t.id === o.threadId)
+          : undefined
+      const message =
+        source && typeof o?.messageId === 'string'
+          ? source.messages.find((m) => m.id === o.messageId)
+          : undefined
+      if (!source || !message || liveSuggestion(source)?.id !== message.id) {
+        return c.json({ error: 'that suggested comment is no longer live' }, 409)
+      }
+      origin = {
+        threadId: source.id,
+        messageId: message.id,
+        edited: message.prComment!.text.trim() !== text,
+      }
+    }
     const capture = store ? captureAnchor(store.get(), anchor, review.get().layers) : null
-    return c.json(
-      review.createThread(anchor, text, capture, intent, 'reviewer', {
-        ...(audience ? { audience } : {}),
-        ...(parentId ? { parentId } : {}),
-      }),
-    )
+    const created = review.createThread(anchor, text, capture, intent, 'reviewer', {
+      ...(audience ? { audience } : {}),
+      ...(parentId ? { parentId } : {}),
+      ...(origin ? { origin } : {}),
+    })
+    if (origin) {
+      review.decidePrComment(origin.threadId, origin.messageId, {
+        kind: 'added',
+        draftThreadId: created.id,
+        edited: origin.edited,
+        at: new Date().toISOString(),
+      })
+    }
+    return c.json(created)
+  })
+
+  // The reviewer passes on a suggested review comment, or takes that back.
+  // The thread stays open either way: a dismissal is a decision about the
+  // words, not the conversation.
+  app.post('/api/review/threads/:id/messages/:messageId/pr-comment', async (c) => {
+    if (!review) return c.json({ error: 'review unavailable' }, 503)
+    const body = await c.req.json().catch(() => null)
+    const id = c.req.param('id')
+    const messageId = c.req.param('messageId')
+    if (body?.outcome === 'restored') {
+      const thread = review.restorePrComment(id, messageId)
+      return thread ? c.json(thread) : c.json({ error: 'nothing to restore there' }, 404)
+    }
+    if (body?.outcome !== 'dismissed') {
+      return c.json({ error: 'outcome must be "dismissed" or "restored"' }, 400)
+    }
+    const thread = review.decidePrComment(id, messageId, {
+      kind: 'dismissed',
+      at: new Date().toISOString(),
+    })
+    return thread ? c.json(thread) : c.json({ error: 'no live suggested comment there' }, 404)
   })
 
   // The agent's reading plan — `{ items }` replaces the whole list — or its flag
@@ -431,6 +496,10 @@ export function createApp(
       // An interim reply (`--more`): a follow-up is promised, so the thread
       // stays on the delivery clock and keeps waiting on the agent.
       const more = body?.more === true
+      const prComment = parsePrComment(body?.prComment)
+      if (body?.prComment !== undefined && !ctx.pr) {
+        return c.json({ error: 'a suggested PR comment needs a pull request under review' }, 400)
+      }
       const waitedMs = queue?.agentReplied(id, more) ?? null
       const seenThroughMs = waitedMs === null ? undefined : Date.now() - waitedMs
       const thread = review.addMessage(
@@ -441,6 +510,7 @@ export function createApp(
         seenThroughMs,
         more,
         parseSuggestedReply(body?.suggestedReply),
+        prComment,
       )
       if (!thread) return c.json({ error: 'no such thread' }, 404)
       if (waitedMs !== null) review.annotateAgentReplies([thread.id], waitedMs)
@@ -716,6 +786,7 @@ export function createApp(
         ? {
             public: {
               ...describeLeg(leg),
+              undecidedSuggestions: before.filter((t) => liveSuggestion(t) !== null).length,
               canApprove: pr ? !pr.viewer.isAuthor : true,
               pendingReview:
                 (review.get().pr?.pendingReviewId ?? pr?.viewer.pendingReviewId ?? null) !== null,
@@ -750,6 +821,7 @@ export function createApp(
           comments: publicOutcome.posted,
           body: coverage.note ?? '',
           ...(publicOutcome.url ? { url: publicOutcome.url } : {}),
+          suggestions: suggestionsSummary(review.get().threads),
         })
         // Pull the conversation back so the submitted review shows in place.
         void ctx.pr.refresh?.()

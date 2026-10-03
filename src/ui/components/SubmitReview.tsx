@@ -287,6 +287,14 @@ export function SubmitReview({
                         {d.conversation ? 'comment' : 'review comment'}
                       </span>
                       <span className="sub-pending-anchor">{d.anchor}</span>
+                      {d.fromAgent && (
+                        <span
+                          className="fin-row-note sub-pending-origin"
+                          title="your agent wrote the first version; it posts as yours"
+                        >
+                          from your agent{d.fromAgent.edited && ', edited'}
+                        </span>
+                      )}
                       {d.downgraded && (
                         <span
                           className="fin-row-note"
@@ -319,6 +327,13 @@ export function SubmitReview({
                   </li>
                 ))}
               </ul>
+            )}
+            {pub && (pub.undecidedSuggestions ?? 0) > 0 && (
+              <p className="sub-undecided" role="note">
+                {pub.undecidedSuggestions === 1
+                  ? 'One suggested comment from your agent is still undecided. It stays private and never posts.'
+                  : `${pub.undecidedSuggestions} suggested comments from your agent are still undecided. They stay private and never post.`}
+              </p>
             )}
           </div>
         </>

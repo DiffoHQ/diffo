@@ -345,9 +345,27 @@ carried by the open output and the payloads, as usual:
   agent never sees them as feedback and never posts to GitHub. When the answer
   is a fix, it goes in a ```suggestion block in the reply, not an edit to the
   worktree; the reviewer can turn that reply into a public draft.
+- **What it writes for the author.** The reviewer's private messages are of
+  two kinds, and the protocol teaches the agent to tell them apart. A question
+  ("what calls this?") wants an answer. A finding stated about the code ("this
+  resets the streak on late completions") is a review comment in the making,
+  and the agent writes it: `diffo reply <id> --message "<private answer>"
+  --pr-comment "<the comment>"`. The comment is in the reviewer's voice, to
+  the author, with none of the agent's evidence in it; that stays in the
+  reply. It appears under the reply with Add to review, Edit and Dismiss, and
+  nothing posts until the reviewer submits. The agent attaches one when the
+  reviewer states a finding, when their hunch proves right, when they ask for
+  it, or when a plain question turns up a bug it can show; not when the
+  reviewer was wrong, not on pushback against its own reply, where it
+  redrafts the one already in the thread, and not when asked but it has
+  nothing worth saying to the author, where it says so privately rather
+  than inventing one. Payloads quote the reviewer's own
+  review comments, and the suggestions they edited before adding, under
+  **The reviewer's voice**, so the next suggestion sounds like them.
 - **How it ends.** Finish submits the review on GitHub and hands the private
   threads to the agent as always. A poll then returns a `"kind": "submitted"`
-  notice (the verdict, the comment count, the body), which is context, not work.
+  notice (the verdict, the comment count, the body, and what became of the
+  comments it suggested), which is context, not work.
 
 The guide and layers work as on any review, built from the description, the
 commits and the diff; the guide is skipped when the description already orients.

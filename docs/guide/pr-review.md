@@ -84,10 +84,52 @@ until then, and a reply on a GitHub thread waits with them.
 
 The two sides stay apart. A public card offers nothing that reaches the agent:
 to ask about the same lines privately, open the composer there and pick **Ask
-agent**. One bridge runs the other way: under any private thread, **Post as PR
-comment** turns the agent's answer, or its ```` ```suggestion ```` block when
-it wrote one, into an editable public draft. You read it before it joins the
-review.
+agent**. One bridge runs the other way, and the agent usually crosses it for
+you.
+
+## The agent suggests the comment
+
+Most of what you say to your agent at a line is not really a question. "This
+resets the streak if you finish a day late" is a thought on its way to the
+author, and the next thing you would type is a review comment. On a pull
+request the agent reads the difference. A question gets an answer. A finding
+gets the answer *and*, under it, a **Suggested PR comment**: the comment you
+would leave the author, in your voice, with none of the agent's evidence in it.
+The private reply tells you whether you are right; the suggestion is what you
+would have typed next.
+
+The block is blue, because that is where it is going, inside the amber card,
+because it has not gone anywhere yet. Three buttons:
+
+| | What happens |
+| --- | --- |
+| **Add to review** | A blue draft on the same lines, as if you had typed it. It posts when you submit, under your login, with a small *from your agent* tag so you can tell later which of your comments started as its words |
+| **Edit** | The block becomes the PR composer, in place. What you type is what joins the review; the agent's version stays in the thread |
+| **✕** | Passes on it. The thread stays open, so you can still argue, and **Undo** on the receipt brings the suggestion back |
+
+What is left behind is a one-line receipt that folds the agent's words away;
+the chevron unfolds them, so the original is always a click away once you have
+edited it. The
+private thread stays open either way. Discarding the draft hands the
+suggestion back, with its buttons. Reply to the thread ("mention the `until`
+bound too") and the agent redrafts; the new suggestion replaces the old one,
+which greys out in place. The Threads rail marks a thread that carries a live
+suggestion with a blue **suggests** pill, and the Submit dialog says how many
+suggestions you left undecided. They stay private and never post.
+
+The agent attaches one when you state a finding (a nit included), when a hunch
+you phrased as a question turns out right, when you ask for it ("write this up
+for the author"), or when a plain question turns up a bug it can show. Not when
+you were wrong, and not when you ask for one and it has nothing worth saying to
+the author: it says so privately instead, rather than inventing a comment. And it learns your voice as you
+go: your own review comments on the pull request, and the suggestions you
+edited before adding, travel with every delivery, so the third suggestion sounds
+like you.
+
+When the agent attached nothing, the manual bridge is still there: under any
+private thread, **Post as PR comment** turns its answer, or its
+```` ```suggestion ```` block when it wrote one, into an editable public draft.
+You read it before it joins the review.
 
 Resolving a GitHub thread is queued the same way: the card says **resolves when
 you finish**, and reopening it before then withdraws the change.
@@ -111,7 +153,8 @@ verdict on a merged or closed one; the dialog says so under the option.
 If GitHub refuses midway, what posted before the failure is recorded and will
 not post twice. The dialog names the step, nothing goes to the agent, and you
 finish again once it is fixed. The agent receives a short notice that the
-review was submitted, with nothing to act on.
+review was submitted, with nothing to act on: the verdict, the comment count,
+and one line on what became of the comments it suggested.
 
 ## What the agent is told
 

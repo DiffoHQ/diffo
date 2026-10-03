@@ -265,6 +265,7 @@ function useReviewActions(): ReviewActions {
       resolve: (id) => reviewApi.setState(id, 'resolved').then(refresh),
       reopen: (id) => reviewApi.setState(id, 'open').then(refresh),
       remove: (id) => reviewApi.remove(id).then(refresh),
+      dismissPrComment: (id, messageId) => reviewApi.dismissPrComment(id, messageId).then(refresh),
     }
   }, [client])
 }

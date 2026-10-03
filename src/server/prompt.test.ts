@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
-import type { Anchor, ReviewThread } from '../shared/review.js'
+import { fixturePr } from '../forge/fixture.js'
+import { type Anchor, describeAnchor, type ReviewThread } from '../shared/review.js'
 import type { Changeset } from '../shared/types.js'
 import { DEV_SKILL_NAME, SKILL_NAME } from '../skill.js'
 import {
@@ -9,6 +10,7 @@ import {
   buildConnectAsk,
   buildFinishPrompt,
   buildLayersRequestPrompt,
+  buildSubmittedPrompt,
   buildThreadPrompt,
   CLI,
   CLI_COMMANDS,
@@ -20,6 +22,7 @@ import {
   LAYERS,
   layersNudge,
   nextStepFor,
+  voiceLines,
 } from './prompt.js'
 
 const repo = { path: '/tmp/demo', name: 'demo', branch: 'main', worktree: null }
@@ -987,3 +990,132 @@ describe('layers doctrine', () => {
     expect(ACK_NEXT_STEP.layersSuggested).toContain(CLI_COMMANDS.layers)
   })
 })
+
+describe('suggested PR comments — the doctrine, the voice, the notice', () => {
+  const onPr = (over: Partial<Changeset> = {}) => changeset({ pr: fixturePr(), ...over })
+  const at = '2026-10-02T00:00:00Z'
+
+  it('a pull request teaches the agent to read a finding as a comment in the making; a local review never does', () => {
+    const prPrompt = buildThreadPrompt(thread(), { repo, changeset: onPr() })
+    expect(prPrompt).toContain('## Drafting a review comment for the author')
+    expect(prPrompt).toContain('--pr-comment')
+    expect(prPrompt).toMatch(/in the reviewer's voice, to the author/)
+    expect(prPrompt).toMatch(/Nothing you attach reaches GitHub/)
+    const local = buildThreadPrompt(thread(), { repo, changeset: changeset() })
+    expect(local).not.toContain('--pr-comment')
+    expect(local).not.toContain('Drafting a review comment')
+  })
+
+  it('the compact protocol keeps the rule in one paragraph, PR only', () => {
+    const compact = buildThreadPrompt(thread(), { repo, changeset: onPr(), protocol: 'compact' })
+    expect(compact).toContain('--pr-comment')
+    expect(compact).not.toContain('## Drafting a review comment')
+    const local = buildThreadPrompt(thread(), { repo, changeset: changeset(), protocol: 'compact' })
+    expect(local).not.toContain('--pr-comment')
+  })
+
+  it("the reviewer's voice: their public comments, newest first, and the suggestions they edited", () => {
+    const draft = thread({
+      id: 'draft',
+      audience: 'pr',
+      state: 'open',
+      origin: { threadId: 'ask', messageId: 'a', edited: true },
+      createdAt: '2026-10-02T00:02:00Z',
+      messages: [{ id: 'd', author: 'reviewer', text: 'Late ones reset the streak. Keep it?', at }],
+    })
+    const older = thread({
+      id: 'older',
+      audience: 'pr',
+      createdAt: '2026-10-02T00:01:00Z',
+      messages: [
+        { id: 'o', author: 'reviewer', text: 'nit: `--repeating` reads as a boolean', at },
+      ],
+    })
+    const theirs = thread({
+      id: 'gh',
+      audience: 'pr',
+      github: { threadId: 'gh', kind: 'inline', resolved: false, outdated: false },
+      messages: [
+        {
+          id: 'g',
+          author: 'github',
+          text: 'LGTM',
+          at,
+          github: { id: 'g', user: { login: 'mayab', avatarUrl: '' } },
+        },
+      ],
+    })
+    const ask = thread({
+      id: 'ask',
+      messages: [
+        { id: 'q', author: 'reviewer', text: 'resets the streak?', at },
+        {
+          id: 'a',
+          author: 'agent',
+          text: 'yes',
+          at,
+          prComment: {
+            text: 'Finishing a day late resets the streak to 0 here. Keep `todo.streak`?',
+            outcome: { kind: 'added', draftThreadId: 'draft', edited: true, at },
+          },
+        },
+      ],
+    })
+    const asIs = thread({
+      id: 'asis',
+      messages: [
+        {
+          id: 'b',
+          author: 'agent',
+          text: 'bug',
+          at,
+          prComment: {
+            text: 'Loops forever on 0.',
+            outcome: { kind: 'added', draftThreadId: 'nope', edited: false, at },
+          },
+        },
+      ],
+    })
+    const block = voiceLines([ask, theirs, older, draft, asIs])!
+    const lines = block.split('\n')
+    expect(lines[0]).toBe("## The reviewer's voice")
+    // Newest of theirs first; GitHub's own words are not the reviewer's voice.
+    expect(
+      lines.indexOf(`- ${describeLine(draft)} — "Late ones reset the streak. Keep it?"`),
+    ).toBeLessThan(
+      lines.indexOf(`- ${describeLine(older)} — "nit: \`--repeating\` reads as a boolean"`),
+    )
+    expect(block).not.toContain('LGTM')
+    // Only an edited, added suggestion makes a pair; one taken as-is teaches nothing.
+    expect(block).toContain(
+      'yours: "Finishing a day late resets the streak to 0 here. Keep `todo.streak`?"',
+    )
+    expect(block).toContain('theirs: "Late ones reset the streak. Keep it?"')
+    expect(block).not.toContain('Loops forever')
+
+    expect(voiceLines([ask])).toBeNull()
+    // It rides PR prompts only, and only when passed.
+    expect(buildThreadPrompt(thread(), { repo, changeset: onPr(), voice: [ask, draft] })).toContain(
+      "## The reviewer's voice",
+    )
+    expect(
+      buildThreadPrompt(thread(), { repo, changeset: changeset(), voice: [ask, draft] }),
+    ).not.toContain("## The reviewer's voice")
+  })
+
+  it('the submit notice says what became of the suggestions, in one aggregate line', () => {
+    const base = { event: 'COMMENT', comments: 2, body: '' }
+    expect(buildSubmittedPrompt({ repo, changeset: onPr() }, base)).not.toMatch(/you suggested/)
+    const withSome = buildSubmittedPrompt(
+      { repo, changeset: onPr() },
+      { ...base, suggestions: { total: 4, posted: 2, edited: 1, dismissed: 1, undecided: 1 } },
+    )
+    expect(withSome).toContain(
+      'Of the 4 review comments you suggested: 2 posted (1 edited first), 1 dismissed, 1 left undecided (they stay private and never post).',
+    )
+  })
+})
+
+function describeLine(t: ReviewThread): string {
+  return describeAnchor(t.anchor)
+}

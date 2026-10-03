@@ -74,6 +74,12 @@ export interface ReviewMessage {
    * shows it as ghost text while the reviewer has typed nothing; Tab takes it.
    * Never sent on its own — the reviewer still presses send. */
   suggestedReply?: string
+  /** Agent only, on a pull request: a review comment it drafted for the
+   * reviewer to leave the author. Nothing of it reaches GitHub on its own —
+   * the reviewer adds it to their review (as a public draft on the same
+   * anchor), edits it first, or dismisses it; the `outcome` records which.
+   * Absent `outcome` on the latest such message ⇒ the suggestion is live. */
+  prComment?: PrCommentSuggestion
   /** ISO, stamped when the reviewer rewrites a message the agent had already
    * seen. An edit to words the agent never saw is just a draft fixed in place. */
   editedAt?: string
@@ -81,6 +87,53 @@ export interface ReviewMessage {
    * there, and where. A `reviewer` message in a posted public thread without
    * this block is a reply still owed to GitHub. */
   github?: { id: string; user: GhUser; url?: string }
+}
+
+export interface PrCommentSuggestion {
+  /** The comment as GitHub will show it: Markdown, a ```suggestion block allowed. */
+  text: string
+  outcome?: PrCommentOutcome
+}
+
+export type PrCommentOutcome =
+  /** The reviewer added it to their review: `draftThreadId` is the public
+   * draft it became, `edited` whether they changed the words first. */
+  | { kind: 'added'; draftThreadId: string; edited: boolean; at: string }
+  | { kind: 'dismissed'; at: string }
+
+/** Where a public draft came from, when the agent wrote the first version:
+ * the private thread and message that carried the suggestion. Rendering
+ * only — the draft is the reviewer's, and posts under their login. */
+export interface DraftOrigin {
+  threadId: string
+  messageId: string
+  edited: boolean
+}
+
+/** A review comment on GitHub tops out at 65 536 characters; a suggestion that
+ * long is a mistake, and the reviewer edits it in a thread card. */
+export const PR_COMMENT_MAX = 10_000
+
+export function parsePrComment(value: unknown): string | undefined {
+  if (typeof value !== 'string') return undefined
+  const text = value.trim()
+  return text ? text.slice(0, PR_COMMENT_MAX) : undefined
+}
+
+/**
+ * The suggestion the reviewer can still act on: the latest agent message
+ * carrying one, while nothing has been decided about it and the thread is
+ * open. Earlier suggestions in the same thread are superseded, decided or
+ * not — a redraft replaces, it never stacks.
+ */
+export function liveSuggestion(thread: ReviewThread): ReviewMessage | null {
+  if (isPublic(thread) || thread.state === 'resolved') return null
+  for (let i = thread.messages.length - 1; i >= 0; i--) {
+    const m = thread.messages[i]!
+    if (m.author !== 'agent' || !m.prComment) continue
+    return m.prComment.outcome === undefined ? m : null
+  }
+  return null
 }
 
 /** Ghost text has one line and little room: collapse whitespace and cap it. */
@@ -121,6 +174,8 @@ export interface ReviewThread {
   parentId?: string
   /** Present on every public thread that exists on GitHub. */
   github?: GithubThread
+  /** A public draft the agent first wrote; see {@link DraftOrigin}. */
+  origin?: DraftOrigin
   /** Queued for Finish — nothing has left the machine. */
   queued?: { resolve?: true; unresolve?: true }
   intent?: ThreadIntent
