@@ -81,6 +81,7 @@ the event loop. Nothing is dropped; the trailing recompute is delayed, never can
 | `POST /api/review/threads` (agent author) | `diffo comment`, an agent-started thread |
 | `POST /api/review/layers` | `diffo layers`: the agent's reading plan (`{ items }`, replace-not-merge) or its flag that one would help (`{ suggest, reason? }`) |
 | `POST /api/review/layers/request` | The reviewer's Outline / refresh click: rides the delivery queue to the next poll as a `layers` item |
+| `POST /api/agent/arrive` | An agent's CLI opened the review: presence reads `arriving` until its first poll |
 | `GET /api/agent/poll` | The agent long poll (`?title=` names the reviewer's tab) |
 | `POST /api/agent/end` · `GET /api/agent/invite` | Detach · the ask that reconnects an agent |
 | `GET /api/events` | SSE: `changeset`, `review`, `presence`, `ping` |

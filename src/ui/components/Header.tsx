@@ -243,10 +243,19 @@ const PRESENCE_TITLE: Record<Presence, string> = {
 const REPOLLING_TITLE =
   'the agent is attached but its last poll ended; a send queues and reaches it when it polls again'
 
+/** Between the open and the first poll: the agent's CLI opened this review and
+ * the agent is reading the change for its guide. It has not polled yet, so a
+ * send queues — but it is here, and the chip says what it is doing. */
+const ARRIVING_LABEL = 'agent · reading the change'
+const ARRIVING_TITLE =
+  'your agent opened this review and is reading the change before it starts listening — ' +
+  'its guide lands first; a send queues and reaches it at its first poll'
+
 function presenceTitle(presence: Presence, reason: PresenceReason | undefined): string {
-  return presence === 'working' && reason === 'repolling'
-    ? REPOLLING_TITLE
-    : PRESENCE_TITLE[presence]
+  if (presence !== 'working') return PRESENCE_TITLE[presence]
+  if (reason === 'repolling') return REPOLLING_TITLE
+  if (reason === 'arriving') return ARRIVING_TITLE
+  return PRESENCE_TITLE[presence]
 }
 
 function formatAgo(ms: number): string {
@@ -320,7 +329,9 @@ function PresenceChip({
         <i />
       </span>
       <span className="presence-label">
-        {(presence === 'working' && activity) || PRESENCE_LABEL[presence]}
+        {(presence === 'working' &&
+          (activity || (reason === 'arriving' ? ARRIVING_LABEL : null))) ||
+          PRESENCE_LABEL[presence]}
         {showAgo && <span className="presence-ago"> · {formatAgo(Date.now() - since)}</span>}
       </span>
     </>
@@ -398,7 +409,7 @@ function PresenceChip({
 
 export interface HeaderAgent {
   presence?: Presence
-  /** Why the state holds — only `repolling` changes what the chip says. */
+  /** Why the state holds — only `repolling` and `arriving` change what the chip says. */
   reason?: PresenceReason
   since?: number | null
   /** What the agent is doing right now — replaces the static working label. */

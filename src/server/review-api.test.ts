@@ -610,6 +610,14 @@ describe('review API', () => {
       (await app.request('/api/agent/poll', { headers: { 'x-diffo-agent': 'cli' } })).status,
     ).toBe(503)
     expect((await app.request('/api/agent/end', { method: 'POST' })).status).toBe(503)
+    expect(
+      (
+        await app.request('/api/agent/arrive', {
+          method: 'POST',
+          headers: { 'x-diffo-agent': 'cli' },
+        })
+      ).status,
+    ).toBe(503)
   })
 
   it('poll refuses a request with no x-diffo-* header (a no-cors browser GET cannot send one)', async () => {
@@ -1792,5 +1800,42 @@ describe('editing a message', () => {
       'cache this',
       'added an LRU cache',
     ])
+  })
+})
+
+describe('review api — the agent announces it opened the review', () => {
+  it('turns presence to working (arriving) until the first poll, and queues a send meanwhile', async () => {
+    const { app, queue } = setup()
+    expect(queue.presence()).toBe('waiting')
+    const res = await app.request('/api/agent/arrive', {
+      method: 'POST',
+      headers: { 'x-diffo-agent': 'cli' },
+    })
+    expect(res.status).toBe(200)
+    expect(await res.json()).toMatchObject({ ok: true, arrived: true, presence: 'working' })
+    expect(queue.presenceDetail()).toMatchObject({ state: 'working', reason: 'arriving' })
+
+    const created = await post(app, '/api/review/threads', {
+      anchor: { kind: 'changeset' },
+      text: 'is the retry bounded?',
+    })
+    const thread = (await created.json()) as ReviewThread
+    const sent = (await (await post(app, `/api/review/threads/${thread.id}/send`)).json()) as {
+      delivered: boolean
+      presence: string
+    }
+    // Not delivered (no poll yet) — but not the copy-the-prompt fallback either.
+    expect(sent).toMatchObject({ delivered: false, presence: 'working' })
+
+    const payload = await pollResult(
+      await app.request('/api/agent/poll', { headers: { 'x-diffo-agent': 'cli' } }),
+    )
+    expect(payload).toMatchObject({ kind: 'threads', threadIds: [thread.id] })
+  })
+
+  it('refuses an arrival without the agent header, like the poll', async () => {
+    const { app, queue } = setup()
+    expect((await app.request('/api/agent/arrive', { method: 'POST' })).status).toBe(403)
+    expect(queue.presence()).toBe('waiting')
   })
 })

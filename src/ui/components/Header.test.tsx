@@ -268,6 +268,21 @@ describe('Header — the layers suggestion', () => {
     expect(chip.getAttribute('title')).toMatch(/polls again/)
   })
 
+  it('an agent that opened the review but has not polled yet is here — reading, not absent', () => {
+    const { container } = render(
+      <Header
+        changeset={changeset()}
+        agent={{ presence: 'working', reason: 'arriving', since: Date.now(), onInvite: vi.fn() }}
+      />,
+    )
+    expect(container.querySelector('button.presence')).toBeNull()
+    const chip = container.querySelector('.presence')!
+    expect(chip.textContent).toContain('agent · reading the change')
+    expect(chip.textContent).not.toContain('Invite')
+    expect(chip.textContent).not.toContain('no agent')
+    expect(chip.getAttribute('title')).toMatch(/first poll/)
+  })
+
   it('turns the presence chip into the call to action while the suggestion stands', () => {
     const onOutline = vi.fn()
     render(
