@@ -1,10 +1,17 @@
-import { type CSSProperties, type ReactNode, useEffect, useRef, useState } from 'react'
+import {
+  type CSSProperties,
+  type ReactNode,
+  type RefObject,
+  useEffect,
+  useRef,
+  useState,
+} from 'react'
 import type { Changeset, PrInfo } from '../../shared/types.js'
 import type { Presence, PresenceReason } from '../api.js'
 import { isDevServer } from '../devMode.js'
 import { shortAgo } from '../markdown.js'
 import type { Theme } from '../theme.js'
-import { CritterTrack } from './Critter.js'
+import { type CritterEyes, CritterFace, CritterTrack } from './Critter.js'
 import { Icon } from './Icon.js'
 import { LivingMark } from './LivingMark.js'
 import { Menu, MenuItem, MenuLabel, MenuSep } from './Menu.js'
@@ -225,16 +232,10 @@ function PrChips({ pr }: { pr: PrInfo }) {
   )
 }
 
-const PRESENCE_LABEL: Record<Presence, string> = {
-  waiting: 'no agent',
-  listening: 'agent · listening',
-  working: 'agent · working',
-}
-
 const PRESENCE_TITLE: Record<Presence, string> = {
   waiting:
     'no agent is attached; sends queue for the next poll, and the prompt is copied so you can paste it yourself',
-  listening: 'an agent is polling; a send is delivered to it immediately',
+  listening: 'your agent is here and listening; anything you send reaches it right away',
   working: 'the agent received feedback and is working on it',
 }
 
@@ -247,10 +248,52 @@ const REPOLLING_TITLE =
 /** Between the open and the first poll: the agent's CLI opened this review and
  * the agent is reading the change for its guide. It has not polled yet, so a
  * send queues — but it is here, and the chip says what it is doing. */
-const ARRIVING_LABEL = 'agent · reading the change'
 const ARRIVING_TITLE =
   'your agent opened this review and is reading the change before it starts listening — ' +
   'its guide lands first; a send queues and reaches it at its first poll'
+
+/** What the chip says: a verb that carries the state, then the detail after it. */
+export interface ChipWords {
+  verb: string
+  detail?: string
+}
+
+/** The activity strings the client composes (agentActivity, the outline), split
+ * at the verb so the chip can set the two apart. */
+const ACTIVITY = /^(working on|answered|picked up|outlining) (.+)$/
+
+const capital = (text: string) => text.charAt(0).toUpperCase() + text.slice(1)
+
+export function chipWords(
+  presence: Presence,
+  reason: PresenceReason | undefined,
+  activity: string | null | undefined,
+  invite: boolean,
+): ChipWords {
+  if (presence === 'waiting')
+    return invite ? { verb: 'Invite', detail: 'your agent' } : { verb: 'No agent' }
+  if (presence === 'listening') return { verb: 'Listening' }
+  if (activity) {
+    const parts = ACTIVITY.exec(activity)
+    return parts ? { verb: capital(parts[1]!), detail: parts[2] } : { verb: capital(activity) }
+  }
+  if (reason === 'arriving') return { verb: 'Reading', detail: 'the change' }
+  if (reason === 'repolling') return { verb: 'Paused', detail: 'sends wait' }
+  return { verb: 'Working' }
+}
+
+/** The face the chip wears: asleep with nobody here, open while listening or
+ * reading, + + while it writes, happy for the moment a batch is answered. */
+function chipEyes(
+  presence: Presence,
+  reason: PresenceReason | undefined,
+  cheer: boolean,
+): CritterEyes {
+  if (cheer) return 'happy'
+  if (presence === 'waiting') return 'shut'
+  if (presence === 'listening' || reason === 'arriving' || reason === 'repolling') return 'open'
+  return 'plus'
+}
 
 function presenceTitle(presence: Presence, reason: PresenceReason | undefined): string {
   if (presence !== 'working') return PRESENCE_TITLE[presence]
@@ -290,6 +333,9 @@ function PresenceChip({
   onOpenMonitor,
   monitorPanel,
   suggestion,
+  seat,
+  faceAway = false,
+  onHover,
 }: {
   presence: Presence
   reason?: PresenceReason
@@ -301,6 +347,12 @@ function PresenceChip({
   onOpenMonitor?: (open: boolean) => void
   monitorPanel?: ReactNode
   suggestion?: LayersSuggestion
+  /** The face's seat, where the companion lands when it comes home. */
+  seat?: RefObject<HTMLSpanElement | null>
+  /** The companion is out on the header floor: the seat keeps a faint face. */
+  faceAway?: boolean
+  /** The cursor reached the chip while an agent is here: the companion reacts. */
+  onHover?: () => void
 }) {
   // A ticking clock needs ticking renders — but only while it shows one.
   const [, setTick] = useState(0)
@@ -320,19 +372,48 @@ function PresenceChip({
     document.addEventListener('mousedown', onDown)
     return () => document.removeEventListener('mousedown', onDown)
   }, [monitorOpen, onOpenMonitor])
+  // The moment a batch is answered: a happy face and a hop, here in the chip,
+  // so it lands even with the companion switched off.
+  const [cheer, setCheer] = useState(false)
+  const lastReason = useRef(reason)
+  useEffect(() => {
+    const was = lastReason.current
+    lastReason.current = reason
+    if (reason !== 'replied' || was === 'replied') return
+    setCheer(true)
+    const timer = setTimeout(() => setCheer(false), 1500)
+    return () => {
+      clearTimeout(timer)
+      setCheer(false)
+    }
+  }, [reason])
+  const total = batch?.segments.length ?? 0
+  const suggests = presence !== 'waiting' && !!suggestion && total === 0
+  const words: ChipWords = suggests
+    ? { verb: 'Suggests', detail: 'layers' }
+    : chipWords(presence, reason, activity, presence === 'waiting' && !!onInvite)
+  // Nobody attached: nobody to come out.
+  const hover = presence === 'waiting' ? undefined : onHover
+  const face = (
+    <span
+      className={`presence-face${faceAway ? ' presence-face-away' : ''}${cheer ? ' presence-face-cheer' : ''}`}
+      ref={seat}
+      aria-hidden="true"
+    >
+      <CritterFace eyes={suggests ? 'happy' : chipEyes(presence, reason, cheer)} />
+    </span>
+  )
   const body = (
     <>
-      {/* Three bars, not a lamp: the state is in how they move, so the chip reads
-          without relying on hue — flat and grey is nobody there. */}
-      <span className="presence-live" aria-hidden="true">
-        <i />
-        <i />
-        <i />
-      </span>
+      {face}
       <span className="presence-label">
-        {(presence === 'working' &&
-          (activity || (reason === 'arriving' ? ARRIVING_LABEL : null))) ||
-          PRESENCE_LABEL[presence]}
+        <span className="presence-verb">{words.verb}</span>
+        {words.detail && (
+          <>
+            {' '}
+            <span className="presence-detail">{words.detail}</span>
+          </>
+        )}
         {showAgo && <span className="presence-ago"> · {formatAgo(Date.now() - since)}</span>}
       </span>
     </>
@@ -346,42 +427,42 @@ function PresenceChip({
         title="bring your agent into this review"
       >
         {body}
-        <span className="presence-cta">Invite</span>
       </button>
     )
   }
-  const total = batch?.segments.length ?? 0
   // A live batch outranks the suggestion: what the agent is doing right now is
   // the thing to show, and the offer waits in the Layers tab meanwhile.
-  if (presence !== 'waiting' && suggestion && total === 0) {
+  if (suggests) {
     return (
       <button
         type="button"
-        className={`presence presence-${presence} presence-invite presence-suggests`}
-        onClick={suggestion.onOutline}
+        className={`presence presence-${presence} presence-suggests`}
+        onClick={suggestion!.onOutline}
+        onPointerEnter={hover}
         title={
-          suggestion.reason
-            ? `the agent suggests reading this in layers: “${suggestion.reason}”`
+          suggestion!.reason
+            ? `the agent suggests reading this in layers: “${suggestion!.reason}”`
             : 'the agent suggests reading this in layers'
         }
       >
-        <span className="presence-live" aria-hidden="true">
-          <i />
-          <i />
-          <i />
-        </span>
-        <span className="presence-label">agent · suggests layers</span>
+        {body}
         <span className="presence-cta">Ask it</span>
       </button>
     )
   }
   if (presence === 'waiting' || total === 0 || !onOpenMonitor) {
     return (
-      <span className={`presence presence-${presence}`} title={presenceTitle(presence, reason)}>
+      <span
+        className={`presence presence-${presence}`}
+        title={presenceTitle(presence, reason)}
+        onPointerEnter={hover}
+      >
         {body}
       </span>
     )
   }
+  // The batch fills the pill itself as threads come back.
+  const filled = Math.round((batch!.done / total) * 100)
   return (
     <div className="menu monitor-anchor" ref={wrap}>
       <button
@@ -390,15 +471,13 @@ function PresenceChip({
         aria-haspopup="dialog"
         aria-expanded={monitorOpen}
         onClick={() => onOpenMonitor(!monitorOpen)}
+        onPointerEnter={hover}
         title={`${PRESENCE_TITLE[presence]}. ${batch!.done} of ${total} answered; click to watch the queue`}
       >
-        {body}
-        <span className="presence-qbar" aria-hidden>
-          {batch!.segments.map((kind, i) => (
-            // biome-ignore lint/suspicious/noArrayIndexKey: position is a segment's identity — the bar recolours in place
-            <i key={i} className={`q-${kind}`} />
-          ))}
-        </span>
+        {filled > 0 && (
+          <span className="presence-fill" style={{ width: `${filled}%` }} aria-hidden="true" />
+        )}
+        {body}{' '}
         <span className="presence-batch-n">
           {batch!.done}/{total}
         </span>
@@ -454,6 +533,10 @@ export function Header({
   settings?: HeaderSettings
 }) {
   const { openComments = 0, publicDrafts = 0, onFinishReview } = review
+  // The chip's face is the companion's seat; it is empty while the companion is out.
+  const seat = useRef<HTMLSpanElement>(null)
+  const [companionAway, setCompanionAway] = useState(false)
+  const [summon, setSummon] = useState(0)
   const {
     theme,
     onSetTheme,
@@ -491,7 +574,13 @@ export function Header({
       {changeset.pr && <PrChips pr={changeset.pr} />}
       <Comparison changeset={changeset} />
       {agent.presence && critter ? (
-        <CritterTrack presence={agent.presence} reason={agent.reason} />
+        <CritterTrack
+          presence={agent.presence}
+          reason={agent.reason}
+          seat={seat}
+          onAway={setCompanionAway}
+          summon={summon}
+        />
       ) : (
         <span className="grow" />
       )}
@@ -507,6 +596,9 @@ export function Header({
           onOpenMonitor={agent.onOpenMonitor}
           monitorPanel={agent.monitorPanel}
           suggestion={agent.suggestion}
+          seat={seat}
+          faceAway={critter && companionAway}
+          onHover={critter ? () => setSummon((n) => n + 1) : undefined}
         />
       )}
       {onFinishReview && (
