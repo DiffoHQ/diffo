@@ -915,7 +915,7 @@ describe('ReadingPane in layer mode', () => {
       const card = head.querySelector('[data-thread-id="lt"]')!
       expect(card.textContent).toContain('why is b.ts in this step?')
       expect(card.querySelector('.thread-where')!.textContent).toBe('Comment on this layer')
-      fireEvent.click(screen.getByText('+ Comment on this layer'))
+      fireEvent.click(screen.getByRole('button', { name: 'Comment on this layer' }))
       const box = screen.getByPlaceholderText(/Ask about this step/) as HTMLTextAreaElement
       expect(head.contains(box)).toBe(true)
       fireEvent.change(box, { target: { value: 'split this in two' } })
@@ -927,13 +927,13 @@ describe('ReadingPane in layer mode', () => {
       )
       // Submitting closes the composer; the button is back.
       expect(screen.queryByPlaceholderText(/Ask about this step/)).toBeNull()
-      expect(screen.getByText('+ Comment on this layer')).toBeTruthy()
+      expect(screen.getByRole('button', { name: 'Comment on this layer' })).toBeTruthy()
     })
 
     it('Send to agent creates the thread and sends it in one go', async () => {
       const c = comments()
       render(<ReadingPane files={[FILES[0]!]} layer={view()} comments={c} />)
-      fireEvent.click(screen.getByText('+ Comment on this layer'))
+      fireEvent.click(screen.getByRole('button', { name: 'Comment on this layer' }))
       fireEvent.change(screen.getByPlaceholderText(/Ask about this step/), {
         target: { value: 'why here?' },
       })
@@ -952,7 +952,7 @@ describe('ReadingPane in layer mode', () => {
           comments={comments()}
         />,
       )
-      expect(screen.queryByText('+ Comment on this layer')).toBeNull()
+      expect(screen.queryByRole('button', { name: 'Comment on this layer' })).toBeNull()
     })
 
     it('on a pull request the composer is private to the agent — no GitHub side', () => {
@@ -962,7 +962,7 @@ describe('ReadingPane in layer mode', () => {
           <ReadingPane files={[FILES[0]!]} layer={view()} comments={c} />
         </PrContext.Provider>,
       )
-      fireEvent.click(screen.getByText('+ Comment on this layer'))
+      fireEvent.click(screen.getByRole('button', { name: 'Comment on this layer' }))
       expect(screen.queryByText('Add to review')).toBeNull()
       expect(document.querySelector('.cbox-agent')).toBeTruthy()
       fireEvent.change(screen.getByPlaceholderText(/Ask about this step/), {

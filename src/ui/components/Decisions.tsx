@@ -1,5 +1,6 @@
 import type { DecisionAt } from '../../shared/review.js'
 import type { ResolvedDecision } from '../layers.js'
+import { Icon } from './Icon.js'
 import { Markdown } from './Markdown.js'
 
 /*
@@ -69,6 +70,9 @@ function DecisionLine({
   return (
     <div className={`ch-dec-item${open ? ' ch-dec-item-open' : ''}`}>
       <button type="button" className="ch-dec-main" aria-expanded={open} onClick={onToggle}>
+        <span className={`chevron ch-dec-chev${open ? '' : ' chevron-shut'}`}>
+          <Icon name="chev" size="sm" />
+        </span>
         <span className="ch-dec-text">{decision.text}</span>
       </button>
       {open && (

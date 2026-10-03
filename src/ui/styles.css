@@ -6740,29 +6740,27 @@ i.q-now {
   font-weight: 500;
 }
 
-/* The layer header card in the reading pane: read once, scrolled past. */
+/* The layer header card in the reading pane: read once, scrolled past.
+   Three parts, one job each: a meta row (where this step sits, and the one
+   action on the card), the title with what the step is and its summary, and
+   — when the agent wrote any — its decisions, a ledger the width of the
+   card. The step's own conversation, if there is one, closes the card under
+   a rule. */
 .ch-head {
   margin-bottom: var(--s-6);
-  padding: 14px 18px 14px 16px;
+  padding: 12px 20px 16px;
   border: 1px solid var(--hair);
   border-radius: var(--r);
   background: var(--paper);
-  display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  gap: 4px;
 }
 
-/* The step's own conversation, under the summary: full width so the thread
- * cards and the composer line up with the file sections below. */
-.ch-head-threads {
-  align-self: stretch;
-  margin-top: 14px;
-  padding-top: 12px;
-  border-top: 1px solid var(--hair-2);
+.ch-head-top {
   display: flex;
-  flex-direction: column;
+  align-items: center;
+  justify-content: space-between;
   gap: var(--s-3);
+  /* The button's height, so a card without one sits at the same height. */
+  min-height: 26px;
 }
 
 .ch-head-kicker {
@@ -6772,24 +6770,57 @@ i.q-now {
   letter-spacing: 0.01em;
 }
 
+/* Flush with the card's edge optically: the ghost button's own padding
+   would otherwise read as an indent. */
+.ch-head-ask {
+  margin-right: calc(-1 * var(--s-3));
+  color: var(--ink-3);
+}
+
+.ch-head-ask:hover:not(:disabled) {
+  color: var(--ink);
+}
+
 .ch-head h2 {
-  margin: 0;
+  margin: 2px 0 0;
   font-size: 20px;
+  line-height: 1.3;
   font-weight: 600;
   letter-spacing: -0.015em;
   color: var(--ink);
 }
 
+/* Under the title: the summary and its notes, then the decisions. The prose
+   keeps a measure; the ledger under it runs the width of the card, like the
+   file headers below. */
+.ch-head-body {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  row-gap: 14px;
+  margin-top: var(--s-3);
+}
+
+.ch-head-about {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--s-2);
+  max-width: 72ch;
+}
+
 .ch-head .ch-summary {
-  margin-top: 6px;
   padding-left: 0;
-  font-size: var(--t-13);
+  font-size: var(--t-14);
   color: var(--ink-2);
   line-height: 1.5;
 }
 
 .ch-head .ch-summary p {
   margin: 0 0 6px;
+}
+
+.ch-head .ch-summary p:last-child {
+  margin-bottom: 0;
 }
 
 .ch-head .ch-summary a {
@@ -6803,7 +6834,6 @@ i.q-now {
   flex-wrap: wrap;
   align-items: center;
   gap: 6px;
-  margin-top: 6px;
 }
 
 .ch-chip {
@@ -6828,6 +6858,18 @@ i.q-now {
 .ch-head-empty {
   font-size: var(--t-12);
   color: var(--ink-3);
+}
+
+/* The step's own conversation, closing the card: full width so the thread
+ * cards and the composer line up with the file sections below. Rendered only
+ * when there is a thread or one is being written. */
+.ch-head-threads {
+  margin-top: 14px;
+  padding-top: 14px;
+  border-top: 1px solid var(--hair-2);
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-3);
 }
 
 /* ---------- pull requests ----------
@@ -8691,46 +8733,33 @@ i.q-now {
 }
 
 /* ---------- decisions: what the agent chose, found, or ran into ----------
-   A ledger under the layer summary, one line each, read before the diff, each
-   row down a thin rule. No box around the section — the hairlines between
-   rows are the frame. Open, the row takes a soft wash and names its places
+   A ledger under the layer summary, one line each, read before the diff,
+   each row down a thin rule. No box around the section — the
+   hairlines between rows are the frame. Each row opens like a file header
+   does, on a chevron; open, the row takes a soft wash and names its places
    as chips. */
 .ch-dec {
-  align-self: stretch;
-  margin-top: 16px;
+  min-width: 0;
 }
 
+/* The label sits in the same register as the card's kicker: a small name
+   for the list, not a heading over it. */
 .ch-dec-h {
   font-size: var(--t-11);
-  font-weight: 600;
   color: var(--ink-3);
-  text-transform: uppercase;
-  letter-spacing: 0.1em;
-  padding: 0 0 4px;
+  letter-spacing: 0.01em;
+  padding: 0 0 2px;
 }
 
-/* One row: the line, and when open the card beneath it. Every row wears a
-   rule down its left edge; open, the rule runs the whole block and the block
-   takes a wash, nothing moves. */
+/* One row: the line, and when open the card beneath it. Open, the block
+   takes a wash; nothing moves. */
 .ch-dec-item {
   position: relative;
-  padding-left: 14px;
   border-top: 1px solid var(--hair-2);
   border-radius: 8px;
   transition: background var(--dur) var(--ease-out);
   /* `.` glides the open row to the top of the pane, under the bar: hold it off. */
   scroll-margin-top: 48px;
-}
-
-.ch-dec-item::before {
-  content: "";
-  position: absolute;
-  left: 0;
-  top: 9px;
-  bottom: 9px;
-  width: 2px;
-  border-radius: 2px;
-  background: var(--hair);
 }
 
 .ch-dec-item:first-of-type,
@@ -8743,15 +8772,12 @@ i.q-now {
   background: var(--fill);
 }
 
-.ch-dec-item-open::before {
-  top: 10px;
-  bottom: 12px;
-}
-
 .ch-dec-main {
-  display: block;
+  display: flex;
+  align-items: flex-start;
+  gap: var(--s-3);
   width: 100%;
-  padding: 10px 12px 10px 0;
+  padding: 8px 10px 8px 6px;
   border: 0;
   border-radius: 8px;
   background: none;
@@ -8770,10 +8796,15 @@ i.q-now {
   outline-offset: -2px;
 }
 
+/* The chevron sits on the first line's x-height, like the file header's. */
+.ch-dec-chev {
+  margin-top: 3px;
+}
+
 /* The weight never changes between closed and open: a heavier line is a
    wider line, and the text would reflow under the click. */
 .ch-dec-text {
-  font-size: 14.5px;
+  font-size: var(--t-14);
   line-height: 1.45;
   font-weight: 500;
   color: var(--ink);
@@ -8785,7 +8816,7 @@ i.q-now {
 .ch-dec-card {
   display: grid;
   gap: 12px;
-  padding: 0 12px 14px 0;
+  padding: 0 12px 12px 27px;
 }
 
 .ch-dec-card .ch-dec-detail {
