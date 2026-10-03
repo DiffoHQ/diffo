@@ -7,6 +7,10 @@ Until 1.0, minor versions may break things. When they do, the entry says how to 
 
 ## [Unreleased]
 
+Nothing yet.
+
+## [0.11.0] — 2026-10-03
+
 ### Added
 
 - **The mark in the review header is alive.** The Diffo logo is a diff — a
@@ -46,6 +50,22 @@ Until 1.0, minor versions may break things. When they do, the entry says how to 
   "detail", "at" }]`; `diffo help layers` and the poll's layers request carry
   the rule for what earns a line. Most layers have none, and nothing changes for
   an outline that posts none.
+
+- **Comment on a layer.** A thread can now anchor to a layer instead of a
+  line, for a question about the step itself: why these files belong
+  together, whether the order is right, a summary that says too much. The
+  layer's summary card carries its threads and a composer, and the agent gets
+  the layer as it was outlined (title, summary, files) in place of a diff. A
+  thread follows its layer across re-posts by title; one whose layer the agent
+  drops is filed with the threads the changeset left behind. Not offered on
+  *Since your review* or a pull request's Overview, and never sent to GitHub,
+  which has no layers.
+- **A companion in the header.** A small character walks the header's empty
+  stretch and acts out the agent: asleep while no agent is attached, reading
+  along while it listens, inspecting or writing the fix while it works, and
+  hopping with a check when the agent replies. It holds still while you
+  scroll, type or move the mouse. **Companion** in the settings menu turns it
+  off, for every review.
 
 ### Fixed
 
@@ -88,6 +108,15 @@ Until 1.0, minor versions may break things. When they do, the entry says how to 
   bar and the Viewed box fill in a new `--brand` colour — the diff's + colour
   worn by the chrome — instead of ink. Buttons, selection and focus stay ink;
   red is still only the diff's −.
+- **Agent notices are cards, not a strip.** A reply, a new agent thread or the
+  guide used to raise a full-width amber strip under the header that covered
+  the top of the diff, read like a warning, and collapsed a burst into a bare
+  count. Each event is now its own card hanging under the agent's chip, newest
+  on top, naming where it landed with the start of the message; a card opens
+  its thread or dismisses on its own. A burst shows the newest three and folds
+  the rest into *N more threads · open the monitor*. Cards fade by themselves,
+  a line draining along the bottom shows how long is left, and on an unfocused
+  tab they wait until you come back.
 
 ## [0.10.0] — 2026-10-01
 
@@ -642,7 +671,8 @@ shipped in it, written as a starting point rather than a history.
 - **Guided reading** — splitting a large change into an ordered sequence of small,
   reviewable sections — is designed but not built.
 
-[Unreleased]: https://github.com/DiffoHQ/diffo/compare/v0.10.0...HEAD
+[Unreleased]: https://github.com/DiffoHQ/diffo/compare/v0.11.0...HEAD
+[0.11.0]: https://github.com/DiffoHQ/diffo/compare/v0.10.0...v0.11.0
 [0.10.0]: https://github.com/DiffoHQ/diffo/compare/v0.9.0...v0.10.0
 [0.9.0]: https://github.com/DiffoHQ/diffo/compare/v0.8.0...v0.9.0
 [0.8.0]: https://github.com/DiffoHQ/diffo/compare/v0.7.0...v0.8.0
