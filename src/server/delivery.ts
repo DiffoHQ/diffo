@@ -4,6 +4,7 @@ export type Presence = 'waiting' | 'listening' | 'working'
 
 export type PresenceReason =
   | 'no-agent'
+  | 'arriving'
   | 'polling'
   | 'delivered'
   | 'stalled'
@@ -26,6 +27,12 @@ export const REPLY_GRACE_MS = 90_000
 export const GRACE_CHECK_MS = 5_000
 
 export const SESSION_GRACE_CAP_MS = 10 * 60_000
+
+/** How long an agent that opened the review (and has no session pid to watch)
+ * is taken at its word that it is reading the change before its first poll.
+ * Longer than a reply's grace: the guide is written from a cold read of the
+ * whole changeset. */
+export const ARRIVE_GRACE_MS = 5 * 60_000
 
 /** A re-poll within this window of a delivery reads as "hasn't started yet". */
 export const BATCH_SETTLE_MS = 2_000
@@ -114,9 +121,10 @@ export class DeliveryQueue {
   private stalled = false
   private stallTimer: ReturnType<typeof setTimeout> | null = null
   private betweenPolls = false
-  /** Why the agent is parked between polls: a reply just landed, or its poll
-   * ended on its own and the re-poll is expected. */
-  private parked: 'replied' | 'repolling' = 'replied'
+  /** Why the agent is parked between polls: a reply just landed, its poll
+   * ended on its own and the re-poll is expected, or it opened the review and
+   * is still orienting itself before its first poll. */
+  private parked: 'replied' | 'repolling' | 'arriving' = 'replied'
   private graceTimer: ReturnType<typeof setTimeout> | null = null
   private lastDetach: 'ended' | 'disconnected' | null = null
   private since = Date.now()
@@ -145,6 +153,8 @@ export class DeliveryQueue {
       isAlive?: (pid: number) => boolean
       checkEveryMs?: number
       capMs?: number
+      /** The anonymous arrival's window (see `agentArrived`). */
+      arriveGraceMs?: number
     } = {},
     private batchSettleMs: number = BATCH_SETTLE_MS,
   ) {}
@@ -354,7 +364,10 @@ export class DeliveryQueue {
     this.stallTimer = null
   }
 
-  private armGrace(why: 'replied' | 'repolling' = 'replied'): void {
+  private armGrace(
+    why: 'replied' | 'repolling' | 'arriving' = 'replied',
+    windowMs: number = this.replyGraceMs,
+  ): void {
     this.clearGrace()
     this.betweenPolls = true
     this.parked = why
@@ -366,7 +379,7 @@ export class DeliveryQueue {
     }
     const pid = this.owner
     if (pid === null) {
-      const timer = setTimeout(drop, this.replyGraceMs)
+      const timer = setTimeout(drop, windowMs)
       timer.unref?.()
       this.graceTimer = timer
       return
@@ -418,6 +431,27 @@ export class DeliveryQueue {
       this.armGrace('repolling')
     }
     this.notify()
+  }
+
+  /**
+   * An agent's CLI opened this review. The agent reads the change and writes
+   * its guide before it ever polls, which can take minutes — and a reviewer who
+   * opened the URL meanwhile must not be told there is no agent and offered an
+   * Invite. So from the open until the first poll the agent is 'working', for
+   * the reason 'arriving': a named session is watched until its process is gone
+   * (or the cap), an anonymous one gets a fixed window. The first poll ends it
+   * the way it ends every grace. An agent already here in any state is left
+   * alone — a second open is not a second agent. Returns whether it took.
+   */
+  agentArrived(pid: number | null): boolean {
+    if (this.presence() !== 'waiting') return false
+    // Nobody is connected (waiting says so), so whatever owner is on record is
+    // history: the arriving session is the one to watch.
+    this.owner = DeliveryQueue.clean(pid)
+    this.lastDetach = null
+    this.armGrace('arriving', this.liveness.arriveGraceMs ?? ARRIVE_GRACE_MS)
+    this.notify()
+    return true
   }
 
   enqueueThreads(threadIds: string[]): void {

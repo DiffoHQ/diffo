@@ -21,6 +21,7 @@ export type LayersRequest = 'queued' | 'outlining' | null
 
 export type PresenceReason =
   | 'no-agent'
+  | 'arriving'
   | 'polling'
   | 'delivered'
   | 'stalled'

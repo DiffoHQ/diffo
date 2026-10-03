@@ -346,6 +346,26 @@ async function announceOpen(port: number): Promise<void> {
   }
 }
 
+/**
+ * An agent opened the review (piped stdout, like `printAgentNextStep`): tell
+ * the server it is here before the URL prints, so the reviewer who opens the
+ * page while the guide is being written sees an agent orienting itself, not
+ * "no agent" and an Invite. A human's terminal open says nothing — the
+ * reviewer IS the opener, and the chip must keep offering the invite.
+ */
+async function announceArrival(port: number): Promise<void> {
+  if (process.stdout.isTTY) return
+  try {
+    await fetch(apiUrl(port, '/api/agent/arrive'), {
+      method: 'POST',
+      headers: sessionHeaders(),
+      signal: AbortSignal.timeout(2000),
+    })
+  } catch {
+    // an older server without the route, or a server mid-restart
+  }
+}
+
 async function fetchChangesetInfo(port: number): Promise<ChangesetInfo | null> {
   try {
     const res = await fetch(apiUrl(port, '/api/changeset'), {
@@ -889,6 +909,7 @@ if (existing !== null && takeOverPort === null) {
   )
   await warnSpecMismatch(existing.port, spec)
   await announceOpen(existing.port)
+  await announceArrival(existing.port)
   console.log(`→ ${url}`)
   await printAgentNextStep(existing.port, prOpen?.pr)
   process.exit(0)
@@ -925,6 +946,7 @@ if (!command.foreground) {
     prOpen ? command.target : undefined,
   )
   await announceOpen(daemonPort)
+  await announceArrival(daemonPort)
   const url = reviewUrl(daemonPort)
   await printChangesetSummary(daemonPort)
   console.log(`→ ${url}`)

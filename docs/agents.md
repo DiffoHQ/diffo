@@ -268,6 +268,7 @@ from the connection and the queue, never asserted by the agent:
 | | `disconnected` | A poll died without detaching, and the agent never came back |
 | **listening** | `polling` | A poll is open. A Send arrives now |
 | **working** | `delivered` | Feedback handed over, no reply yet |
+| | `arriving` | The agent's CLI opened the review and it has not polled yet: it is reading the change and writing its guide. A Send queues for the first poll |
 | | `replied` | A reply just landed; a grace window before the next state |
 | | `repolling` | The poll ended on its own (the window closed, the process was killed) and the session is alive; its next poll is expected |
 | | `stalled` | Delivered over **5 minutes** ago with nothing back |
@@ -283,6 +284,16 @@ agent in that same grace as `repolling` rather than dropping to **waiting**: the
 the session to re-run the poll, and it normally does within moments, so the reviewer
 must not be asked to invite an agent that is still there. Only when the grace runs out
 without a re-poll does the review read `disconnected`.
+
+The same grace covers the agent's arrival. Opening a review from an agent (piped
+stdout) posts `POST /api/agent/arrive` before the URL prints, and until the first
+poll the review reads **working** / `arriving` — the chip says *agent · reading the
+change* — because that is what happens between `diffo` and `diffo poll`: the agent
+reads the changeset and writes its guide, often for minutes, while the reviewer is
+already on the page. A named session is watched like any other (gone, or **10
+minutes**, ends it); an anonymous one gets **5 minutes**. An arrival that never polls
+falls back to `no-agent`, not `disconnected`. A human's own `diffo` from a terminal
+announces nothing: there the opener is the reviewer, and Invite is the right offer.
 
 If nothing is attached at all, every thread carries a **Copy prompt** button: the
 same prompt the poll would have delivered, ready to paste into any agent.

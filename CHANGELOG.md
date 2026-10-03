@@ -35,6 +35,18 @@ Until 1.0, minor versions may break things. When they do, the entry says how to 
   notice says what became of each. See
   [Reviewing a pull request](https://diffohq.github.io/diffo/guide/pr-review#the-agent-suggests-the-comment).
 
+### Fixed
+
+- **No more "no agent" while the agent writes its guide.** An agent opens the
+  review, hands you the URL, then reads the change and writes its guide before
+  it ever polls — and for those minutes the header said *no agent* and offered
+  Invite, which is wrong and confusing: the agent was there. The CLI now tells
+  the server an agent opened the review, and until its first poll the chip
+  reads **agent · reading the change**; a send made meanwhile queues for that
+  poll instead of falling back to copying the prompt. A named agent session is
+  watched, so one that dies before polling falls back to *no agent*; a human's
+  own terminal open changes nothing.
+
 ### Changed
 
 - **The review's chrome says each thing once.** The header is one place line,

@@ -693,6 +693,87 @@ describe('DeliveryQueue — a poll that ended without detaching', () => {
   })
 })
 
+describe('DeliveryQueue — the agent opened the review and has not polled yet', () => {
+  // Between `diffo` and the first `diffo poll` the agent is reading the change
+  // and writing its guide. The reviewer who opens the URL meanwhile has an
+  // agent, not an invitation to send one.
+  it('reads as working (arriving) from the open, and the first poll takes over', async () => {
+    const q = new DeliveryQueue()
+    expect(q.presenceDetail()).toMatchObject({ state: 'waiting', reason: 'no-agent' })
+    expect(q.agentArrived(null)).toBe(true)
+    expect(q.presenceDetail()).toMatchObject({ state: 'working', reason: 'arriving' })
+    void q.attach()
+    await Promise.resolve()
+    expect(q.presenceDetail()).toMatchObject({ state: 'listening', reason: 'polling' })
+  })
+
+  it('an anonymous arrival lapses after its own window, back to no agent', async () => {
+    // The window is the arrival's, not the reply grace: a reply grace of five
+    // minutes must not keep an agent that never polled on screen past 20ms here.
+    const q = new DeliveryQueue(5 * 60_000, 5 * 60_000, { arriveGraceMs: 20 })
+    q.agentArrived(null)
+    expect(q.presence()).toBe('working')
+    await new Promise((r) => setTimeout(r, 60))
+    expect(q.presenceDetail()).toMatchObject({ state: 'waiting', reason: 'no-agent' })
+  })
+
+  it('a named session is watched: its death ends the arrival as no agent', async () => {
+    let alive = true
+    const q = new DeliveryQueue(5 * 60_000, 5 * 60_000, {
+      isAlive: () => alive,
+      checkEveryMs: 5,
+      capMs: 60_000,
+    })
+    q.agentArrived(4242)
+    expect(q.presenceDetail()).toMatchObject({ state: 'working', reason: 'arriving' })
+    await new Promise((r) => setTimeout(r, 25))
+    expect(q.presence()).toBe('working')
+    alive = false
+    await new Promise((r) => setTimeout(r, 25))
+    // It never polled, so nothing "disconnected": there was simply no agent.
+    expect(q.presenceDetail()).toMatchObject({ state: 'waiting', reason: 'no-agent' })
+  })
+
+  it('the cap bounds a session that never gets to its first poll', async () => {
+    const q = new DeliveryQueue(5 * 60_000, 5 * 60_000, {
+      isAlive: () => true,
+      checkEveryMs: 5,
+      capMs: 20,
+    })
+    q.agentArrived(4242)
+    expect(q.presence()).toBe('working')
+    await new Promise((r) => setTimeout(r, 60))
+    expect(q.presenceDetail()).toMatchObject({ state: 'waiting', reason: 'no-agent' })
+  })
+
+  it('a send made while the agent is arriving queues for its first poll', async () => {
+    const q = new DeliveryQueue()
+    q.agentArrived(null)
+    q.enqueueThreads(['t1'])
+    expect(q.presence()).toBe('working')
+    expect(await q.attach()).toBe('data')
+    expect(q.take()).toMatchObject({ kind: 'threads', threadIds: ['t1'] })
+  })
+
+  it('leaves an agent that is already here alone', async () => {
+    const q = new DeliveryQueue()
+    void q.attach()
+    await Promise.resolve()
+    expect(q.presence()).toBe('listening')
+    expect(q.agentArrived(4242)).toBe(false)
+    expect(q.presenceDetail()).toMatchObject({ state: 'listening', reason: 'polling' })
+    expect(q.ownerPid()).toBeNull()
+  })
+
+  it('a fresh arrival after `diffo end` is an agent again, not the one that left', () => {
+    const q = new DeliveryQueue()
+    q.end()
+    expect(q.presenceDetail()).toMatchObject({ state: 'waiting', reason: 'ended' })
+    q.agentArrived(null)
+    expect(q.presenceDetail()).toMatchObject({ state: 'working', reason: 'arriving' })
+  })
+})
+
 describe('DeliveryQueue — a listening poll whose session died', () => {
   const watched = (alive: () => boolean) =>
     new DeliveryQueue(5 * 60_000, 5 * 60_000, { isAlive: alive, checkEveryMs: 5 })

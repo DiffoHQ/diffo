@@ -1072,6 +1072,19 @@ export function createApp(
     })
   })
 
+  // The agent's CLI opened the review: it is here, reading the change for its
+  // guide, and has not polled yet. Presence says so until the first poll — the
+  // reviewer who opens the URL meanwhile is not told there is no agent. Same
+  // guard as the poll: a side effect a web page must never reach.
+  app.post('/api/agent/arrive', (c) => {
+    if (!queue) return c.json({ error: 'agent queue unavailable' }, 503)
+    if (!c.req.header('x-diffo-agent') && !c.req.header('x-diffo-session-pid')) {
+      return c.json({ error: 'agent arrivals must send the x-diffo-agent header' }, 403)
+    }
+    const arrived = queue.agentArrived(parseSessionPid(c.req.header('x-diffo-session-pid')))
+    return c.json({ ok: true, arrived, presence: queue.presence() })
+  })
+
   app.post('/api/agent/end', (c) => {
     if (!queue) return c.json({ error: 'agent queue unavailable' }, 503)
     const sessionPid = parseSessionPid(c.req.header('x-diffo-session-pid'))
