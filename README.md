@@ -14,14 +14,10 @@ review to GitHub.
 
 [Quick start](#quick-start) · [The conversation](#talk-to-the-agent-on-the-line) · [Layers](#read-it-in-layers) · [Pull requests](#review-a-pull-request) · [Docs](#docs) · [Contributing](#contributing)
 
-<p>
-  <a href="https://github.com/DiffoHQ/diffo/actions/workflows/ci.yml"><img alt="CI" src="https://img.shields.io/github/actions/workflow/status/DiffoHQ/diffo/ci.yml?branch=main&style=for-the-badge&label=CI&labelColor=0d1117&color=3fb950&logo=githubactions&logoColor=white"></a>
-  <a href="https://www.npmjs.com/package/@diffohq/diffo"><img alt="npm" src="https://img.shields.io/npm/v/%40diffohq%2Fdiffo?style=for-the-badge&label=npm&labelColor=0d1117&color=3fb950&logo=npm&logoColor=white"></a>
-  <a href="LICENSE"><img alt="License" src="https://img.shields.io/badge/license-Apache--2.0-3fb950?style=for-the-badge&labelColor=0d1117"></a>
-  <a href="#quick-start"><img alt="Node" src="https://img.shields.io/badge/node-%E2%89%A5%2024-3fb950?style=for-the-badge&labelColor=0d1117&logo=nodedotjs&logoColor=white"></a>
-  <a href="https://diffohq.github.io/diffo/"><img alt="Docs" src="https://img.shields.io/badge/docs-read-3fb950?style=for-the-badge&labelColor=0d1117&logo=readthedocs&logoColor=white"></a>
-  <a href="#contributing"><img alt="Tests" src="https://img.shields.io/badge/tests-1327-3fb950?style=for-the-badge&labelColor=0d1117&logo=vitest&logoColor=white"></a>
-</p>
+[![CI](https://img.shields.io/github/actions/workflow/status/DiffoHQ/diffo/ci.yml?branch=main&label=CI&style=flat-square)](https://github.com/DiffoHQ/diffo/actions/workflows/ci.yml)
+[![npm](https://img.shields.io/npm/v/%40diffohq%2Fdiffo?label=npm&style=flat-square&color=1f883d)](https://www.npmjs.com/package/@diffohq/diffo)
+[![License](https://img.shields.io/badge/license-Apache--2.0-1f883d?style=flat-square)](LICENSE)
+[![Docs](https://img.shields.io/badge/docs-diffohq.github.io-1f883d?style=flat-square)](https://diffohq.github.io/diffo/)
 
 </div>
 
