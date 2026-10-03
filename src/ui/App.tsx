@@ -50,6 +50,7 @@ import { SubmitReview } from './components/SubmitReview.js'
 import { TelemetryNotice } from './components/TelemetryNotice.js'
 import { ThreadRail } from './components/ThreadRail.js'
 import type { ReviewActions } from './components/Threads.js'
+import { useCritter } from './critterPref.js'
 import { isFileViewed } from './fileMarks.js'
 import { fileAnchor, glideTo } from './hooks.js'
 import { actionForKey, isTypingTarget } from './keyboard.js'
@@ -327,6 +328,7 @@ function Review() {
   const [shortcutsOpen, setShortcutsOpen] = useState(false)
   const [inviteOpen, setInviteOpen] = useState(false)
   const [theme, setTheme] = useTheme()
+  const [critter, setCritter] = useCritter()
   const telemetry = useTelemetry()
   const [privacyOpen, setPrivacyOpen] = useState(false)
   const [panel, setPanel] = useState<PanelTab>('files')
@@ -1417,6 +1419,8 @@ function Review() {
           settings={{
             theme,
             onSetTheme: setTheme,
+            critter,
+            onSetCritter: setCritter,
             ...(telemetry.status ? { onShowPrivacy: () => setPrivacyOpen(true) } : {}),
             onShowShortcuts: () => setShortcutsOpen(true),
           }}
