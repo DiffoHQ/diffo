@@ -15,8 +15,8 @@ aren't signing off on finished code, you're shaping it live with the agent that 
 
 In the session that wrote the code, type `/diffo` or say "open a diffo review".
 
-<video class="clip" src="./assets/t0-slash.mp4" muted loop playsinline width="1560" height="806" poster="./assets/t0-slash-poster.jpg" preload="none"
-  aria-label="Typing /diffo in Claude Code: the skill loads, diffo opens a review, the header shows the agent listening, and the reviewer starts reading."></video>
+![The Diffo loop: in the agent's terminal you type /diffo and the review opens beside it; your question on line 14 crosses to the agent, which fixes the code and answers; the answer and the fix cross back into the thread and the diff you are reading.](./assets/readme-demo.svg){.clip .clip-light}
+![The Diffo loop: in the agent's terminal you type /diffo and the review opens beside it; your question on line 14 crosses to the agent, which fixes the code and answers; the answer and the fix cross back into the thread and the diff you are reading.](./assets/readme-demo-dark.svg){.clip .clip-dark}
 
 The agent opens the review and hands you the URL. It's attached and listening from the
 first second (see the **listening** badge in the header), so your comments land in the
@@ -35,20 +35,15 @@ with a title, a summary, and its files. You can ask whether the agent suggested 
 without an outline the review is the plain file list.
 [Layers](guide/layers.md) has the detail.
 
-<video class="clip clip-light" src="./assets/layers.mp4" muted loop playsinline width="1440" height="1102" poster="./assets/layers-poster.jpg" preload="none"
-  aria-label="A 23-file change, every file folded. The header chip reads agent · suggests layers; the reviewer clicks it, eight layers land, and picking the first shows its summary card. ] steps to layers 2 and 3, where the reviewer asks on a line and the agent answers in the thread."></video>
-<video class="clip clip-dark" src="./assets/layers-dark.mp4" muted loop playsinline width="1440" height="1102" poster="./assets/layers-dark-poster.jpg" preload="none"
-  aria-label="A 23-file change, every file folded. The header chip reads agent · suggests layers; the reviewer clicks it, eight layers land, and picking the first shows its summary card. ] steps to layers 2 and 3, where the reviewer asks on a line and the agent answers in the thread."></video>
+![Layers in Diffo: the header chip suggests layers and the reviewer accepts; the request crosses to the agent, which outlines the 13-file change as four ordered steps and posts them with diffo layers; the layers land in the rail, the first layer's card draws its diagram, its files are read and ticked, and \] steps to the second and third layers.](./assets/readme-layers.svg){.clip .clip-light}
+![Layers in Diffo: the header chip suggests layers and the reviewer accepts; the request crosses to the agent, which outlines the 13-file change as four ordered steps and posts them with diffo layers; the layers land in the rail, the first layer's card draws its diagram, its files are read and ticked, and \] steps to the second and third layers.](./assets/readme-layers-dark.svg){.clip .clip-dark}
 
 ## 2 · Review the code
 
 Read the diff, start threads on any line, file, or changeset. Every one of them is a
 live conversation with the agent that opened the review.
 
-<video class="clip clip-light" src="./assets/t2-read.mp4" muted loop playsinline width="1440" height="1102" poster="./assets/t2-read-poster.jpg" preload="none"
-  aria-label="Pressing j moves through hunks, v marks a file reviewed, n jumps to the next unread file, and the counter above the diff drops toward zero."></video>
-<video class="clip clip-dark" src="./assets/t2-read-dark.mp4" muted loop playsinline width="1440" height="1102" poster="./assets/t2-read-dark-poster.jpg" preload="none"
-  aria-label="Pressing j moves through hunks, v marks a file reviewed, n jumps to the next unread file, and the counter above the diff drops toward zero."></video>
+<div class="tutorial-app"><AppReview :stage="2" /></div>
 
 The bar above the diff counts down as you mark files reviewed: `12 left`, then
 `all reviewed`. With layers, `]` and `[` step between them, and `n` rolls from one layer's
@@ -59,10 +54,7 @@ For several lines at once, drag down the line numbers and release; the composer 
 on the range, and the ▲/▼ on its chip (or a shift-click) adjust the edge one line at a
 time without losing what you've typed.
 
-<video class="clip clip-light" src="./assets/t3-comment.mp4" muted loop playsinline width="1440" height="1102" poster="./assets/t3-comment-poster.jpg" preload="none"
-  aria-label="A comment composer opens on a line of the diff, the Question chip is selected, and a real question is typed before Add comment."></video>
-<video class="clip clip-dark" src="./assets/t3-comment-dark.mp4" muted loop playsinline width="1440" height="1102" poster="./assets/t3-comment-dark-poster.jpg" preload="none"
-  aria-label="A comment composer opens on a line of the diff, the Question chip is selected, and a real question is typed before Add comment."></video>
+<div class="tutorial-app"><AppReview :stage="3" /></div>
 
 Every comment is either a **Change** or a **Question**. A Change asks for an edit. A
 Question gets an answer and nothing else: the agent is told not to touch the code, so
@@ -80,10 +72,7 @@ Send comments one at a time or batch the review and send it at the end, same as 
 Whatever you send arrives in the agent's session anchored to the code it points at, and
 its reply comes back into the same thread.
 
-<video class="clip clip-light" src="./assets/t5-loop.mp4" muted loop playsinline width="1560" height="806" poster="./assets/t5-loop-poster.jpg" preload="none"
-  aria-label="The reviewer sends a question; the Claude Code session receives it, works it, and replies, and the answer appears inside the thread."></video>
-<video class="clip clip-dark" src="./assets/t5-loop-dark.mp4" muted loop playsinline width="1560" height="806" poster="./assets/t5-loop-dark-poster.jpg" preload="none"
-  aria-label="The reviewer sends a question; the Claude Code session receives it, works it, and replies, and the answer appears inside the thread."></video>
+<HeroDiff />
 
 When you're done reading, hit **Finish review** in the header.
 
@@ -104,10 +93,7 @@ read the code and the agent that wrote it.
 
 ## Repeat until the code is ready
 
-<video class="clip clip-light" src="./assets/t10-fix.mp4" muted loop playsinline width="1560" height="806" poster="./assets/t10-fix-poster.jpg" preload="none"
-  aria-label="The reviewer marks a comment as a Change; the agent edits the file and replies, and the diff re-renders with the change in it."></video>
-<video class="clip clip-dark" src="./assets/t10-fix-dark.mp4" muted loop playsinline width="1560" height="806" poster="./assets/t10-fix-dark-poster.jpg" preload="none"
-  aria-label="The reviewer marks a comment as a Change; the agent edits the file and replies, and the diff re-renders with the change in it."></video>
+<div class="tutorial-app"><AppReview :stage="4" /></div>
 
 The agent's fixes land in the same review: the diff re-renders as it works, so you're
 reading the fix itself, not a promise of one.
@@ -124,8 +110,8 @@ beside you instead of answering for its own work. You need the
 [GitHub CLI](https://cli.github.com) signed in, and any open pull request in a repo you
 can clone.
 
-<video class="clip" src="./assets/pr-review.mp4" muted loop playsinline width="1152" height="648" poster="./assets/pr-review-poster.jpg" preload="none"
-  aria-label="One take of a pull request review: the reviewer types /diffo with a pull request's link in Claude Code, the review opens beside the session with the PR's title, author and checks in the header, the agent lays the change out in layers, a question for the agent on the streak check comes back answered in the thread, a comment for GitHub goes on the same line, and the review is submitted with Request changes and appears on the pull request"></video>
+![A pull request in Diffo: you hand the PR link to your agent and it is checked out in a worktree of its own; a Private question on line 13 crosses to your agent, which runs the tests and answers in the thread; a PR comment waits as a draft until Submit review, and then the review crosses to GitHub, while the private thread stays on your machine.](./assets/readme-pr.svg){.clip .clip-light}
+![A pull request in Diffo: you hand the PR link to your agent and it is checked out in a worktree of its own; a Private question on line 13 crosses to your agent, which runs the tests and answers in the thread; a PR comment waits as a draft until Submit review, and then the review crosses to GitHub, while the private thread stays on your machine.](./assets/readme-pr-dark.svg){.clip .clip-dark}
 
 1. **Open it.** In any session, `/diffo <PR link>`. The PR is fetched into a worktree
    Diffo owns, so nothing in your checkout moves, and the review opens with the PR's
@@ -142,7 +128,7 @@ can clone.
    review posted through your own `gh`. Your private threads go to the agent at the same
    time.
 
-[Reviewing a pull request](guide/pr-review.md) has what the clip doesn't show: a push
+[Reviewing a pull request](guide/pr-review.md) has what the picture doesn't show: a push
 while you read, merged and closed pull requests, and the worktree's life.
 
 ## Your review is durable

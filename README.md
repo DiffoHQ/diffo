@@ -26,7 +26,7 @@ review to GitHub.
   <img alt="The Diffo loop. In the agent's terminal you type /diffo and the review opens beside it. You ask a question on line 14, and it flies to the agent; the agent fixes the code and answers, and the answer and the fix fly back, landing in the thread and in the diff you are reading." src="docs/assets/readme-demo.svg" width="100%">
 </picture>
 
-<p align="center"><sub>The whole loop: type <code>/diffo</code>, ask on the line, and the answer and the fix come back into the diff you're reading. Drawn, so it stays sharp; <a href="#talk-to-the-agent-on-the-line">the real, unedited take</a> is below.</sub></p>
+<p align="center"><sub>The whole loop: type <code>/diffo</code>, ask on the line, and the answer and the fix come back into the diff you're reading.</sub></p>
 
 ---
 
@@ -67,18 +67,6 @@ had already moved on.
 Diffo keeps the conversation open through the review. The judgement stays yours. You just
 stop reading alone.
 
-<!-- Every clip here is a real recording: a real Claude Code session, a real server, and a
-     real changeset under review. The hero and the pull request clip review a small demo
-     app, so the diff reads at a glance; the layers clip, and the tutorial, review this
-     repo's own changesets. -->
-
-<!-- Light-theme only. The clip opens once the session has finished writing the change:
-     waiting on the agent is fast-forwarded — the badge in the session's corner says so
-     while it runs — and nothing else is cut. -->
-<img alt="One take of the whole loop. A Claude Code session has just written natural-language due dates into a todo app; the reviewer types /diffo, and the session opens a live review and hands over its localhost URL, which opens beside the session. The reviewer leaves a question on the weekday line (a bare weekday always lands next week, should it mean today?) and the agent's answer appears in the thread while they watch." src="docs/assets/loop.gif" width="100%">
-
-<p align="center"><sub>The same loop, for real, in one take: type <code>/diffo</code>, read the diff, ask on the line, and the answer comes back in the thread. Left is a real Claude Code session, right is the real review it opened. Nothing here is a mock-up; the only edit is that waiting on the agent runs fast.</sub></p>
-
 - **Ask on any line.** The agent that wrote the code answers in the thread, with a
   diagram when the shape needs one. Mark a thread a **Question** and it explains; mark it
   a **Change** and it edits, so a question never turns into an unrequested refactor.
@@ -101,7 +89,7 @@ so nothing hides outside the plan.
   <img alt="Layers in Diffo. The header chip reads agent · suggests layers and the reviewer accepts. The request crosses to the agent's terminal, which outlines the 13-file change as four ordered steps and posts them with diffo layers. Four layers land in the rail; the first layer's card draws its diagram, its files are read and ticked, and ] steps to the second and third layers." src="docs/assets/readme-layers.svg" width="100%">
 </picture>
 
-<p align="center"><sub>Thirteen files, alphabetical, become four steps to read in order. The <a href="https://diffohq.github.io/diffo/tutorial">tutorial</a> shows it for real, on a 23-file change.</sub></p>
+<p align="center"><sub>Thirteen files, alphabetical, become four steps to read in order.</sub></p>
 
 ## Review a pull request
 
@@ -112,11 +100,12 @@ you as a copilot for code it did not write. Every comment has two tabs. **Commen
 goes to the author, as one review when you finish. **Ask agent** stays on your machine:
 the agent can run the tests and answer with evidence, and it never posts to GitHub.
 
-<!-- Light-theme only, like the hero. The pull request is a real one on a demo repo
-     (DiffoHQ/todo-demo#1), and the review at the end is the one this take submitted. -->
-<img alt="One take of a pull request review. On GitHub, a pull request adds recurring todos to a todo app; in Claude Code the reviewer types /diffo with its link, and the review opens beside the session, the PR's title, author and checks in the header. The agent lays the change out in layers. On the streak check the reviewer asks the agent whether anything done on its due day now counts as late, and the answer comes back in the thread; they leave a comment for GitHub on the same line, submit the review with Request changes, and the review appears on the pull request." src="docs/assets/pr-review.gif" width="100%">
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/assets/readme-pr-dark.svg">
+  <img alt="A pull request in Diffo: you hand the PR link to your agent and it is checked out in a worktree of its own; a Private question on line 13 crosses to your agent, which runs the tests and answers in the thread; a PR comment waits as a draft until Submit review, and then the review crosses to GitHub, while the private thread stays on your machine." src="docs/assets/readme-pr.svg" width="100%">
+</picture>
 
-<p align="center"><sub>A pull request, end to end: hand over the link, read it in layers, ask your agent on a line, leave a comment for the author, and submit to GitHub. A real Claude Code session and a real pull request; the only edit is that waiting on the agent runs fast.</sub></p>
+<p align="center"><sub>Two destinations: a <b>Private</b> question goes to your agent and never leaves your machine; a <b>PR comment</b> waits as a draft and goes to GitHub when you submit.</sub></p>
 
 ## Where it fits
 

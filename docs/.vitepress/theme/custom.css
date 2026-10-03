@@ -1,9 +1,6 @@
 /*
- * Screen-recorded clips.
- *
- * These are MP4 rather than GIF: same recordings, roughly a quarter of the bytes,
- * decoded on the GPU, and actually pausable when scrolled out of view. `preload="none"`
- * keeps a clip off the wire until the reader reaches it.
+ * The drawn scenes: animated SVGs from scripts/build-readme-art.ts, the same files
+ * the README shows, each in a light and a dark variant.
  */
 .clip {
   display: block;
@@ -15,7 +12,7 @@
 /*
  * Light/dark pairing follows `html.dark`, which is the class VitePress itself toggles.
  * A CSS `prefers-color-scheme` query would read the OS setting instead, so a reader who
- * flipped only the site theme would be left looking at the wrong clip.
+ * flipped only the site theme would be left looking at the wrong variant.
  */
 .clip-dark {
   display: none;
@@ -27,6 +24,11 @@ html.dark .clip-dark {
 
 html.dark .clip-light {
   display: none;
+}
+
+/* The tutorial's still frames are the drawn app (AppReview.vue), held at one stage. */
+.tutorial-app {
+  margin: 20px 0;
 }
 
 /* ──────────────────────────────────────────────────────────────────────────
@@ -360,7 +362,7 @@ html.dark .clip-light {
 }
 
 /* ──────────────────────────────────────────────────────────────────────────
- * The recorded clips enter tilted back, like a screen being lifted into view, and
+ * The drawn scenes enter tilted back, like a screen being lifted into view, and
  * settle flat as they reach the middle of the viewport. --p comes from theme/index.ts.
  * ────────────────────────────────────────────────────────────────────────── */
 .VPHome .home-clip {

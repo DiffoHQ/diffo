@@ -113,7 +113,7 @@ pnpm check
 That's `typecheck` (tsc --noEmit), `test` (unit + real-git integration +
 built-binary E2E smoke), `build` (vite build + tsdown), `lint` (Biome), and
 `docs:build` (VitePress) — all five must pass, and CI runs the same five on your
-PR. `docs:build` is a real gate, not a formality: the docs embed clips and
+PR. `docs:build` is a real gate, not a formality: the docs embed the drawn scenes and
 diagrams as asset imports, so a missing or misnamed file fails the build.
 
 Lint is Biome, and `pnpm format` (Biome with `--write`) fixes almost everything

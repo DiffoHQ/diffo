@@ -7,7 +7,7 @@
  * <style> and @keyframes inside it run. That is the only motion a README can have, and
  * it is all here. No external fonts or images: an SVG loaded as <img> cannot fetch.
  *
- *   pnpm readme:art     → assets/readme-hero{,-dark}.svg, docs/assets/readme-{demo,layers}{,-dark}.svg
+ *   pnpm readme:art     → assets/readme-hero{,-dark}.svg, docs/assets/readme-{demo,layers,pr}{,-dark}.svg
  */
 import { writeFileSync } from 'node:fs'
 import { join } from 'node:path'
@@ -348,6 +348,59 @@ function kit(a: App, dark: boolean) {
     <text x="${tx}" y="${TOP + WH - 22}" font-family="${MONO}" font-size="12.5" fill="${TERM.auto}">▸▸ auto mode on <tspan fill="${TERM.dim}">· 1 shell</tspan></text>
   </g>`
 
+  /* ── review pieces ── */
+  const tone = (k: Seg[0]) => (k === 'k' ? a.k : k === 'f' ? a.f : k === 'n' ? a.n : a.ink)
+  const code = (segs: Seg[]) =>
+    segs.map(([k, s]) => `<tspan fill="${tone(k)}">${escapeXml(s)}</tspan>`).join('')
+  const ROW = 28
+  // One diff line, spanning x0..x1: old and new numbers, the sign, the code.
+  const codeRow = (
+    x0: number,
+    x1: number,
+    y: number,
+    o: number | '',
+    n: number | '',
+    segs: Seg[],
+    kind?: 'add' | 'del',
+    cls = '',
+  ) => {
+    const bg = kind === 'add' ? a.addRow : kind === 'del' ? a.delRow : 'none'
+    const sign = kind === 'add' ? '+' : kind === 'del' ? '−' : ''
+    return `<g class="${cls}">
+      <rect x="${x0 + 1}" y="${y}" width="${x1 - x0 - 2}" height="${ROW}" fill="${bg}"/>
+      ${kind === 'add' ? `<rect x="${x0 + 76}" y="${y}" width="2" height="${ROW}" fill="${a.add}"/>` : ''}
+      <text x="${x0 + 32}" y="${y + 19}" text-anchor="end" font-family="${MONO}" font-size="12.5" fill="${a.ink3}">${o}</text>
+      <text x="${x0 + 68}" y="${y + 19}" text-anchor="end" font-family="${MONO}" font-size="12.5" fill="${a.ink3}">${n}</text>
+      <text x="${x0 + 90}" y="${y + 19}" text-anchor="middle" font-family="${MONO}" font-size="14" fill="${kind === 'add' ? a.add : a.del}">${sign}</text>
+      <text x="${x0 + 104}" y="${y + 19}" font-family="${MONO}" font-size="13.5" xml:space="preserve">${code(segs)}</text>
+    </g>`
+  }
+  const tick = (x: number, y: number, cls: string) => `<g class="${cls}">
+      <rect x="${x}" y="${y}" width="14" height="14" rx="3.5" fill="${a.brand}"/>
+      <path d="M${x + 3.2} ${y + 7.4}l2.8 2.8 4.8-5.4" fill="none" stroke="#fff" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+    </g>`
+  const box = (x: number, y: number) =>
+    `<rect x="${x + 0.5}" y="${y + 0.5}" width="13" height="13" rx="3.5" fill="none" stroke="${a.ink3}"/>`
+  // A one-off keyframe, for the few things that move rather than fade.
+  const keyframes = (body: string) => {
+    const name = `k${id++}`
+    css.push(`.${name} { animation-name: ${name}; }\n    @keyframes ${name} { ${body} }`)
+    return name
+  }
+  // The reviewer's pointer, at (x, y): in from below-left, a press at `click`%, then away.
+  const pointer = (x: number, y: number, inAt: number, click: number) => {
+    const move = keyframes(
+      `0%, ${inAt}% { opacity: 0; transform: translate(-150px, 260px); } ${inAt + 1}% { opacity: 1; } ${click - 0.6}% { transform: none; } ${click}% { transform: scale(0.88); } ${click + 0.6}% { transform: none; opacity: 1; } ${click + 4}%, 100% { opacity: 0; transform: translate(20px, 40px); }`,
+    )
+    return `
+    <g transform="translate(${x} ${y})">
+      <g class="${move}">
+        <path d="M0 0v17l4.4-4.1 3 6.6 2.7-1.2-3-6.5H13z" fill="${dark ? '#fff' : '#111'}" stroke="${dark ? '#000' : '#fff'}" stroke-width="1.2" stroke-linejoin="round"/>
+      </g>
+      <circle class="${show(click, 'scale(0.4)')} ${between(click, click + 2)}" r="12" fill="none" stroke="${amber}" stroke-width="1.5"/>
+    </g>`
+  }
+
   const svg = (
     aria: string,
     body: string,
@@ -371,6 +424,7 @@ function kit(a: App, dark: boolean) {
     <filter id="shadow" x="-10%" y="-10%" width="120%" height="125%"><feDropShadow dx="0" dy="18" stdDeviation="20" flood-color="#000" flood-opacity="${dark ? 0.55 : 0.16}"/></filter>
     <filter id="lift" x="-20%" y="-60%" width="140%" height="240%"><feDropShadow dx="0" dy="3" stdDeviation="4" flood-color="#000" flood-opacity="${dark ? 0.5 : 0.1}"/></filter>
     <marker id="arrow-brand" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse" markerUnits="userSpaceOnUse"><path d="M2 1.5L8 5L2 8.5" fill="none" stroke="${a.brand}" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></marker>
+    <marker id="arrow-ink" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse" markerUnits="userSpaceOnUse"><path d="M2 1.5L8 5L2 8.5" fill="none" stroke="${a.ink2}" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></marker>
     <marker id="arrow-amber" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse" markerUnits="userSpaceOnUse"><path d="M2 1.5L8 5L2 8.5" fill="none" stroke="${amber}" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></marker>
     <clipPath id="frame"><rect width="${W}" height="${H}" rx="18"/></clipPath>
     <clipPath id="term"><rect x="${PAD}" y="${TOP}" width="${TW}" height="${WH}" rx="12"/></clipPath>
@@ -408,6 +462,12 @@ function kit(a: App, dark: boolean) {
     termFrame,
     amber,
     svg,
+    ROW,
+    codeRow,
+    tick,
+    box,
+    keyframes,
+    pointer,
   }
 }
 
@@ -432,6 +492,9 @@ function demo(a: App, dark: boolean) {
     amber,
     svg,
     nextId,
+    ROW,
+    codeRow,
+    tick,
   } = kit(a, dark)
 
   // The session's timeline, in % of the loop.
@@ -507,7 +570,6 @@ function demo(a: App, dark: boolean) {
   /* ── The review ── */
   const X = RX + 18 // file card left
   const XR = RX + RW - 18
-  const ROW = 28
   const HEAD = 52
   const CODE_TOP = TOP + HEAD + 46 + 46 + 10 // bar + file header
   const THREAD = CODE_TOP + 4 * ROW + 8
@@ -515,9 +577,6 @@ function demo(a: App, dark: boolean) {
   const B_H = 138
   const AFTER = THREAD + A_H + B_H + 10
 
-  const tone = (k: Seg[0]) => (k === 'k' ? a.k : k === 'f' ? a.f : k === 'n' ? a.n : a.ink)
-  const code = (segs: Seg[]) =>
-    segs.map(([k, s]) => `<tspan fill="${tone(k)}">${escapeXml(s)}</tspan>`).join('')
   const row = (
     y: number,
     o: number | '',
@@ -525,22 +584,7 @@ function demo(a: App, dark: boolean) {
     segs: Seg[],
     kind?: 'add' | 'del',
     cls = '',
-  ) => {
-    const bg = kind === 'add' ? a.addRow : kind === 'del' ? a.delRow : 'none'
-    const sign = kind === 'add' ? '+' : kind === 'del' ? '−' : ''
-    return `<g class="${cls}">
-      <rect x="${X + 1}" y="${y}" width="${XR - X - 2}" height="${ROW}" fill="${bg}"/>
-      ${kind === 'add' ? `<rect x="${X + 76}" y="${y}" width="2" height="${ROW}" fill="${a.add}"/>` : ''}
-      <text x="${X + 32}" y="${y + 19}" text-anchor="end" font-family="${MONO}" font-size="12.5" fill="${a.ink3}">${o}</text>
-      <text x="${X + 68}" y="${y + 19}" text-anchor="end" font-family="${MONO}" font-size="12.5" fill="${a.ink3}">${n}</text>
-      <text x="${X + 90}" y="${y + 19}" text-anchor="middle" font-family="${MONO}" font-size="14" fill="${kind === 'add' ? a.add : a.del}">${sign}</text>
-      <text x="${X + 104}" y="${y + 19}" font-family="${MONO}" font-size="13.5" xml:space="preserve">${code(segs)}</text>
-    </g>`
-  }
-  const tick = (x: number, y: number, cls: string) => `<g class="${cls}">
-      <rect x="${x}" y="${y}" width="14" height="14" rx="3.5" fill="${a.brand}"/>
-      <path d="M${x + 3.2} ${y + 7.4}l2.8 2.8 4.8-5.4" fill="none" stroke="#fff" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
-    </g>`
+  ) => codeRow(X, XR, y, o, n, segs, kind, cls)
 
   const QUESTION = 'Does “friday” on a Friday mean today or next week?'
   const viewed = `v${nextId()}`
@@ -770,7 +814,6 @@ function layers(a: App, dark: boolean) {
     TOP,
     WH,
     css,
-    nextId,
     show,
     between,
     flight,
@@ -781,6 +824,10 @@ function layers(a: App, dark: boolean) {
     termFrame,
     amber,
     svg,
+    tick,
+    box,
+    keyframes,
+    pointer,
   } = kit(a, dark)
 
   // The scene's clock, in % of the loop.
@@ -840,19 +887,6 @@ function layers(a: App, dark: boolean) {
     <text class="${show(C.up + 3)}" x="${tx}" y="${TOP + 550}" ${mono} fill="${TERM.claude}">✻ Listening for your comments…</text>`)
 
   /* ── review ── */
-  const tick = (x: number, y: number, cls: string) => `<g class="${cls}">
-      <rect x="${x}" y="${y}" width="14" height="14" rx="3.5" fill="${a.brand}"/>
-      <path d="M${x + 3.2} ${y + 7.4}l2.8 2.8 4.8-5.4" fill="none" stroke="#fff" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
-    </g>`
-  const box = (x: number, y: number) =>
-    `<rect x="${x + 0.5}" y="${y + 0.5}" width="13" height="13" rx="3.5" fill="none" stroke="${a.ink3}"/>`
-  // A one-off keyframe, for the few things that move rather than fade.
-  const keyframes = (body: string) => {
-    const name = `k${nextId()}`
-    css.push(`.${name} { animation-name: ${name}; }\n    @keyframes ${name} { ${body} }`)
-    return name
-  }
-
   const L = [
     {
       title: 'The recurrence rule',
@@ -1019,16 +1053,7 @@ function layers(a: App, dark: boolean) {
       <text class="${show(C.land[1], 'none')}" x="${chipX + 32}" y="${TOP + 31}" font-family="${SANS}" font-size="12.5" fill="${a.attn}">agent · listening</text>`
 
   // The reviewer's pointer: in from below, onto the chip, a click.
-  const cursorMove = keyframes(
-    `0%, ${C.cursorIn}% { opacity: 0; transform: translate(-150px, 260px); } ${C.cursorIn + 1}% { opacity: 1; } ${C.click - 0.6}% { transform: none; } ${C.click}% { transform: scale(0.88); } ${C.click + 0.6}% { transform: none; opacity: 1; } ${C.click + 4}%, 100% { opacity: 0; transform: translate(20px, 40px); }`,
-  )
-  const pointer = `
-    <g transform="translate(${chipX + 120} ${TOP + 22})">
-      <g class="${cursorMove}">
-        <path d="M0 0v17l4.4-4.1 3 6.6 2.7-1.2-3-6.5H13z" fill="${dark ? '#fff' : '#111'}" stroke="${dark ? '#000' : '#fff'}" stroke-width="1.2" stroke-linejoin="round"/>
-      </g>
-      <circle class="${show(C.click, 'scale(0.4)')} ${between(C.click, C.click + 2)}" r="12" fill="none" stroke="${amber}" stroke-width="1.5"/>
-    </g>`
+  const cursor = pointer(chipX + 120, TOP + 22, C.cursorIn, C.click)
 
   // `]` steps to the next layer.
   const keycap = (at: number) => `
@@ -1075,7 +1100,7 @@ function layers(a: App, dark: boolean) {
     ${keycap(C.key2)}
   </g>
   <rect x="${RX + 0.5}" y="${TOP + 0.5}" width="${RW - 1}" height="${WH - 1}" rx="11.5" fill="none" stroke="${a.hair}"/>
-  ${pointer}`
+  ${cursor}`
 
   const flights = `
   ${flight({ x: RX + 8, y: TOP + 26 }, { x: PAD + TW - 10, y: TOP + 339 }, C.ask[0], C.ask[1], 'layers, please', amber, 'arrow-amber')}
@@ -1084,6 +1109,293 @@ function layers(a: App, dark: boolean) {
   return svg(
     'Layers in Diffo: the header chip suggests layers and the reviewer accepts; the request crosses to the agent, which outlines the 13-file change as four ordered steps and posts them with diffo layers; the layers land in the rail, the first layer’s card draws its diagram, its files are read and ticked, and ] steps to the second and third layers.',
     `${term}\n    ${review}\n    ${flights}`,
+  )
+}
+
+/* ── A pull request: two destinations ──────────────────────────────────── */
+
+/*
+ * Someone else's pull request, reviewed with your agent beside you. The link opens the
+ * PR in a worktree of its own; a Private question on a line crosses to your agent,
+ * which runs the tests and answers; a PR comment waits as a draft until Submit review,
+ * and then the review, and only the review, crosses to GitHub.
+ */
+function pullRequest(a: App, dark: boolean) {
+  const {
+    PAD,
+    TW,
+    RX,
+    RW,
+    TOP,
+    WH,
+    show,
+    between,
+    type,
+    flight,
+    tx,
+    mono,
+    tline,
+    bullet,
+    termFrame,
+    amber,
+    svg,
+    ROW,
+    codeRow,
+    pointer,
+  } = kit(a, dark)
+
+  // The scene's clock, in % of the loop.
+  const C = {
+    typeFrom: 2,
+    typeTo: 7.5,
+    sent: 8,
+    ran: 9,
+    worktree: 10.5,
+    open: 12,
+    open1: [13.5, 18] as const, // the review opens
+    land: 19,
+    focus: 25,
+    threadA: 26,
+    qFrom: 27.5,
+    qTo: 35,
+    asked: 36,
+    ask: [36.5, 41] as const, // the private question crosses to the agent
+    poll: 41.5,
+    check: 44,
+    bash: 46.5,
+    result: 48.5,
+    reply: [51.5, 56] as const, // the answer crosses back
+    answer: 56.5,
+    confirmed: 57,
+    threadB: 60,
+    cFrom: 61.5,
+    cTo: 67,
+    drafted: 67.5,
+    click: 71,
+    submit: [72, 76.5] as const, // the review crosses to GitHub
+    github: 76,
+  }
+
+  const LINK = 'github.com/DiffoHQ/todo-demo/pull/1'
+
+  /* ── terminal ── */
+  const term = termFrame(
+    `
+    <g class="${show(C.sent, 'none')}">
+      <rect x="${tx - 8}" y="${TOP + 118}" width="${TW - 28}" height="26" fill="${TERM.promptBg}"/>
+      <text x="${tx}" y="${TOP + 136}" ${mono} fill="${TERM.dim}">❯ <tspan fill="${TERM.ink}" font-weight="700">/diffo</tspan> <tspan fill="${TERM.ink}">${LINK}</tspan></text>
+    </g>
+    ${tline(TOP + 170, '  Ran 3 shell commands', show(C.ran), TERM.dim)}
+    ${bullet(TOP + 200, 'PR #1 is checked out in a worktree', show(C.worktree))}
+    ${tline(TOP + 222, '  of its own; your checkout is untouched.', show(C.worktree + 0.4), TERM.dim)}
+    ${bullet(TOP + 252, 'Review is open. I’m listening.', show(C.open))}
+    <text class="${show(C.open + 0.5)}" x="${tx + 18}" y="${TOP + 274}" ${mono} fill="${TERM.link}" text-decoration="underline">http://localhost:4949</text>
+
+    <text class="${between(C.land, C.poll - 0.5)}" x="${tx}" y="${TOP + 308}" ${mono} fill="${TERM.claude}">✻ Listening for your comments…</text>
+    <g class="${show(C.poll)}">
+      <circle cx="${tx + 4}" cy="${TOP + 303}" r="3.5" fill="${TERM.ink}"/>
+      <text x="${tx + 18}" y="${TOP + 308}" ${mono} fill="${TERM.ink}">diffo poll <tspan fill="${TERM.dim}">→ private, streak.ts:13</tspan></text>
+    </g>
+    ${bullet(TOP + 340, 'Checking it with a quick run.', show(C.check))}
+    <g class="${show(C.bash)}">
+      <circle cx="${tx + 4}" cy="${TOP + 367}" r="3.5" fill="${TERM.add}"/>
+      <text x="${tx + 18}" y="${TOP + 372}" ${mono} fill="${TERM.ink}"><tspan font-weight="700">Bash</tspan>(npx vitest run streak)</text>
+    </g>
+    ${tline(TOP + 394, '  ⎿ done 09:00 on its due day → streak 0', show(C.result), TERM.dim)}
+    ${bullet(TOP + 426, 'Confirmed, and answered in your thread.', show(C.confirmed), TERM.add)}
+    <text class="${show(C.confirmed + 2)}" x="${tx}" y="${TOP + 460}" ${mono} fill="${TERM.claude}">✻ Listening for your comments…</text>`,
+    `<text class="${type(C.typeFrom, C.typeTo, 43)} ${between(0, C.sent - 1)}" x="${tx + 18}" y="${TOP + WH - 64}" ${mono} fill="${TERM.ink}">/diffo ${LINK}</text>`,
+  )
+
+  /* ── review ── */
+  const X = RX + 18
+  const XR = RX + RW - 18
+  const HEAD = 52
+  const CODE_TOP = TOP + HEAD + 102
+  const A = CODE_TOP + 4 * ROW + 8 // the private thread
+  const A_H = 104 // its header and your question
+  const A_B = 96 // the agent's answer
+  const B = A + A_H + A_B + 12 // the PR comment
+
+  const QUESTION = 'dueAt is midnight, so isn’t anything done later on its due day counted as late?'
+  const COMMENT = [
+    'Anything done on its due day counts as late here, so the streak resets',
+    'every time. Compare the days on both sides.',
+  ]
+
+  const lines: Array<[number, Seg[]]> = [
+    [
+      10,
+      [
+        ['k', '  let '],
+        ['', 'run = '],
+        ['n', '0'],
+      ],
+    ],
+    [
+      11,
+      [
+        ['k', '  for '],
+        ['', '('],
+        ['k', 'const '],
+        ['', 'c '],
+        ['k', 'of '],
+        ['', 'history) {'],
+      ],
+    ],
+    [
+      12,
+      [
+        ['k', '    if '],
+        ['', '(c.skipped) '],
+        ['k', 'continue'],
+      ],
+    ],
+    [
+      13,
+      [
+        ['k', '    if '],
+        ['', '(c.doneAt > '],
+        ['f', 'startOfDay'],
+        ['', '(c.dueAt)) '],
+        ['k', 'break'],
+      ],
+    ],
+  ]
+
+  // A thread's header strip: chevron, a tag, what it is, and its state on the right.
+  const threadHead = (y: number, tag: string, tagTone: string, what: string, right: string) => `
+        <path d="M${X + 15} ${y + 36}V${y + 10}a10 10 0 0 1 10 -10H${XR - 25}a10 10 0 0 1 10 10V${y + 36}z" fill="${a.fill}"/>
+        <path d="M${X + 15} ${y + 36.5}h${XR - X - 30}" stroke="${a.hair}"/>
+        <path d="M${X + 30} ${y + 16}l3.5 3.5 3.5-3.5" fill="none" stroke="${a.ink3}" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+        <rect x="${X + 46.5}" y="${y + 8.5}" width="${tag.length * 7 + 30}" height="20" rx="10" fill="${a.paper}" stroke="${a.hair}"/>
+        <circle cx="${X + 59}" cy="${y + 18.5}" r="3" fill="${tagTone}"/>
+        <text x="${X + 67}" y="${y + 22.5}" font-size="12" font-weight="500" fill="${a.ink}">${tag}</text>
+        <text x="${X + 46 + tag.length * 7 + 42}" y="${y + 23}" font-size="13" fill="${a.ink2}">${what}</text>
+        ${right}`
+
+  const review = `
+  <g class="${between(-1, C.open1[1])}">
+    <rect x="${RX + 1}" y="${TOP + 1}" width="${RW - 2}" height="${WH - 2}" rx="12" fill="none" stroke="${a.ink3}" stroke-opacity="0.35" stroke-width="1.5" stroke-dasharray="6 8"/>
+    <text x="${RX + RW / 2}" y="${TOP + WH / 2}" text-anchor="middle" font-family="${MONO}" font-size="14" fill="${a.ink3}">localhost:4949</text>
+  </g>
+
+  <g class="${show(C.open1[1] - 0.5, 'scale(0.97)')}" style="transform-origin: ${RX + RW / 2}px ${TOP + 120}px">
+    <g filter="url(#shadow)"><rect x="${RX}" y="${TOP}" width="${RW}" height="${WH}" rx="12" fill="${a.paper}"/></g>
+    <g clip-path="url(#review)" font-family="${SANS}">
+      <path d="M${RX + 20} ${TOP + 21}h14M${RX + 20} ${TOP + 27}h10M${RX + 20} ${TOP + 33}h14" stroke="${a.ink}" stroke-width="1.8" stroke-linecap="round"/>
+      <text x="${RX + 44}" y="${TOP + 33}" font-size="17" font-weight="600" fill="${a.ink}">Diffo</text>
+      <text x="${RX + 102}" y="${TOP + 32}" font-size="13.5" fill="${a.ink}"><tspan fill="${a.ink3}">#1</tspan> Recurring todos: every monday…</text>
+      <rect x="${RX + RW - 326.5}" y="${TOP + 12.5}" width="152" height="28" rx="14" fill="${a.attnWash}" stroke="${a.attnLine}"/>
+      <g fill="${a.attn}"><rect x="${RX + RW - 312}" y="${TOP + 24}" width="2" height="5" rx="1"/><rect x="${RX + RW - 308}" y="${TOP + 22}" width="2" height="9" rx="1"/><rect x="${RX + RW - 304}" y="${TOP + 24}" width="2" height="5" rx="1"/></g>
+      <text class="${between(-1, C.ask[1])}" x="${RX + RW - 296}" y="${TOP + 31}" font-size="12.5" fill="${a.attn}">agent · listening</text>
+      <text class="${between(C.ask[1], C.reply[1])}" x="${RX + RW - 296}" y="${TOP + 31}" font-size="12.5" fill="${a.attn}">agent · working</text>
+      <text class="${show(C.reply[1], 'none')}" x="${RX + RW - 296}" y="${TOP + 31}" font-size="12.5" fill="${a.attn}">agent · listening</text>
+      <rect x="${RX + RW - 164}" y="${TOP + 11}" width="148" height="31" rx="15.5" fill="${a.finishBg}"/>
+      <text class="${between(-1, C.drafted)}" x="${RX + RW - 90}" y="${TOP + 31}" text-anchor="middle" font-size="13" font-weight="600" fill="${a.finishFg}">Submit review</text>
+      <text class="${show(C.drafted, 'none')}" x="${RX + RW - 90}" y="${TOP + 31}" text-anchor="middle" font-size="13" font-weight="600" fill="${a.finishFg}">Submit review (1)</text>
+      <path d="M${RX} ${TOP + HEAD + 0.5}h${RW}" stroke="${a.hair}"/>
+
+      <rect x="${X}" y="${TOP + HEAD + 22}" width="56" height="2" rx="1" fill="${a.fill2}"/>
+      <rect x="${X}" y="${TOP + HEAD + 22}" width="36" height="2" rx="1" fill="${a.brand}"/>
+      <text x="${X + 70}" y="${TOP + HEAD + 28}" font-family="${MONO}" font-size="12.5" fill="${a.ink3}">layer 4 / 6 · Done rolls forward; streaks</text>
+
+      <g class="${show(C.land)}">
+        <rect x="${X + 0.5}" y="${TOP + HEAD + 46.5}" width="${XR - X - 1}" height="${WH - HEAD - 66}" rx="10" fill="${a.paper}" stroke="${a.hair}"/>
+        <path d="M${X + 1} ${TOP + HEAD + 56}a9 9 0 0 1 9 -9H${XR - 10}a9 9 0 0 1 9 9V${TOP + HEAD + 92}H${X + 1}z" fill="${a.fill}"/>
+        <path d="M${X} ${TOP + HEAD + 92.5}h${XR - X}" stroke="${a.hair}"/>
+        <path d="M${X + 16} ${TOP + HEAD + 67}l4 4 4-4" fill="none" stroke="${a.ink3}" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
+        <text x="${X + 34}" y="${TOP + HEAD + 75}" font-family="${MONO}" font-size="13.5" fill="${a.ink3}">src/scheduler/<tspan font-weight="700" fill="${a.ink}">streak.ts</tspan></text>
+        <text x="${X + 238}" y="${TOP + HEAD + 75}" font-size="12.5" fill="${a.add}">added</text>
+        <text x="${XR - 112}" y="${TOP + HEAD + 75}" text-anchor="end" font-family="${MONO}" font-size="12.5" fill="${a.add}">+17</text>
+        <rect x="${XR - 98.5}" y="${TOP + HEAD + 56.5}" width="84" height="27" rx="6" fill="${a.paper}" stroke="${a.hair}"/>
+        <rect x="${XR - 88.5}" y="${TOP + HEAD + 63.5}" width="13" height="13" rx="3.5" fill="none" stroke="${a.ink3}"/>
+        <text x="${XR - 68}" y="${TOP + HEAD + 75}" font-size="13" fill="${a.ink}">Viewed</text>
+      </g>
+      ${lines.map(([n, segs], i) => codeRow(X, XR, CODE_TOP + i * ROW, '', n, segs, 'add', show(C.land + 0.8 + i * 0.6))).join('\n      ')}
+      <rect class="${between(C.focus, C.answer)}" x="${X + 1}" y="${CODE_TOP + 3 * ROW}" width="${XR - X - 2}" height="${ROW}" fill="${a.focus}"/>
+
+      <!-- The private thread: the agent's answer first, so the question's card corners sit under it -->
+      <g class="${show(C.ask[1])}">
+        <path d="M${X + 14.5} ${A + A_H - 12}V${A + A_H + A_B - 10}a10 10 0 0 0 10 10H${XR - 24.5}a10 10 0 0 0 10 -10V${A + A_H - 12}" fill="${a.paper}" stroke="${a.hair}"/>
+        <rect x="${X + 15}" y="${A + A_H - 12}" width="${XR - X - 30}" height="12" fill="${a.paper}"/>
+        <path d="M${X + 15} ${A + A_H + 0.5}h${XR - X - 30}" stroke="${a.hair}"/>
+        <circle cx="${X + 40}" cy="${A + A_H + 26}" r="12" fill="${a.attnWash}" stroke="${a.attnLine}"/>
+        <text x="${X + 40}" y="${A + A_H + 31}" text-anchor="middle" font-size="12" fill="${a.attn}">✦</text>
+        <text x="${X + 62}" y="${A + A_H + 24}" font-size="13" font-weight="600" fill="${a.attn}">Agent</text>
+        <text class="${between(C.ask[1], C.answer)}" x="${X + 106}" y="${A + A_H + 24}" font-size="13" fill="${a.ink3}">with the agent · just now</text>
+        <text class="${show(C.answer, 'none')}" x="${X + 106}" y="${A + A_H + 24}" font-size="13" fill="${a.ink3}">answered in 53.6s</text>
+        <g class="${between(C.ask[1], C.answer)} dots" fill="${a.ink3}"><circle cx="${X + 66}" cy="${A + A_H + 46}" r="3"/><circle cx="${X + 77}" cy="${A + A_H + 46}" r="3"/><circle cx="${X + 88}" cy="${A + A_H + 46}" r="3"/></g>
+        <g class="${show(C.answer)}" font-size="14" fill="${a.ink}">
+          <text x="${X + 62}" y="${A + A_H + 47}">Yes. dueAt is midnight, so 09:00 on the due day counts as late and the</text>
+          <text x="${X + 62}" y="${A + A_H + 69}">streak resets. I ran it: a todo done on time returns a streak of 0.</text>
+        </g>
+      </g>
+      <g class="${show(C.threadA)}">
+        <rect x="${X + 14.5}" y="${A + 0.5}" width="${XR - X - 29}" height="${A_H}" rx="10" fill="${a.paper}" stroke="${a.hair}"/>
+        ${threadHead(A, 'Private', amber, 'Comment on line 13', `<text class="${between(-1, C.asked)}" x="${XR - 34}" y="${A + 23}" text-anchor="end" font-size="12.5" fill="${a.ink3}">Draft</text><text class="${show(C.asked, 'none')}" x="${XR - 34}" y="${A + 23}" text-anchor="end" font-size="12.5" fill="${a.ink3}">Sent</text>`)}
+        <circle cx="${X + 40}" cy="${A + 62}" r="12" fill="${a.ink}"/>
+        <text x="${X + 62}" y="${A + 60}" font-size="13" fill="${a.ink3}"><tspan font-weight="600" fill="${a.ink}">You</tspan>  commented just now</text>
+        <text class="${type(C.qFrom, C.qTo, QUESTION.length)}" x="${X + 62}" y="${A + 83}" font-size="14" fill="${a.ink}">${escapeXml(QUESTION)}</text>
+      </g>
+
+      <!-- The comment for the author: a draft until the review is submitted -->
+      <g class="${show(C.threadB)}">
+        <rect x="${X + 14.5}" y="${B + 0.5}" width="${XR - X - 29}" height="122" rx="10" fill="${a.paper}" stroke="${a.hair}"/>
+        ${threadHead(B, 'PR comment', a.n, 'Review comment on line 13', `<text class="${between(-1, C.github)}" x="${XR - 34}" y="${B + 23}" text-anchor="end" font-size="12.5" fill="${a.ink3}">posts when you submit · Draft</text><text class="${show(C.github, 'none')}" x="${XR - 34}" y="${B + 23}" text-anchor="end" font-size="12.5" fill="${a.add}">Posted to GitHub</text>`)}
+        <circle cx="${X + 40}" cy="${B + 62}" r="12" fill="${a.ink}"/>
+        <text x="${X + 62}" y="${B + 60}" font-size="13" fill="${a.ink3}"><tspan font-weight="600" fill="${a.ink}">You</tspan>  commented just now</text>
+        <text class="${type(C.cFrom, C.cFrom + (C.cTo - C.cFrom) * 0.62, COMMENT[0].length)}" x="${X + 62}" y="${B + 83}" font-size="14" fill="${a.ink}">${COMMENT[0]}</text>
+        <text class="${type(C.cFrom + (C.cTo - C.cFrom) * 0.62, C.cTo, COMMENT[1].length)}" x="${X + 62}" y="${B + 104}" font-size="14" fill="${a.ink}">${COMMENT[1]}</text>
+      </g>
+    </g>
+    <rect x="${RX + 0.5}" y="${TOP + 0.5}" width="${RW - 1}" height="${WH - 1}" rx="11.5" fill="none" stroke="${a.hair}"/>
+  </g>
+  ${pointer(RX + RW - 74, TOP + 30, C.click - 4, C.click)}`
+
+  /* ── GitHub: where the submitted review lands ── */
+  const gx = PAD + 16
+  const gw = TW - 32
+  const gy = TOP + WH - 300
+  const gh = `
+  <g class="${show(C.github, 'translateY(24px)')}">
+    <g filter="url(#shadow)"><rect x="${gx}" y="${gy}" width="${gw}" height="284" rx="10" fill="${a.paper}"/></g>
+    <rect x="${gx + 0.5}" y="${gy + 0.5}" width="${gw - 1}" height="283" rx="9.5" fill="none" stroke="${a.hair}"/>
+    <path d="M${gx} ${gy + 32}V${gy + 10}a10 10 0 0 1 10 -10H${gx + gw - 10}a10 10 0 0 1 10 10V${gy + 32}z" fill="${a.fill}"/>
+    <circle cx="${gx + 16}" cy="${gy + 16}" r="4.5" fill="${a.fill2}"/><circle cx="${gx + 30}" cy="${gy + 16}" r="4.5" fill="${a.fill2}"/><circle cx="${gx + 44}" cy="${gy + 16}" r="4.5" fill="${a.fill2}"/>
+    <text x="${gx + 62}" y="${gy + 20.5}" font-family="${MONO}" font-size="12" fill="${a.ink3}">${LINK}</text>
+    <g font-family="${SANS}">
+      <rect x="${gx + 16}" y="${gy + 46}" width="52" height="22" rx="11" fill="${a.brand}"/>
+      <text x="${gx + 42}" y="${gy + 61}" text-anchor="middle" font-size="12" font-weight="600" fill="#fff">Open</text>
+      <text x="${gx + 78}" y="${gy + 62}" font-size="14.5" font-weight="600" fill="${a.ink}">Recurring todos: every monday… <tspan font-weight="400" fill="${a.ink3}">#1</tspan></text>
+      <circle cx="${gx + 28}" cy="${gy + 98}" r="12" fill="${a.fill2}"/>
+      <circle cx="${gx + 50}" cy="${gy + 98}" r="7" fill="${a.del}"/>
+      <path d="M${gx + 47.5} ${gy + 95.5}l5 5M${gx + 52.5} ${gy + 95.5}l-5 5" stroke="#fff" stroke-width="1.5" stroke-linecap="round"/>
+      <text x="${gx + 64}" y="${gy + 102.5}" font-size="13" fill="${a.ink2}"><tspan font-weight="600" fill="${a.ink}">you</tspan> requested changes · now</text>
+      <rect x="${gx + 16.5}" y="${gy + 120.5}" width="${gw - 33}" height="148" rx="7" fill="${a.paper}" stroke="${a.hair}"/>
+      <path d="M${gx + 17} ${gy + 128}a7 7 0 0 1 7 -7H${gx + gw - 24}a7 7 0 0 1 7 7V${gy + 148}H${gx + 17}z" fill="${a.fill}"/>
+      <text x="${gx + 28}" y="${gy + 139}" font-family="${MONO}" font-size="12" fill="${a.ink2}">src/scheduler/streak.ts</text>
+      <rect x="${gx + 17}" y="${gy + 148}" width="${gw - 34}" height="26" fill="${a.addRow}"/>
+      <text x="${gx + 28}" y="${gy + 165.5}" font-family="${MONO}" font-size="12" fill="${a.ink3}" xml:space="preserve">13 <tspan fill="${a.add}">+</tspan><tspan fill="${a.ink}">  if (c.doneAt &gt; startOfDay(c.dueAt)) break</tspan></text>
+      <text x="${gx + 28}" y="${gy + 200}" font-size="13" fill="${a.ink}">Anything done on its due day counts as late</text>
+      <text x="${gx + 28}" y="${gy + 219}" font-size="13" fill="${a.ink}">here, so the streak resets every time. Compare</text>
+      <text x="${gx + 28}" y="${gy + 238}" font-size="13" fill="${a.ink}">the days on both sides.</text>
+      <text x="${gx + 28}" y="${gy + 258}" font-size="11.5" fill="${a.ink3}">Your private thread stayed on your machine.</text>
+    </g>
+  </g>`
+
+  /* ── the messages ── */
+  const termEdge = PAD + TW - 10
+  const reviewEdge = X + 6
+  const flights = `
+  ${flight({ x: tx + 200, y: TOP + 269 }, { x: RX + 18, y: TOP + 150 }, C.open1[0], C.open1[1], 'opens PR #1', a.brand, 'arrow-brand')}
+  ${flight({ x: reviewEdge, y: A + 78 }, { x: termEdge, y: TOP + 303 }, C.ask[0], C.ask[1], 'Private · line 13', amber, 'arrow-amber')}
+  ${flight({ x: termEdge, y: TOP + 389 }, { x: reviewEdge, y: A + A_H + 40 }, C.reply[0], C.reply[1], 'answer', a.brand, 'arrow-brand')}
+  ${flight({ x: reviewEdge, y: B + 78 }, { x: gx + gw - 6, y: gy + 98 }, C.submit[0], C.submit[1], 'review → GitHub', a.ink2, 'arrow-ink')}`
+
+  return svg(
+    'A pull request in Diffo: in the agent’s terminal you hand over the PR link and it is checked out in a worktree of its own; a Private question on line 13 crosses to your agent, which runs the tests and answers in the thread; a PR comment waits as a draft until Submit review, and then the review crosses to GitHub, while the private thread stays on your machine.',
+    `${term}\n    ${review}\n    ${gh}\n    ${flights}`,
   )
 }
 
@@ -1097,5 +1409,8 @@ for (const [suffix, theme] of [
   // The scenes live with the docs' clips, so the site and the README share one file.
   writeFileSync(join(root, 'docs/assets', `readme-demo${suffix}.svg`), demo(app, !!suffix))
   writeFileSync(join(root, 'docs/assets', `readme-layers${suffix}.svg`), layers(app, !!suffix))
+  writeFileSync(join(root, 'docs/assets', `readme-pr${suffix}.svg`), pullRequest(app, !!suffix))
 }
-console.log('wrote assets/readme-hero{,-dark}.svg and docs/assets/readme-{demo,layers}{,-dark}.svg')
+console.log(
+  'wrote assets/readme-hero{,-dark}.svg and docs/assets/readme-{demo,layers,pr}{,-dark}.svg',
+)

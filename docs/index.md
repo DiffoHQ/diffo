@@ -81,8 +81,8 @@ the plan. [Layers](./guide/layers) has the whole of it.
 
 ## Pull requests too
 
-<video class="clip home-clip" src="./assets/pr-review.mp4" muted loop playsinline width="1152" height="648" poster="./assets/pr-review-poster.jpg" preload="none"
-  aria-label="One take of a pull request review: the reviewer types /diffo with a pull request's link in Claude Code, the review opens beside the session with the PR's title, author and checks in the header, the agent lays the change out in layers, a question for the agent on the streak check comes back answered in the thread, a comment for GitHub goes on the same line, and the review is submitted with Request changes and appears on the pull request"></video>
+![A pull request in Diffo: you hand the PR link to your agent and it is checked out in a worktree of its own; a Private question on line 13 crosses to your agent, which runs the tests and answers in the thread; a PR comment waits as a draft until Submit review, and then the review crosses to GitHub, while the private thread stays on your machine.](./assets/readme-pr.svg){.clip .clip-light .home-clip}
+![A pull request in Diffo: you hand the PR link to your agent and it is checked out in a worktree of its own; a Private question on line 13 crosses to your agent, which runs the tests and answers in the thread; a PR comment waits as a draft until Submit review, and then the review crosses to GitHub, while the private thread stays on your machine.](./assets/readme-pr-dark.svg){.clip .clip-dark .home-clip}
 
 When a pull request lands on your desk, `/diffo <PR link>` opens it in a worktree of its
 own, with its conversation imported and your agent beside you as a copilot for code it did
