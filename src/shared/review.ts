@@ -321,6 +321,36 @@ export interface Layer {
    * else changes: fold, never hide. */
   kind?: 'mechanical'
   files: LayerFile[]
+  /** What the agent chose, found, or ran into while making this step — the
+   * handful of lines a reviewer reads before (or instead of) the diff. Most
+   * layers have none; a plumbing step has nothing to decide. At most five. */
+  decisions?: Decision[]
+}
+
+/**
+ * A decision is one short line — what the agent chose, found, or ran into
+ * while making the step — with an optional sentence more and the places it
+ * lives. Nothing about it is typed: the line carries its own weight.
+ */
+export interface Decision {
+  /** One short line — the agent is asked for under eight words. */
+  text: string
+  /** One sentence more, inline markdown; the card shows it on open. */
+  detail?: string
+  /** Where it lives in the code, head side: one to three places, since a
+   * decision can span hunks (the rule and the test that pins it). The line is
+   * optional: a decision may point at a file, or at nothing in the changeset. */
+  at?: DecisionAt[]
+}
+
+/** The most places one decision names: enough for a rule and its test, never
+ * a file list — the layer's files are that. */
+export const DECISION_PLACES = 3
+
+export interface DecisionAt {
+  path: string
+  line?: number
+  endLine?: number
 }
 
 /**

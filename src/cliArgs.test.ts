@@ -308,6 +308,9 @@ describe('parseCliArgs — help is never an error', () => {
     const page = helpFor('layers')
     expect(page).toContain(LAYERS.summary)
     expect(page).toContain(LAYERS.diagram)
+    // Decisions ride on the same page as the shape that carries them.
+    expect(page).toContain(LAYERS.decisions)
+    expect(page).toContain('"decisions"')
     for (const line of GUIDE_CLASSDEFS) expect(page).toContain(line)
     // help agent carries the same rules, so no surface teaches a thinner summary.
     const agent = helpFor('agent')

@@ -396,3 +396,91 @@ describe('findDescription', () => {
     expect(findDescription([comment, description])).toBe(description)
   })
 })
+
+describe('decisions', () => {
+  const dueDate: FileChange = file('src/dueDate.ts', 0, {
+    hunks: [
+      {
+        id: 'dd#1',
+        path: 'src/dueDate.ts',
+        oldStart: 10,
+        newStart: 10,
+        lines: [
+          { kind: 'context', oldNo: 10, newNo: 10, text: 'export function parseDue() {' },
+          { kind: 'add', oldNo: null, newNo: 11, text: '  const cache = requestCache()' },
+          { kind: 'add', oldNo: null, newNo: 12, text: '  return cache.get(key)' },
+        ],
+      },
+      { id: 'dd#2', path: 'src/dueDate.ts', oldStart: 30, newStart: 35, lines: [] },
+    ],
+  })
+  const test: FileChange = file('test/dueDate.test.ts', 0, {
+    hunks: [
+      {
+        id: 'tt#1',
+        path: 'test/dueDate.test.ts',
+        oldStart: 40,
+        newStart: 40,
+        lines: [{ kind: 'add', oldNo: null, newNo: 40, text: "it('caches per request')" }],
+      },
+    ],
+  })
+  const at = (path: string, line?: number, endLine?: number) => ({
+    path,
+    ...(line === undefined ? {} : { line }),
+    ...(endLine === undefined ? {} : { endLine }),
+  })
+
+  it('resolves each place to its file and the hunk showing its line', () => {
+    const [layer] = resolveLayers(
+      layers([
+        {
+          id: 'a',
+          title: 'A',
+          files: ['src/dueDate.ts', 'test/dueDate.test.ts'],
+          decisions: [
+            {
+              text: 'Caches per request',
+              at: [at('src/dueDate.ts', 11, 12), at('test/dueDate.test.ts', 40)],
+            },
+            { text: 'No clock on todos', at: [at('src/model.ts')] },
+            { text: 'Nothing to point at' },
+          ],
+        },
+      ]),
+      [dueDate, test],
+    )
+    const [cache, clock, bare] = layer!.decisions!
+    expect(cache!.places).toEqual([
+      { at: at('src/dueDate.ts', 11, 12), file: dueDate, hunkId: 'dd#1' },
+      { at: at('test/dueDate.test.ts', 40), file: test, hunkId: 'tt#1' },
+    ])
+    // A file the changeset lacks: the place stands, with nowhere to go.
+    expect(clock!.places).toEqual([{ at: at('src/model.ts') }])
+    expect(bare!.places).toEqual([])
+  })
+
+  it('a line outside the diff keeps its file but has no hunk; a file-only place has neither line nor hunk', () => {
+    const [layer] = resolveLayers(
+      layers([
+        {
+          id: 'a',
+          title: 'A',
+          files: ['src/dueDate.ts'],
+          decisions: [
+            { text: 'gone', at: [at('src/dueDate.ts', 99)] },
+            { text: 'whole', at: [at('src/dueDate.ts')] },
+          ],
+        },
+      ]),
+      [dueDate],
+    )
+    expect(layer!.decisions![0]!.places[0]).toEqual({ at: at('src/dueDate.ts', 99), file: dueDate })
+    expect(layer!.decisions![1]!.places[0]).toEqual({ at: at('src/dueDate.ts'), file: dueDate })
+  })
+
+  it('a layer without decisions carries none, so the card shows nothing', () => {
+    const [layer] = resolveLayers(layers([{ id: 'a', title: 'A', files: ['src/cli.ts'] }]), FILES)
+    expect(layer).not.toHaveProperty('decisions')
+  })
+})

@@ -802,6 +802,37 @@ describe('CommentBox', () => {
     expect(onCancel).toHaveBeenCalled()
   })
 
+  it('a cited decision rides ahead of the words on every way out: Add comment and Send to agent', () => {
+    const onSubmit = vi.fn()
+    const onSend = vi.fn()
+    const citing = { label: 'decision', text: 'Caches parsed dates per request' }
+    const { unmount } = render(
+      <CommentBox
+        title="t"
+        placeholder="say…"
+        citing={citing}
+        onSubmit={onSubmit}
+        onSend={onSend}
+        onCancel={vi.fn()}
+      />,
+    )
+    expect(screen.getByText('Caches parsed dates per request').className).toBe('cbox-cite-text')
+    fireEvent.change(box(), { target: { value: 'why per request?' } })
+    fireEvent.click(screen.getByText('Add comment'))
+    expect(onSubmit).toHaveBeenCalledWith(
+      '> decision: Caches parsed dates per request\n\nwhy per request?',
+      false,
+      undefined,
+    )
+    fireEvent.click(screen.getByText('Send to agent'))
+    expect(onSend).toHaveBeenCalledWith(
+      '> decision: Caches parsed dates per request\n\nwhy per request?',
+      false,
+      undefined,
+    )
+    unmount()
+  })
+
   it('closes from the header X and from the footer Close', () => {
     const onCancel = vi.fn()
     render(<CommentBox title="t" placeholder="say…" onSubmit={vi.fn()} onCancel={onCancel} />)

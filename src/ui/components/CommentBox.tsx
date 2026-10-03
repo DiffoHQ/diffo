@@ -186,6 +186,7 @@ export function CommentBox({
   onDraftIntent,
   initialText,
   fixedAudience,
+  citing,
 }: {
   title: string
   placeholder: string
@@ -201,6 +202,10 @@ export function CommentBox({
   initialText?: string
   /** No segment: this composer can only write for one side (a private aside). */
   fixedAudience?: Audience
+  /** Something the comment is about, shown as a cited block above the words
+   * rather than typed into them — a layer's decision, say. It leads the text
+   * that is sent, as a quote, so the reader sees what the words answer. */
+  citing?: { label: string; text: string }
   /** Controlled draft. A range composer's row moves with the range's last line,
    * which re-mounts this component — the owner holds the words (and the intent)
    * so growing the range can never eat a half-typed comment. */
@@ -236,13 +241,16 @@ export function CommentBox({
   const box = useRef<HTMLTextAreaElement>(null)
   const ready = text.trim().length > 0
 
+  // The cited block rides at the top of what is sent, as a markdown quote.
+  const withCite = (words: string) =>
+    citing ? `> ${citing.label}: ${citing.text}\n\n${words}` : words
   const submit = () => {
     if (!ready) return
     // Off a pull request the call is exactly what it always was — three
     // arguments — so nothing that listens to it has to learn a fourth.
-    if (audience === undefined) onSubmit(text, wide, intent)
-    else if (askOnly) onSend(text, wide, undefined)
-    else onSubmit(text, wide, undefined, audience)
+    if (audience === undefined) onSubmit(withCite(text), wide, intent)
+    else if (askOnly) onSend(withCite(text), wide, undefined)
+    else onSubmit(withCite(text), wide, undefined, audience)
   }
   const flip = () => setOwnAudience((a) => (a === 'pr' ? 'agent' : 'pr'))
 
@@ -342,6 +350,13 @@ export function CommentBox({
           </>
         )}
       </div>
+
+      {citing && (
+        <div className="cbox-cite">
+          <span className="cbox-cite-label">{citing.label}</span>
+          <span className="cbox-cite-text">{citing.text}</span>
+        </div>
+      )}
 
       {rich && (
         <div className="cbox-tabs" role="tablist">
@@ -479,7 +494,7 @@ export function CommentBox({
               type="button"
               className="btn btn-sm btn-outline"
               disabled={!ready}
-              onClick={() => ready && onSend(text, wide, intent)}
+              onClick={() => ready && onSend(withCite(text), wide, intent)}
               title={
                 agentConnected
                   ? 'add the comment and send it to your agent'

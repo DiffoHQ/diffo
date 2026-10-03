@@ -14,12 +14,15 @@ export type ReviewAction =
   | 'shortcuts'
   | 'next-layer'
   | 'prev-layer'
+  | 'next-decision'
 
 export function actionForKey(key: string, shift: boolean): ReviewAction | null {
   if (key === 'j') return 'next-hunk'
-  // Brackets step the outline; J/K stay inside a layer.
+  // Brackets step the outline; J/K stay inside a layer; `.` walks the layer's
+  // decisions, opening each and landing on its lines.
   if (key === ']') return 'next-layer'
   if (key === '[') return 'prev-layer'
+  if (key === '.') return 'next-decision'
   if (key === 'k') return 'prev-hunk'
   if (key === 'J' || (shift && key === 'j')) return 'next-file'
   if (key === 'K' || (shift && key === 'k')) return 'prev-file'

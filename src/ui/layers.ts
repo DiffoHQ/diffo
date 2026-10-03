@@ -1,11 +1,13 @@
 import {
+  type Decision,
+  type DecisionAt,
   type Layers,
   layerFileNote,
   layerFilePath,
   type ReviewThread,
   startedByAgent,
 } from '../shared/review.js'
-import type { FileChange } from '../shared/types.js'
+import type { FileChange, Hunk } from '../shared/types.js'
 import { fileMarks } from './fileMarks.js'
 
 // Resolution happens at render, never at write. The agent posts paths; the
@@ -18,6 +20,26 @@ export interface ResolvedLayerFile {
   file: FileChange
   /** The agent's one line on why this file is in this step. */
   note?: string
+}
+
+/**
+ * One place a decision names, against the live changeset: the file, when the
+ * changeset has it, and the hunk that shows its line on the head side, when
+ * one does. Nothing here is stored — like the layer's files, it is re-asked
+ * on every render, so a place whose code moved simply loses its hunk rather
+ * than pointing at the wrong one.
+ */
+export interface ResolvedPlace {
+  at: DecisionAt
+  file?: FileChange
+  hunkId?: string
+}
+
+export interface ResolvedDecision {
+  decision: Decision
+  /** The decision's places, in the order the agent named them; empty when it
+   * points at nothing. The first is where `.` lands. */
+  places: ResolvedPlace[]
 }
 
 export interface ResolvedLayer {
@@ -39,6 +61,31 @@ export interface ResolvedLayer {
   /** Listed files the reviewer's filter took out of `files` — still in the
    * changeset, not shown (see `hideLayerFiles`). Absent when nothing was. */
   hidden?: number
+  /** The agent's decisions for this step, resolved. Absent when it posted none. */
+  decisions?: ResolvedDecision[]
+}
+
+/** The hunk showing a head-side line, if the diff has one. */
+function hunkAtLine(file: FileChange, line: number): Hunk | undefined {
+  return file.hunks.find((h) => h.lines.some((l) => l.kind !== 'del' && l.newNo === line))
+}
+
+function resolvePlace(at: DecisionAt, byPath: ReadonlyMap<string, FileChange>): ResolvedPlace {
+  const file = byPath.get(at.path)
+  if (!file) return { at }
+  const hunk = at.line === undefined ? undefined : hunkAtLine(file, at.line)
+  return hunk ? { at, file, hunkId: hunk.id } : { at, file }
+}
+
+export function resolveDecisions(
+  decisions: readonly Decision[] | undefined,
+  byPath: ReadonlyMap<string, FileChange>,
+): ResolvedDecision[] | undefined {
+  if (!decisions || decisions.length === 0) return undefined
+  return decisions.map((decision) => ({
+    decision,
+    places: (decision.at ?? []).map((at) => resolvePlace(at, byPath)),
+  }))
 }
 
 /**
@@ -76,6 +123,7 @@ export function resolveLayers(
       const note = layerFileNote(entry)
       present.push(note ? { file, note } : { file })
     }
+    const decisions = resolveDecisions(layer.decisions, byPath)
     return {
       id: layer.id,
       number: i + 1,
@@ -85,6 +133,7 @@ export function resolveLayers(
       files: present,
       missing,
       derived: false,
+      ...(decisions ? { decisions } : {}),
     }
   })
   const rest = files.filter((f) => !listed.has(f.path))

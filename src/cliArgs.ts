@@ -334,6 +334,8 @@ accepted (the file may land later) and simply shows nothing until it does.
 Files you touch after posting land in a trailing "Since your review" layer
 until you re-post.
 
+Decisions: ${LAYERS.decisions}.
+
 Shape: ${LAYERS.shape}
 
 Output: {"ok":true,"layers":4,"next_step":"…"}
@@ -341,7 +343,7 @@ Output: {"ok":true,"layers":4,"next_step":"…"}
 
 Examples:
   diffo layers --suggest "the parser change explains the rest"
-  diffo layers --json '[{"title":"Parser contract","summary":"The contract the rest of the change leans on: bad input now comes back as null, not an exception.","files":["src/parse.ts"]},{"title":"Callers adapted","kind":"mechanical","summary":"Call sites following the new return type.","files":["src/cli.ts","src/api.ts"]}]'`,
+  diffo layers --json '[{"title":"Parser contract","summary":"The contract the rest of the change leans on: bad input now comes back as null, not an exception.","files":["src/parse.ts"],"decisions":[{"text":"Bad input returns null, not a throw","detail":"Callers already branch on null for a missing value; a throw would need a try at every site.","at":"src/parse.ts:41-46"}]},{"title":"Callers adapted","kind":"mechanical","summary":"Call sites following the new return type.","files":["src/cli.ts","src/api.ts"]}]'`,
   end: `diffo end: detach from the review politely
 
 Usage: diffo end

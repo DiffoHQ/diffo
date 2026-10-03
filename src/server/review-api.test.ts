@@ -1554,6 +1554,38 @@ describe('POST /api/review/layers', () => {
     expect(got.layers).toEqual(layers)
   })
 
+  it('carries a layer’s decisions through the store and back out', async () => {
+    const { app, review } = setup()
+    const decisions = [
+      {
+        text: 'Caches parsed dates per request',
+        detail: 'Dies with the request.',
+        at: 'app.ts:12-18',
+      },
+      { text: 'Todos have a date, never a time' },
+    ]
+    const res = await post(app, '/api/review/layers', {
+      items: [{ title: 'Contract', files: ['app.ts'], decisions }],
+    })
+    expect(res.status).toBe(200)
+    expect(review.get().layers?.items[0]?.decisions).toEqual([
+      {
+        text: 'Caches parsed dates per request',
+        detail: 'Dies with the request.',
+        at: [{ path: 'app.ts', line: 12, endLine: 18 }],
+      },
+      { text: 'Todos have a date, never a time' },
+    ])
+    const six = Array.from({ length: 6 }, (_, i) => ({ text: `f${i}` }))
+    const tooMany = await post(app, '/api/review/layers', {
+      items: [{ title: 'Contract', files: ['app.ts'], decisions: six }],
+    })
+    expect(tooMany.status).toBe(400)
+    expect(((await tooMany.json()) as { error: string }).error).toContain('keep "decisions" to 5')
+    // The refused post left the stored outline alone.
+    expect(review.get().layers?.items[0]?.decisions).toHaveLength(2)
+  })
+
   it('refuses a malformed post with the validator’s own words, and stores nothing', async () => {
     const { app, review } = setup()
     const res = await post(app, '/api/review/layers', { items: [{ title: 'No files' }] })

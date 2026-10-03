@@ -387,6 +387,12 @@ function Review() {
   // marks have loaded (or when the remembered layer is gone) the outline opens
   // on the first layer with something unread.
   const [activeLayerKey, setActiveLayerKey] = useState<string | null>(null)
+  // The one open decision card in the active layer. Lives up here so `.` can
+  // walk it; a layer change closes it, since the index would name a different
+  // line.
+  const [openDecision, setOpenDecision] = useState<number | null>(null)
+  // biome-ignore lint/correctness/useExhaustiveDependencies: the key change is the trigger
+  useEffect(() => setOpenDecision(null), [activeLayerKey])
   const guide = useMemo(() => findGuide(review?.threads ?? []), [review?.threads])
   // On a pull request the author's description is the overview whether or not
   // the agent has posted a guide: it is the map the author drew.
@@ -1240,6 +1246,17 @@ function Review() {
         // `[` off the front of the outline lands on the Overview, when there is one.
         if (to !== null) goLayer(to)
         else if (action === 'prev-layer' && hasOverview && !onOverview) goOverview()
+      } else if (action === 'next-decision') {
+        // Walk the layer's decisions: open the next card and land on the first
+        // place it names. A decision with no place in the diff opens at the
+        // top of the pane instead.
+        const list = paneLayerActive?.decisions
+        if (!list || list.length === 0) return
+        const next = openDecision === null ? 0 : (openDecision + 1) % list.length
+        setOpenDecision(next)
+        const first = list[next]!.places.find((p) => p.hunkId)
+        if (first) jumpTo(first.at.path, first.at.line ?? null)
+        else document.querySelector<HTMLElement>('.reading-pane')?.scrollTo({ top: 0 })
       } else {
         moveSelection(action)
       }
@@ -1265,6 +1282,9 @@ function Review() {
     goOverview,
     guide,
     onOverview,
+    paneLayerActive,
+    openDecision,
+    jumpTo,
   ])
 
   // ---------- what the pane and the bar say about the active layer ----------
@@ -1281,6 +1301,13 @@ function Review() {
     }
     return {
       id: activeLayer.id,
+      ...(activeLayer.decisions
+        ? {
+            decisions: activeLayer.decisions,
+            openDecision,
+            onOpenDecision: setOpenDecision,
+          }
+        : {}),
       kicker: activeLayer.derived
         ? 'Outside the outline'
         : `Layer ${activeLayer.number} of ${layerCount}`,
@@ -1301,7 +1328,7 @@ function Review() {
       notes,
       knownPaths: allFiles.map((f) => f.path),
     }
-  }, [paneLayerActive, layerCount, jumpTo, allFiles])
+  }, [paneLayerActive, layerCount, jumpTo, allFiles, openDecision])
   const paneLayer = useMemo(() => {
     const step = (dir: 1 | -1) => stepLayer(shownLayers, activeIndex, dir, layerEmptied)
     const to = (i: number | null) =>

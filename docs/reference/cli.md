@@ -258,15 +258,23 @@ Exactly one of:
 | `--json '<Layer[]>'` | Post the outline. **Replaces** the whole list; ids are kept for titles that match, so the reviewer's place survives a re-post |
 | `--stdin` | The same payload, piped |
 
-A layer is `{ title, summary?, kind?, files }`. `files` holds repo-relative
-paths, as strings or as `{ "path", "note" }` where the note is one line on why
-the file is in this step. `kind` may only be `"mechanical"`: the layer changes no
-behaviour, and its files render folded. A `path:from-to` string is accepted and
-reserved; today it means the whole file. Unknown paths are accepted and show
-nothing until the file lands.
+A layer is `{ title, summary?, kind?, files, decisions? }`. `files` holds
+repo-relative paths, as strings or as `{ "path", "note" }` where the note is one
+line on why the file is in this step. `kind` may only be `"mechanical"`: the
+layer changes no behaviour, and its files render folded. A `path:from-to` string
+is accepted and reserved; today it means the whole file. Unknown paths are
+accepted and show nothing until the file lands.
+
+`decisions` is optional and holds at most five `{ text, detail?, at? }`: `text`
+one short line, `detail` one sentence more, and `at` where it lives: `"path"`,
+`"path:line"` or `"path:from-to"` (head side), or a list of up to three such
+places when the decision spans hunks. A sixth decision, a fourth place or a
+malformed `at` fails the post the same way a bad file does.
+[Layers](/agents#layers) has what earns a line.
 
 A title that is empty or used twice, an empty file list, an absolute or
-`..`-escaping path, or a `kind` other than `mechanical` fails with exit 1 and
+`..`-escaping path, a `kind` other than `mechanical`, or more than five
+decisions fails with exit 1 and
 names the layer at fault (`layer 2 ("Callers"): needs a non-empty "files" list`).
 Nothing is stored on a failed post.
 

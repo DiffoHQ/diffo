@@ -211,6 +211,7 @@ Two commands, one doctrine:
 | **Mechanical** | `"kind": "mechanical"` marks a layer that changes no behaviour (a rename, call sites following a signature); its files render folded. If unsure, don't tag |
 | **Summaries** | What the layer is about, and enough context to review it: the part its files cannot show on their own. No template: the agent writes it however the step reads best, kept short, without retelling the diff. The guide's line holds verbatim: orient reading, never pre-review |
 | **Diagrams** | When the step has a shape (a flow, a decision, a before/after), a small ```` ```mermaid ```` diagram usually beats prose. Nodes are tagged `:::new` / `:::changed` with the guide's two classDef lines |
+| **Decisions** | Up to five per layer, each one short line (under eight words) with a one-sentence `detail` and an `at`, where it lives: `path`, `path:line` or `path:from-to`, or a list of up to three such places when the decision spans hunks (the rule and the test that pins it). A decision is where the agent chose between real alternatives a reviewer might weigh differently (a cache, a data shape, a fallback), where the code now does something the diff does not make obvious (a 400 where there was an empty list, a sort every caller sees), or where something in the repo or the environment shaped the change (no clock on the model, tests that could not run). Only what a reviewer could want done differently or would be surprised by later; nothing about naming or style; no verdicts. Each line is a concrete statement in plain words, the answer to "what did you decide here?" for a teammate who has not seen the code, understood in a second: no project nicknames, no clever phrasing, the effect rather than the mechanism. Most layers have none — a plumbing step has nothing to decide, so the list is left out |
 
 A layer:
 
@@ -222,9 +223,27 @@ A layer:
   "files": [
     "src/weekday.ts",
     { "path": "src/dates.ts", "note": "delegates to resolveWeekday; the old arithmetic goes" }
+  ],
+  "decisions": [                   // optional, at most five
+    {
+      "text": "A bare weekday means next week, never today",
+      "detail": "The ask didn't say. Same-day would need a clock the todo doesn't have.",
+      "at": "src/weekday.ts:31-36"
+    },
+    {
+      "text": "Unknown ?due= values return 400, not an empty list",
+      "at": ["src/routes.ts:45-47", "test/routes.test.ts:12"]   // one place, or up to three
+    },
+    { "text": "Todos have a date, never a time", "at": "src/model/todo.ts:8" }
   ]
 }
 ```
+
+The reviewer sees the decisions under the layer's summary, one line each, and
+`.` walks them, landing on the first place. Opening one shows the detail, a chip
+for each place that goes there, and `Comment`, which opens a comment on the
+layer with the decision quoted: a layer thread, in the payload like any other,
+opening with `> decision: …`.
 
 Files are whole files, by path relative to the repo root. A `path:from-to` form
 is accepted and reserved; in this version it means the whole file. Unknown paths

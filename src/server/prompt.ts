@@ -322,9 +322,14 @@ export const LAYERS = {
   /** A post is the whole list. */
   replace:
     "a post replaces the whole list, never merges; ids are kept for titles that match, so a re-post never moves the reviewer's place",
+  /** What earns a line in a layer's `decisions`, and the bar for it. The
+   * reviewer reads these before the diff — or instead of it — so every entry
+   * must be something they could act on, never a retelling of the change. */
+  decisions:
+    'a layer may carry up to five "decisions", each one short line (under eight words) with a one-sentence "detail" and an "at" — where it lives: "path", "path:line" or "path:from-to", or a list of up to three such places when the decision spans hunks (the rule and the test that pins it). A decision is where you chose between real alternatives a reviewer might weigh differently (a cache, a data shape, a fallback), where the code now does something the diff does not make obvious (a 400 where there was an empty list, a sort every caller sees), or where something in the repo or the environment shaped the change (no clock on the model, tests you could not run). Only what a reviewer could want done differently or would be surprised by later; nothing about naming or style; no verdicts. Write each line the way you would answer "what did you decide here?" to a teammate who has not seen the code: a concrete statement in plain words ("Unknown ?due= values return 400, not an empty list", "Todos store a date, never a time"), understood in a second by someone who has not read the diff — no project nicknames, no clever phrasing, no mechanism named instead of its effect. Most layers have none — a plumbing step has nothing to decide, so leave the list out',
   /** The payload, in one line. */
   shape:
-    '[{ "title": "…", "summary": "…", "kind": "mechanical" (optional), "files": ["src/a.ts", { "path": "src/b.ts", "note": "why this file is in this step" }] }]',
+    '[{ "title": "…", "summary": "…", "kind": "mechanical" (optional), "files": ["src/a.ts", { "path": "src/b.ts", "note": "why this file is in this step" }], "decisions": [{ "text": "…", "detail": "…", "at": "src/a.ts:12-18" | ["src/a.ts:12-18", "test/a.test.ts:40"] }] (optional, at most five) }]',
 } as const
 
 /**
@@ -1029,6 +1034,8 @@ export function buildLayersRequestPrompt(
     ...GUIDE_CLASSDEFS.map((line) => `    ${line}`),
     '',
     `Order: ${D.layers.order}. ${D.layers.mechanical}. ${D.layers.stance}. Files are whole files, by path relative to the repo root; list every file of the changeset somewhere, or the leftovers land in "Since your review".`,
+    '',
+    `Decisions: ${D.layers.decisions}.`,
     '',
     `Shape: ${LAYERS.shape}`,
     '',

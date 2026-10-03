@@ -396,12 +396,6 @@ export function Nav({
 
   const isDone = useCallback((file: FileChange) => isFileViewed(file, viewed), [viewed])
 
-  // The tally counts the whole changeset, not the filtered view — "12 left" must
-  // stay honest while a filter narrows what's on screen.
-  const left = files.filter((f) => !isDone(f)).length
-  const testCount = files.filter((f) => isTestFile(f.path)).length
-  const sinceCount = files.filter((f) => changed?.has(f.path) ?? false).length
-
   const visible = useMemo(() => {
     const q = query.trim().toLowerCase()
     return files.filter(
