@@ -73,7 +73,6 @@ export interface PaneControls {
   onSetViewMode: (mode: ViewMode) => void
   allCollapsed: boolean
   onToggleCollapseAll: () => void
-  onAddNote?: () => void
   /** The bar's account of the active layer, with its pager. */
   layer?: PaneLayer
 }
@@ -273,22 +272,6 @@ export interface ReviewHandlers {
   comments?: ReviewComments
 }
 
-function Squares({ additions, deletions }: { additions: number; deletions: number }) {
-  const total = additions + deletions
-  let add = total === 0 ? 0 : Math.round((additions / total) * 5)
-  // A change that exists gets at least one square, however lopsided the ratio.
-  if (additions > 0 && add === 0) add = 1
-  if (deletions > 0 && add === 5) add = 4
-  return (
-    <span className="sq" aria-hidden="true">
-      {Array.from({ length: 5 }, (_, i) => (
-        // biome-ignore lint/suspicious/noArrayIndexKey: five fixed squares — position is the identity
-        <i key={i} className={total === 0 ? '' : i < add ? 'sq-a' : 'sq-d'} />
-      ))}
-    </span>
-  )
-}
-
 const STATUS_WORD: Partial<Record<FileChange['status'], string>> = {
   added: 'added',
   deleted: 'deleted',
@@ -400,7 +383,6 @@ function FileHeader({
         <span className="dstat">
           {additions > 0 && <span className="stat-add">+{additions}</span>}
           {deletions > 0 && <span className="stat-del">−{deletions}</span>}
-          <Squares additions={additions} deletions={deletions} />
         </span>
       )}
       {canPreviewMarkdown(file) && (
@@ -433,11 +415,13 @@ function FileHeader({
           Viewed
         </button>
       )}
-      {onComment && (
+      {/* The bubble is a count, not a control: it appears once the file has threads
+          and jumps to them. Starting one lives in the menu, and on every line. */}
+      {onComment && commentCount > 0 && (
         <button
           type="button"
           className="ghb file-comment-btn"
-          title="Comment on this file"
+          title={`${commentCount} ${commentCount === 1 ? 'thread' : 'threads'} on this file`}
           aria-label="Comment on this file"
           onClick={(e) => {
             stop(e)
@@ -445,7 +429,7 @@ function FileHeader({
           }}
         >
           <Icon name="chat" size="sm" />
-          {commentCount > 0 && <span className="ghb-badge">{commentCount}</span>}
+          <span className="ghb-badge">{commentCount}</span>
         </button>
       )}
       {/* biome-ignore lint/a11y/noStaticElementInteractions: the handler only contains a mouse click */}
@@ -454,6 +438,17 @@ function FileHeader({
         <Menu label="More file actions" triggerClassName="ghb">
           {(close) => (
             <>
+              {onComment && (
+                <MenuItem
+                  icon="chat"
+                  onClick={() => {
+                    close()
+                    onComment()
+                  }}
+                >
+                  Comment on this file
+                </MenuItem>
+              )}
               <MenuItem
                 icon="copy"
                 onClick={() => {
@@ -1262,7 +1257,7 @@ export function ReadingPane({
           onSetViewMode={controls.onSetViewMode}
           allCollapsed={controls.allCollapsed}
           onToggleCollapseAll={controls.onToggleCollapseAll}
-          onAddNote={controls.onAddNote}
+          stats={controls.stats}
           layer={controls.layer}
         />
       )}

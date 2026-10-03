@@ -45,13 +45,14 @@ describe('Header dev badge', () => {
 })
 
 describe('Header', () => {
-  it('states the comparison outright, with thousands separators', () => {
+  it('states the place in one line — repo, then the comparison; the size lives in the pane bar', () => {
     const { container } = render(<Header changeset={changeset()} />)
     const chip = container.querySelector('.cmp')!
+    expect(chip.querySelector('.repo')!.textContent).toBe('Diffo')
     expect(chip.textContent).toContain('working tree')
     expect(chip.textContent).toContain('HEAD')
-    expect(chip.textContent).toContain('+1,316')
-    expect(chip.textContent).toContain('−157')
+    expect(chip.textContent).not.toContain('+1,316')
+    expect(container.querySelectorAll('.cmp')).toHaveLength(1)
   })
 
   it('branch mode drops into the same shape — feature/x → main', () => {
@@ -162,11 +163,12 @@ describe('Header', () => {
     expect(container.querySelector('.top')?.firstElementChild?.className).toBe('mark')
   })
 
-  it('says where you are: repo, worktree, branch', () => {
+  it('says where you are once: the branch and worktree ride in the hover, never as more chips', () => {
     const { unmount } = render(<Header changeset={changeset()} />)
-    expect(document.querySelector('.repo')!.textContent).toBe('Diffo')
-    expect(screen.getByTitle('on branch main').textContent).toContain('main')
-    expect(document.querySelector('.where-bit[title*="worktree"]')).toBeNull()
+    const line = document.querySelector('.cmp')!
+    expect(line.querySelector('.repo')!.textContent).toBe('Diffo')
+    expect(line.getAttribute('title')).toContain('on branch main')
+    expect(line.getAttribute('title')).not.toContain('worktree')
     unmount()
 
     render(
@@ -176,9 +178,11 @@ describe('Header', () => {
         })}
       />,
     )
+    const line2 = document.querySelector('.cmp')!
     expect(screen.getByText('botify')).toBeTruthy()
-    expect(screen.getByTitle("linked worktree 'wt-fix'").textContent).toContain('wt-fix')
-    expect(screen.getByTitle('on branch fix/scope').textContent).toContain('fix/scope')
+    expect(line2.getAttribute('title')).toContain("linked worktree 'wt-fix'")
+    expect(line2.getAttribute('title')).toContain('on branch fix/scope')
+    expect(document.querySelector('.where-bit')).toBeNull()
   })
 
   it('presence with nothing attached offers the invite; attached states just state', () => {

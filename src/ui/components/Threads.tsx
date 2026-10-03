@@ -646,7 +646,11 @@ export function ThreadCard({
         </span>
       )}
       {copied && <span className="thread-badge">prompt copied, paste it to your agent</span>}
-      <span className={`chip chip-${tone}`}>{status}</span>
+      {/* A fresh agent thread's head already reads "Agent comment on …"; a chip
+          saying "From the agent" beside it would say it twice. */}
+      {!(proposed && startedByAgent(thread)) && (
+        <span className={`chip chip-${tone}`}>{status}</span>
+      )}
     </span>
   )
 

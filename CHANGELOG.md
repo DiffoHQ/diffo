@@ -37,6 +37,21 @@ Until 1.0, minor versions may break things. When they do, the entry says how to 
 
 ### Changed
 
+- **The review's chrome says each thing once.** The header is one place line,
+  `repo · branch → base`, with the worktree in its hover; the size of the change
+  moved to the pane bar beside the coverage. The pane bar's filters are pills
+  that report what they did once on — `Hide 11 test files` becomes `11 test
+  files hidden` — and the sidebar lost its duplicate filter menu and tally, and
+  gained a footer that says `N files hidden by filters · show` whenever the
+  pills are hiding something. The Note button left the bar (the band already
+  ends with `+ Note on the changeset`), the file header lost its five squares
+  and shows the comment bubble only once a file has threads (starting one lives
+  in ⋯ and on every line), the frame around the changeset threads is gone, and
+  a fresh agent thread no longer carries a `From the agent` chip beside a head
+  that already says Agent.
+- **The primary button is green**, the brand's and the same green as Submit
+  review on GitHub; secondary actions stay ink. The favicon wears the diff's
+  colours too: a red line over an ink line over a green line.
 - **Progress wears the diff's green.** The viewed-files bar, the finish screen's
   bar and the Viewed box fill in a new `--brand` colour — the diff's + colour
   worn by the chrome — instead of ink. Buttons, selection and focus stay ink;

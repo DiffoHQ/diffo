@@ -125,7 +125,10 @@ describe('ReadingPane', () => {
         }}
       />,
     )
-    expect(container.querySelector('.file-comment-btn svg[data-icon="chat"]')).toBeTruthy()
+    // The file header's bubble only appears once the file has threads; the menu
+    // trigger is the icon that is always there.
+    expect(container.querySelector('.file-comment-btn')).toBeNull()
+    expect(container.querySelector('.file-header svg[data-icon="more"]')).toBeTruthy()
     expect(container.textContent).not.toMatch(/[\u{1F300}-\u{1FAFF}\u{2600}-\u{27BF}]/u)
   })
 
@@ -330,7 +333,8 @@ describe('ReadingPane', () => {
         }}
       />,
     )
-    fireEvent.click(container.querySelector('.file-comment-btn')!)
+    fireEvent.click(screen.getByLabelText('More file actions'))
+    fireEvent.click(screen.getByText('Comment on this file'))
     expect(collapse).toEqual(['src/b.ts'])
   })
 })
@@ -376,7 +380,8 @@ describe('ReadingPane — the pane bar', () => {
     const { container } = render(<ReadingPane files={[FILES[0]!]} controls={controls()} />)
     expect(screen.getByText('18 of 30 files')).toBeTruthy()
     const switches = [...container.querySelectorAll('.pane-bar [role="switch"]')]
-    expect(switches.map((s) => s.textContent)).toEqual(['Hide reviewed', 'Hide tests8'])
+    // On, a switch reports what it did; off, it offers.
+    expect(switches.map((s) => s.textContent)).toEqual(['18 reviewed hidden', 'Hide 8 test files'])
     expect(container.querySelector('.pane-bar [role="checkbox"]')).toBeNull()
     expect(container.querySelector('.reading-pane-barred')).toBeTruthy()
   })
@@ -411,13 +416,15 @@ describe('ReadingPane — the pane bar', () => {
     expect(screen.getByLabelText('Expand all files')).toBeTruthy()
   })
 
-  it('carries + Note, and offers it only when the app can open a composer', () => {
-    const onAddNote = vi.fn()
-    const { rerender } = render(<ReadingPane files={[FILES[0]!]} controls={controls()} />)
-    expect(screen.queryByText('Note')).toBeNull()
-    rerender(<ReadingPane files={[FILES[0]!]} controls={controls({ onAddNote })} />)
-    fireEvent.click(screen.getByText('Note'))
-    expect(onAddNote).toHaveBeenCalled()
+  it('carries the size of the change beside the coverage, and never a −0', () => {
+    render(
+      <ReadingPane
+        files={[FILES[0]!]}
+        controls={controls({ stats: { additions: 1316, deletions: 0 } })}
+      />,
+    )
+    const size = document.querySelector('.pane-size')!
+    expect(size.textContent).toBe('+1,316')
   })
 
   it('hides a switch with nothing to say, and shows it again once it is on', () => {
@@ -426,7 +433,7 @@ describe('ReadingPane — the pane bar', () => {
     )
     expect(screen.queryByText('Hide tests')).toBeNull()
     expect(screen.queryByText('Only since review')).toBeNull()
-    expect(screen.getByText('Hide reviewed')).toBeTruthy()
+    expect(screen.getByText(/reviewed hidden/)).toBeTruthy()
 
     rerender(
       <ReadingPane
@@ -439,6 +446,7 @@ describe('ReadingPane — the pane bar', () => {
         })}
       />,
     )
+    // On with nothing to hide, a switch still offers rather than reporting "0 hidden".
     expect(screen.getByText('Hide tests')).toBeTruthy()
     expect(screen.getByText('Only since review')).toBeTruthy()
   })
@@ -505,7 +513,7 @@ describe('ReadingPane — the pane bar', () => {
     )
     expect(screen.getByText("That's the whole changeset")).toBeTruthy()
     expect(screen.queryByText('Nothing to review')).toBeNull()
-    expect(screen.getByText(/\+1,448/)).toBeTruthy()
+    expect(screen.getAllByText(/\+1,448/)[0]).toBeTruthy()
     expect(screen.getByLabelText(/3 comments waiting to go back/).textContent).toBe('3')
     fireEvent.click(screen.getByText('Finish review'))
     expect(finished).toBe(1)
@@ -523,7 +531,7 @@ describe('ReadingPane — the pane bar', () => {
         controls={controls({ left: 0, stats: { additions: 90, deletions: 0 } })}
       />,
     )
-    expect(screen.getByText(/\+90/)).toBeTruthy()
+    expect(screen.getAllByText(/\+90/)[0]).toBeTruthy()
     expect(screen.queryByText(/−0/)).toBeNull()
   })
 

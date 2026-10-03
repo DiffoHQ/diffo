@@ -4,9 +4,9 @@
 
    Three accent roles that never merge:
      --acc    interactive — selection, focus, the reviewer's own identity.
-     --brand  the product's green: Viewed and progress — what the review has
-              added. It is the diff's + colour worn by the chrome, so it is never
-              used for anything that is not progress; actions stay in ink.
+     --brand  the product's green: the primary action, Viewed and progress. It is the diff's + colour worn by the chrome — the
+              same green a reviewer already reads on GitHub's Submit review — and
+              it is never used for anything else; secondary actions stay in ink.
      --attn   attention — changed-since-read, agent in flight. Amber, the one
               other hue in the chrome.
 
@@ -37,10 +37,12 @@
   --acc-wash: #edeef0;
   --acc-line: #c9c4d6;
 
-  /* --- role 2: brand. The diff's + colour, on Viewed and progress only. --- */
+  /* --- role 2: brand. The diff's + colour: the primary action and progress. --- */
   --brand: #1a7f37;
   --brand-solid: #1f883d;
   --brand-fg: #ffffff;
+  --brand-wash: rgba(31, 136, 61, 0.1);
+  --brand-line: rgba(31, 136, 61, 0.45);
 
   /* --- role 3: attention. The only other hue in the chrome. --- */
   --attn: #9a6206;
@@ -135,6 +137,8 @@
     --brand: #3fb950;
     --brand-solid: #238636;
     --brand-fg: #ffffff;
+    --brand-wash: rgba(63, 185, 80, 0.14);
+    --brand-line: rgba(63, 185, 80, 0.5);
     --attn: #e0a83c;
     --attn-wash: #2a2214;
     --attn-line: #5c4818;
@@ -174,6 +178,8 @@
   --brand: #3fb950;
   --brand-solid: #238636;
   --brand-fg: #ffffff;
+  --brand-wash: rgba(63, 185, 80, 0.14);
+  --brand-line: rgba(63, 185, 80, 0.5);
   --attn: #e0a83c;
   --attn-wash: #2a2214;
   --attn-line: #5c4818;
@@ -212,6 +218,8 @@
   --brand: #1a7f37;
   --brand-solid: #1f883d;
   --brand-fg: #ffffff;
+  --brand-wash: rgba(31, 136, 61, 0.1);
+  --brand-line: rgba(31, 136, 61, 0.45);
   --attn: #9a6206;
   --attn-wash: #faf1e2;
   --attn-line: #e6cfa0;
@@ -558,11 +566,10 @@ body {
   text-overflow: ellipsis;
 }
 
-.where {
-  display: flex;
-  align-items: center;
-  gap: var(--s-2);
-  min-width: 0;
+/* The place line: `repo · from → to`. One thing in the header says where you
+   are; the worktree is in its hover and the size is in the pane bar. */
+.cmp-dot {
+  color: var(--ink-3);
 }
 
 .where-bit {
@@ -1172,6 +1179,37 @@ body {
   margin: var(--s-0) 0;
 }
 
+/* The foot of a filtered list says what is missing and offers it back: the
+   pane bar's pills are where the filters are set, the list is where their
+   effect is felt. */
+.rail-hidden {
+  display: flex;
+  align-items: center;
+  gap: var(--s-3);
+  flex: none;
+  padding: var(--s-3) var(--s-6);
+  border-top: 1px solid var(--hair);
+  background: var(--paper);
+  font-size: var(--t-12);
+  color: var(--ink-3);
+}
+
+.rail-hidden-show {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--ink-2);
+  font: inherit;
+  font-size: var(--t-12);
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.rail-hidden-show:hover {
+  color: var(--ink);
+  text-decoration: underline;
+}
+
 .rail-empty {
   color: var(--ink-3);
   padding: var(--s-3) var(--s-6);
@@ -1672,10 +1710,11 @@ body {
   gap: var(--s-2);
   flex-shrink: 1;
   min-width: 0;
-  padding: 3px var(--s-3);
-  border: none;
+  height: 22px;
+  padding: 0 var(--s-3) 0 var(--s-4);
+  border: 1px solid transparent;
   border-radius: var(--r-pill);
-  background: var(--fill);
+  background: var(--fill-2);
   font: inherit;
   font-size: var(--t-12);
   color: var(--ink);
@@ -1686,7 +1725,7 @@ body {
 }
 
 .pane-q:hover {
-  background: var(--fill-2);
+  border-color: var(--ink-3);
 }
 
 .pane-q:focus-visible {
@@ -1707,13 +1746,26 @@ body {
   font-family: var(--mono);
 }
 
+.pane-size {
+  display: inline-flex;
+  gap: var(--s-2);
+  flex-shrink: 0;
+  font-family: var(--mono);
+  font-size: 11.5px;
+  font-variant-numeric: tabular-nums;
+}
+
+/* The filters are words, not switches. Off, a word in the quiet grey, no edge at
+   all; on, a soft grey fill with ink text — selected, the way a segment is, never
+   coloured: a filter subtracts, and the one green on the bar is the main action. */
 .pane-sw {
   display: inline-flex;
   align-items: center;
-  gap: var(--s-2);
+  gap: var(--s-1);
   flex-shrink: 0;
-  padding: 3px var(--s-3);
-  border: none;
+  height: 22px;
+  padding: 0 var(--s-4);
+  border: 1px solid transparent;
   border-radius: var(--r-pill);
   background: none;
   font: inherit;
@@ -1731,7 +1783,17 @@ body {
 }
 
 .pane-sw-on {
+  background: var(--fill-2);
   color: var(--ink);
+}
+
+.pane-sw-on .menu-n {
+  color: var(--ink-2);
+}
+
+/* The pill is the state; the little track inside it is not drawn. */
+.pane-sw .pane-track {
+  display: none;
 }
 
 .pane-sw:focus-visible {
@@ -4542,14 +4604,16 @@ tr:hover .line-range-glyph {
   outline-offset: 2px;
 }
 
+/* The primary action is green — the brand's, and the convention a reviewer
+   already knows from Submit review on GitHub. Everything else stays ink. */
 .btn-primary {
-  background: var(--acc);
-  color: var(--acc-fg);
+  background: var(--brand-solid);
+  color: var(--brand-fg);
   font-weight: 600;
 }
 
 .btn-primary:hover:not(:disabled) {
-  background: var(--acc);
+  background: var(--brand-solid);
   opacity: 0.85;
 }
 
@@ -5198,10 +5262,10 @@ tr:hover .line-range-glyph {
    Its own register — quieter than a file card (hairline-2, no fill), so the
    thread cards inside stay the loudest thing in it. */
 
+/* The band is a label and the cards under it, not a frame around frames: a
+   thread already has its own edge, and a box around the box read as nesting. */
 .changeset-strip {
   margin-bottom: var(--s-6);
-  border: 1px solid var(--hair-2);
-  border-radius: var(--r);
   scroll-margin-top: var(--s-3);
 }
 
@@ -5212,7 +5276,7 @@ tr:hover .line-range-glyph {
   width: 100%;
   border: none;
   background: none;
-  padding: var(--s-4) var(--s-4);
+  padding: var(--s-2) 0 var(--s-4);
   color: var(--ink-3);
   font-family: var(--sans);
   font-size: var(--t-11);
@@ -5237,7 +5301,7 @@ tr:hover .line-range-glyph {
   flex-direction: column;
   align-items: flex-start;
   gap: var(--s-4);
-  padding: 0 var(--s-4) var(--s-4);
+  padding: 0 0 var(--s-2);
 }
 
 .strip-body .thread-list,

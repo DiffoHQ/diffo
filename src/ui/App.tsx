@@ -1598,7 +1598,6 @@ function Review() {
                     ? new Set()
                     : new Set(data.files.map((f) => f.path)),
                 ),
-              onAddNote: () => setNoteComposerOpen((v) => !v),
             }}
             viewed={viewed}
             onToggleFileViewed={toggleFileViewed}
