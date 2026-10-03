@@ -4521,21 +4521,6 @@ tr:hover .line-range-glyph {
   gap: var(--s-2);
 }
 
-.btn-outline {
-  background: var(--fill-2);
-  border: 1px solid var(--hair);
-  color: var(--ink);
-}
-
-.btn-outline:hover:not(:disabled) {
-  border-color: var(--ink-3);
-  color: var(--ink);
-}
-
-.btn-outline svg {
-  color: var(--ink-3);
-}
-
 .btn-kbd {
   font-family: var(--mono);
   font-size: 10.5px;
@@ -4605,16 +4590,35 @@ tr:hover .line-range-glyph {
 }
 
 /* The primary action is green — the brand's, and the convention a reviewer
-   already knows from Submit review on GitHub. Everything else stays ink. */
+   already knows from Submit review on GitHub. Everything else stays ink.
+   It is a tint, not a solid block: green type on a green wash reads as the
+   main action without shouting, and leaves room for the choice beside it. */
 .btn-primary {
-  background: var(--brand-solid);
-  color: var(--brand-fg);
+  background: color-mix(in srgb, var(--brand) 14%, var(--paper));
+  color: var(--brand);
   font-weight: 600;
 }
 
 .btn-primary:hover:not(:disabled) {
-  background: var(--brand-solid);
-  opacity: 0.85;
+  background: color-mix(in srgb, var(--brand) 24%, var(--paper));
+}
+
+/* The second choice next to a primary: paper with a real hairline, so it
+   reads as a button and not as a disabled one. Declared after the base
+   because `.btn` zeroes borders. */
+.btn-outline {
+  background: var(--paper);
+  border: 1px solid var(--ink-3);
+  color: var(--ink);
+}
+
+.btn-outline:hover:not(:disabled) {
+  background: var(--fill);
+  border-color: var(--ink);
+}
+
+.btn-outline svg {
+  color: var(--ink-2);
 }
 
 .btn-danger {
@@ -7164,7 +7168,12 @@ i.q-now {
 }
 
 .cbox-pr .btn-primary {
-  background: var(--gh);
+  background: color-mix(in srgb, var(--gh) 14%, var(--paper));
+  color: var(--gh);
+}
+
+.cbox-pr .btn-primary:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--gh) 24%, var(--paper));
 }
 
 .cbox-agent,
@@ -7184,7 +7193,12 @@ i.q-now {
 }
 
 .cbox-agent .btn-primary {
-  background: var(--attn);
+  background: color-mix(in srgb, var(--attn) 14%, var(--paper));
+  color: var(--attn);
+}
+
+.cbox-agent .btn-primary:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--attn) 24%, var(--paper));
 }
 
 .cbox-hint {

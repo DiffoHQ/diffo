@@ -49,6 +49,14 @@ Until 1.0, minor versions may break things. When they do, the entry says how to 
 
 ### Changed
 
+- **The green button is a tint, and the button beside it is a button.** The
+  primary action is now green type on a soft green wash instead of a solid
+  green block with white text, everywhere in the review: Add comment, Finish
+  review, Submit. The PR composer's blue and the agent composer's amber take
+  the same treatment in their own hue. And **Send to agent** has a border for
+  the first time: the outline style was declared before the button base that
+  zeroes borders, so it rendered as a flat grey pill that read as disabled,
+  and reviewers reported never noticing it next to the green block.
 - **The review's chrome says each thing once.** The header is one place line,
   `repo · branch → base`, with the worktree in its hover; the size of the change
   moved to the pane bar beside the coverage. The pane bar's filters are pills
