@@ -1,5 +1,6 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import type { FileChange } from '../../shared/types.js'
+import { HoverPolicy } from '../hoverPolicy.js'
 import {
   countUsages,
   findUsages,
@@ -11,10 +12,6 @@ import {
 } from '../usages.js'
 import { Icon } from './Icon.js'
 
-/** Hover waits, like an editor's: a pointer crossing code must not sprout cards. */
-const SHOW_DELAY = 350
-/** Leaving the name and entering the card must survive the gap between them. */
-const LEAVE_GRACE = 160
 const HIGHLIGHT_NAME = 'sym-occ'
 
 /** The name under the pointer and where it was found. */
@@ -54,8 +51,8 @@ export function SymbolHoverLayer({
 }) {
   const [shown, setShown] = useState<Target | null>(null)
   const card = useRef<HTMLDivElement>(null)
-  /** The listener effect's `hide`, so a jump picked in the card can close it. */
-  const dismiss = useRef<() => void>(() => {})
+  /** The listener effect's dismiss, so a jump picked in the card can close it. */
+  const hideRef = useRef<() => void>(() => {})
   const pathByHunk = useMemo(() => {
     const map = new Map<string, string>()
     for (const f of files) for (const h of f.hunks) map.set(h.id, f.path)
@@ -65,96 +62,60 @@ export function SymbolHoverLayer({
   lookup.current = pathByHunk
 
   useEffect(() => {
-    let armed: Target | null = null
-    let current: Target | null = null
-    let showTimer: ReturnType<typeof setTimeout> | undefined
-    let hideTimer: ReturnType<typeof setTimeout> | undefined
-
-    const same = (a: Target | null, b: Target | null) =>
-      a === b ||
-      (a !== null && b !== null && a.cell === b.cell && a.start === b.start && a.word === b.word)
-
-    const clearTimers = () => {
-      if (showTimer !== undefined) clearTimeout(showTimer)
-      if (hideTimer !== undefined) clearTimeout(hideTimer)
-      showTimer = hideTimer = undefined
-    }
-
-    const hide = () => {
-      clearTimers()
-      armed = null
-      if (current) {
-        current = null
+    // The rules — when to open, stay, close — live in HoverPolicy; this effect
+    // only translates DOM events into its four verbs.
+    const policy = new HoverPolicy<Target>({
+      same: (a, b) => a.cell === b.cell && a.start === b.start && a.word === b.word,
+      show: (t) => {
+        light(t.word, t.side)
+        setShown(t)
+      },
+      hide: () => {
         unlight()
         setShown(null)
-      }
-    }
-
-    const show = (t: Target) => {
-      clearTimers()
-      armed = null
-      current = t
-      light(t.word, t.side)
-      setShown(t)
-    }
-
-    const arm = (t: Target) => {
-      if (same(t, armed) || same(t, current)) {
-        if (hideTimer !== undefined) {
-          clearTimeout(hideTimer)
-          hideTimer = undefined
-        }
-        return
-      }
-      clearTimers()
-      armed = t
-      // Moving from one name straight to another keeps the card warm.
-      if (current) show(t)
-      else showTimer = setTimeout(() => show(t), SHOW_DELAY)
-    }
-
-    const leave = () => {
-      if (showTimer !== undefined) clearTimeout(showTimer)
-      showTimer = undefined
-      armed = null
-      if (current && hideTimer === undefined) hideTimer = setTimeout(hide, LEAVE_GRACE)
-    }
+      },
+    })
+    const inCard = (node: EventTarget | null) =>
+      card.current !== null && node instanceof Node && card.current.contains(node)
 
     const onMove = (e: MouseEvent) => {
-      const el = e.target as Element | null
-      if (card.current && el && card.current.contains(el)) {
-        if (hideTimer !== undefined) {
-          clearTimeout(hideTimer)
-          hideTimer = undefined
-        }
+      if (inCard(e.target)) {
+        policy.inCard()
         return
       }
+      const el = e.target instanceof Element ? e.target : null
       const t = el ? targetAt(el, e.clientX, e.clientY, lookup.current) : null
-      if (t) arm(t)
-      else leave()
+      if (t) policy.over(t)
+      else policy.away()
     }
+    const dismiss = () => policy.dismiss()
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') hide()
+      if (e.key === 'Escape') dismiss()
     }
     const onDown = (e: MouseEvent) => {
-      if (!card.current?.contains(e.target as Node)) hide()
+      if (!inCard(e.target)) dismiss()
+    }
+    // The page moving under the card closes it; the card's own list scrolling,
+    // by wheel or by a clicked row being brought into view, is the card's business.
+    const onScroll = (e: Event) => {
+      if (!inCard(e.target)) dismiss()
     }
 
-    dismiss.current = hide
+    hideRef.current = dismiss
     document.addEventListener('mousemove', onMove, true)
     document.addEventListener('mousedown', onDown, true)
-    document.addEventListener('scroll', hide, true)
+    document.addEventListener('scroll', onScroll, true)
     document.addEventListener('keydown', onKey, true)
-    window.addEventListener('resize', hide)
-    window.addEventListener('blur', hide)
+    window.addEventListener('resize', dismiss)
+    window.addEventListener('blur', dismiss)
     return () => {
-      hide()
+      dismiss()
       document.removeEventListener('mousemove', onMove, true)
       document.removeEventListener('mousedown', onDown, true)
-      document.removeEventListener('scroll', hide, true)
+      document.removeEventListener('scroll', onScroll, true)
       document.removeEventListener('keydown', onKey, true)
-      window.removeEventListener('resize', hide)
-      window.removeEventListener('blur', hide)
+      window.removeEventListener('resize', dismiss)
+      window.removeEventListener('blur', dismiss)
     }
   }, [])
 
@@ -173,10 +134,12 @@ export function SymbolHoverLayer({
     const w = node.offsetWidth
     const h = node.offsetHeight
     const x = Math.max(8, Math.min(anchor.left - 10, window.innerWidth - w - 8))
-    const above = anchor.top - h - 6
-    const y = above >= 8 ? above : anchor.bottom + 6
+    const above = anchor.top - h - 4
+    const y = above >= 8 ? above : Math.min(anchor.bottom + 4, window.innerHeight - h - 8)
     node.style.left = `${Math.round(x)}px`
     node.style.top = `${Math.round(y)}px`
+    // Which edge faces the name; an invisible bridge grows from it (styles.css).
+    node.dataset.place = above >= 8 ? 'above' : 'below'
     node.classList.add('sym-card-on')
   }, [shown])
 
@@ -191,7 +154,7 @@ export function SymbolHoverLayer({
         here={shown.line === null ? null : { hunkId: shown.hunkId, line: shown.line }}
         onJump={(target) => {
           // The reviewer is leaving: the card has done its job.
-          dismiss.current()
+          hideRef.current()
           onJump(target)
         }}
       />
