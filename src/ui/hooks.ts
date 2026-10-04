@@ -39,11 +39,15 @@ export function fileAnchor(path: string): string {
  * the screen simply became different. Gliding keeps the reader oriented — they see
  * which way they went and roughly how far. Reduced motion still gets the cut.
  */
-export function glideTo(node: Element, arrived?: (node: Element) => void): void {
+export function glideTo(
+  node: Element,
+  arrived?: (node: Element) => void,
+  block: ScrollLogicalPosition = 'start',
+): void {
   const still = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ?? false
   const pane = node.closest('.reading-pane')
   const from = pane?.scrollTop
-  const aim = () => node.scrollIntoView({ behavior: still ? 'instant' : 'smooth', block: 'start' })
+  const aim = () => node.scrollIntoView({ behavior: still ? 'instant' : 'smooth', block })
   aim()
   if (still) {
     arrived?.(node)
@@ -85,7 +89,7 @@ export function glideTo(node: Element, arrived?: (node: Element) => void): void 
     // corrected: a pane that moved at all is a pane doing its job, even if the
     // reader grabbed the wheel halfway and went somewhere else on purpose.
     if (pane && pane.scrollTop === from) {
-      node.scrollIntoView({ behavior: 'instant', block: 'start' })
+      node.scrollIntoView({ behavior: 'instant', block })
     }
     arrived?.(node)
   }

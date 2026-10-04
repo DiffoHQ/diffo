@@ -3,7 +3,7 @@ import type { ReviewThread } from '../../shared/review.js'
 import { anchorSpan, type ThreadIntent } from '../../shared/review.js'
 import type { DiffLine, Hunk } from '../../shared/types.js'
 import { EXPAND_STEP } from '../gaps.js'
-import { type LineTokens, tokenizeLines } from '../highlight.js'
+import { type LineTokens, symbolRuns, tokenizeLines } from '../highlight.js'
 import { useDarkMode } from '../hooks.js'
 import { intralineRanges, type Range, splitByRanges } from '../intraline.js'
 import { anchorForRange, rangedRows, rangeStartRows, threadsByLine } from '../reviewPlacement.js'
@@ -221,40 +221,59 @@ function CodeText({
   return (
     <>
       {tokens.map((t, i) => {
-        const at = offset
-        offset += t.content.length
         const style = t.color ? { color: t.color } : undefined
-        const pieces = splitByRanges(t.content, at, ranges ?? null)
-        if (pieces.length === 1 && !pieces[0]!.changed) {
+        // Comments, strings and syntax opt out of the usages hover (SymbolHover.tsx);
+        // a token mixing them with a name is cut so only the name stays in.
+        return symbolRuns(t).map((run, j) => {
+          const at = offset
+          offset += run.content.length
+          const cls = run.sym ? undefined : 'nosym'
+          const pieces = splitByRanges(run.content, at, ranges ?? null)
+          if (pieces.length === 1 && !pieces[0]!.changed) {
+            return (
+              // biome-ignore lint/suspicious/noArrayIndexKey: runs of one line — position is the identity
+              <span key={`${i}:${j}`} style={style} className={cls}>
+                {run.content}
+              </span>
+            )
+          }
           return (
-            // biome-ignore lint/suspicious/noArrayIndexKey: tokens of one line — position is the identity
-            <span key={i} style={style}>
-              {t.content}
+            // biome-ignore lint/suspicious/noArrayIndexKey: runs of one line — position is the identity
+            <span key={`${i}:${j}`} style={style} className={cls}>
+              {pieces.map((piece, k) =>
+                piece.changed ? (
+                  // biome-ignore lint/suspicious/noArrayIndexKey: pieces of one run — position is the identity
+                  <span key={k} className="word-changed">
+                    {piece.text}
+                  </span>
+                ) : (
+                  // biome-ignore lint/suspicious/noArrayIndexKey: pieces of one run — position is the identity
+                  <span key={k}>{piece.text}</span>
+                ),
+              )}
             </span>
           )
-        }
-        return (
-          // biome-ignore lint/suspicious/noArrayIndexKey: tokens of one line — position is the identity
-          <span key={i} style={style}>
-            {pieces.map((piece, j) =>
-              piece.changed ? (
-                // biome-ignore lint/suspicious/noArrayIndexKey: pieces of one token — position is the identity
-                <span key={j} className="word-changed">
-                  {piece.text}
-                </span>
-              ) : (
-                // biome-ignore lint/suspicious/noArrayIndexKey: pieces of one token — position is the identity
-                <span key={j}>{piece.text}</span>
-              ),
-            )}
-          </span>
-        )
+        })
       })}
     </>
   )
 }
 
 const MARKER: Record<DiffLine['kind'], string> = { add: '+', del: '−', context: ' ' }
+
+/**
+ * What a code cell says about itself to the usages hover layer, which listens on
+ * the document rather than on every row: which version the text belongs to and
+ * its line numbers there. A unified context line is head-side code that also
+ * exists in base, so it carries both numbers; a split half carries its own.
+ */
+function cellAttrs(line: DiffLine, side: 'base' | 'head') {
+  return {
+    'data-side': side,
+    'data-old': line.oldNo ?? undefined,
+    'data-new': line.newNo ?? undefined,
+  }
+}
 
 interface LineExtras {
   extraFor?: (lineIdx: number) => ReactNode
@@ -376,7 +395,10 @@ function UnifiedLines({
                   {line.newNo ?? ''}
                 </td>
                 <td className="line-marker">{MARKER[line.kind]}</td>
-                <td className="line-code">
+                <td
+                  className="line-code"
+                  {...cellAttrs(line, line.kind === 'del' ? 'base' : 'head')}
+                >
                   <CodeText line={line} tokens={tokens[i] ?? null} ranges={ranges?.[i]} />
                 </td>
               </tr>
@@ -456,6 +478,7 @@ function SplitLines({
                 {/* biome-ignore lint/a11y/useKeyWithClickEvents: a click only focuses the line; the keyboard path is j/k + c */}
                 <td
                   className={`line-half line-half-${row.left?.line.kind ?? 'empty'}`}
+                  {...(row.left && cellAttrs(row.left.line, 'base'))}
                   onMouseEnter={enter(row.left?.idx)}
                   onClick={click(row.left?.idx)}
                 >
@@ -483,6 +506,7 @@ function SplitLines({
                 {/* biome-ignore lint/a11y/useKeyWithClickEvents: a click only focuses the line; the keyboard path is j/k + c */}
                 <td
                   className={`line-half line-half-${row.right?.line.kind ?? 'empty'}`}
+                  {...(row.right && cellAttrs(row.right.line, 'head'))}
                   onMouseEnter={enter(row.right?.idx)}
                   onClick={click(row.right?.idx)}
                 >
