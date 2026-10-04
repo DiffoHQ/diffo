@@ -275,7 +275,7 @@ describe("the agent's suggested PR comment inside a private thread", () => {
       ...over,
     })
 
-  it('renders under the reply with Add to review, Edit and Dismiss; the foot bridge steps aside', () => {
+  it('renders under the reply with Add as PR comment draft, Edit and Dismiss; the foot bridge steps aside', () => {
     const acts = actions({ dismissPrComment: vi.fn(async () => ({})) })
     const { container } = render(onPr(<ThreadList threads={[suggested()]} actions={acts} />))
     const block = screen.getByTestId('pr-suggestion')
@@ -288,7 +288,7 @@ describe("the agent's suggested PR comment inside a private thread", () => {
     )
     expect(screen.queryByRole('button', { name: /Post as PR comment/ })).toBeNull()
 
-    fireEvent.click(within(block).getByRole('button', { name: /^Add to review$/ }))
+    fireEvent.click(within(block).getByRole('button', { name: /^Add as PR comment draft$/ }))
     expect(acts.create).toHaveBeenCalledWith(
       suggested().anchor,
       expect.stringContaining('Late completions reset the streak here.'),

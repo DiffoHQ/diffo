@@ -325,10 +325,10 @@ function SuggestedPrComment({
         <button
           type="button"
           className="btn btn-primary btn-sm psc-add"
-          title="add it to your review as a draft on these lines; it posts when you submit"
+          title="a draft PR comment on these lines, in your review; it posts when you submit"
           onClick={() => void onAdd(suggestion.text)}
         >
-          Add to review
+          Add as PR comment draft
         </button>
         <button
           type="button"

@@ -7289,6 +7289,13 @@ i.q-now {
   color: #fff;
 }
 
+/* Solid blue stays blue on hover; without this the brand-green .btn-primary
+   hover takes over and the button flashes green under a white label. */
+.psc .psc-add:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--gh) 86%, var(--ink));
+  color: #fff;
+}
+
 /* Editing: the block IS the PR composer, in place; the composer wears the
    blue frame itself, so the wrapper adds nothing. */
 .psc-editing {
