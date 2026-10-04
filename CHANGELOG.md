@@ -9,6 +9,20 @@ Until 1.0, minor versions may break things. When they do, the entry says how to 
 
 Nothing yet.
 
+## [0.13.0] — 2026-10-04
+
+### Added
+
+- **Hover a name to see where the change uses it.** Rest the pointer on an
+  identifier in the diff and every visible occurrence lights up; after a
+  beat, a card counts the other usages in the changeset, one row per file
+  with its lines on demand, and a click lands on the line. It is the editor's
+  *find all references*, scoped to the review: a text search over the diff
+  already in the browser, so it works in every language the highlighter knows
+  and needs nothing installed. A name on a removed line is looked up in the
+  old version, and the card says *before*. Comments, strings, keywords and
+  literals don't light up.
+
 ## [0.12.0] — 2026-10-03
 
 ### Changed
@@ -691,7 +705,8 @@ shipped in it, written as a starting point rather than a history.
 - **Guided reading** — splitting a large change into an ordered sequence of small,
   reviewable sections — is designed but not built.
 
-[Unreleased]: https://github.com/DiffoHQ/diffo/compare/v0.12.0...HEAD
+[Unreleased]: https://github.com/DiffoHQ/diffo/compare/v0.13.0...HEAD
+[0.13.0]: https://github.com/DiffoHQ/diffo/compare/v0.12.0...v0.13.0
 [0.12.0]: https://github.com/DiffoHQ/diffo/compare/v0.11.0...v0.12.0
 [0.11.0]: https://github.com/DiffoHQ/diffo/compare/v0.10.0...v0.11.0
 [0.10.0]: https://github.com/DiffoHQ/diffo/compare/v0.9.0...v0.10.0
