@@ -382,7 +382,7 @@ carried by the open output and the payloads, as usual:
   and the agent writes it: `diffo reply <id> --message "<private answer>"
   --pr-comment "<the comment>"`. The comment is in the reviewer's voice, to
   the author, with none of the agent's evidence in it; that stays in the
-  reply. It appears under the reply with Add to review, Edit and Dismiss, and
+  reply. It appears under the reply with Add as PR comment draft, Edit and Dismiss, and
   nothing posts until the reviewer submits. The agent attaches one when the
   reviewer states a finding, when their hunch proves right, when they ask for
   it, or when a plain question turns up a bug it can show; not when the

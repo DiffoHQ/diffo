@@ -230,13 +230,17 @@ export const HELP_AGENT_PR = `Reviewing a pull request (\`diffo <PR URL | owner/
   on late completions") is a thought on its way to the author: write the
   review comment they would leave, in their voice, and attach it with
   \`--pr-comment "<text>"\` on your reply (or your comment). It shows under
-  your reply with Add to review / Edit / Dismiss; your evidence stays in the
-  reply, never in the comment. Attach one when they state a finding, when
-  their hunch proves right, when they ask you to draft it, or when a plain
-  question turns up a bug you can show. Not when they were wrong (say so
-  privately), not on pushback against your own reply — redraft the one
-  already in the thread instead — and not when asked but you have nothing
-  worth saying to the author: say so privately, never invent one.
+  your reply with Add as PR comment draft / Edit / Dismiss; your evidence
+  stays in the reply, never in the comment. Attach one when they state a
+  finding, their hunch proves right, they ask you to draft it, or a plain
+  question turns up something the author should hear; when unsure, lean
+  toward attaching — the reviewer would rather dismiss one than type it. Not
+  when they were wrong (say so privately), not on pushback against your own
+  reply — redraft the one already in the thread instead — and not when asked
+  but you have nothing worth saying to the author: say so privately, never
+  invent one. Keep it to one or two short sentences, the point first, the
+  way a person types a review comment; no preamble, no "Suggest …", no
+  report.
 - The guide and layers work as above, built from the description, the commits
   and the diff; skip the guide when the description already orients.
 - When the reviewer submits, a poll returns a \`"kind": "submitted"\` notice:
@@ -373,27 +377,38 @@ is a review comment. Write that comment for them, attached to your reply:
 
     ${CLI} reply <threadId> --message "<your private answer>" --pr-comment "<the comment>"
 
-Attach one when: they state a finding (always, a nit included); their hunch
-phrased as a question turns out right; they ask you to draft it ("write this
-up for the author"); or your answer to a plain question is a bug with a case
-to show. Do not attach one when they were wrong — say so privately — or when
-they are pushing back on your own reply; then redraft the comment already in
-the thread, which replaces it. Asked to suggest a change where you find
-nothing worth saying to the author, say so privately and attach nothing: a
-comment invented to fill the request is the one thing the reviewer cannot
-tell apart from a finding. On a comment of your own (\`${CLI} comment\`), the
-same flag carries a finding you can show, never a hunch.
+When unsure, lean toward attaching: the reviewer would rather dismiss a
+comment they did not need than type one you could have written. Attach one
+when they state a finding (a nit included); when a hunch phrased as a
+question turns out right; when they ask you to write it up; and when the
+answer to a plain question is something the author should hear too (a case
+the change misses, a name that misleads, a check that is dead). Not every
+answer is — a question that only clarifies the code for the reviewer gets a
+reply and no comment. Leave it off when they were wrong — say so privately —
+or when they are pushing back on your own reply; then redraft the comment
+already in the thread, which replaces it. Asked to suggest a change where you find nothing worth saying to the
+author, say so privately and attach nothing: a comment invented to fill the
+request is the one thing the reviewer cannot tell apart from a finding. On a
+comment of your own (\`${CLI} comment\`), the same flag carries a finding you
+can show, never a hunch.
 
-The comment is in the reviewer's voice, to the author: state the finding, why
-it matters, and what would fix it. A \`\`\`suggestion block when the fix is local
-to the anchored lines. Nothing about you, the worktree, tests you ran, or
-Diffo — that evidence goes in --message, where the reviewer reads it. Match
-how this reviewer writes: their own review comments on this pull request are
-quoted under "The reviewer's voice" when there are any.
+Write it the way a person types a review comment at the line: one or two
+short sentences, the point first, done. "This resets the streak on late
+completions — should it?" is a review comment. A paragraph that states the
+finding, explains why it matters and proposes the fix is not; it is a report,
+and the reviewer rewrites it every time. No preamble ("This reads as…"), no
+"Suggest …" or "Consider …" framing, no restating what the diff already
+shows, no examples in parentheses, no hedging. Name the fix only when it is
+not obvious from the finding, and when it is local to the anchored lines put
+it in a \`\`\`suggestion block instead of prose. A question is often the
+whole comment. Nothing about you, the worktree, tests you ran, or Diffo —
+that evidence goes in --message, where the reviewer reads it. Match how this
+reviewer writes: their own review comments on this pull request are quoted
+under "The reviewer's voice" when there are any.
 
-Nothing you attach reaches GitHub. It appears under your reply with Add to
-review / Edit / Dismiss; the reviewer decides, and the submit notice tells you
-what happened to each.`
+Nothing you attach reaches GitHub. It appears under your reply with Add as
+PR comment draft / Edit / Dismiss; the reviewer decides, and the submit
+notice tells you what happened to each.`
 
 export const PR_DOCTRINE: Doctrine = {
   guide: {
@@ -554,7 +569,7 @@ Change only what these threads ask about — the reviewer is mid-read. Re-read
 the current file before editing; the code may have moved. Resolving a thread
 is the reviewer's call, never yours.${
     D.prComment
-      ? `\n\nA private message that states a finding about the code is a review comment in the making: attach the comment the reviewer would leave the author, in their voice, with \`--pr-comment "<text>"\` on your reply (evidence stays in --message). Not when they were wrong, not on pushback against your reply. \`${CLI} help agent\` has the whole rule.`
+      ? `\n\nA private message that states a finding about the code is a review comment in the making: attach the comment the reviewer would leave the author, in their voice, with \`--pr-comment "<text>"\` on your reply (evidence stays in --message). When unsure, lean toward attaching; one or two short sentences, the point first. Not when they were wrong, not on pushback against your reply. \`${CLI} help agent\` has the whole rule.`
       : ''
   }`
 }

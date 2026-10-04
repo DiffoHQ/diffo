@@ -207,7 +207,7 @@ from poll payloads.
 | `-m`, `--message <text>` | The reply. Omit it to read the message from stdin |
 | `--more` | An interim reply: a follow-up on this thread is promised, so the reviewer keeps seeing the agent at work |
 | `--suggest-reply <one line>` | Offer the reviewer their answer. It appears as ghost text in their reply box; Tab takes it, and they still press send. For a message that ends in a decision that is theirs ("want me to extract this?" → `--suggest-reply "yes, extract it"`), never for one that only reports |
-| `--pr-comment <text>` | Pull requests only. Attach the review comment the reviewer would leave the author: in their voice, to the author, as GitHub will show it (Markdown; a ```` ```suggestion ```` block when the fix is local to the anchored lines). It appears under the reply with Add to review, Edit and Dismiss; nothing posts until the reviewer submits. The agent's evidence stays in `--message`. Refused off a pull request. See [Reviewing a pull request](/guide/pr-review#the-agent-suggests-the-comment) |
+| `--pr-comment <text>` | Pull requests only. Attach the review comment the reviewer would leave the author: in their voice, to the author, as GitHub will show it (Markdown; a ```` ```suggestion ```` block when the fix is local to the anchored lines). It appears under the reply with Add as PR comment draft, Edit and Dismiss; nothing posts until the reviewer submits. The agent's evidence stays in `--message`. Refused off a pull request. See [Reviewing a pull request](/guide/pr-review#the-agent-suggests-the-comment) |
 
 Prints `{ "ok": true, "threadId": "t-3", "state": "…", "next_step": "…" }`. An
 unknown thread id fails with exit 1. Each run posts a message, so don't re-run a

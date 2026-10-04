@@ -103,7 +103,7 @@ because it has not gone anywhere yet. Three buttons:
 
 | | What happens |
 | --- | --- |
-| **Add to review** | A blue draft on the same lines, as if you had typed it. It posts when you submit, under your login, with a small *from your agent* tag so you can tell later which of your comments started as its words |
+| **Add as PR comment draft** | A blue draft on the same lines, as if you had typed it. It posts when you submit, under your login, with a small *from your agent* tag so you can tell later which of your comments started as its words |
 | **Edit** | The block becomes the PR composer, in place. What you type is what joins the review; the agent's version stays in the thread |
 | **✕** | Passes on it. The thread stays open, so you can still argue, and **Undo** on the receipt brings the suggestion back |
 

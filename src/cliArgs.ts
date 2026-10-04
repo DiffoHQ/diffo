@@ -276,10 +276,12 @@ Use it when your message ends in a decision that is theirs to make
 on a message that only reports.
 --pr-comment, on a pull request only, attaches the review comment the
 reviewer would leave the author: in their voice, to the author, as GitHub
-will show it (Markdown; a \`\`\`suggestion block when the fix is local to the
-anchored lines). It appears under your reply with Add to review / Edit /
-Dismiss; nothing posts until the reviewer submits. Your evidence goes in
---message, never in the comment. \`diffo help agent\` says when to attach one.
+will show it — one or two short sentences, the point first (Markdown; a
+\`\`\`suggestion block when the fix is local to the anchored lines). When
+unsure, lean toward attaching; the reviewer would rather dismiss it than
+type it. It appears under your reply with Add as PR comment draft / Edit / Dismiss;
+nothing posts until the reviewer submits. Your evidence goes in --message,
+never in the comment. \`diffo help agent\` says when to attach one.
 Messages render GitHub-flavored markdown; a \`\`\`mermaid fence renders as a
 diagram in the review.
 

@@ -7,7 +7,13 @@ Until 1.0, minor versions may break things. When they do, the entry says how to 
 
 ## [Unreleased]
 
-Nothing yet.
+### Changed
+
+- **Suggested PR comments read like a reviewer typed them.** The agent is
+  told to write one or two short sentences with the point first, no
+  preamble and no "Suggest …" framing, and to lean toward attaching one
+  when unsure. The button that takes a suggestion into the review now says
+  **Add as PR comment draft**, and it no longer flashes green on hover.
 
 ## [0.13.0] — 2026-10-04
 
