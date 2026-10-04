@@ -3288,6 +3288,29 @@ body {
   }
 }
 
+/* A line picked from the usages card: the row washes once, the way a card's
+ * header does, so the eye finds the one line among forty. */
+@keyframes line-found {
+  0%,
+  100% {
+    background: transparent;
+  }
+  18%,
+  55% {
+    background: color-mix(in srgb, var(--acc) 16%, transparent);
+  }
+}
+
+.hunk-lines tr.line[data-found] > td {
+  animation: line-found 1.6s ease-in-out;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .hunk-lines tr.line[data-found] > td {
+    animation: none;
+  }
+}
+
 /* ---------- states ---------- */
 
 .center-note {
@@ -6470,6 +6493,199 @@ i.q-now {
     animation-iteration-count: 1 !important;
   }
   /* biome-ignore-end lint/complexity/noImportantStyles: overriding every animation is the point */
+}
+
+/* ---------- usages: rest on a name, see where else the change touches it ---------- */
+
+/* Every visible occurrence of the hovered name, drawn by the CSS highlight API so
+ * no span changes hands. The hovered one included: it is the anchor. */
+::highlight(sym-occ) {
+  background: color-mix(in srgb, var(--acc) 14%, transparent);
+  border-radius: 3px;
+}
+
+/* The card borrows the menu's body — paper, hairline, the large lift — and the
+ * code's monospace. It appears in place after a beat, like an editor's hover. */
+.sym-card {
+  position: fixed;
+  z-index: 30;
+  width: max-content;
+  min-width: 260px;
+  max-width: min(560px, calc(100vw - 16px));
+  border: 1px solid var(--hair);
+  border-radius: var(--r);
+  background: var(--paper);
+  box-shadow: var(--lift-lg);
+  opacity: 0;
+  transition: opacity var(--dur) var(--ease-out);
+}
+
+.sym-card-on {
+  opacity: 1;
+}
+
+.sym-card-head {
+  display: flex;
+  align-items: baseline;
+  gap: var(--s-4);
+  padding: 7px 11px;
+}
+
+.sym-card-word {
+  font-family: var(--mono);
+  font-size: var(--t-125);
+  font-weight: 600;
+  color: var(--ink);
+}
+
+.sym-card-count {
+  margin-left: auto;
+  white-space: nowrap;
+  font-size: var(--t-11);
+  color: var(--ink-3);
+}
+
+.sym-card-side {
+  margin-left: var(--s-2);
+  padding: 0 5px;
+  border-radius: var(--r-pill);
+  background: var(--del-row);
+  color: var(--del);
+  font-weight: 500;
+}
+
+.sym-card-list {
+  max-height: min(360px, 50vh);
+  overflow-y: auto;
+  border-top: 1px solid var(--hair);
+  padding: 4px;
+}
+
+/* A file row: chevron, name, dimmed directory, count. Opening it lists the lines. */
+.sym-card-path {
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+  width: 100%;
+  padding: 5px 7px 5px 5px;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--ink-3);
+  font: inherit;
+  font-size: var(--t-12);
+  text-align: left;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.sym-card-path:hover,
+.sym-card-path:focus-visible {
+  background: var(--fill);
+  outline: none;
+}
+
+.sym-card-path > svg {
+  flex-shrink: 0;
+  color: var(--ink-3);
+  transform: rotate(-90deg);
+  transition: transform var(--dur) var(--ease-out);
+}
+
+.sym-card-path[aria-expanded="true"] > svg {
+  transform: none;
+}
+
+.sym-card-name {
+  color: var(--ink);
+  font-weight: 600;
+}
+
+.sym-card-dir {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: var(--ink-3);
+}
+
+.sym-card-n {
+  margin-left: auto;
+  padding-left: var(--s-4);
+  font-size: var(--t-11);
+  font-variant-numeric: tabular-nums;
+}
+
+.sym-card-n-here {
+  color: var(--ink-3);
+}
+
+.sym-card-file:has(.sym-card-row) {
+  padding-bottom: 3px;
+}
+
+.sym-card-row {
+  display: flex;
+  align-items: baseline;
+  gap: var(--s-3);
+  width: 100%;
+  padding: 2px 7px 2px 26px;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--ink-2);
+  font: inherit;
+  font-family: var(--mono);
+  font-size: var(--t-12);
+  line-height: 1.6;
+  text-align: left;
+  cursor: pointer;
+}
+
+.sym-card-row:hover,
+.sym-card-row:focus-visible {
+  background: var(--fill);
+  color: var(--ink);
+  outline: none;
+}
+
+.sym-card-here {
+  color: var(--ink-3);
+}
+
+.sym-card-here .sym-card-ln::after {
+  content: "•";
+  position: absolute;
+  left: -11px;
+  color: var(--acc);
+}
+
+.sym-card-ln {
+  position: relative;
+  flex-shrink: 0;
+  min-width: 3ch;
+  text-align: right;
+  color: var(--ink-3);
+  font-size: var(--t-11);
+  font-variant-numeric: tabular-nums;
+}
+
+.sym-card-code {
+  flex: 1;
+  min-width: 0;
+  white-space: pre;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.sym-card-code mark {
+  background: color-mix(in srgb, var(--acc) 16%, transparent);
+  color: inherit;
+  border-radius: 3px;
+  padding: 0 1px;
+  margin: 0 -1px;
+}
+
+.sym-card-ellipsis {
+  color: var(--ink-3);
 }
 
 /* ---------- layers ---------- */

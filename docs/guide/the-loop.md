@@ -54,6 +54,12 @@ expansion, images side by side, file-level viewed tracking with a progress
 bar. Reading, not scrolling. (See the
 [keyboard shortcuts](/reference/keyboard-shortcuts).)
 
+Rest the pointer on a name — a function, a variable, a type — and Diffo shows
+where else the change touches it: every occurrence in view lights up, and a
+card lists the other lines across the changeset, grouped by file. Click one to
+land on it. The search is scoped to the change, needs no language server, and
+works in every language the highlighter knows.
+
 ## The review stays live
 
 The agent keeps writing; new files appear, stats tick, fresh hunks pulse. If

@@ -47,6 +47,7 @@ import {
 } from './components/ReadingPane.js'
 import { Shortcuts } from './components/Shortcuts.js'
 import { SubmitReview } from './components/SubmitReview.js'
+import { type JumpTarget, SymbolHoverLayer } from './components/SymbolHover.js'
 import { TelemetryNotice } from './components/TelemetryNotice.js'
 import { ThreadRail } from './components/ThreadRail.js'
 import type { ReviewActions } from './components/Threads.js'
@@ -123,6 +124,8 @@ function flashLanding(node: Element): void {
   // animationend either, so the attribute would latch on. Clear it on the clock too.
   setTimeout(done, 2000)
 }
+
+const EMPTY_FILES: FileChange[] = []
 
 function useLiveUpdates(): {
   presence: Presence
@@ -982,6 +985,43 @@ function Review() {
     [data, enterLayerFor, revealFile, scrollToFile],
   )
 
+  // A usage picked in the symbol hover card. Unlike a `path:line` reference the
+  // line may be base-side (a name on a deleted line), and the landing is the row
+  // itself, centred — the reviewer asked for *that* line, not the hunk it is in.
+  const jumpToLine = useCallback(
+    ({ path, side, line }: JumpTarget) => {
+      const file = data?.files.find((f) => f.path === path)
+      if (!file) return
+      enterLayerFor(path)
+      revealFile(path)
+      setCollapsed((prev) => {
+        if (!prev.has(path)) return prev
+        const next = new Set(prev)
+        next.delete(path)
+        return next
+      })
+      const hunk = file.hunks.find((h) =>
+        h.lines.some((l) => (side === 'base' ? l.oldNo : l.newNo) === line),
+      )
+      if (!hunk) {
+        scrollToFile(path)
+        return
+      }
+      setSelectedId(hunk.id)
+      setFocusPath(null)
+      const cell = `[data-hunk-id="${hunk.id}"] td[data-${side === 'base' ? 'old' : 'new'}="${line}"]`
+      requestAnimationFrame(() => {
+        const seek = (attempts: number) => {
+          const row = document.querySelector(cell)?.closest('tr')
+          if (row) glideTo(row, flashLanding, 'center')
+          else if (attempts > 0) requestAnimationFrame(() => seek(attempts - 1))
+        }
+        seek(30)
+      })
+    },
+    [data, enterLayerFor, revealFile, scrollToFile],
+  )
+
   // The guide is a map; a map you can click is navigation. File references in
   // the changeset threads jump the same way a layer summary's do.
   const refLinks = useMemo<RefLinks>(
@@ -1705,6 +1745,7 @@ function Review() {
             onClose={() => setInviteOpen(false)}
           />
         )}
+        <SymbolHoverLayer files={data?.files ?? EMPTY_FILES} onJump={jumpToLine} />
       </div>
     </PrContext.Provider>
   )

@@ -139,9 +139,48 @@ export async function tokenizeLines(
     const result = highlighter.codeToTokensBase(lines.join('\n'), {
       lang: lang as never,
       theme: dark ? 'github-dark' : 'github-light',
+      // Scope names ride along so the hover layer can tell a name from a comment,
+      // a string or a keyword without parsing anything itself.
+      includeExplanation: 'scopeName',
     })
     return result
   } catch {
     return null
   }
+}
+
+/** Scopes whose text is never a hoverable name: prose, literals, syntax. A scope
+ * anywhere in the stack counts — a word inside a comment is a comment, and a
+ * whole Markdown or HTML file is prose (`text.*` roots), code fences included. */
+const NOT_SYMBOL =
+  /^(text|comment|string|keyword|storage|punctuation|constant\.(numeric|language|character)|variable\.language|support\.type\.primitive)\b/
+
+export interface SymbolRun {
+  content: string
+  /** Whether this stretch may hold an identifier worth looking up. */
+  sym: boolean
+}
+
+/**
+ * A themed token, cut where its hoverability changes.
+ *
+ * Shiki merges neighbouring grammar tokens that share a colour, so one token is
+ * often `{ name, ` — brace, name and comma together — with the grammar's view of
+ * each part kept in `explanation`. The usages hover must not lose the name to its
+ * punctuation, nor light the comma: each part is judged on its own scopes and
+ * same-verdict neighbours are glued back. A token without scopes (plain text, or
+ * a grammar that said nothing) is one run that leans yes, leaving the word list
+ * to decide.
+ */
+export function symbolRuns(token: ThemedToken): SymbolRun[] {
+  const explanation = token.explanation
+  if (!explanation || explanation.length === 0) return [{ content: token.content, sym: true }]
+  const runs: SymbolRun[] = []
+  for (const part of explanation) {
+    const sym = !part.scopes.some((scope) => NOT_SYMBOL.test(scope.scopeName))
+    const last = runs[runs.length - 1]
+    if (last && last.sym === sym) last.content += part.content
+    else runs.push({ content: part.content, sym })
+  }
+  return runs
 }
