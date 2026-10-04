@@ -6524,6 +6524,24 @@ i.q-now {
   opacity: 1;
 }
 
+/* An invisible bridge on the edge facing the name: the pointer is "in the card"
+ * the moment it leaves the word's line, so the crossing never reads as leaving. */
+.sym-card::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 14px;
+}
+
+.sym-card[data-place="above"]::before {
+  top: 100%;
+}
+
+.sym-card[data-place="below"]::before {
+  bottom: 100%;
+}
+
 .sym-card-head {
   display: flex;
   align-items: baseline;
