@@ -8043,7 +8043,10 @@ i.q-now {
   color: var(--ink-2);
 }
 
+/* flex: none, or the scrolling modal body squeezes it to a sliver once the
+   pending list overflows (overflow: hidden drops its automatic min-height). */
 .sub-editor {
+  flex: none;
   border: 1px solid var(--hair);
   border-radius: var(--r);
   overflow: hidden;
