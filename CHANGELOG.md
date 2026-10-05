@@ -9,6 +9,20 @@ Until 1.0, minor versions may break things. When they do, the entry says how to 
 
 Nothing yet.
 
+## [0.14.1] — 2026-10-05
+
+### Fixed
+
+- **The usages card stays while you use it.** Clicking a row or scrolling
+  the card's list closed it: the list's own scroll read as the page moving.
+  It now stays while the pointer is on the name or anywhere in the card,
+  closes half a second after you leave both, and crossing the next line on
+  the way into the card no longer counts as hovering a new name. It also
+  opens less eagerly, after the pointer rests on a name for 600 ms instead
+  of 350, and a second name never opens instantly over a shown card. Escape,
+  a click elsewhere, scrolling the page, or picking a usage still closes it
+  at once.
+
 ## [0.14.0] — 2026-10-04
 
 ### Changed
@@ -715,7 +729,8 @@ shipped in it, written as a starting point rather than a history.
 - **Guided reading** — splitting a large change into an ordered sequence of small,
   reviewable sections — is designed but not built.
 
-[Unreleased]: https://github.com/DiffoHQ/diffo/compare/v0.14.0...HEAD
+[Unreleased]: https://github.com/DiffoHQ/diffo/compare/v0.14.1...HEAD
+[0.14.1]: https://github.com/DiffoHQ/diffo/compare/v0.14.0...v0.14.1
 [0.14.0]: https://github.com/DiffoHQ/diffo/compare/v0.13.0...v0.14.0
 [0.13.0]: https://github.com/DiffoHQ/diffo/compare/v0.12.0...v0.13.0
 [0.12.0]: https://github.com/DiffoHQ/diffo/compare/v0.11.0...v0.12.0
