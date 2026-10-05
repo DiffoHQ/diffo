@@ -7,7 +7,12 @@ Until 1.0, minor versions may break things. When they do, the entry says how to 
 
 ## [Unreleased]
 
-Nothing yet.
+### Fixed
+
+- **The review summary box in Submit to GitHub stays full size.** With
+  enough pending comments to make the dialog scroll, the Write/Preview box
+  collapsed to an empty strip and you couldn't type a summary. It now keeps
+  its height and the dialog scrolls instead.
 
 ## [0.14.1] — 2026-10-05
 
