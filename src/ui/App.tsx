@@ -515,9 +515,17 @@ function Review() {
   const mechanicalKey = paneLayerActive?.kind === 'mechanical' ? layerKey(paneLayerActive) : null
   const foldLayerRef = useRef(paneLayerActive)
   foldLayerRef.current = paneLayerActive
+  // The one file the fold must leave open: a jump into a mechanical layer is
+  // aimed at a thread in it, and this effect runs after the jump's own
+  // un-collapse — folding that file too would hide the very card the scroll
+  // is looking for. Set by `openThread`, cleared once the frame has passed.
+  const holdOpenRef = useRef<string | null>(null)
   useEffect(() => {
     if (mechanicalKey === null) return
-    const paths = foldLayerRef.current?.files.map((f) => f.file.path) ?? []
+    const hold = holdOpenRef.current
+    const paths = (foldLayerRef.current?.files ?? [])
+      .map((f) => f.file.path)
+      .filter((path) => path !== hold)
     setCollapsed((prev) => new Set([...prev, ...paths]))
   }, [mechanicalKey])
 
@@ -1113,6 +1121,7 @@ function Review() {
         const target = resolvedLayers.findIndex((l) => l.id === item.layerId)
         if (target !== -1 && layerKey(resolvedLayers[target]!) !== activeLayerKey) goLayer(target)
       } else if (item.path) {
+        holdOpenRef.current = item.path
         enterLayerFor(item.path)
         revealFile(item.path)
         setCollapsed((prev) => {
@@ -1122,6 +1131,13 @@ function Review() {
           return next
         })
       } else {
+        // A changeset thread lives in the changeset strip, which a layer does
+        // not draw: in layers it is the Overview — row 0 — or, with no Overview
+        // to go to, the flat pane on the Files tab.
+        if (inLayers && !onOverview) {
+          if (hasOverview) goOverview()
+          else setPanel('files')
+        }
         setRevealThreadId(item.threadId)
         setRevealNotesTick((t) => t + 1)
       }
@@ -1129,6 +1145,7 @@ function Review() {
       // Retry across frames until the card exists, bounded so a deleted thread
       // can't spin.
       const seek = (attempts: number) => {
+        holdOpenRef.current = null
         const node = document.querySelector(`[data-thread-id="${item.threadId}"]`)
         if (node) {
           // Top, not centre: the thread you picked is the thing to read, and what
@@ -1142,7 +1159,17 @@ function Review() {
       }
       requestAnimationFrame(() => seek(30))
     },
-    [revealFile, enterLayerFor, resolvedLayers, activeLayerKey, goLayer],
+    [
+      revealFile,
+      enterLayerFor,
+      resolvedLayers,
+      activeLayerKey,
+      goLayer,
+      inLayers,
+      onOverview,
+      hasOverview,
+      goOverview,
+    ],
   )
   /** The rail's row, as `openThread` wants it. */
   const threadTarget = useCallback(
