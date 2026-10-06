@@ -14,6 +14,9 @@ export interface PaneLayer {
   /** 0..1, from the layer's hunk marks; null on the Overview, which has
    * nothing to read through and so draws no bar. */
   progress: number | null
+  /** Lines added and removed in the layer — its size, where the bar shows the
+   * changeset's size outside layer mode. Absent on the Overview. */
+  stats?: { additions: number; deletions: number }
   prev: { title: string; onGo: () => void } | null
   next: { title: string; onGo: () => void } | null
 }
@@ -97,6 +100,9 @@ export function PaneBar({
   const showReviewed = done > 0 || hideReviewed
   const tests = `${testCount} test ${testCount === 1 ? 'file' : 'files'}`
   const trimmedQuery = query.trim()
+  // In layer mode the size is the layer's; the changeset's total belongs to
+  // the Files tab, where the whole change is what is being read.
+  const size = layer ? layer.stats : stats
   return (
     <div className="pane-bar">
       {onToggleNav && (
@@ -125,13 +131,20 @@ export function PaneBar({
           {coverage}
         </span>
       )}
-      {stats && !layer && (
-        <span className="pane-size" title="lines added and removed across the changeset">
-          {stats.additions > 0 && (
-            <span className="stat-add">+{stats.additions.toLocaleString('en-US')}</span>
+      {size && (size.additions > 0 || size.deletions > 0) && (
+        <span
+          className="pane-size"
+          title={
+            layer
+              ? 'lines added and removed in this layer'
+              : 'lines added and removed across the changeset'
+          }
+        >
+          {size.additions > 0 && (
+            <span className="stat-add">+{size.additions.toLocaleString('en-US')}</span>
           )}
-          {stats.deletions > 0 && (
-            <span className="stat-del">−{stats.deletions.toLocaleString('en-US')}</span>
+          {size.deletions > 0 && (
+            <span className="stat-del">−{size.deletions.toLocaleString('en-US')}</span>
           )}
         </span>
       )}

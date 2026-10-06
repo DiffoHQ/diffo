@@ -7,6 +7,13 @@ Until 1.0, minor versions may break things. When they do, the entry says how to 
 
 ## [Unreleased]
 
+### Added
+
+- **Layers show their size.** Each row in the Layers tab now carries the
+  lines added and removed across its files, `3 files · +243 −5`, so you can
+  see how big a step is before you take it. In layer mode the pane bar shows
+  the active layer's size where it showed the whole change's.
+
 ### Fixed
 
 - **A notice click lands on its thread in layer view.** Standing in a layer,

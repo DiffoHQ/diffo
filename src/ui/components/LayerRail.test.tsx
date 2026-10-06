@@ -83,6 +83,37 @@ describe('LayerRail', () => {
     expect(rows()[3]!.previousElementSibling?.className).toBe('rail-rule')
   })
 
+  it('the size sits after the file count, added and removed in the diff’s colours', () => {
+    const line = (kind: 'add' | 'del') => ({
+      kind,
+      oldNo: kind === 'del' ? 1 : null,
+      newNo: kind === 'add' ? 1 : null,
+      text: '',
+    })
+    const sized = resolveLayers(LAYERS, [
+      { ...FILES[0]!, hunks: [{ ...hunk('src/parse.ts', 1), lines: [line('add'), line('add')] }] },
+      { ...FILES[1]!, hunks: [{ ...hunk('src/dates.ts', 1), lines: [line('add'), line('del')] }] },
+      { ...FILES[2]!, hunks: [{ ...hunk('src/weekday.ts', 1), lines: [line('add')] }] },
+      { ...FILES[3]!, hunks: [{ ...hunk('src/cli.ts', 1), lines: [line('del')] }] },
+      FILES[4]!,
+    ])
+    render(
+      <LayerRail
+        layers={sized}
+        activeIndex={-1}
+        onPick={() => {}}
+        viewed={new Set(['src/parse.ts#1'])}
+      />,
+    )
+    expect(subOf(rows()[0]!)).toBe('1 file · +2 · read')
+    expect(subOf(rows()[1]!)).toBe('2 files · +2 −1')
+    expect(subOf(rows()[2]!)).toBe('1 file · −1 · mechanical')
+    // A layer with no changed lines says nothing about size — `+0 −0` is noise.
+    expect(subOf(rows()[3]!)).toBe('1 file')
+    expect(rows()[1]!.querySelector('.ch-sub .stat-add')?.textContent).toBe('+2')
+    expect(rows()[1]!.querySelector('.ch-sub .stat-del')?.textContent).toBe('−1')
+  })
+
   it('progress is derived from hunk marks, and a read layer dims and reads "read"', () => {
     const viewed = new Set(['src/dates.ts#1', 'src/dates.ts#2', 'src/parse.ts#1', 'src/parse.ts#2'])
     render(<LayerRail layers={resolved} activeIndex={-1} onPick={() => {}} viewed={viewed} />)

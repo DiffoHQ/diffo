@@ -61,6 +61,7 @@ import {
   hideLayerFiles,
   layerByPath,
   layerKey,
+  layerLineStats,
   layerProgress,
   type RefLinks,
   type ResolvedLayer,
@@ -1428,6 +1429,7 @@ function Review() {
       text: `${label} · ${p.files} ${p.files === 1 ? 'file' : 'files'} · ${left}`,
       title: `${p.doneFiles} of ${p.files} files in this layer marked reviewed`,
       progress: p.marks === 0 ? 0 : p.doneMarks / p.marks,
+      stats: layerLineStats(activeLayer),
       prev: prev !== null ? to(prev) : hasOverview ? { title: 'Overview', onGo: goOverview } : null,
       next: to(step(1)),
     }
