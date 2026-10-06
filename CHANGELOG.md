@@ -7,7 +7,14 @@ Until 1.0, minor versions may break things. When they do, the entry says how to 
 
 ## [Unreleased]
 
-Nothing yet.
+### Fixed
+
+- **A notice click lands on its thread in layer view.** Standing in a layer,
+  clicking a notice for a changeset-level comment did nothing: that comment
+  lives in the changeset strip, which a layer does not draw. It now goes to
+  the Overview first, or to the Files tab when there is no Overview. A notice
+  for a line in a mechanical layer you were not in also went nowhere, because
+  entering the layer folded its files over the card; that file now stays open.
 
 ## [0.14.2] — 2026-10-05
 
