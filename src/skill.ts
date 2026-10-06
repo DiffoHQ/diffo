@@ -88,6 +88,9 @@ target: \`${cli} <request> --no-open\`. A branch name reviews against it; a
 pull request (URL, \`owner/repo#N\`, \`#N\`, or just \`N\`) is checked out in a worktree
 diffo owns and reviewed there, with you as copilot for code you did not
 write — the printed next steps say how. The CLI decides which it is, not you.
+The user's own pull request is not opened: the CLI stops and names the two
+reviews it could mean. Ask the user plainly — "branch review (local, no GitHub)
+or PR review?" — no commands or flags; then run their choice, never pick for them.
 If it is empty, review the changeset this conversation just produced.
 
 ## When to use

@@ -16,6 +16,14 @@ Until 1.0, minor versions may break things. When they do, the entry says how to 
 
 ### Fixed
 
+- **Your own pull request asks which review you meant.** `diffo <PR>` on a
+  pull request you authored opened it as a reviewer's PR review: the agent
+  treated the code as someone else's, drafted comments, and fixed nothing.
+  It now stops before checking anything out and has the agent ask you one
+  question — branch review (local, the agent fixes what you flag) or PR
+  review (the GitHub pull request) — then runs your choice. `diffo pr <PR>`
+  is the explicit PR review and skips the question.
+
 - **A notice click lands on its thread in layer view.** Standing in a layer,
   clicking a notice for a changeset-level comment did nothing: that comment
   lives in the changeset strip, which a layer does not draw. It now goes to

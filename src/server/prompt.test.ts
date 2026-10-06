@@ -22,6 +22,7 @@ import {
   LAYERS,
   layersNudge,
   nextStepFor,
+  ownPrAsk,
   voiceLines,
 } from './prompt.js'
 
@@ -945,6 +946,49 @@ describe('the cleared payload (reviewer started the review over)', () => {
     expect(prompt).toContain('cleared the review')
     expect(prompt).toContain(CLI_COMMANDS.poll)
     expect(prompt).not.toContain('The changeset under review')
+  })
+})
+
+describe('the own-pull-request ask (the open stops instead of choosing)', () => {
+  const mine = fixturePr({
+    number: 482,
+    title: 'tab titles',
+    base: { ref: 'main', sha: 'b'.repeat(40) },
+    head: { ref: 'feat/tabs', sha: 'h'.repeat(40) },
+    viewer: { login: 'mira-k', isAuthor: true, pendingReviewId: null },
+  })
+
+  it('names the two reviews as commands and hands the choice to the user', () => {
+    const ask = ownPrAsk('acme/widgets#482', mine, { branch: 'feat/tabs', sameRepo: true })
+    expect(ask).toContain('is yours (@mira-k)')
+    expect(ask).toContain('nothing was opened')
+    expect(ask).toContain('Branch review')
+    expect(ask).toContain('PR review')
+    expect(ask).toContain(`\`${CLI} pr acme/widgets#482\``)
+    expect(ask).toContain(`\`${CLI} --base main\`, right here`)
+    expect(ask).not.toContain('git checkout')
+    // The user is the reviewer, not the runner: they get a plain question.
+    expect(ask).toMatch(/^ask: /m)
+    expect(ask).toContain('Say nothing about the CLI, exit codes, or that nothing opened')
+    expect(ask).toContain('"This pull request is yours. Branch review')
+    expect(ask).toContain('Never pick for them')
+    expect(ask).toContain('fix their own changes means the branch review')
+  })
+
+  it('a checkout on another branch gets the checkout step first', () => {
+    const ask = ownPrAsk('482', mine, { branch: 'main', sameRepo: true })
+    expect(ask).toContain(`\`git checkout feat/tabs\` then \`${CLI} --base main\``)
+    expect(ask).toContain('this checkout is on main')
+  })
+
+  it('run from another repo, it names the checkout the branch review needs', () => {
+    const url = 'https://github.com/acme/widgets/pull/482'
+    const ask = ownPrAsk(url, mine, { branch: 'feat/tabs', sameRepo: false })
+    // The branch may share a name here; that is not the pull request's branch.
+    expect(ask).not.toContain('git checkout')
+    expect(ask).toContain('from a checkout of `acme/widgets` on `feat/tabs`')
+    expect(ask).toContain('different repo')
+    expect(ask).toContain(`\`${CLI} pr ${url}\``)
   })
 })
 
