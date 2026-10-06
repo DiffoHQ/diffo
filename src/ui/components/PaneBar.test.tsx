@@ -95,6 +95,21 @@ describe('the layer pager', () => {
     expect(container.querySelector<HTMLElement>('.prog-track i')?.style.width).toBe('40%')
   })
 
+  it('the size is the layer’s, not the changeset’s; the Overview shows none', () => {
+    const stats = { additions: 1200, deletions: 300 }
+    const { container, unmount } = render(
+      bar({ stats, layer: layer({ stats: { additions: 243, deletions: 5 } }) }),
+    )
+    const size = container.querySelector('.pane-size')!
+    expect(size.textContent).toBe('+243−5')
+    expect(size.getAttribute('title')).toBe('lines added and removed in this layer')
+    unmount()
+    const { container: c2 } = render(
+      bar({ stats, layer: layer({ text: 'overview · the guide', progress: null, prev: null }) }),
+    )
+    expect(c2.querySelector('.pane-size')).toBeNull()
+  })
+
   it('prev and next sit on the bar with their titles and the ] hint, and go where they say', () => {
     const l = layer()
     render(bar({ layer: l }))

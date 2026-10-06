@@ -223,6 +223,23 @@ export function layerProgress(layer: ResolvedLayer, viewed: ReadonlySet<string>)
   return { files: layer.files.length, doneFiles, marks, doneMarks }
 }
 
+/** Lines added and removed across a layer's shown files — the layer's size,
+ * so the outline says how big a step is before the reviewer takes it. Hidden
+ * files are left out, the same way `layerProgress` leaves them out. */
+export function layerLineStats(layer: ResolvedLayer): { additions: number; deletions: number } {
+  let additions = 0
+  let deletions = 0
+  for (const { file } of layer.files) {
+    for (const hunk of file.hunks) {
+      for (const line of hunk.lines) {
+        if (line.kind === 'add') additions++
+        else if (line.kind === 'del') deletions++
+      }
+    }
+  }
+  return { additions, deletions }
+}
+
 /** Read through, or nothing left to read: a layer whose paths all resolved to
  * nothing is done too. */
 export function layerDone(layer: ResolvedLayer, viewed: ReadonlySet<string>): boolean {

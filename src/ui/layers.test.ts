@@ -9,6 +9,7 @@ import {
   layerByPath,
   layerDone,
   layerKey,
+  layerLineStats,
   layerLinkHref,
   layerProgress,
   linkPaths,
@@ -206,6 +207,46 @@ describe('layerProgress / layerDone', () => {
     const after = layerProgress(since, new Set([fileMark(image)]))
     expect(after.doneMarks - before.doneMarks).toBe(1)
     expect(after.doneFiles - before.doneFiles).toBe(1)
+  })
+})
+
+describe('layerLineStats', () => {
+  const lines = (adds: number, dels: number): Hunk['lines'] => [
+    ...Array.from({ length: adds }, (_, i) => ({
+      kind: 'add' as const,
+      oldNo: null,
+      newNo: i + 1,
+      text: '',
+    })),
+    ...Array.from({ length: dels }, (_, i) => ({
+      kind: 'del' as const,
+      oldNo: i + 1,
+      newNo: null,
+      text: '',
+    })),
+    { kind: 'context' as const, oldNo: 9, newNo: 9, text: '' },
+  ]
+  const sized = [
+    { ...file('src/parse.ts'), hunks: [{ ...hunk('src/parse.ts', 1), lines: lines(240, 2) }] },
+    { ...file('src/cli.ts'), hunks: [{ ...hunk('src/cli.ts', 1), lines: lines(3, 3) }] },
+    { ...file('src/api.ts'), hunks: [{ ...hunk('src/api.ts', 1), lines: lines(0, 7) }] },
+  ]
+  const out = resolveLayers(
+    layers([
+      { id: 'a', title: 'A', files: ['src/parse.ts', 'src/cli.ts'] },
+      { id: 'b', title: 'B', files: ['src/api.ts', 'src/missing.ts'] },
+    ]),
+    sized,
+  )
+
+  it('sums added and removed lines over the layer’s files; context lines do not count', () => {
+    expect(layerLineStats(out[0]!)).toEqual({ additions: 243, deletions: 5 })
+    expect(layerLineStats(out[1]!)).toEqual({ additions: 0, deletions: 7 })
+  })
+
+  it('a file the filter hid is not counted — the size matches what is shown', () => {
+    const shown = hideLayerFiles(out, (f) => f.path === 'src/cli.ts')
+    expect(layerLineStats(shown[0]!)).toEqual({ additions: 240, deletions: 2 })
   })
 })
 

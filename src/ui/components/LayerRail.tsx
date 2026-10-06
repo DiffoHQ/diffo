@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react'
 import type { ReviewThread } from '../../shared/review.js'
 import type { LayersRequest } from '../api.js'
 import { isFileViewed } from '../fileMarks.js'
-import { layerProgress, type ResolvedLayer } from '../layers.js'
+import { layerLineStats, layerProgress, type ResolvedLayer } from '../layers.js'
 import type { ThreadItem } from '../threads.js'
 import { Icon } from './Icon.js'
 import { MarkBox } from './MarkBox.js'
@@ -22,23 +22,49 @@ import { FileTree, type FileTreeProps } from './Nav.js'
 
 const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? '' : 's'}`
 
-function subLine(layer: ResolvedLayer, viewed: ReadonlySet<string>): string {
+/** The words under a layer with nothing to show: Hide tests emptied it, or
+ * the changeset did — different reasons, and the row says which. Null when
+ * the layer has files, and `SubLine` takes over. */
+function emptyLine(layer: ResolvedLayer): string | null {
+  if (layer.files.length > 0) return null
   const hidden = layer.hidden ?? 0
-  if (layer.files.length === 0) {
-    // Hide tests emptied it, or the changeset did — different reasons, and
-    // the row says which.
-    if (hidden > 0) return `${plural(hidden, 'test')} hidden`
-    return layer.missing.length === 0
-      ? 'nothing here now'
-      : `${plural(layer.missing.length, 'listed file')} not in the changeset`
-  }
-  // Files and a bar, no hunk arithmetic: the bar is the progress, the words
-  // only say what is here and whether it is done.
+  if (hidden > 0) return `${plural(hidden, 'test')} hidden`
+  return layer.missing.length === 0
+    ? 'nothing here now'
+    : `${plural(layer.missing.length, 'listed file')} not in the changeset`
+}
+
+/**
+ * Files, size, and state — no hunk arithmetic, the bar is the progress. The
+ * size is the one figure the file count alone cannot carry: `3 files` is a
+ * lunch break or an afternoon, `3 files · +243 −5` says which. The figures
+ * wear the diff's own colours, as they do in the pane bar and a file header.
+ */
+function SubLine({ layer, viewed }: { layer: ResolvedLayer; viewed: ReadonlySet<string> }) {
+  const empty = emptyLine(layer)
+  if (empty !== null) return <span>{empty}</span>
+  const hidden = layer.hidden ?? 0
   const p = layerProgress(layer, viewed)
+  const { additions, deletions } = layerLineStats(layer)
   const done = p.doneFiles === p.files ? ' · read' : ''
   const mech = layer.kind === 'mechanical' ? ' · mechanical' : ''
   const off = hidden > 0 ? ` · ${hidden} hidden` : ''
-  return `${plural(p.files, 'file')}${done}${mech}${off}`
+  return (
+    <span>
+      {plural(p.files, 'file')}
+      {(additions > 0 || deletions > 0) && (
+        <>
+          {' · '}
+          {additions > 0 && <span className="stat-add">+{additions}</span>}
+          {additions > 0 && deletions > 0 && ' '}
+          {deletions > 0 && <span className="stat-del">−{deletions}</span>}
+        </>
+      )}
+      {done}
+      {mech}
+      {off}
+    </span>
+  )
 }
 
 function LayerRow({
@@ -131,7 +157,7 @@ function LayerRow({
               />
             </span>
           )}
-          <span>{subLine(layer, viewed)}</span>
+          <SubLine layer={layer} viewed={viewed} />
         </span>
       </button>
       <span className="row-right">
