@@ -52,11 +52,14 @@ export function serverSpawnArgs(
   target?: string,
 ): string[] {
   // A pull-request target rides first, as the positional it is: the daemon
-  // re-resolves it (cheap, idempotent) and knows it serves a PR.
+  // re-resolves it (cheap, idempotent) and knows it serves a PR. Spelled out
+  // as `pr <target>`: the open that spawns it already settled whose pull
+  // request this is, and a daemon that asked again would stop with nobody
+  // there to answer.
   const args = [
     ...execArgv,
     entry,
-    ...(target !== undefined ? [target] : []),
+    ...(target !== undefined ? ['pr', target] : []),
     '--no-open',
     '--foreground',
   ]

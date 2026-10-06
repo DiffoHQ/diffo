@@ -358,8 +358,15 @@ re-ships answered threads and the prompt tells the agent to leave them alone.
 ## Reviewing a pull request
 
 When the target is a pull request (`diffo <PR URL>`), the agent is a copilot
-for code it did not write, and the protocol bends in four places, all of them
-carried by the open output and the payloads, as usual:
+for code it did not write. That premise is checked first: a pull request the
+signed-in user authored is not opened. The CLI prints two commands instead, a
+branch review (`diffo --base <base>` from the checkout: local, nothing touches
+GitHub) or a PR review (`diffo pr <PR>`: the GitHub pull request), and tells
+the agent to ask the user plainly which they want, with no commands in the
+question; an author who wanted their own changes fixed was otherwise handed
+draft comments about them. With the premise settled, the protocol bends in
+four places, all of them carried by the open output and the payloads, as
+usual:
 
 - **Where to work.** The open prints the worktree Diffo checked the PR out in.
   The agent runs its investigation there (tests, grep, the code) and leaves the

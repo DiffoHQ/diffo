@@ -200,6 +200,33 @@ export function prOpenNote(worktree: string, pr: PrInfo): string {
   )
 }
 
+/**
+ * Printed by `diffo <PR>` instead of opening when the pull request is the
+ * user's own and was not spelled `diffo pr <PR>`. The one name covers two
+ * reviews that teach the agent opposite things — a local branch review where
+ * the agent fixes the user's own work, or the GitHub pull request review where
+ * it drafts comments for an author — so the user decides, through the agent,
+ * before anything is checked out.
+ */
+export function ownPrAsk(
+  target: string,
+  pr: PrInfo,
+  checkout: { branch: string; sameRepo: boolean },
+): string {
+  const base = `\`${CLI} --base ${pr.base.ref}\``
+  const where = !checkout.sameRepo
+    ? `${base} from a checkout of \`${pr.owner}/${pr.repo}\` on \`${pr.head.ref}\` (this checkout is a different repo)`
+    : checkout.branch === pr.head.ref
+      ? `${base}, right here`
+      : `\`git checkout ${pr.head.ref}\` then ${base} (this checkout is on ${checkout.branch || 'no branch'})`
+  return [
+    `pull request #${pr.number} "${pr.title}" is yours (@${pr.viewer.login}), so nothing was opened: a pull request of your own names two different reviews, and the user picks.`,
+    `  - Branch review — local only, nothing touches GitHub: ${where}. The review is of the user's own work and the agent fixes what they flag.`,
+    `  - PR review — the GitHub pull request: \`${CLI} pr ${target}\`. Checked out in a worktree of its own; the agent is a copilot that drafts review comments, and the user's review posts to GitHub when they submit.`,
+    'ask: the commands above are for you, not the user. Say nothing about the CLI, exit codes, or that nothing opened — the user only reviews code. Ask exactly this, and nothing more: "This pull request is yours. Branch review (local, I fix what you flag) or PR review (the GitHub pull request, I draft comments)?" Then run the matching command. Someone who wants to fix their own changes means the branch review. Never pick for them.',
+  ].join('\n')
+}
+
 export const ACK_NEXT_STEP = {
   reply: `When every thread is handled, run \`${CLI_COMMANDS.poll}\` again to keep listening (${POLL_STANCE}).`,
   replyMore:
@@ -215,6 +242,15 @@ export const ACK_NEXT_STEP = {
 
 /** The pull-request section of `diffo help agent`. */
 export const HELP_AGENT_PR = `Reviewing a pull request (\`diffo <PR URL | owner/repo#N | #N>\`):
+- The user's own pull request is not opened: the CLI stops and prints two
+  commands — a branch review (\`diffo --base <base>\`: local, nothing touches
+  GitHub, you fix what they flag) or a PR review (\`diffo pr <PR>\`: the
+  GitHub pull request, you draft comments). The commands are for you, and so
+  is the stop: say nothing about the CLI or what did not open. Ask the user
+  exactly "This pull request is yours. Branch review (local, I fix what you
+  flag) or PR review (the GitHub pull request, I draft comments)?", then run
+  their choice. Never pick for them; fixing their own changes means the
+  branch review.
 - You did not write this code. It is checked out in a Diffo worktree whose
   path the open prints; work from there — run the tests, read the code — and
   leave it as you found it (\`git checkout -- .\`). Never commit or push.

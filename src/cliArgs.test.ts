@@ -10,6 +10,7 @@ describe('parseCliArgs', () => {
       port: undefined,
       open: true,
       foreground: false,
+      explicitPr: false,
     })
   })
 
@@ -240,6 +241,36 @@ describe('parseCliArgs — agent verbs', () => {
     expect(parseCliArgs(['status', '--json'])).toEqual({ kind: 'status', json: true })
     expect(parseCliArgs(['poll', '--json'])).toMatchObject({ kind: 'error' })
     expect(parseCliArgs(['reply', 't-1', '--json'])).toMatchObject({ kind: 'error' })
+  })
+})
+
+describe('parseCliArgs — a pull request of your own', () => {
+  it('`diffo pr <target>` is the explicit PR review; a bare target is not', () => {
+    expect(parseCliArgs(['acme/widgets#482'])).toMatchObject({ kind: 'run', explicitPr: false })
+    expect(parseCliArgs(['https://github.com/o/r/pull/7', '--no-open'])).toMatchObject({
+      kind: 'run',
+      explicitPr: false,
+      open: false,
+    })
+    expect(parseCliArgs(['pr', 'acme/widgets#482'])).toMatchObject({
+      kind: 'run',
+      target: 'acme/widgets#482',
+      explicitPr: true,
+    })
+    expect(parseCliArgs(['pr', '482', '--no-open'])).toMatchObject({
+      kind: 'run',
+      target: '482',
+      explicitPr: true,
+      open: false,
+    })
+  })
+
+  it('help says the explicit spelling answers the own-PR question', () => {
+    expect(HELP_TEXT).toContain('a pull request of your own')
+    expect(helpFor('pr')).toContain('branch review')
+    expect(helpFor('pr')).toContain('diffo pr <PR>')
+    expect(helpFor('agent')).toContain('branch review')
+    expect(helpFor('agent')).toContain('PR review')
   })
 })
 

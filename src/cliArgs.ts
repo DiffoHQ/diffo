@@ -25,7 +25,8 @@ The target:
                      (the short forms resolve against this repo's origin)
 
 For the reviewer:
-  pr <target>        Review a pull request (the same as \`diffo <target>\`;
+  pr <target>        Review a pull request (the same as \`diffo <target>\`,
+                     and the explicit answer for a pull request of your own;
                      help pr explains the flow)
   status             Show this repo's review server, if one is running
                      (--json for a machine-readable answer)
@@ -213,6 +214,11 @@ ordinary review there: your checkout is never touched. The PR's description,
 reviews and comments are imported as threads; the agent you invite is a
 copilot for code it did not write. Your public comments post to GitHub as one
 review when you finish; nothing leaves before that.
+
+A pull request of your own is two reviews in one name, so \`diffo <PR>\` stops
+and asks which: a branch review (\`diffo --base <base>\` on the branch — local,
+nothing touches GitHub, your agent fixes what you flag) or a PR review
+(\`diffo pr <PR>\` — the GitHub pull request, your comments post when you submit).
 
 Needs the GitHub CLI signed in: gh auth login --hostname <host>. Every GitHub
 call goes through your own gh; diffo holds no token.
@@ -438,6 +444,10 @@ export type CliCommand =
       port: number | undefined
       open: boolean
       foreground: boolean
+      /** Spelled `diffo pr <target>`: the explicit PR review, which is the
+       * answer when the pull request is the user's own. A bare `diffo <PR>`
+       * of their own stops and asks branch review or PR review. */
+      explicitPr: boolean
     }
   | { kind: 'clean'; force: boolean; all: boolean }
   | { kind: 'poll'; title: string | null }
@@ -570,6 +580,7 @@ function looksLikePr(word: string): boolean {
 
 export function parseCliArgs(argv: string[]): CliCommand {
   let target: string | undefined
+  let explicitPr = false
   let rest = argv
   if (argv[0] !== undefined && !argv[0].startsWith('-')) {
     if (argv[0] === 'help') return parseHelp(argv.slice(1))
@@ -581,6 +592,7 @@ export function parseCliArgs(argv: string[]): CliCommand {
           : { kind: 'error', message: 'pr needs a pull request: a URL, owner/repo#N, #N, or N' }
       }
       target = argv[1]
+      explicitPr = true
       rest = argv.slice(2)
     } else if (VERBS.has(argv[0])) {
       return parseVerb(argv[0], argv.slice(1))
@@ -650,6 +662,7 @@ export function parseCliArgs(argv: string[]): CliCommand {
     port,
     open: !values['no-open'],
     foreground: values.foreground === true,
+    explicitPr,
   }
 }
 

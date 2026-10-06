@@ -9,11 +9,12 @@ import { detectHarness, detectSessionPid } from './agentSession.js'
 import { helpFor, parseCliArgs } from './cliArgs.js'
 import { SRC_STAMP } from './devStamp.js'
 import { GhClient } from './forge/github/gh.js'
-import { parseTarget, prUrl } from './forge/target.js'
+import { parseRemoteUrl, parseTarget, prUrl } from './forge/target.js'
 import type { PrRef } from './forge/types.js'
 import { DiffoDb } from './server/db.js'
 import {
   findRepoRoot,
+  getBranchName,
   getRemoteUrl,
   MissingBaseError,
   mainRepoOf,
@@ -35,6 +36,7 @@ import {
   guideInherit,
   guideNudge,
   layersNudge,
+  ownPrAsk,
   prOpenNote,
   TAB_TITLE,
 } from './server/prompt.js'
@@ -822,8 +824,10 @@ function rebuildDevClient(foreground: boolean): void {
  * can pull the conversation and post the reviewer's comments.
  */
 async function openPullRequest(
+  target: string,
   ref: PrRef,
   baseOverride: string | undefined,
+  explicitPr: boolean,
 ): Promise<{ prepared: PreparedWorktree; pr: PrInfo; context: PrContext }> {
   const forge = new GhClient()
   const auth = await forge.authStatus(ref.host)
@@ -835,6 +839,22 @@ async function openPullRequest(
     fail(
       `could not read pull request #${ref.number} from ${ref.host}/${ref.owner}/${ref.repo}: ${(err as Error).message}`,
     )
+  }
+  // The user's own pull request is two reviews in one name — a local branch
+  // review, or the GitHub pull request review — and they teach the agent
+  // opposite things. `diffo pr <PR>` says which; a bare `diffo <PR>` stops
+  // before the worktree exists and lets the user choose.
+  if (pr.viewer.isAuthor && !explicitPr) {
+    const origin = parseRemoteUrl(getRemoteUrl(repoPath) ?? '')
+    const sameRepo =
+      origin !== null &&
+      origin.host === ref.host &&
+      origin.owner.toLowerCase() === ref.owner.toLowerCase() &&
+      origin.repo.toLowerCase() === ref.repo.toLowerCase()
+    // A clean exit: the CLI did its job, which was to ask. A failure code
+    // made agents report a crash to the user instead of putting the question.
+    console.log(ownPrAsk(target, pr, { branch: getBranchName(repoPath), sameRepo }))
+    process.exit(0)
   }
   if (pr.state !== 'open') {
     process.stderr.write(
@@ -881,8 +901,10 @@ if (command.target !== undefined) {
   if (!parsed.ok) fail(parsed.error)
   if (parsed.target.kind === 'pr') {
     prOpen = await openPullRequest(
+      command.target,
       parsed.target.ref,
       command.spec.kind === 'branch' ? command.spec.base.replace(/^origin\//, '') : undefined,
+      command.explicitPr,
     )
     root = prOpen.prepared.path
     repoPath = resolve(root)

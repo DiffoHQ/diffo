@@ -121,9 +121,10 @@ describe('skills/diffo/SKILL.md (Agent Skills format)', () => {
 
   it('stays a stub-sized load — the token budget is the point', () => {
     const { raw } = readSkill()
-    // Raised from 6000 when the request line learned pull-request targets: one
-    // sentence about what the CLI decides, the doctrine itself stays in the CLI.
-    expect(raw.length).toBeLessThan(6500)
+    // Raised from 6000 when the request line learned pull-request targets, and
+    // from 6500 when it learned that the user's own pull request is a question
+    // the CLI stops to ask: one sentence each, the doctrine itself stays in the CLI.
+    expect(raw.length).toBeLessThan(6700)
   })
 
   it('ships in the npm package', () => {
