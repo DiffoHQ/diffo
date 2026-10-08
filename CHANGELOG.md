@@ -9,6 +9,24 @@ Until 1.0, minor versions may break things. When they do, the entry says how to 
 
 Nothing yet.
 
+## [0.16.0] — 2026-10-08
+
+### Added
+
+- **`diffo poll --timeout <seconds>`.** A harness that caps how long a
+  command may run can poll in bounded rounds: at the limit the poll exits
+  with `{"status":"timeout"}` and a prompt to poll again. Without the flag
+  it waits as before.
+
+### Fixed
+
+- **Feedback no longer waits on an agent that can't hear it.** An agent
+  whose background tasks don't wake it, such as Codex, ran `diffo poll` in
+  the background and ended its turn, so reviewer feedback sat unread until
+  you typed in chat. The skill now allows a background poll only when its
+  completion wakes the session on its own, and otherwise holds the poll in
+  the foreground.
+
 ## [0.15.0] — 2026-10-06
 
 ### Added
@@ -764,7 +782,8 @@ shipped in it, written as a starting point rather than a history.
 - **Guided reading** — splitting a large change into an ordered sequence of small,
   reviewable sections — is designed but not built.
 
-[Unreleased]: https://github.com/DiffoHQ/diffo/compare/v0.15.0...HEAD
+[Unreleased]: https://github.com/DiffoHQ/diffo/compare/v0.16.0...HEAD
+[0.16.0]: https://github.com/DiffoHQ/diffo/compare/v0.15.0...v0.16.0
 [0.15.0]: https://github.com/DiffoHQ/diffo/compare/v0.14.2...v0.15.0
 [0.14.2]: https://github.com/DiffoHQ/diffo/compare/v0.14.1...v0.14.2
 [0.14.1]: https://github.com/DiffoHQ/diffo/compare/v0.14.0...v0.14.1
