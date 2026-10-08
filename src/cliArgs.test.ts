@@ -74,7 +74,7 @@ describe('parseCliArgs', () => {
 
 describe('parseCliArgs — agent verbs', () => {
   it('poll, end, setup, status, and stop take no arguments', () => {
-    expect(parseCliArgs(['poll'])).toEqual({ kind: 'poll', title: null, timeoutSeconds: null })
+    expect(parseCliArgs(['poll'])).toEqual({ kind: 'poll', title: null })
     expect(parseCliArgs(['end'])).toEqual({ kind: 'end' })
     expect(parseCliArgs(['setup'])).toEqual({ kind: 'setup' })
     expect(parseCliArgs(['status'])).toEqual({ kind: 'status', json: false })
@@ -90,7 +90,6 @@ describe('parseCliArgs — agent verbs', () => {
     expect(parseCliArgs(['poll', '--title', 'tab titles from the agent'])).toEqual({
       kind: 'poll',
       title: 'tab titles from the agent',
-      timeoutSeconds: null,
     })
     // Whatever the agent sent becomes a tab name: one line, trimmed, capped.
     expect(parseCliArgs(['poll', '--title', '  two\n lines  '])).toMatchObject({
@@ -104,20 +103,6 @@ describe('parseCliArgs — agent verbs', () => {
       kind: 'error',
     })
     expect(parseCliArgs(['end', '--title', 'x'])).toMatchObject({ kind: 'error' })
-  })
-
-  it('poll takes --timeout in whole seconds; the other verbs refuse it', () => {
-    // A harness that caps how long a foreground command may run polls in
-    // bounded rounds instead of losing the poll to its own timeout.
-    expect(parseCliArgs(['poll', '--timeout', '240'])).toEqual({
-      kind: 'poll',
-      title: null,
-      timeoutSeconds: 240,
-    })
-    for (const bad of ['0', '-5', '1.5', 'soon', '']) {
-      expect(parseCliArgs(['poll', '--timeout', bad])).toMatchObject({ kind: 'error' })
-    }
-    expect(parseCliArgs(['end', '--timeout', '60'])).toMatchObject({ kind: 'error' })
   })
 
   it('reply takes a thread id and a --message (or defers to stdin)', () => {
@@ -334,7 +319,6 @@ describe('parseCliArgs — help is never an error', () => {
     // Codex backgrounds a long command and ends its turn; nothing wakes it
     // when the poll returns. The stance has to rule that out in so many words.
     expect(page).toContain('do not end your turn')
-    expect(page).toContain('--timeout')
     expect(HELP_TEXT).toContain('help agent')
   })
 

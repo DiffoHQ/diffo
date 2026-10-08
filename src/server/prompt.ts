@@ -143,12 +143,7 @@ export function buildConnectAsk(isDev: boolean, repoPath: string, home: string):
  * completion resumes the session counts; everyone else holds the turn open.
  */
 export const POLL_STANCE =
-  'a tracked background task only if its completion wakes you on its own; otherwise the foreground, and do not end your turn while it runs (if your harness caps how long a command may run, add `--timeout <seconds>` under that cap and re-poll when it times out) — never a detached process'
-
-/** A bounded poll (`--timeout`) that ended with nothing to deliver. */
-export function pollTimeoutPrompt(timeoutSeconds: number): string {
-  return `No feedback yet — run \`${CLI_COMMANDS.poll} --timeout ${timeoutSeconds}\` again to keep listening (${POLL_STANCE}).`
-}
+  'a tracked background task only if its completion wakes you on its own; otherwise the foreground, and do not end your turn while it runs — never a detached process'
 
 /**
  * The tab-title doctrine — the few words an agent hands its first poll, which

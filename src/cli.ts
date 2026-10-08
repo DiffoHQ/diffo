@@ -38,7 +38,6 @@ import {
   layersNudge,
   ownPrAsk,
   POLL_STANCE,
-  pollTimeoutPrompt,
   prOpenNote,
   TAB_TITLE,
 } from './server/prompt.js'
@@ -589,12 +588,6 @@ if (command.kind === 'poll') {
     `diffo: waiting for the reviewer. Keep this process attended: ${POLL_STANCE}.\n` +
       'If it dies, just re-run it; feedback is held in the review and survives.\n',
   )
-  // A bounded poll gives up quietly: the review keeps whatever arrives later,
-  // and the next poll collects it.
-  const deadline = new AbortController()
-  if (command.timeoutSeconds !== null) {
-    setTimeout(() => deadline.abort(), command.timeoutSeconds * 1000).unref()
-  }
   // The response streams whitespace heartbeats until the reviewer acts, then one
   // JSON payload. text() rides the heartbeats out; trim leaves the JSON.
   try {
@@ -606,7 +599,6 @@ if (command.kind === 'poll') {
         : `/api/agent/poll?title=${encodeURIComponent(command.title)}`
     const res = await fetch(apiUrl(port, path), {
       headers: sessionHeaders(),
-      signal: deadline.signal,
     })
     if (!res.ok) fail(`poll failed (${res.status})`)
     const tookOverFrom = res.headers.get('x-diffo-took-over-from')
@@ -624,12 +616,6 @@ if (command.kind === 'poll') {
     }
     console.log((await res.text()).trim())
   } catch {
-    if (deadline.signal.aborted && command.timeoutSeconds !== null) {
-      console.log(
-        JSON.stringify({ status: 'timeout', prompt: pollTimeoutPrompt(command.timeoutSeconds) }),
-      )
-      process.exit(0)
-    }
     fail('lost connection to the diffo server; re-run `poll` to keep listening')
   }
   process.exit(0)
