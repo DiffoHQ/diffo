@@ -186,10 +186,11 @@ payload's `kind` is `threads` (individual sends), `finish` (the reviewer is done
 reading), `layers` (the reviewer asked for the outline; see
 [`diffo layers`](#diffo-layers)), or `cleared` (they started the review over).
 
-Run it attended, in the foreground or as a tracked background task, never
-detached: a payload delivered to a process nobody is reading never reaches the
-agent. Safe to re-run any time; delivery is at-least-once, so a poll that dies
-mid-write re-delivers instead of dropping feedback.
+Run it attended: as a tracked background task when its completion wakes the
+session on its own, otherwise in the foreground without ending the turn, and
+never detached: a payload delivered to a process nobody is reading never reaches
+the agent. Safe to re-run any time; delivery is at-least-once, so a poll that
+dies mid-write re-delivers instead of dropping feedback.
 
 ### `diffo reply <threadId>`
 

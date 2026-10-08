@@ -37,6 +37,7 @@ import {
   guideNudge,
   layersNudge,
   ownPrAsk,
+  POLL_STANCE,
   prOpenNote,
   TAB_TITLE,
 } from './server/prompt.js'
@@ -584,9 +585,8 @@ if (command.kind === 'telemetry') {
 if (command.kind === 'poll') {
   const port = await requireServer()
   process.stderr.write(
-    'diffo: waiting for the reviewer. Keep this process attended: a tracked\n' +
-      'background task or the foreground, never detached. If it dies, just\n' +
-      're-run it; feedback is held in the review and survives.\n',
+    `diffo: waiting for the reviewer. Keep this process attended: ${POLL_STANCE}.\n` +
+      'If it dies, just re-run it; feedback is held in the review and survives.\n',
   )
   // The response streams whitespace heartbeats until the reviewer acts, then one
   // JSON payload. text() rides the heartbeats out; trim leaves the JSON.

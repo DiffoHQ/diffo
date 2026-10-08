@@ -249,8 +249,8 @@ Usage: diffo poll [--title "<what the change is>"]
 
 Blocks (streaming whitespace heartbeats) until the reviewer acts, then prints
 one JSON payload naming the review threads to act on, and exits. Run it
-attended, a tracked background task or the foreground, never detached: a
-payload that reaches a process nobody is listening to never reaches you.
+attended: ${POLL_STANCE}. A payload that reaches a process nobody is
+listening to never reaches you.
 Safe to re-run any time: feedback is held in the review itself, so
 nothing is lost when a poll is killed or times out; the next poll gets it.
 

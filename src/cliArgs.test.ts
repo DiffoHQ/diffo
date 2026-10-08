@@ -316,6 +316,9 @@ describe('parseCliArgs — help is never an error', () => {
       expect(page).toContain(cmd)
     }
     expect(page).toContain('tracked background task')
+    // Codex backgrounds a long command and ends its turn; nothing wakes it
+    // when the poll returns. The stance has to rule that out in so many words.
+    expect(page).toContain('do not end your turn')
     expect(HELP_TEXT).toContain('help agent')
   })
 
