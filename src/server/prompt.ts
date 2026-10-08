@@ -143,7 +143,7 @@ export function buildConnectAsk(isDev: boolean, repoPath: string, home: string):
  * completion resumes the session counts; everyone else holds the turn open.
  */
 export const POLL_STANCE =
-  'a tracked background task only if its completion wakes you on its own; otherwise the foreground, and do not end your turn while it runs — never a detached process'
+  'a tracked background task when its completion wakes you on its own, so the reviewer can keep talking to you in chat meanwhile; if it would not, hold it in the foreground and do not end your turn while it runs — never a detached process'
 
 /**
  * The tab-title doctrine — the few words an agent hands its first poll, which
