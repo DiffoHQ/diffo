@@ -11,13 +11,6 @@ Nothing yet.
 
 ## [0.16.0] — 2026-10-08
 
-### Added
-
-- **`diffo poll --timeout <seconds>`.** A harness that caps how long a
-  command may run can poll in bounded rounds: at the limit the poll exits
-  with `{"status":"timeout"}` and a prompt to poll again. Without the flag
-  it waits as before.
-
 ### Fixed
 
 - **Feedback no longer waits on an agent that can't hear it.** An agent
