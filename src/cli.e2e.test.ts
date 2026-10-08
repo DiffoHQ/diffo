@@ -75,6 +75,38 @@ describe.skipIf(!existsSync(cliPath))('diffo binary (e2e smoke)', () => {
     expect(page).toContain('<div id="root">')
   })
 
+  it('a bounded poll with nothing to deliver times out cleanly and says to poll again', {
+    timeout: 20_000,
+  }, async () => {
+    const repo = tempRepo()
+    const port = 4321 + Math.floor(Math.random() * 1000)
+    const dbDir = mkdtempSync(join(tmpdir(), 'diffo-e2e-db-'))
+    cleanups.push(() => rmSync(dbDir, { recursive: true, force: true }))
+    const env = { ...process.env, DIFFO_DB: join(dbDir, 'diffo.db') }
+    const server: ChildProcess = spawn(
+      'node',
+      [cliPath, '--no-open', '--foreground', '-p', String(port)],
+      { cwd: repo, stdio: ['ignore', 'pipe', 'pipe'], env },
+    )
+    cleanups.push(() => server.kill())
+    await waitForServer(port)
+
+    const idle = await new Promise<{ code: number | null; stdout: string }>((resolvePromise) => {
+      const child = spawn('node', [cliPath, 'poll', '--timeout', '1'], {
+        cwd: repo,
+        stdio: ['ignore', 'pipe', 'pipe'],
+        env,
+      })
+      let stdout = ''
+      child.stdout?.on('data', (d: Buffer) => (stdout += d.toString()))
+      child.on('close', (code) => resolvePromise({ code, stdout }))
+    })
+    expect(idle.code).toBe(0)
+    const payload = JSON.parse(idle.stdout.trim()) as { status: string; prompt: string }
+    expect(payload.status).toBe('timeout')
+    expect(payload.prompt).toContain('diffo poll --timeout 1')
+  })
+
   it('drives the pull loop end to end: registry discovery, poll, reply, comment, end', {
     timeout: 30_000,
   }, async () => {

@@ -86,6 +86,10 @@ describe('skills/diffo/SKILL.md (Agent Skills format)', () => {
     // …and the URL goes out the moment it prints, before the guide is written.
     expect(body).toMatch(/Share the URL the moment it prints/)
     expect(body).toMatch(/as soon as it prints,\s+before any other step/)
+    // A background poll is only attended when its completion wakes the session
+    // (Codex backgrounds it, ends the turn, and never hears the payload).
+    expect(body).toMatch(/do not end your\s+turn/i)
+    expect(body).toMatch(/--timeout/)
   })
 
   it('states the trust model inline — the security wording the scanner audits', () => {

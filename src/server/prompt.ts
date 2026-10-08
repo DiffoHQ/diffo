@@ -137,9 +137,18 @@ export function buildConnectAsk(isDev: boolean, repoPath: string, home: string):
  * Payloads must stand alone: an agent can reach a poll without the skill in
  * context (a fresh session, a compacted context), so every instruction to poll
  * restates how to hold the poll — attended, never detached. Mirrors the skill.
+ *
+ * "Has a background task" is not enough: Codex backgrounds a long command and
+ * ends its turn, and nothing wakes it when the poll returns. Only a task whose
+ * completion resumes the session counts; everyone else holds the turn open.
  */
 export const POLL_STANCE =
-  'a tracked background task if your harness has one, the foreground if not — never a detached process'
+  'a tracked background task only if its completion wakes you on its own; otherwise the foreground, and do not end your turn while it runs (if your harness caps how long a command may run, add `--timeout <seconds>` under that cap and re-poll when it times out) — never a detached process'
+
+/** A bounded poll (`--timeout`) that ended with nothing to deliver. */
+export function pollTimeoutPrompt(timeoutSeconds: number): string {
+  return `No feedback yet — run \`${CLI_COMMANDS.poll} --timeout ${timeoutSeconds}\` again to keep listening (${POLL_STANCE}).`
+}
 
 /**
  * The tab-title doctrine — the few words an agent hands its first poll, which

@@ -245,12 +245,12 @@ Example:
   diffo clean`,
   poll: `diffo poll: wait for the reviewer's feedback
 
-Usage: diffo poll [--title "<what the change is>"]
+Usage: diffo poll [--title "<what the change is>"] [--timeout <seconds>]
 
 Blocks (streaming whitespace heartbeats) until the reviewer acts, then prints
 one JSON payload naming the review threads to act on, and exits. Run it
-attended, a tracked background task or the foreground, never detached: a
-payload that reaches a process nobody is listening to never reaches you.
+attended: ${POLL_STANCE}. A payload that reaches a process nobody is
+listening to never reaches you.
 Safe to re-run any time: feedback is held in the review itself, so
 nothing is lost when a poll is killed or times out; the next poll gets it.
 
@@ -258,12 +258,18 @@ nothing is lost when a poll is killed or times out; the next poll gets it.
 ${TAB_TITLE.shape} (${TAB_TITLE.examples}). Send it ${TAB_TITLE.when}; the
 newest title wins, and a poll without one leaves the name it finds alone.
 
+--timeout ends the poll after that many seconds with nothing delivered, for a
+harness that caps how long a command may run: it prints
+{"status":"timeout",…} and you poll again. Without it the poll waits as long
+as the reviewer takes.
+
 Output: one JSON object, e.g.
   {"status":"feedback","threadIds":["t-3"],"prompt":"…what to do…"}
 
 Examples:
   diffo poll --title "tab titles from the agent"
-  diffo poll`,
+  diffo poll
+  diffo poll --timeout 240`,
   reply: `diffo reply: post a reply to a review thread
 
 Usage: diffo reply <threadId> --message "<text>" [--suggest-reply "<one line>"] [--pr-comment "<text>"]
@@ -450,7 +456,7 @@ export type CliCommand =
       explicitPr: boolean
     }
   | { kind: 'clean'; force: boolean; all: boolean }
-  | { kind: 'poll'; title: string | null }
+  | { kind: 'poll'; title: string | null; timeoutSeconds: number | null }
   | {
       kind: 'reply'
       threadId: string
@@ -770,6 +776,7 @@ function parseVerb(verb: string, rest: string[]): CliCommand {
         message: { type: 'string', short: 'm' },
         line: { type: 'string' },
         title: { type: 'string' },
+        timeout: { type: 'string' },
         more: { type: 'boolean' },
         'suggest-reply': { type: 'string' },
         'pr-comment': { type: 'string' },
@@ -819,6 +826,10 @@ function parseVerb(verb: string, rest: string[]): CliCommand {
     return { kind: 'error', message: `'${verb}' takes no --title` }
   }
 
+  if (values.timeout !== undefined && verb !== 'poll') {
+    return { kind: 'error', message: `'${verb}' takes no --timeout` }
+  }
+
   if (
     verb === 'poll' ||
     verb === 'end' ||
@@ -839,7 +850,11 @@ function parseVerb(verb: string, rest: string[]): CliCommand {
       if (values.title !== undefined && title === null) {
         return { kind: 'error', message: '--title needs a few words naming the change' }
       }
-      return { kind: 'poll', title }
+      const timeoutSeconds = values.timeout === undefined ? null : Number(values.timeout)
+      if (timeoutSeconds !== null && (!/^\d+$/.test(values.timeout ?? '') || timeoutSeconds <= 0)) {
+        return { kind: 'error', message: '--timeout needs a whole number of seconds above 0' }
+      }
+      return { kind: 'poll', title, timeoutSeconds }
     }
     return { kind: verb }
   }
