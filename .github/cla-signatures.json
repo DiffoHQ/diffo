@@ -1,3 +1,12 @@
 {
-   "signedContributors": []
+  "signedContributors": [
+    {
+      "name": "shetritr",
+      "id": 27358643,
+      "comment_id": 6064898194,
+      "created_at": "2026-10-08T16:57:42Z",
+      "repoId": 1341155815,
+      "pullRequestNo": 126
+    }
+  ]
 }
