@@ -484,7 +484,7 @@ body {
 }
 
 /* The Animations setting off (critterPref.ts) stills the logo too. */
-:root[data-motion='off'] .living-mark path {
+:root[data-motion="off"] .living-mark path {
   animation: none;
 }
 
@@ -549,7 +549,7 @@ body {
   }
 }
 
-:root[data-motion='off'] .wordmark-letter {
+:root[data-motion="off"] .wordmark-letter {
   animation: none;
 }
 
