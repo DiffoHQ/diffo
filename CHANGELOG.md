@@ -7,12 +7,22 @@ Until 1.0, minor versions may break things. When they do, the entry says how to 
 
 ## [Unreleased]
 
+Nothing yet.
+
+## [0.17.0] — 2026-10-13
+
 ### Changed
 
 - **The settings switch that hid the companion now stills the logo too.**
   Switching it off stops the header mark's diff loop and the wordmark's
   retype along with the critter, so the page holds still. The menu item is
   now called **Animations**.
+
+### Fixed
+
+- **Text is crisp on standard-DPI screens.** The page asked macOS for
+  grayscale antialiasing, which drew text thinner and fuzzier on non-Retina
+  and external monitors. It now leaves text rendering to the system default.
 
 ## [0.16.0] — 2026-10-08
 
@@ -780,7 +790,8 @@ shipped in it, written as a starting point rather than a history.
 - **Guided reading** — splitting a large change into an ordered sequence of small,
   reviewable sections — is designed but not built.
 
-[Unreleased]: https://github.com/DiffoHQ/diffo/compare/v0.16.0...HEAD
+[Unreleased]: https://github.com/DiffoHQ/diffo/compare/v0.17.0...HEAD
+[0.17.0]: https://github.com/DiffoHQ/diffo/compare/v0.16.0...v0.17.0
 [0.16.0]: https://github.com/DiffoHQ/diffo/compare/v0.15.0...v0.16.0
 [0.15.0]: https://github.com/DiffoHQ/diffo/compare/v0.14.2...v0.15.0
 [0.14.2]: https://github.com/DiffoHQ/diffo/compare/v0.14.1...v0.14.2
