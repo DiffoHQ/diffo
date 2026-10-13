@@ -137,6 +137,8 @@ export interface PrContext {
   ref: PrRef
   forge: ForgeClient
   mainRepo: string
+  /** The branch the review diffs against — the PR's base, or the override. */
+  baseBranch: string
   /** The pull request as the open read it, so the changeset carries it before
    * the puller's first tick — a first tick that waits on the network. */
   info?: PrInfo
@@ -1385,6 +1387,7 @@ export function startServer(options: ServerContext & { port: number }) {
         ref: options.pr.ref,
         mainRepo: options.pr.mainRepo,
         worktree: options.root,
+        baseBranch: options.pr.baseBranch,
         store,
         review,
         db,

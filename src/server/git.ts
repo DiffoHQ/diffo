@@ -558,6 +558,20 @@ export function fetchBranch(root: string, branch: string, remote = 'origin'): vo
   fetchSync(root, [remote, branch])
 }
 
+export async function fetchBranchAsync(
+  root: string,
+  branch: string,
+  remote = 'origin',
+): Promise<void> {
+  await execFileAsync('git', ['fetch', '--quiet', remote, branch], {
+    cwd: root,
+    encoding: 'utf-8',
+    maxBuffer: MAX_BUFFER,
+    timeout: FETCH_TIMEOUT_MS,
+    env: FETCH_ENV,
+  })
+}
+
 export function revParse(root: string, ref: string): string | null {
   try {
     return git(root, ['rev-parse', '--verify', '--quiet', ref]).trim() || null
