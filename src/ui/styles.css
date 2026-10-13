@@ -268,7 +268,6 @@ body {
   font-size: var(--t-14);
   line-height: 1.55;
   letter-spacing: -0.005em;
-  -webkit-font-smoothing: antialiased;
   background: var(--paper);
   color: var(--ink);
 }
