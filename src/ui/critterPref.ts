@@ -1,7 +1,10 @@
 import { useCallback, useEffect, useState } from 'react'
 
 /**
- * Whether the header critter shows. On by default; the Settings menu switches it.
+ * Whether the page's decorative motion runs: the header critter, and the logo's
+ * living mark and wordmark loops. On by default; the Settings menu ("Animations")
+ * switches it. The stored key keeps its old name, `critter`, since it is shared
+ * with the server and older clients.
  *
  * Stored the way the theme is (see theme.ts): the durable copy in the shared DB
  * behind `/api/settings`, so switching it off once switches it off in every
@@ -40,8 +43,18 @@ async function fetchSharedCritter(): Promise<boolean | null> {
   }
 }
 
+/** Mirrors the pref onto the root, so CSS can still the logo loops the way it
+ * does for `prefers-reduced-motion` (see "the living mark" in styles.css). */
+function applyMotion(on: boolean) {
+  if (on) document.documentElement.removeAttribute('data-motion')
+  else document.documentElement.setAttribute('data-motion', 'off')
+}
+
 export function useCritter(): [boolean, (on: boolean) => void] {
   const [on, setOn] = useState<boolean>(loadCritter)
+  useEffect(() => {
+    applyMotion(on)
+  }, [on])
   useEffect(() => {
     let cancelled = false
     void fetchSharedCritter().then((shared) => {

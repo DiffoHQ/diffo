@@ -513,7 +513,8 @@ export interface HeaderReview {
 export interface HeaderSettings {
   theme?: Theme
   onSetTheme?: (theme: Theme) => void
-  /** Whether the header critter shows; on unless switched off. */
+  /** Whether decorative motion runs — the header critter, the logo loops; on
+   * unless switched off. */
   critter?: boolean
   onSetCritter?: (on: boolean) => void
   onShowShortcuts?: () => void
@@ -673,7 +674,7 @@ export function Header({
                     onSetCritter(!critter)
                   }}
                 >
-                  Companion
+                  Animations
                 </MenuItem>
               </>
             )}

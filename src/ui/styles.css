@@ -483,6 +483,11 @@ body {
   }
 }
 
+/* The Animations setting off (critterPref.ts) stills the logo too. */
+:root[data-motion='off'] .living-mark path {
+  animation: none;
+}
+
 /* The wordmark keeps the mark's beat and wears its colours: while the top line
    slides out red (14–22%) each letter flushes red and pops out, 90ms after the one
    before; while the bottom line writes itself green (28–38%) the letters land
@@ -542,6 +547,10 @@ body {
   .wordmark-letter {
     animation: none;
   }
+}
+
+:root[data-motion='off'] .wordmark-letter {
+  animation: none;
 }
 
 /* On the loading screen the mark sits above the shimmer, in ink, a touch larger. */

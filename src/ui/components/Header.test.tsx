@@ -142,7 +142,7 @@ describe('Header', () => {
       const onSetCritter = vi.fn()
       render(<Header changeset={changeset()} settings={{ critter: true, onSetCritter }} />)
       fireEvent.click(screen.getByLabelText('Settings'))
-      const item = screen.getByText('Companion').closest('button')!
+      const item = screen.getByText('Animations').closest('button')!
       expect(item.getAttribute('aria-checked')).toBe('true')
       fireEvent.click(item)
       expect(onSetCritter).toHaveBeenCalledWith(false)
