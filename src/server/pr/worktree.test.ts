@@ -144,7 +144,7 @@ describe('advanceWorktree', () => {
   it('moves a clean worktree when the head moved and reports when it did not', async () => {
     const { seed, origin, clone, db, ref, home } = scenario()
     const prepared = prepareWorktree(clone, ref, 'main', db, home)
-    expect(await advanceWorktree(clone, prepared.path, ref, prepared.headSha)).toEqual({
+    expect(await advanceWorktree(clone, prepared.path, ref, prepared.headSha, 'main')).toEqual({
       sha: prepared.headSha,
       moved: false,
     })
@@ -152,9 +152,30 @@ describe('advanceWorktree', () => {
     git(seed, 'commit', '-q', '-am', 'four')
     git(seed, 'push', '-q', '-f', origin, 'feature:refs/pull/7/head')
     const next = git(seed, 'rev-parse', 'HEAD').trim()
-    const moved = await advanceWorktree(clone, prepared.path, ref, next)
+    const moved = await advanceWorktree(clone, prepared.path, ref, next, 'main')
     expect(moved).toEqual({ sha: next, moved: true })
     expect(revParse(prepared.path, 'HEAD')).toBe(next)
+  })
+
+  it('fetches the base with the head, so a head that caught up with main diffs as before', async () => {
+    const { seed, origin, clone, db, ref, home } = scenario()
+    const prepared = prepareWorktree(clone, ref, 'main', db, home)
+    // Someone else lands on main, and the PR merges it in.
+    git(seed, 'checkout', '-q', 'main')
+    writeFileSync(join(seed, 'other.ts'), 'export const other = 1\n')
+    git(seed, 'add', '-A')
+    git(seed, 'commit', '-q', '-m', 'other')
+    git(seed, 'push', '-q', origin, 'main')
+    git(seed, 'checkout', '-q', 'feature')
+    git(seed, 'merge', '-q', '--no-edit', 'main')
+    git(seed, 'push', '-q', '-f', origin, 'feature:refs/pull/7/head')
+    const next = git(seed, 'rev-parse', 'HEAD').trim()
+    expect(await advanceWorktree(clone, prepared.path, ref, next, 'main')).toEqual({
+      sha: next,
+      moved: true,
+    })
+    const mergeBase = git(prepared.path, 'merge-base', 'origin/main', 'HEAD').trim()
+    expect(git(prepared.path, 'diff', '--name-only', mergeBase).trim()).toBe('app.ts')
   })
 
   it('fetches only when the reported head is not here yet', async () => {
@@ -163,13 +184,13 @@ describe('advanceWorktree', () => {
     // With the remote gone a fetch cannot succeed: the tick that needs none
     // still answers, the one that does fails, and says which remote it wanted.
     git(clone, 'remote', 'remove', 'origin')
-    expect(await advanceWorktree(clone, prepared.path, ref, prepared.headSha)).toEqual({
+    expect(await advanceWorktree(clone, prepared.path, ref, prepared.headSha, 'main')).toEqual({
       sha: prepared.headSha,
       moved: false,
     })
-    await expect(advanceWorktree(clone, prepared.path, ref, 'f'.repeat(40))).rejects.toThrow(
-      /no remote points at github\.com\/acme\/widgets/,
-    )
+    await expect(
+      advanceWorktree(clone, prepared.path, ref, 'f'.repeat(40), 'main'),
+    ).rejects.toThrow(/no remote points at github\.com\/acme\/widgets/)
   })
 })
 

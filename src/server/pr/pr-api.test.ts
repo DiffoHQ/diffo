@@ -98,6 +98,7 @@ function setup(over: { isAuthor?: boolean } = {}) {
         ref: REF,
         forge,
         mainRepo: root,
+        baseBranch: 'main',
         refresh: async () => {
           const { pr: fresh, threads: imported } = await forge.fetchPr(REF)
           store.setPr(fresh)
@@ -726,6 +727,7 @@ describe('a pull request in the review API', () => {
       ref: REF,
       mainRepo: root,
       worktree: root,
+      baseBranch: 'main',
       store,
       review,
       db,
@@ -765,6 +767,7 @@ describe('a pull request in the review API', () => {
       ref: REF,
       mainRepo: root,
       worktree: root,
+      baseBranch: 'main',
       store,
       review,
       db,
@@ -773,7 +776,7 @@ describe('a pull request in the review API', () => {
     await puller.tick()
     await puller.tick()
     await puller.tick()
-    expect(log.filter((l) => l.startsWith('could not fetch the pull request head'))).toHaveLength(1)
+    expect(log.filter((l) => l.startsWith('could not fetch the pull request:'))).toHaveLength(1)
     expect(log[0]).toMatch(/no remote points at github\.com\/acme\/widgets/)
   })
 })

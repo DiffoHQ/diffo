@@ -20,6 +20,8 @@ export interface PullerDeps {
   mainRepo: string
   /** The worktree the server runs in. */
   worktree: string
+  /** The branch the diff is cut against, on the PR's remote. */
+  baseBranch: string
   store: ChangesetStore
   review: ReviewStore
   db: DiffoDb
@@ -101,14 +103,20 @@ export class PrPuller {
     // A fetch that fails (network, a remote that vanished) must not cost the
     // conversation below: say so, keep the diff where it is, import anyway.
     try {
-      const moved = await advanceWorktree(this.deps.mainRepo, this.deps.worktree, ref, pr.head.sha)
+      const moved = await advanceWorktree(
+        this.deps.mainRepo,
+        this.deps.worktree,
+        ref,
+        pr.head.sha,
+        this.deps.baseBranch,
+      )
       this.lastFetchError = null
       if (moved?.moved) {
         log?.(`worktree advanced to ${moved.sha.slice(0, 7)}`)
         await store.refresh()
       }
     } catch (err) {
-      const message = `could not fetch the pull request head: ${(err as Error).message.split('\n')[0]}`
+      const message = `could not fetch the pull request: ${(err as Error).message.split('\n')[0]}`
       if (message !== this.lastFetchError) {
         this.lastFetchError = message
         log?.(message)

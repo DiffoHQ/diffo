@@ -862,6 +862,7 @@ async function openPullRequest(
     )
   }
   const mainRepo = mainRepoOf(repoPath)
+  const baseBranch = baseOverride ?? pr.base.ref
   const db = new DiffoDb()
   let prepared: PreparedWorktree
   try {
@@ -875,7 +876,7 @@ async function openPullRequest(
         )
       }
     }
-    prepared = prepareWorktree(mainRepo, ref, baseOverride ?? pr.base.ref, db)
+    prepared = prepareWorktree(mainRepo, ref, baseBranch, db)
   } catch (err) {
     fail(`could not check the pull request out: ${(err as Error).message}`)
   } finally {
@@ -889,7 +890,7 @@ async function openPullRequest(
   process.stderr.write(
     `diffo: pull request #${pr.number} "${pr.title}" by @${pr.author.login}, ${prepared.created ? 'checked out at' : 'worktree at'} ${prepared.path}\n`,
   )
-  return { prepared, pr, context: { ref, forge, mainRepo } }
+  return { prepared, pr, context: { ref, forge, mainRepo, baseBranch } }
 }
 
 // What the server watches. A branch target is a spec; a pull-request target is

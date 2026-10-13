@@ -7,7 +7,13 @@ Until 1.0, minor versions may break things. When they do, the entry says how to 
 
 ## [Unreleased]
 
-Nothing yet.
+### Fixed
+
+- **A pull request that caught up with its base no longer shows the base's
+  changes as its own.** When the PR head moved, Diffo fetched the new head but
+  kept the base branch as it was at the open, so every commit the base gained
+  in between landed in the diff — and in "Since your review" — as if the author
+  had written it. The base is now fetched with the head.
 
 ## [0.16.0] — 2026-10-08
 

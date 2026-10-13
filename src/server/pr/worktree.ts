@@ -9,6 +9,7 @@ import {
   deleteBranch,
   deleteRef,
   fetchBranch,
+  fetchBranchAsync,
   fetchPrHead,
   fetchPrHeadAsync,
   isWorktreeClean,
@@ -135,19 +136,29 @@ export function prepareWorktree(
  * Move an existing worktree to the pull request's head, if it is clean.
  * `headSha` is what the forge just reported: the fetch runs only when the
  * local ref is not there yet, so a quiet PR costs no network on any tick.
+ *
+ * The base branch is fetched with the head. The diff is cut at the merge-base
+ * with `<remote>/<baseBranch>`, and a head that moved has usually caught up
+ * with the base: against the base as it was at the open, every commit the
+ * base gained in between reads as the pull request's own change.
  */
 export async function advanceWorktree(
   repoPath: string,
   worktreePath: string,
   ref: PrRef,
   headSha: string,
+  baseBranch: string,
 ): Promise<{ sha: string; moved: boolean } | null> {
   const root = resolve(repoPath)
   const head = prHeadRef(ref.number)
   if (revParse(root, head) !== headSha) {
     // Off the loop: this runs inside the daemon, and a fetch that waits on
     // the network must not stop the server answering meanwhile.
-    await fetchPrHeadAsync(root, ref.number, remoteForPr(root, ref))
+    const remote = remoteForPr(root, ref)
+    await Promise.all([
+      fetchPrHeadAsync(root, ref.number, remote),
+      fetchBranchAsync(root, baseBranch, remote),
+    ])
   }
   const sha = revParse(root, head)
   if (sha === null) return null
