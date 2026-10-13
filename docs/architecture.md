@@ -246,7 +246,7 @@ versions of each other, since a wrong word-diff reads worse than none), `splitRo
 
 ## Tests
 
-1,516 tests across 80 files, all three layers:
+1,517 tests across 80 files, all three layers:
 
 - **Unit**: the pure modules, both sides of the wire.
 - **Integration**: against real git repositories created in temp dirs, because a diff
