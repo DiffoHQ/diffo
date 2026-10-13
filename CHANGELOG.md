@@ -7,7 +7,12 @@ Until 1.0, minor versions may break things. When they do, the entry says how to 
 
 ## [Unreleased]
 
-Nothing yet.
+### Changed
+
+- **The settings switch that hid the companion now stills the logo too.**
+  Switching it off stops the header mark's diff loop and the wordmark's
+  retype along with the critter, so the page holds still. The menu item is
+  now called **Animations**.
 
 ## [0.16.0] — 2026-10-08
 
