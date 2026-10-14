@@ -5,6 +5,8 @@ import {
   GUIDE_CLASSDEFS,
   HELP_AGENT_PR,
   LAYERS,
+  POLL_NOW,
+  POLL_NOW_FOREGROUND,
   POLL_STANCE,
   TAB_TITLE,
 } from './server/prompt.js'
@@ -97,7 +99,15 @@ The loop:
    ending every message with it while you stay attached.
    Attached without ever seeing the URL (a takeover, a fresh session)?
    \`diffo status\` prints it.
-2. Guide: post one only when the changeset needs orientation:
+2. Listen: run \`${CLI_COMMANDS.firstPoll}\` ${POLL_NOW}. Hold it as
+   ${POLL_STANCE}; ${POLL_NOW_FOREGROUND}. It blocks until the
+   reviewer acts, then prints one JSON payload naming the threads to act on.
+   The title is ${TAB_TITLE.what}: ${TAB_TITLE.why}. Write it the way it is
+   read: ${TAB_TITLE.shape} (${TAB_TITLE.examples}). Send it ${TAB_TITLE.when};
+   every other poll is a plain \`diffo poll\`.
+   Killed or timed out? Re-run it; feedback is held in the review, not the
+   poll.
+3. Guide: post one only when the changeset needs orientation:
    ${GUIDE.when}.
    Right after sharing the URL, while the reviewer opens the page, post ONE
    comment on the whole changeset (\`diffo comment -m "…"\`, no file). It is
@@ -108,7 +118,7 @@ The loop:
    Legend: ${GUIDE.legend}; \`diffo help guide\` has them, and one example.
    It lands live at the top of their review; never hold the URL back for it.
    If the changeset later shifts under the guide, ${GUIDE.update}.
-3. Layers: offer them when the changeset reads better in order:
+4. Layers: offer them when the changeset reads better in order:
    ${LAYERS.suggest}.
    Flag it at open with \`diffo layers --suggest "<why, in one line>"\` and
    say so in your handoff ("say layers and I'll outline it"). Post the
@@ -118,14 +128,6 @@ The loop:
    Summary: ${LAYERS.summary}. Diagram: ${LAYERS.diagram}.
    Order: ${LAYERS.order}. ${LAYERS.mechanical}. ${LAYERS.stance}.
    ${LAYERS.replace}. \`diffo help layers\` has the shape.
-4. Listen: run \`${CLI_COMMANDS.firstPoll}\`; it blocks until the reviewer
-   acts, then prints one JSON payload naming the threads to act on. Run it
-   attended: ${POLL_STANCE}.
-   The title is ${TAB_TITLE.what}: ${TAB_TITLE.why}. Write it the way it is
-   read: ${TAB_TITLE.shape} (${TAB_TITLE.examples}). Send it ${TAB_TITLE.when};
-   every other poll is a plain \`diffo poll\`.
-   Killed or timed out? Re-run it; feedback is held in the review, not the
-   poll.
 5. Act: \`[issue]\` threads want a code change; \`[question]\` threads want an
    answer in the reply and no edit. Your edits reach the reviewer live.
 6. Reply: \`diffo reply <threadId> --message "<text>"\` (pipe long replies on
@@ -146,8 +148,11 @@ The loop:
 9. Detach: run \`diffo end\` when the review is over or the user moves on.
 
 Rules:
-- Change only what the threads ask about; the reviewer is mid-read, and an
-  unrelated edit moves the diff under them.
+- An open review with no attended poll is a broken state: never end a turn
+  in it. Ending every message with the URL does not make up for it.
+- Make no edits nobody asked for; the reviewer is mid-read, and an unrelated
+  edit moves the diff under them. Edits the user asks for in chat are theirs
+  to ask for: do them, attached — attaching never waits for chat work.
 - One attached agent at a time: the newest poll carries the review; don't
   re-poll to take it back from another session; tell the user instead. When
   a poll says it took the review over, or returns status "superseded", say so

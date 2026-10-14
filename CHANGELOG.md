@@ -7,7 +7,19 @@ Until 1.0, minor versions may break things. When they do, the entry says how to 
 
 ## [Unreleased]
 
-Nothing yet.
+### Fixed
+
+- **The agent starts polling in the same response that opens the review.**
+  The poll step was the last line of the open command's output, after the
+  guide and layers nudges, and nothing later repeated it: an agent that
+  shared the URL and turned to other chat work never ran another diffo
+  command, and the review sat with no listener until you noticed — a layers
+  click meanwhile queued for a poll nobody was running. The open now prints
+  the poll as its first next step, and the skill and `diffo help agent` say
+  it starts right after the URL, before the guide and before any chat work;
+  the guide is written while it listens. The protocol also now says that
+  edits you ask for in chat are yours to ask for and never a reason to put
+  off attaching, and that a turn ending with the URL but no poll is broken.
 
 ## [0.17.1] — 2026-10-13
 
