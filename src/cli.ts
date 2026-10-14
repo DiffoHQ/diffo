@@ -37,6 +37,8 @@ import {
   guideNudge,
   layersNudge,
   ownPrAsk,
+  POLL_NOW,
+  POLL_NOW_FOREGROUND,
   POLL_STANCE,
   prOpenNote,
   TAB_TITLE,
@@ -770,18 +772,22 @@ async function printAgentNextStep(port: number, pr?: PrInfo): Promise<void> {
   const review = await fetchReviewState(port)
   const D = doctrineFor(pr ? { pr } : null)
   if (pr) console.log(`note: ${prOpenNote(repoPath, pr)}`)
-  const nudge = review ? guideNudge(findGuideThread(review) !== undefined, D) : null
-  if (nudge) console.log(`first: ${nudge}`)
-  const layers = review ? layersNudge(review, D) : null
-  if (layers) console.log(`also: ${layers}`)
+  // The poll comes first, right under the URL: it is the one step with no later
+  // surface, and the review has no listener until it runs. The guide and the
+  // layers flag are written while it listens.
   console.log(
     pr
-      ? `next: run \`${CLI_COMMANDS.poll}\` to receive the reviewer's private questions; ` +
-          'the pull request already names their tab (`diffo help agent` prints the whole loop)'
-      : `next: run \`${CLI_COMMANDS.firstPoll}\` to receive the reviewer's feedback; the ` +
+      ? `next: run \`${CLI_COMMANDS.poll}\` ${POLL_NOW}. Hold it as ${POLL_STANCE}; ${POLL_NOW_FOREGROUND}. ` +
+          "It receives the reviewer's private questions; the pull request already names their tab " +
+          '(`diffo help agent` prints the whole loop)'
+      : `next: run \`${CLI_COMMANDS.firstPoll}\` ${POLL_NOW}. Hold it as ${POLL_STANCE}; ${POLL_NOW_FOREGROUND}. It receives the reviewer's feedback; the ` +
           `title is ${TAB_TITLE.what} (${TAB_TITLE.examples}): ${TAB_TITLE.why} ` +
           '(`diffo help agent` prints the whole loop)',
   )
+  const nudge = review ? guideNudge(findGuideThread(review) !== undefined, D) : null
+  if (nudge) console.log(`then: ${nudge}`)
+  const layers = review ? layersNudge(review, D) : null
+  if (layers) console.log(`also: ${layers}`)
 }
 
 /**

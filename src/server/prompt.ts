@@ -146,6 +146,21 @@ export const POLL_STANCE =
   'a tracked background task when its completion wakes you on its own, so the reviewer can keep talking to you in chat meanwhile; if it would not, hold it in the foreground and do not end your turn while it runs — never a detached process'
 
 /**
+ * When the first poll starts: in the same response as the open, before the
+ * guide and before any chat work. The poll is the one step with no later
+ * surface — every other command's ack says "then poll", but an agent that
+ * shares the URL and turns to chat work never runs another diffo command, and
+ * the review sits with no listener until the user notices. Stated once here
+ * and interpolated into the open's next step, the skill and `help agent`.
+ */
+export const POLL_NOW =
+  'now — in this same response, right after sharing the URL, before the guide and before anything the user asked for in chat: the review has no listener until it runs, and a turn that ends with it open and no attended poll leaves the reviewer talking to nobody'
+
+/** The one exception to POLL_NOW, for harnesses whose poll holds the turn. */
+export const POLL_NOW_FOREGROUND =
+  'only when that means a foreground poll does the guide go before it'
+
+/**
  * The tab-title doctrine — the few words an agent hands its first poll, which
  * become the browser tab's name. Stated once and interpolated into every
  * surface that teaches it (the skill, `help agent`, the open-time next step),
@@ -504,7 +519,7 @@ export function guideNudge(hasGuide: boolean, D: Doctrine = AUTHOR_DOCTRINE): st
   if (hasGuide) return null
   return (
     'share the URL above with the user right now, as a message line, before ' +
-    'anything else. Then, while they open it, orient them if this changeset ' +
+    'anything else. Then, with the poll running while they open it, orient them if this changeset ' +
     `needs it (${D.guide.when}): post a guide — one comment on the whole changeset: ` +
     `\`${CLI_COMMANDS.guide}\` (no file, so it anchors to the changeset; it appears ` +
     `live at the top of their review). It is ${D.guide.what}. Not in it: ${GUIDE.order}. ` +

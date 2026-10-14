@@ -489,14 +489,18 @@ describe('parseCliArgs — layers', () => {
     expect(HELP_TEXT).toContain('layers')
   })
 
-  it('help agent teaches layers between the guide and the poll', () => {
+  it('help agent starts the poll before the guide, and teaches layers after both', () => {
     const page = helpFor('agent')
-    const guide = page.indexOf('2. Guide')
-    const layers = page.indexOf('3. Layers')
-    const listen = page.indexOf('4. Listen')
-    expect(guide).toBeGreaterThan(-1)
+    const listen = page.indexOf('2. Listen')
+    const guide = page.indexOf('3. Guide')
+    const layers = page.indexOf('4. Layers')
+    expect(listen).toBeGreaterThan(-1)
+    expect(guide).toBeGreaterThan(listen)
     expect(layers).toBeGreaterThan(guide)
-    expect(listen).toBeGreaterThan(layers)
+    // The poll is the one step with no later surface: it starts in the open's
+    // own response, and an open review with nobody polling is named as broken.
+    expect(page).toMatch(/in this same response, right after sharing the URL/)
+    expect(page).toMatch(/An open review with no attended poll is a broken state/)
     expect(page).toContain('diffo layers --suggest')
     expect(page).toContain("diffo layers --json '<Layer[]>'")
   })

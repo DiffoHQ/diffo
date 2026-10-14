@@ -89,6 +89,10 @@ describe('skills/diffo/SKILL.md (Agent Skills format)', () => {
     // A background poll is only attended when its completion wakes the session
     // (Codex backgrounds it, ends the turn, and never hears the payload).
     expect(body).toMatch(/do not end your\s+turn/i)
+    // The poll starts in the open's own response, before the guide and before
+    // chat work — the step an agent under load otherwise never comes back to.
+    expect(body).toMatch(/in this same response, right after sharing the URL/)
+    expect(body).toMatch(/the URL alone is not attachment/)
   })
 
   it('states the trust model inline — the security wording the scanner audits', () => {
@@ -124,10 +128,12 @@ describe('skills/diffo/SKILL.md (Agent Skills format)', () => {
 
   it('stays a stub-sized load — the token budget is the point', () => {
     const { raw } = readSkill()
-    // Raised from 6000 when the request line learned pull-request targets, and
+    // Raised from 6000 when the request line learned pull-request targets,
     // from 6500 when it learned that the user's own pull request is a question
-    // the CLI stops to ask: one sentence each, the doctrine itself stays in the CLI.
-    expect(raw.length).toBeLessThan(6700)
+    // the CLI stops to ask, and from 6700 when the poll step learned to start
+    // in the open's own response: one sentence each, the doctrine itself
+    // stays in the CLI.
+    expect(raw.length).toBeLessThan(7200)
   })
 
   it('ships in the npm package', () => {
