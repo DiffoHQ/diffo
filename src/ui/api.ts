@@ -1,4 +1,5 @@
-import { useQuery } from '@tanstack/react-query'
+import { useQueries, useQuery } from '@tanstack/react-query'
+import { useMemo, useRef } from 'react'
 import type { ReviewEvent } from '../forge/types.js'
 import type {
   Anchor,
@@ -9,7 +10,13 @@ import type {
   ReviewThread,
   ThreadIntent,
 } from '../shared/review.js'
-import type { Changeset } from '../shared/types.js'
+import {
+  type Changeset,
+  type CommitChangeset,
+  type CommitsResponse,
+  type FileChange,
+  UNCOMMITTED,
+} from '../shared/types.js'
 
 export type { ReviewEvent }
 
@@ -42,6 +49,48 @@ export function useChangeset() {
       return res.json() as Promise<Changeset>
     },
   })
+}
+
+/** The changeset's commits. Keyed on the changeset version, so a new commit,
+ * an amend or a rebase re-lists them on the same live tick that redraws the diff. */
+export function useCommits(version: number | undefined, enabled: boolean) {
+  return useQuery<CommitsResponse>({
+    queryKey: ['commits', version],
+    enabled: enabled && version !== undefined,
+    placeholderData: (prev) => prev,
+    queryFn: async () => handle<CommitsResponse>(await fetch('/api/commits')),
+  })
+}
+
+/**
+ * Every listed commit's own diff, by sha — the rail's marks and progress need
+ * each commit's files, not just the open one's. A sha names immutable content,
+ * so it is fetched once; only the uncommitted entry follows the live version.
+ */
+export function useCommitDiffs(
+  shas: readonly string[],
+  version: number | undefined,
+): ReadonlyMap<string, FileChange[]> {
+  const results = useQueries({
+    queries: shas.map((sha) => ({
+      queryKey: ['commit', sha, sha === UNCOMMITTED ? version : null],
+      staleTime: sha === UNCOMMITTED ? 0 : Number.POSITIVE_INFINITY,
+      placeholderData: (prev: CommitChangeset | undefined) => prev,
+      queryFn: async () =>
+        handle<CommitChangeset>(await fetch(`/api/commits/${encodeURIComponent(sha)}`)),
+    })),
+  })
+  // `useQueries` hands back a fresh array every render; the map is rebuilt
+  // only when some commit's data actually landed.
+  const stamp = results.map((r) => `${r.data?.sha ?? ''}@${r.dataUpdatedAt}`).join(' ')
+  const resultsRef = useRef(results)
+  resultsRef.current = results
+  // biome-ignore lint/correctness/useExhaustiveDependencies: the stamp is the change signal
+  return useMemo(() => {
+    const map = new Map<string, FileChange[]>()
+    for (const r of resultsRef.current) if (r.data) map.set(r.data.sha, r.data.files)
+    return map
+  }, [stamp])
 }
 
 export function useReview() {
@@ -153,6 +202,9 @@ export interface CreateThreadOptions {
   /** A public draft made from the agent's suggestion: the private thread and
    * message it came from. The server stamps the suggestion as added. */
   origin?: { threadId: string; messageId: string }
+  /** The commit whose diff the comment was made on, when the Commits tab is up:
+   * its hunk may exist only there, and the server snapshots the code from it. */
+  commit?: string
 }
 
 export function useFinishPreview(enabled: boolean, coverage: Coverage) {

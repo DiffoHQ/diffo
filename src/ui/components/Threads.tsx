@@ -31,6 +31,8 @@ export interface ReviewActions {
       parentId?: string
       /** The agent's suggestion this public draft is made from. */
       origin?: { threadId: string; messageId: string }
+      /** The commit the comment was made on; see `CreateThreadOptions`. */
+      commit?: string
     },
   ) => Promise<ReviewThread>
   reply: (threadId: string, text: string, deliver?: boolean) => Promise<unknown>

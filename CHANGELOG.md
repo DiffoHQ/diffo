@@ -7,7 +7,13 @@ Until 1.0, minor versions may break things. When they do, the entry says how to 
 
 ## [Unreleased]
 
-Nothing yet.
+### Added
+
+- **A Commits tab reads the change one commit at a time.** It lists a branch
+  review's commits oldest first, plus uncommitted edits; picking one shows
+  that commit's own diff, and `]` / `[` step between them. Read marks are
+  shared with the Files tab. See
+  [Commit by commit](https://diffohq.github.io/diffo/guide/commits).
 
 ## [0.17.2] — 2026-10-16
 

@@ -877,17 +877,18 @@ body {
 }
 
 .tab {
-  flex: 1;
-  /* Three tabs must fit a 200px rail: each shrinks and clips before the strip
-     overflows. */
+  /* Sized from the label, then sharing what is left: four tabs fit the default
+     rail without clipping the longest. At 200px each shrinks and clips before
+     the strip overflows. */
+  flex: 1 1 auto;
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: 5px;
-  padding: 5px 6px;
+  gap: 4px;
+  padding: 5px 4px;
   border: none;
   border-radius: 4px;
   background: none;
