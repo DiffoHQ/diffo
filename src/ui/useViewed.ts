@@ -15,6 +15,9 @@ export interface ViewedState {
   toggleFile: (path: string) => void
   markFiles: (paths: readonly string[]) => void
   clearFiles: (paths: readonly string[]) => void
+  /** Mark or clear raw marks — a commit's files, whose hunks need not be in the
+   * cumulative diff. A hunk the two share is one mark, read in both. */
+  setMarks: (marks: readonly string[], on: boolean) => void
   progress: { viewed: number; total: number }
   fileProgress: { viewed: number; total: number }
 }
@@ -83,6 +86,21 @@ export function useViewed(changeset: Changeset | undefined): ViewedState {
     [changeset, key],
   )
 
+  const setMarks = useCallback(
+    (marks: readonly string[], on: boolean) => {
+      setViewed((prev) => {
+        const next = new Set(prev)
+        for (const mark of marks) {
+          if (on) next.add(mark)
+          else next.delete(mark)
+        }
+        if (key) saveViewed(key, next)
+        return next
+      })
+    },
+    [key],
+  )
+
   const markFiles = useCallback((paths: readonly string[]) => setFiles(paths, true), [setFiles])
   const clearFiles = useCallback((paths: readonly string[]) => setFiles(paths, false), [setFiles])
 
@@ -117,6 +135,7 @@ export function useViewed(changeset: Changeset | undefined): ViewedState {
     toggleFile,
     markFiles,
     clearFiles,
+    setMarks,
     progress,
     fileProgress,
   }

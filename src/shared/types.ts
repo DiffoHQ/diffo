@@ -114,3 +114,31 @@ export interface PrInfo {
   viewer: { login: string; isAuthor: boolean; pendingReviewId: string | null }
   fetchedAt: string
 }
+
+/** The working-tree edits a branch review also carries, listed after the
+ * commits as one more step to read. Not a sha, so it can never collide with one. */
+export const UNCOMMITTED = 'uncommitted'
+
+/** One commit in the changeset, as the Commits tab lists it — or the
+ * `UNCOMMITTED` pseudo-entry, which has no author or date of its own. */
+export interface CommitInfo {
+  sha: string
+  short: string
+  subject: string
+  body: string
+  author: string | null
+  at: string | null
+  stats: ChangesetStats
+}
+
+export interface CommitsResponse {
+  /** Oldest first: the order the change was written in. Merges are left out —
+   * their first-parent diff is the base branch, not the change. */
+  commits: CommitInfo[]
+}
+
+/** One commit's own diff — `sha^..sha`, not the cumulative one. */
+export interface CommitChangeset {
+  sha: string
+  files: FileChange[]
+}

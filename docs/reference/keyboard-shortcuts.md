@@ -9,7 +9,7 @@ The review UI is keyboard-first. Press `?` in the review for this sheet.
 | `j` / `k` | Next / previous hunk |
 | `J` / `K` | Next / previous file |
 | `n` | Next unreviewed file, rolling into the next layer when the current one is read |
-| `]` / `[` | Next / previous layer (when the agent has posted [layers](/agents#layers)) |
+| `]` / `[` | Next / previous layer (when the agent has posted [layers](/agents#layers)), or next / previous commit on the [Commits tab](/guide/commits) |
 | `.` | Next decision in this layer: opens its card and lands on the first place it names (see [Decisions](/guide/layers#decisions)) |
 | `/` | Filter files |
 
@@ -36,6 +36,9 @@ The review UI is keyboard-first. Press `?` in the review for this sheet.
 With layers, `J` / `K` stay inside the active layer and `]` / `[` step between
 layers, skipping any layer the filters have emptied. `n` walks the whole plan:
 once the active layer is read it moves on to the first unread file in the next.
+
+On the Commits tab, `]` / `[` step between commits, and `n` walks the unread
+files of the open commit.
 
 `v` marks a whole file, not the hunk under the cursor, which is worth knowing
 because coverage is reported per hunk. Reading every hunk in a file and pressing `v` are

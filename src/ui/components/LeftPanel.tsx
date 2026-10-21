@@ -10,9 +10,11 @@ export function LeftPanel({
   wantsYou,
   layerCount = null,
   layersSuggested = false,
+  commitCount = null,
   layers,
   files,
   threads,
+  commits,
 }: {
   tab: PanelTab
   onSetTab: (tab: PanelTab) => void
@@ -26,13 +28,17 @@ export function LeftPanel({
   /** The agent flagged that this read benefits from layers: an amber dot, the
    * same signal the Threads tab gives for an answer waiting on you. */
   layersSuggested?: boolean
+  /** How many commits the changeset spans; null until they are listed, or
+   * when the review is of uncommitted work — the tab then carries no count. */
+  commitCount?: number | null
   layers?: ReactNode
   files: ReactNode
   threads: ReactNode
+  commits?: ReactNode
 }) {
   return (
     <nav className="rail">
-      <div className="tabs" role="tablist" aria-label="Files, threads, or layers">
+      <div className="tabs" role="tablist" aria-label="Files, threads, layers, or commits">
         <button
           type="button"
           role="tab"
@@ -68,8 +74,20 @@ export function LeftPanel({
           )}
           Layers {layerCount !== null && <span className="tab-n">{layerCount}</span>}
         </button>
+        {commits !== undefined && (
+          <button
+            type="button"
+            role="tab"
+            className="tab"
+            aria-selected={tab === 'commits'}
+            onClick={() => onSetTab('commits')}
+            title="Read the change one commit at a time"
+          >
+            Commits {commitCount !== null && <span className="tab-n">{commitCount}</span>}
+          </button>
+        )}
       </div>
-      {tab === 'layers' ? layers : tab === 'files' ? files : threads}
+      {tab === 'layers' ? layers : tab === 'commits' ? commits : tab === 'files' ? files : threads}
     </nav>
   )
 }

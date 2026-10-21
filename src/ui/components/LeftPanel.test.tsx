@@ -55,3 +55,20 @@ describe('LeftPanel — the Layers tab', () => {
     expect(screen.queryByTestId('files')).toBeNull()
   })
 })
+
+describe('LeftPanel — the Commits tab', () => {
+  it('follows Layers once the app hands it a body, with its count', () => {
+    const onSetTab = vi.fn()
+    panel({ onSetTab, commits: <div data-testid="commits" />, commitCount: 4 })
+    const tabs = screen.getAllByRole('tab')
+    expect(tabs[3]!.textContent).toBe('Commits 4')
+    fireEvent.click(tabs[3]!)
+    expect(onSetTab).toHaveBeenCalledWith('commits')
+  })
+
+  it('shows its body when selected, and carries no count before the list is in', () => {
+    panel({ tab: 'commits', commits: <div data-testid="commits" /> })
+    expect(screen.getByTestId('commits')).toBeTruthy()
+    expect(screen.getByRole('tab', { name: /Commits/ }).querySelector('.tab-n')).toBeNull()
+  })
+})

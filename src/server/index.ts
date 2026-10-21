@@ -28,6 +28,7 @@ import {
 } from '../shared/review.js'
 import type { ChangesetSpec, PrInfo } from '../shared/types.js'
 import { VERSION } from '../version.js'
+import { getCommitChangeset, listCommits } from './commits.js'
 import { DiffoDb, type ServerRecord } from './db.js'
 import { DeliveryQueue, type Snapshot } from './delivery.js'
 import {
@@ -429,7 +430,13 @@ export function createApp(
         edited: message.prComment!.text.trim() !== text,
       }
     }
-    const capture = store ? captureAnchor(store.get(), anchor, review.get().layers) : null
+    let capture = store ? captureAnchor(store.get(), anchor, review.get().layers) : null
+    // Made on the Commits tab, the comment may sit on a hunk only that commit's
+    // diff has. Freeze the code from there, so the agent reads what was seen.
+    if (store && !capture && anchor.kind === 'hunk' && typeof body?.commit === 'string') {
+      const commit = await getCommitChangeset(ctx.root, ctx.spec, body.commit).catch(() => null)
+      if (commit) capture = captureAnchor({ ...store.get(), files: commit.files }, anchor)
+    }
     const created = review.createThread(anchor, text, capture, intent, 'reviewer', {
       ...(audience ? { audience } : {}),
       ...(parentId ? { parentId } : {}),
@@ -1137,6 +1144,27 @@ export function createApp(
       if (err instanceof MissingBaseError) {
         return c.json({ error: err.message }, 400)
       }
+      throw err
+    }
+  })
+
+  // The changeset one commit at a time: the list, then any listed commit's own
+  // diff. Read on demand, never stored — a rebase is just the next answer.
+  app.get('/api/commits', async (c) => {
+    try {
+      return c.json(await listCommits(ctx.root, ctx.spec))
+    } catch (err) {
+      if (err instanceof MissingBaseError) return c.json({ error: err.message }, 400)
+      throw err
+    }
+  })
+
+  app.get('/api/commits/:sha', async (c) => {
+    try {
+      const commit = await getCommitChangeset(ctx.root, ctx.spec, c.req.param('sha'))
+      return commit ? c.json(commit) : c.json({ error: 'no such commit in this changeset' }, 404)
+    } catch (err) {
+      if (err instanceof MissingBaseError) return c.json({ error: err.message }, 400)
       throw err
     }
   })
