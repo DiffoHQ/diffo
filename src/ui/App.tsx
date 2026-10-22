@@ -342,6 +342,7 @@ function Review() {
   useEffect(() => () => dragTeardown.current?.(), [])
 
   const { data: review } = useReview()
+  const client = useQueryClient()
   const reviewActions = useReviewActions()
   const [composeHunkId, setComposeHunkId] = useState<string | null>(null)
   const [composeFilePath, setComposeFilePath] = useState<string | null>(null)
@@ -607,8 +608,18 @@ function Review() {
       document.querySelector<HTMLElement>('.reading-pane')?.scrollTo({ top: 0 })
     })
   }, [])
-  // A before/after arriving brings the Layers tab up, the way posted layers
-  // do; posted live, it goes to the row too.
+  // The reviewer's toggle, overruling the agent's read either way.
+  const setBeforeAfter = useCallback(
+    (on: boolean) => {
+      void reviewApi
+        .setBeforeAfter(on)
+        .then(() => client.invalidateQueries({ queryKey: ['review'] }))
+        .catch(() => {})
+    },
+    [client],
+  )
+  // The review turning into a behaviour change brings the Layers tab up, the way posted
+  // layers do; flipped on live, by either side, it goes to the row too.
   const wasBeforeAfter = useRef<boolean | null>(null)
   useEffect(() => {
     if (!review) return
@@ -1788,11 +1799,13 @@ function Review() {
   // "outlining", and the honest thing to offer is Invite.
   const layersEmptyState: LayersEmptyState =
     presence === 'waiting' ? 'noagent' : (layersRequest ?? 'quiet')
-  const beforeAfterRow = review?.beforeAfter ? (
+  const beforeAfterRow = beforeAfterOn ? (
     <BeforeAfterRow
       active={onBeforeAfter}
       onOpen={goBeforeAfter}
-      status={beforeAfterSummary(review.beforeAfter.sections)}
+      status={
+        review?.beforeAfter ? beforeAfterSummary(review.beforeAfter.sections) : 'not written yet'
+      }
     />
   ) : null
 
@@ -1855,6 +1868,15 @@ function Review() {
             publicDrafts,
             onFinishReview: () => setFinishOpen(true),
           }}
+          beforeAfter={
+            review
+              ? {
+                  on: beforeAfterOn,
+                  overruled: review.beforeAfterToggle !== undefined,
+                  onToggle: () => setBeforeAfter(!beforeAfterOn),
+                }
+              : undefined
+          }
           settings={{
             theme,
             onSetTheme: setTheme,
@@ -2019,11 +2041,7 @@ function Review() {
             onLoadMore={loadMoreFiles}
             layer={commitSource ? commitView : layerView}
             overview={!inCommits && inLayers && onOverview}
-            beforeAfter={
-              onBeforeAfter && review?.beforeAfter ? (
-                <BeforeAfterCard post={review.beforeAfter} />
-              ) : undefined
-            }
+            beforeAfter={onBeforeAfter ? <BeforeAfterCard post={review?.beforeAfter} /> : undefined}
             controls={{
               layer: commitSource ? commitBar : paneLayer,
               navHidden,

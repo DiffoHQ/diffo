@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { parseBeforeAfterInput } from './beforeAfter.js'
+import { showsBeforeAfter } from './review.js'
 
 describe('parseBeforeAfterInput', () => {
   it('accepts a list of titled sections, trimmed', () => {
@@ -76,5 +77,19 @@ describe('parseBeforeAfterInput', () => {
   it('caps a side at 4000 characters', () => {
     const parsed = parseBeforeAfterInput({ before: 'x'.repeat(5000), after: 'b' })
     expect(parsed.ok && parsed.value[0]!.before.length).toBe(4000)
+  })
+})
+
+describe('showsBeforeAfter', () => {
+  const post = { sections: [{ before: 'a', after: 'b' }], postedAt: '2026-01-01T00:00:00.000Z' }
+
+  it('follows the agent until the reviewer flips the toggle', () => {
+    expect(showsBeforeAfter({})).toBe(false)
+    expect(showsBeforeAfter({ beforeAfter: post })).toBe(true)
+  })
+
+  it('lets the reviewer overrule either way', () => {
+    expect(showsBeforeAfter({ beforeAfter: post, beforeAfterToggle: false })).toBe(false)
+    expect(showsBeforeAfter({ beforeAfterToggle: true })).toBe(true)
   })
 })

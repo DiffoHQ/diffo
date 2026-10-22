@@ -57,7 +57,8 @@ For the agent (the AI that wrote the change):
                      (--suggest ["why"] flags it at open; --json '<Layer[]>'
                      or --stdin posts the list, replacing the last one)
   before-after       Post what a behaviour change did before and does now
-                     (--json '[{"title","before","after"}]' or --stdin)
+                     (--json '[{"title","before","after"}]' or --stdin; the
+                     reviewer's toggle can overrule it)
   end                Detach from the review politely
   help agent         The agent's whole protocol on one page
   help guide         The guide comment — the map of the change — with an example
@@ -136,7 +137,8 @@ The loop:
    \`diffo before-after --json '[{"title":"…","before":"…","after":"…"}]'\` (or
    pipe it to \`diffo before-after --stdin\`). It is ${BEFORE_AFTER.what};
    ${BEFORE_AFTER.sections}; ${BEFORE_AFTER.sides}.
-   No behaviour change: post nothing. \`diffo help before-after\` has the shape.
+   No behaviour change: post nothing. The reviewer's toggle overrules your read.
+   \`diffo help before-after\` has the shape.
 6. Act: \`[issue]\` threads want a code change; \`[question]\` threads want an
    answer in the reply and no edit. Your edits reach the reviewer live.
 7. Reply: \`diffo reply <threadId> --message "<text>"\` (pipe long replies on
@@ -382,11 +384,12 @@ Diagram: ${BEFORE_AFTER.diagram}:
   ${GUIDE_CLASSDEFS[1]}
 
 ${BEFORE_AFTER.stance}.
-${BEFORE_AFTER.replace}.
+${BEFORE_AFTER.replace}. The reviewer's toggle overrules your read either way: marking
+the review as not changing behaviour hides what you posted.
 
 Shape: ${BEFORE_AFTER.shape}
 
-Output: {"ok":true,"next_step":"…"}
+Output: {"ok":true,"shown":true,"next_step":"…"}
 
 Example:
   diffo before-after --json '[{"title":"Expired-token login","before":"Logging in with an expired token returns a 500 and the page goes blank.","after":"The same login returns a 401; the client refreshes the token and retries once."},{"title":"Session length","before":"A session lasts 24 hours, idle or not.","after":"A session ends after 2 idle hours, and still at 24 hours at most."}]'`,

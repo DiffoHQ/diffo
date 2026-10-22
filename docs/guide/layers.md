@@ -59,6 +59,11 @@ one section per behaviour the change alters, each titled, with the two states
 side by side in a few lines (a small diagram only when the flow itself changed).
 A refactor, a cleanup or a brand-new feature gets none.
 
+Whether a review changes behaviour is the agent's read until you say otherwise.
+The **Behaviour change** toggle in the header shows it (*agent* beside the label
+while it is the agent's call), and one click overrules it either way. Unmark
+it and the row goes.
+
 `[` from the Overview or the first layer lands on it, and `]` leaves it.
 
 ## Decisions

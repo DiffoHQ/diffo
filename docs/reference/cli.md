@@ -313,7 +313,12 @@ A side that is missing, empty or not a string, or a missing title when there
 are several sections, fails with exit 1 (`before-after: section 2: needs a
 non-empty "after"`), and nothing is stored.
 
-Prints `{ "ok": true, "next_step": "…" }`.
+Prints `{ "ok": true, "shown": true, "next_step": "…" }`. `shown` is `false`
+when the reviewer has marked the review as not changing behaviour: the post is
+kept, and appears if they flip the toggle back.
+
+The reviewer's **Behaviour change** toggle in the header overrules the agent's
+read either way.
 
 ### `diffo end`
 

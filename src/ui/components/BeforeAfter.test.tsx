@@ -25,4 +25,9 @@ describe('BeforeAfterCard', () => {
     expect(screen.getByText(session.after)).toBeTruthy()
     expect(screen.queryByRole('button')).toBeNull()
   })
+
+  it('with nothing posted, says so', () => {
+    render(<BeforeAfterCard />)
+    expect(screen.getByText('The agent has not posted one.')).toBeTruthy()
+  })
 })

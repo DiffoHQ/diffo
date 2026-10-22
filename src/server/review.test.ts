@@ -1042,19 +1042,33 @@ describe('parseReview layers', () => {
 })
 
 describe('ReviewStore before/after', () => {
-  it('persists the sections, and reset takes them with the round', () => {
+  it('persists the sections and the toggle, and reset takes both with the round', () => {
     const root = tempRoot()
     const store = makeStore(root)
     const beforeAfter = store.setBeforeAfter([{ before: 'a', after: 'b' }])
     expect(beforeAfter.postedAt).toBeTruthy()
-    expect(makeStore(root).get()).toMatchObject({ beforeAfter })
+    store.setBeforeAfterToggle(false)
+    expect(makeStore(root).get()).toMatchObject({ beforeAfter, beforeAfterToggle: false })
     expect(store.reset()).toEqual([])
     expect(store.get().beforeAfter).toBeUndefined()
+    expect(store.get().beforeAfterToggle).toBeUndefined()
+    store.setBeforeAfterToggle(true)
+    expect(store.reset()).toEqual([])
+    expect(store.get().beforeAfterToggle).toBeUndefined()
+  })
+
+  it('a toggle that changes nothing tells nobody', () => {
+    const store = makeStore(tempRoot())
+    let seen = 0
+    store.subscribe(() => seen++)
+    store.setBeforeAfterToggle(true)
+    store.setBeforeAfterToggle(true)
+    expect(seen).toBe(1)
   })
 })
 
 describe('parseReview before/after', () => {
-  it('round-trips the sections, and drops a post that would fail validation', () => {
+  it('round-trips the sections and the toggle, and drops a post that would fail validation', () => {
     const parsed = parseReview(
       JSON.stringify({
         version: 1,
@@ -1063,20 +1077,24 @@ describe('parseReview before/after', () => {
           sections: [{ title: 'T', before: 'a', after: 'b' }],
           postedAt: '2026-10-01T00:00:00Z',
         },
+        beforeAfterToggle: true,
       }),
     )!
     expect(parsed.beforeAfter).toEqual({
       sections: [{ title: 'T', before: 'a', after: 'b' }],
       postedAt: '2026-10-01T00:00:00Z',
     })
+    expect(parsed.beforeAfterToggle).toBe(true)
     const broken = parseReview(
       JSON.stringify({
         version: 1,
         threads: [],
         beforeAfter: { before: 'a' },
+        beforeAfterToggle: 'yes',
       }),
     )!
     expect(broken.beforeAfter).toBeUndefined()
+    expect(broken.beforeAfterToggle).toBeUndefined()
   })
   it('reads a stored lone pair as one section', () => {
     const parsed = parseReview(

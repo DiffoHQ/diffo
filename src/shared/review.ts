@@ -398,9 +398,12 @@ export interface BeforeAfter {
   postedAt: string
 }
 
-/** Whether the review shows a before/after: whether the agent posted one. */
-export function showsBeforeAfter(state: Pick<ReviewState, 'beforeAfter'>): boolean {
-  return state.beforeAfter !== undefined
+/** Whether the review shows a before/after: the reviewer's toggle when they
+ * have flipped it, otherwise whether the agent posted one. */
+export function showsBeforeAfter(
+  state: Pick<ReviewState, 'beforeAfter' | 'beforeAfterToggle'>,
+): boolean {
+  return state.beforeAfterToggle ?? state.beforeAfter !== undefined
 }
 
 export interface ReviewState {
@@ -421,9 +424,15 @@ export interface ReviewState {
   layersSuggested?: { reason?: string }
   /**
    * The agent's before/after, posted because it read the change as altering
-   * behaviour someone would notice. Not posting is its "no".
+   * behaviour someone would notice.
+   * Posting it is the agent's verdict; `beforeAfterToggle` is the reviewer's.
    */
   beforeAfter?: BeforeAfter
+  /**
+   * The reviewer's word on whether this changeset changes behaviour, overruling the
+   * agent's. Absent until they flip it: the agent's post decides until then.
+   */
+  beforeAfterToggle?: boolean
   /**
    * What this changeset is, in a few words, as the agent named it when it
    * started polling. Exists for one job: telling a reviewer's tabs apart, all

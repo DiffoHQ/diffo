@@ -402,7 +402,8 @@ export class ReviewStore {
    */
   reset(): string[] {
     const ids = this.state.threads.map((t) => t.id)
-    const { lastFinish, landed, title, layers, layersSuggested, beforeAfter } = this.state
+    const { lastFinish, landed, title, layers, layersSuggested, beforeAfter, beforeAfterToggle } =
+      this.state
     if (
       ids.length === 0 &&
       !lastFinish &&
@@ -410,7 +411,8 @@ export class ReviewStore {
       !title &&
       !layers &&
       !layersSuggested &&
-      !beforeAfter
+      !beforeAfter &&
+      beforeAfterToggle === undefined
     ) {
       return []
     }
@@ -421,8 +423,9 @@ export class ReviewStore {
       // The plan described the round that ended; the next one is outlined afresh.
       layers: _layers,
       layersSuggested: _suggested,
-      // So did the before/after.
+      // So did the before/after, and the reviewer's word on it.
       beforeAfter: _beforeAfter,
+      beforeAfterToggle: _toggle,
       ...rest
     } = this.state
     this.state = { ...rest, threads: [] }
@@ -458,12 +461,21 @@ export class ReviewStore {
     return true
   }
 
-  /** The agent's before/after: every section, replacing any earlier post. */
+  /** The agent's before/after: the whole pair, replacing any earlier one. */
   setBeforeAfter(input: BeforeAfterInput): BeforeAfter {
     const beforeAfter: BeforeAfter = { sections: input, postedAt: new Date().toISOString() }
     this.state = { ...this.state, beforeAfter }
     this.commit()
     return beforeAfter
+  }
+
+  /** The reviewer's overrule. Stored even when it agrees with the agent: once
+   * flipped, the toggle is theirs, and a later post or retraction by the agent
+   * does not flip it back. */
+  setBeforeAfterToggle(on: boolean): void {
+    if (this.state.beforeAfterToggle === on) return
+    this.state = { ...this.state, beforeAfterToggle: on }
+    this.commit()
   }
 
   /** The agent's name for this changeset, carried by its poll. The newest one
@@ -840,6 +852,9 @@ export function parseReview(raw: string): ReviewState | null {
     // A suggestion answered by a post has nothing left to say.
     ...(layersSuggested && !layers ? { layersSuggested } : {}),
     ...(beforeAfter ? { beforeAfter } : {}),
+    ...(typeof parsed.beforeAfterToggle === 'boolean'
+      ? { beforeAfterToggle: parsed.beforeAfterToggle }
+      : {}),
   }
 }
 

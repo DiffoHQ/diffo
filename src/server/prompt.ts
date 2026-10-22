@@ -257,6 +257,7 @@ export const ACK_NEXT_STEP = {
   layersSuggested: `The review now offers the outline to the reviewer. Mention it in your handoff too — "say layers and I'll outline it" — and post it with \`${CLI_COMMANDS.layers}\` when they ask. Then run \`${CLI_COMMANDS.poll}\`.`,
   layersAlready: `This review already carries layers, so there is nothing to suggest — re-post the whole list with \`${CLI_COMMANDS.layers}\` if the outline is stale. Then run \`${CLI_COMMANDS.poll}\`.`,
   beforeAfter: `The before/after is live at the top of the reviewer's Layers tab. If the change moves, re-post every section; a post replaces them all. Continue with the review threads, then run \`${CLI_COMMANDS.poll}\`.`,
+  beforeAfterHidden: `Stored, but the reviewer marked this review as not changing behaviour, so it stays hidden unless they flip it back. Nothing else is owed. Continue with the review threads, then run \`${CLI_COMMANDS.poll}\`.`,
   end: 'Detached. Do not reopen or re-poll this review unless the user asks — deliver anything remaining directly in the conversation.',
 } as const
 
@@ -404,7 +405,7 @@ const behaviourChange = (judge: string) =>
  *
  * Unlike layers it is posted unasked: a few short passages cost little, and
  * the open is when the agent still knows what it changed. Not posting is the
- * agent's "no behaviour change".
+ * agent's "no behaviour change"; the reviewer's toggle overrules either way.
  */
 export const BEFORE_AFTER = {
   /** When the change counts — and that many do not. */
@@ -599,15 +600,16 @@ export function layersNudge(
 }
 
 /**
- * Printed by `diffo` (open) while the review has no before/after. The open is when the agent
+ * Printed by `diffo` (open) while the review has no before/after and the
+ * reviewer has not ruled out a behaviour change. The open is when the agent
  * still knows what it changed, so the before/after is posted here, unasked —
  * or nothing is, which is how the agent says "no behaviour change".
  */
 export function beforeAfterNudge(
-  review: { beforeAfter?: unknown },
+  review: { beforeAfter?: unknown; beforeAfterToggle?: boolean },
   D: Doctrine = AUTHOR_DOCTRINE,
 ): string | null {
-  if (review.beforeAfter) return null
+  if (review.beforeAfter || review.beforeAfterToggle === false) return null
   return (
     `if ${D.beforeAfter.when} — post its before/after now: ` +
     `\`${CLI_COMMANDS.beforeAfter}\`. (${D.beforeAfter.not}.) It is ${D.beforeAfter.what}; ${D.beforeAfter.sections}; ${D.beforeAfter.sides}; ${D.beforeAfter.diagram}. ` +

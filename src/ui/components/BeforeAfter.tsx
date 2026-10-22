@@ -4,18 +4,23 @@ import { Markdown } from './Markdown.js'
 /**
  * The pane while the reviewer stands on the Layers tab's Before / after row:
  * one section per behaviour the change alters, each with the agent's two
- * passages side by side.
+ * passages side by side — or, when the reviewer marked the review a behaviour
+ * change the agent did not post for, a note that there is none yet.
  */
-export function BeforeAfterCard({ post }: { post: BeforeAfterPost }) {
+export function BeforeAfterCard({ post }: { post?: BeforeAfterPost }) {
   return (
     <section className="ch-head ba-card" aria-label="Before and after">
       <div className="ch-head-top">
         <div className="ch-head-kicker">Behaviour change</div>
       </div>
       <h2>Before / after</h2>
-      {post.sections.map((section) => (
-        <BeforeAfterPair key={`${section.title ?? ''}\n${section.before}`} section={section} />
-      ))}
+      {post ? (
+        post.sections.map((section) => (
+          <BeforeAfterPair key={`${section.title ?? ''}\n${section.before}`} section={section} />
+        ))
+      ) : (
+        <p className="ba-note">The agent has not posted one.</p>
+      )}
     </section>
   )
 }

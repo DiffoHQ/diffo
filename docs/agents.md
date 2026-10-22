@@ -280,8 +280,9 @@ before you start*. Saying it in the terminal is the zero-UI path.
 A change that alters behaviour reads best from what it does differently. When
 the agent reads the change that way, it posts a **before/after** at open,
 unasked: for each behaviour it alters, what the program did before and what it
-does now. The review then shows a *Before / after* row at the top of the Layers
-tab, whether or not there are layers.
+does now. The review then carries a **Behaviour change** toggle in the header,
+switched on, and a *Before / after* row at the top of the Layers tab, whether
+or not there are layers.
 
 | | |
 | --- | --- |
@@ -291,8 +292,9 @@ tab, whether or not there are layers.
 | **Each side** | One to three sentences: the trigger, then the effect. The after answers the same trigger, so the two read as a pair. What a user or a caller sees, with the symptoms and numbers a reader can check; the mechanism belongs to the layers |
 | **Diagrams** | Rarely: only when the flow itself changed. A small `flowchart TD` (each side is half the pane wide), six nodes at most, the same flow on both sides, tagged as the guide's are |
 | **Stance** | The guide's line holds verbatim: describe, never grade |
+| **The toggle** | The reviewer's word overrules the agent's either way, and stays theirs once flipped. Marked off, what the agent posted stays stored and hidden |
 
-The sections go when the reviewer clears the review.
+The sections and the toggle go when the reviewer clears the review.
 
 ## Presence: what the reviewer can see
 

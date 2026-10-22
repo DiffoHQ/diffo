@@ -760,7 +760,14 @@ if (command.kind === 'before-after') {
   if (status === 400)
     fail(`before-after: ${(body as { error?: string } | null)?.error ?? 'rejected'}`)
   if (status !== 200) fail(`before-after failed (${status})`)
-  console.log(JSON.stringify({ ok: true, next_step: ACK_NEXT_STEP.beforeAfter }))
+  const { shown } = body as { shown: boolean }
+  console.log(
+    JSON.stringify({
+      ok: true,
+      shown,
+      next_step: shown ? ACK_NEXT_STEP.beforeAfter : ACK_NEXT_STEP.beforeAfterHidden,
+    }),
+  )
   process.exit(0)
 }
 

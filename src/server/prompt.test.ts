@@ -1039,7 +1039,7 @@ describe('layers doctrine', () => {
 })
 
 describe('before/after doctrine', () => {
-  it('the nudge asks for it at open, unless one is posted', () => {
+  it('the nudge asks for it at open, unless one is posted or the reviewer ruled it out', () => {
     const nudge = beforeAfterNudge({})!
     expect(nudge).toContain(CLI_COMMANDS.beforeAfter)
     expect(nudge).toContain(BEFORE_AFTER.when)
@@ -1049,9 +1049,11 @@ describe('before/after doctrine', () => {
     expect(nudge).toContain(BEFORE_AFTER.sides)
     expect(nudge).toContain(BEFORE_AFTER.stance)
     expect(nudge).toContain('No behaviour change: post nothing')
+    expect(beforeAfterNudge({ beforeAfterToggle: true })).not.toBeNull()
     expect(
       beforeAfterNudge({ beforeAfter: { sections: [{ before: 'a', after: 'b' }], postedAt: '' } }),
     ).toBeNull()
+    expect(beforeAfterNudge({ beforeAfterToggle: false })).toBeNull()
   })
 
   it('on a pull request the agent judges from what the author wrote', () => {
@@ -1063,8 +1065,9 @@ describe('before/after doctrine', () => {
     expect(BEFORE_AFTER.stance).toBe(GUIDE.stance)
   })
 
-  it('the ack names the next poll', () => {
+  it('both acks name the next poll', () => {
     expect(ACK_NEXT_STEP.beforeAfter).toContain(CLI_COMMANDS.poll)
+    expect(ACK_NEXT_STEP.beforeAfterHidden).toContain(CLI_COMMANDS.poll)
   })
 })
 

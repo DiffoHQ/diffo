@@ -391,3 +391,38 @@ describe('Header — the layers suggestion', () => {
     expect(document.querySelector('.presence-suggests')).toBeNull()
   })
 })
+
+describe('Header behaviour-change toggle', () => {
+  const toggle = () => screen.getByRole('switch', { name: /Behaviour change/ })
+
+  it('is absent until the review is known', () => {
+    render(<Header changeset={changeset()} />)
+    expect(screen.queryByRole('switch')).toBeNull()
+  })
+
+  it('says the read is the agent’s until the reviewer flips it', () => {
+    const onToggle = vi.fn()
+    render(
+      <Header changeset={changeset()} beforeAfter={{ on: true, overruled: false, onToggle }} />,
+    )
+    expect(toggle().getAttribute('aria-checked')).toBe('true')
+    expect(toggle().textContent).toContain('agent')
+    expect(toggle().getAttribute('title')).toMatch(/agent read this change as altering behaviour/)
+    fireEvent.click(toggle())
+    expect(onToggle).toHaveBeenCalled()
+  })
+
+  it('once overruled, the word is the reviewer’s', () => {
+    render(
+      <Header
+        changeset={changeset()}
+        beforeAfter={{ on: false, overruled: true, onToggle: () => {} }}
+      />,
+    )
+    expect(toggle().getAttribute('aria-checked')).toBe('false')
+    expect(toggle().textContent).not.toContain('agent')
+    expect(toggle().getAttribute('title')).toMatch(
+      /you marked this change as not altering behaviour/,
+    )
+  })
+})
