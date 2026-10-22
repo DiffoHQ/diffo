@@ -7,6 +7,10 @@ Until 1.0, minor versions may break things. When they do, the entry says how to 
 
 ## [Unreleased]
 
+Nothing yet.
+
+## [0.18.0] — 2026-10-22
+
 ### Added
 
 - **Read the change one commit at a time.** On a branch review, the Layers
@@ -829,7 +833,8 @@ shipped in it, written as a starting point rather than a history.
 - **Guided reading** — splitting a large change into an ordered sequence of small,
   reviewable sections — is designed but not built.
 
-[Unreleased]: https://github.com/DiffoHQ/diffo/compare/v0.17.2...HEAD
+[Unreleased]: https://github.com/DiffoHQ/diffo/compare/v0.18.0...HEAD
+[0.18.0]: https://github.com/DiffoHQ/diffo/compare/v0.17.2...v0.18.0
 [0.17.2]: https://github.com/DiffoHQ/diffo/compare/v0.17.1...v0.17.2
 [0.17.1]: https://github.com/DiffoHQ/diffo/compare/v0.17.0...v0.17.1
 [0.17.0]: https://github.com/DiffoHQ/diffo/compare/v0.16.0...v0.17.0
