@@ -185,9 +185,12 @@ export const TAB_TITLE = {
 } as const
 
 export function nextStepFor(
-  kind: 'threads' | 'finish' | 'cleared' | 'layers' | 'submitted',
+  kind: 'threads' | 'finish' | 'cleared' | 'layers' | 'before-after' | 'submitted',
   actionable: number,
 ): string {
+  if (kind === 'before-after') {
+    return `Post the before/after with \`${CLI_COMMANDS.beforeAfter}\` (or pipe it to \`${CLI_COMMANDS.beforeAfterStdin}\`), then run \`${CLI_COMMANDS.poll}\` again to keep listening (${POLL_STANCE}).`
+  }
   if (kind === 'submitted') {
     return `Nothing to act on — tell the user the review was submitted, then run \`${CLI_COMMANDS.poll}\` again to keep listening (${POLL_STANCE}), or \`${CLI_COMMANDS.end}\` if they are done.`
   }
@@ -400,12 +403,13 @@ const behaviourChange = (judge: string) =>
 /**
  * The before/after doctrine — what the program did before the change and what
  * it does now, for a change that alters behaviour. Same single-source rule as
- * LAYERS: the skill, `help agent`, `help before-after` and the open-time
- * nudge all interpolate these.
+ * LAYERS: the skill, `help agent`, `help before-after`, the open-time nudge
+ * and the poll's request all interpolate these.
  *
  * Unlike layers it is posted unasked: a few short passages cost little, and
  * the open is when the agent still knows what it changed. Not posting is the
- * agent's "no behaviour change"; the reviewer's toggle overrules either way.
+ * agent's "no behaviour change"; the reviewer's toggle overrules either way,
+ * and marking one on asks the agent for it.
  */
 export const BEFORE_AFTER = {
   /** When the change counts — and that many do not. */
@@ -613,7 +617,8 @@ export function beforeAfterNudge(
   return (
     `if ${D.beforeAfter.when} — post its before/after now: ` +
     `\`${CLI_COMMANDS.beforeAfter}\`. (${D.beforeAfter.not}.) It is ${D.beforeAfter.what}; ${D.beforeAfter.sections}; ${D.beforeAfter.sides}; ${D.beforeAfter.diagram}. ` +
-    `${D.beforeAfter.stance}. No behaviour change: post nothing. \`diffo help before-after\` has the shape.`
+    `${D.beforeAfter.stance}. No behaviour change: post nothing — the reviewer can still mark it one, and ` +
+    `the poll then asks you for it. \`diffo help before-after\` has the shape.`
   )
 }
 
@@ -1140,6 +1145,32 @@ export function buildSubmittedPrompt(ctx: PromptContext, submitted: Submitted): 
  * orientation for the fresh round, so this restates the guide doctrine the way
  * the open-time nudge does (payloads must stand alone — see POLL_STANCE).
  */
+/**
+ * The reviewer marked the review a behaviour change and no before/after is
+ * posted: the poll item that asks for one. Standalone, like every payload.
+ */
+export function buildBeforeAfterRequestPrompt(ctx: PromptContext): string {
+  const D = doctrineFor(ctx.changeset)
+  return [
+    `The reviewer marked the review of \`${ctx.repo.name}\` (branch \`${ctx.repo.branch}\`) as changing behaviour and asked for its before/after. Their call stands even if you read the change otherwise. The Layers tab reads "Writing…" until you post.`,
+    '',
+    ...prLines(ctx),
+    ...(ctx.changeset ? [specLine(ctx.changeset), ''] : []),
+    `It is ${D.beforeAfter.what}. Sections: ${D.beforeAfter.sections}. Each side: ${D.beforeAfter.sides}. Diagram: ${D.beforeAfter.diagram}:`,
+    '',
+    ...GUIDE_CLASSDEFS.map((line) => `    ${line}`),
+    '',
+    `${D.beforeAfter.stance}.`,
+    '',
+    `Shape: ${BEFORE_AFTER.shape}`,
+    '',
+    `Post it: \`${CLI_COMMANDS.beforeAfter}\`, or pipe the JSON to \`${CLI_COMMANDS.beforeAfterStdin}\`. Nothing else is owed for this item — no reply, no comment.`,
+    '',
+    `Then run \`${CLI_COMMANDS.poll}\` again to keep listening (${POLL_STANCE}).`,
+    '',
+  ].join('\n')
+}
+
 /**
  * The reviewer pressed Outline (or refresh): the poll item that asks for the
  * layers. Standalone by the same rule as every payload — an agent with no

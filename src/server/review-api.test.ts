@@ -1715,6 +1715,11 @@ describe('the layers request loop', () => {
 })
 
 describe('the before/after', () => {
+  const poll = (app: ReturnType<typeof setup>['app']) =>
+    Promise.resolve(app.request('/api/agent/poll', { headers: { 'x-diffo-agent': 'cli' } })).then(
+      pollResult,
+    )
+
   it('the agent posts its sections; the review carries them and shows a before/after', async () => {
     const { app, review } = setup()
     const res = await post(app, '/api/review/before-after', [
@@ -1743,13 +1748,38 @@ describe('the before/after', () => {
     expect(review.get().beforeAfter).toBeUndefined()
   })
 
-  it('the reviewer’s toggle is stored, and a post under it is kept but hidden', async () => {
-    const { app, review } = setup()
-    expect(
-      await (await post(app, '/api/review/before-after/toggle', { on: false })).json(),
-    ).toEqual({
-      ok: true,
-    })
+  it('marking a behaviour change with nothing posted asks the agent at its next poll', async () => {
+    const { app, queue, review } = setup()
+    const pending = poll(app)
+    await tick()
+    const res = await post(app, '/api/review/before-after/toggle', { on: true })
+    expect(await res.json()).toMatchObject({ ok: true })
+    expect(review.get().beforeAfterToggle).toBe(true)
+    const payload = await pending
+    expect(payload.kind).toBe('before-after')
+    expect(payload.threadIds).toEqual([])
+    expect(payload.prompt).toContain('asked for its before/after')
+    expect(payload.next_step).toContain('diffo before-after')
+    expect(queue.beforeAfterRequest()).toBe('writing')
+    // The post answers it.
+    await post(app, '/api/review/before-after', { before: 'a', after: 'b' })
+    expect(queue.beforeAfterRequest()).toBeNull()
+  })
+
+  it('marking a review that already has its before/after asks nothing', async () => {
+    const { app, queue } = setup()
+    await post(app, '/api/review/before-after', { before: 'a', after: 'b' })
+    const res = await post(app, '/api/review/before-after/toggle', { on: true })
+    expect(await res.json()).toMatchObject({ ok: true, request: null })
+    expect(queue.take()).toBeNull()
+  })
+
+  it('unmarking withdraws the ask, and a later post is kept but hidden', async () => {
+    const { app, queue, review } = setup()
+    await post(app, '/api/review/before-after/toggle', { on: true })
+    expect(queue.beforeAfterRequest()).toBe('queued')
+    await post(app, '/api/review/before-after/toggle', { on: false })
+    expect(queue.take()).toBeNull()
     const res = await post(app, '/api/review/before-after', { before: 'a', after: 'b' })
     expect(await res.json()).toMatchObject({ shown: false })
     expect(review.get().beforeAfter).toBeDefined()
@@ -1761,13 +1791,37 @@ describe('the before/after', () => {
     expect((await post(app, '/api/review/before-after/toggle', { on: 'yes' })).status).toBe(400)
   })
 
-  it('clearing the review drops the before/after and the toggle', async () => {
-    const { app, review } = setup()
+  it('clearing the review drops the before/after, the toggle and the ask', async () => {
+    const { app, queue, review } = setup()
     await post(app, '/api/review/before-after', { before: 'a', after: 'b' })
     await post(app, '/api/review/before-after/toggle', { on: false })
+    await post(app, '/api/review/before-after/toggle', { on: true })
     await app.request('/api/review/threads', { method: 'DELETE' })
     expect(review.get().beforeAfter).toBeUndefined()
     expect(review.get().beforeAfterToggle).toBeUndefined()
+    expect(queue.take()).toBeNull()
+  })
+
+  it('the presence stream carries where the ask stands', async () => {
+    const { app } = setup()
+    const res = await app.request('/api/events')
+    const reader = res.body!.getReader()
+    const decoder = new TextDecoder()
+    let seen = ''
+    const readUntil = async (marker: string) => {
+      while (!seen.includes(marker)) {
+        const { value, done } = await reader.read()
+        if (done) break
+        seen += decoder.decode(value)
+      }
+    }
+    await readUntil('event: presence')
+    expect(seen).toContain('"beforeAfter":null')
+    await post(app, '/api/review/before-after/toggle', { on: true })
+    await readUntil('"beforeAfter":"queued"')
+    await poll(app)
+    await readUntil('"beforeAfter":"writing"')
+    await reader.cancel()
   })
 })
 

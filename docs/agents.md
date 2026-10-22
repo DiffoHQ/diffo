@@ -89,7 +89,8 @@ A `feedback` payload:
 {
   "status": "feedback",
   "kind": "threads",           // "threads" = individual sends · "finish" = the reviewer is done reading
-                               // "layers" = the reviewer asked for the outline · "cleared" = they started over
+                               // "layers" = the reviewer asked for the outline · "before-after" = they want the before/after
+                               // "cleared" = they started over
   "threadIds": ["4f1c9a2e-…"], // reply to each of these
   "prompt": "…",               // the authoritative instruction (see below)
   "next_step": "…"             // what to do once they are all handled
@@ -111,7 +112,11 @@ answered, and the prompt tells the agent not to answer those twice.
 A `kind: "layers"` payload is the reviewer pressing **Ask the agent for steps**,
 or *re-outline* over an outline that has gone stale. It carries no threads and owes no
 reply: the prompt restates the whole [layers](#layers) doctrine and asks for one
-`diffo layers --json` post, which is what concludes it. A `kind: "cleared"`
+`diffo layers --json` post, which is what concludes it. A `kind: "before-after"`
+payload is the reviewer marking the review a behaviour change that has no
+before/after: it restates the [before/after](#before-after) doctrine and asks for
+one `diffo before-after` post.
+A `kind: "cleared"`
 payload is the reviewer starting the review over; it owes nothing but a fresh
 guide, if the changeset warrants one.
 
@@ -292,9 +297,10 @@ or not there are layers.
 | **Each side** | One to three sentences: the trigger, then the effect. The after answers the same trigger, so the two read as a pair. What a user or a caller sees, with the symptoms and numbers a reader can check; the mechanism belongs to the layers |
 | **Diagrams** | Rarely: only when the flow itself changed. A small `flowchart TD` (each side is half the pane wide), six nodes at most, the same flow on both sides, tagged as the guide's are |
 | **Stance** | The guide's line holds verbatim: describe, never grade |
-| **The toggle** | The reviewer's word overrules the agent's either way, and stays theirs once flipped. Marked off, what the agent posted stays stored and hidden |
+| **The toggle** | The reviewer's word overrules the agent's either way, and stays theirs once flipped. Marked on with nothing posted, the ask arrives through the poll as a `kind: "before-after"` payload, and the row reads *writing* until the post lands; a re-poll without a post lets the ask lapse. Marked off, what the agent posted stays stored and hidden |
 
-The sections and the toggle go when the reviewer clears the review.
+The sections, the toggle and any standing ask all go when the reviewer clears
+the review.
 
 ## Presence: what the reviewer can see
 

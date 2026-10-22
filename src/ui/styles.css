@@ -9318,3 +9318,7 @@ i.q-now {
 .ba-note p {
   margin: 0;
 }
+
+.ba-note .ch-empty-cta.btn {
+  width: auto;
+}

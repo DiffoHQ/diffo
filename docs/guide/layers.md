@@ -61,8 +61,10 @@ A refactor, a cleanup or a brand-new feature gets none.
 
 Whether a review changes behaviour is the agent's read until you say otherwise.
 The **Behaviour change** toggle in the header shows it (*agent* beside the label
-while it is the agent's call), and one click overrules it either way. Unmark
-it and the row goes.
+while it is the agent's call), and one click overrules it either way. Mark a
+review a behaviour change that has no before/after and the agent is asked for
+one through its poll; the row reads *writing* until it lands. Unmark it and the row goes, and so
+does any ask still standing.
 
 `[` from the Overview or the first layer lands on it, and `]` leaves it.
 

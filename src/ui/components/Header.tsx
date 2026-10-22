@@ -535,10 +535,10 @@ function BeforeAfterToggle({ on, overruled, onToggle }: HeaderBeforeAfter) {
   const title = overruled
     ? on
       ? 'you marked this change as altering behaviour; click to hide its before/after'
-      : 'you marked this change as not altering behaviour; click to mark it as one'
+      : 'you marked this change as not altering behaviour; click to ask for a before/after'
     : on
       ? 'the agent read this change as altering behaviour; click to overrule'
-      : 'the agent did not read this change as altering behaviour; click to mark it as one'
+      : 'the agent did not read this change as altering behaviour; click to ask for a before/after'
   return (
     <button
       type="button"

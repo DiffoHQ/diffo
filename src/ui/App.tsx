@@ -19,6 +19,7 @@ import {
 } from '../shared/review.js'
 import { type Changeset, type CommitInfo, type FileChange, UNCOMMITTED } from '../shared/types.js'
 import {
+  type BeforeAfterRequest,
   type LayersRequest,
   type Presence,
   type PresenceReason,
@@ -156,10 +157,13 @@ function useLiveUpdates(): {
   /** The reviewer's layers request: parked for the next poll, in the agent's
    * hands, or none. */
   layersRequest: LayersRequest
+  /** The reviewer's before/after request, the same way. */
+  beforeAfterRequest: BeforeAfterRequest
 } {
   const client = useQueryClient()
   const [presence, setPresence] = useState<Presence>('waiting')
   const [layersRequest, setLayersRequest] = useState<LayersRequest>(null)
+  const [beforeAfterRequest, setBeforeAfterRequest] = useState<BeforeAfterRequest>(null)
   const [reason, setReason] = useState<PresenceReason>('no-agent')
   const [since, setSince] = useState<number | null>(null)
   const [workingOn, setWorkingOn] = useState<ReadonlySet<string>>(NO_THREADS)
@@ -183,12 +187,18 @@ function useLiveUpdates(): {
           queued?: string[]
           answered?: string[]
           layers?: unknown
+          beforeAfter?: unknown
         }
         const { state } = detail
         if (state === 'waiting' || state === 'listening' || state === 'working') {
           setPresence(state)
           setLayersRequest(
             detail.layers === 'queued' || detail.layers === 'outlining' ? detail.layers : null,
+          )
+          setBeforeAfterRequest(
+            detail.beforeAfter === 'queued' || detail.beforeAfter === 'writing'
+              ? detail.beforeAfter
+              : null,
           )
           if (detail.reason) setReason(detail.reason)
           setSince(typeof detail.since === 'number' ? detail.since : null)
@@ -231,7 +241,16 @@ function useLiveUpdates(): {
     }
     return () => source.close()
   }, [client])
-  return { presence, reason, since, workingOn, queuedOn, answeredOn, layersRequest }
+  return {
+    presence,
+    reason,
+    since,
+    workingOn,
+    queuedOn,
+    answeredOn,
+    layersRequest,
+    beforeAfterRequest,
+  }
 }
 
 /**
@@ -303,6 +322,7 @@ function Review() {
     queuedOn,
     answeredOn,
     layersRequest,
+    beforeAfterRequest,
   } = useLiveUpdates()
   const {
     viewed,
@@ -608,7 +628,8 @@ function Review() {
       document.querySelector<HTMLElement>('.reading-pane')?.scrollTo({ top: 0 })
     })
   }, [])
-  // The reviewer's toggle, overruling the agent's read either way.
+  // The toggle, and the card's ask: both ride the server, which asks the agent
+  // for a before/after when the review is marked a behaviour change without one.
   const setBeforeAfter = useCallback(
     (on: boolean) => {
       void reviewApi
@@ -768,7 +789,11 @@ function Review() {
   const activity =
     presence === 'working'
       ? (agentActivity(batch.stillTo, lastAnswered) ??
-        (layersRequest === 'outlining' ? 'outlining layers' : null))
+        (layersRequest === 'outlining'
+          ? 'outlining layers'
+          : beforeAfterRequest === 'writing'
+            ? 'writing the before/after'
+            : null))
       : null
   const [monitorOpen, setMonitorOpen] = useState(false)
   useEffect(() => {
@@ -1804,7 +1829,15 @@ function Review() {
       active={onBeforeAfter}
       onOpen={goBeforeAfter}
       status={
-        review?.beforeAfter ? beforeAfterSummary(review.beforeAfter.sections) : 'not written yet'
+        review?.beforeAfter
+          ? beforeAfterSummary(review.beforeAfter.sections)
+          : !agentAttached
+            ? 'not written; no agent attached'
+            : beforeAfterRequest === 'writing'
+              ? 'the agent is writing it…'
+              : beforeAfterRequest === 'queued'
+                ? 'asked · waits for the open threads'
+                : 'not written yet'
       }
     />
   ) : null
@@ -2041,7 +2074,17 @@ function Review() {
             onLoadMore={loadMoreFiles}
             layer={commitSource ? commitView : layerView}
             overview={!inCommits && inLayers && onOverview}
-            beforeAfter={onBeforeAfter ? <BeforeAfterCard post={review?.beforeAfter} /> : undefined}
+            beforeAfter={
+              onBeforeAfter ? (
+                <BeforeAfterCard
+                  post={review?.beforeAfter}
+                  request={beforeAfterRequest}
+                  agentAttached={agentAttached}
+                  onAsk={() => setBeforeAfter(true)}
+                  onInvite={() => setInviteOpen(true)}
+                />
+              ) : undefined
+            }
             controls={{
               layer: commitSource ? commitBar : paneLayer,
               navHidden,

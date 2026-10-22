@@ -7,6 +7,7 @@ import {
   ACK_NEXT_STEP,
   BEFORE_AFTER,
   beforeAfterNudge,
+  buildBeforeAfterRequestPrompt,
   buildClearedPrompt,
   buildCoalescedPrompt,
   buildConnectAsk,
@@ -926,6 +927,29 @@ describe('the layers payload (reviewer pressed Outline)', () => {
     expect(prompt).not.toContain('The changeset under review')
     // An empty outline is not a refresh.
     expect(buildLayersRequestPrompt({ repo, changeset: null }, [])).toContain('asked for layers')
+  })
+})
+
+describe('the beforeAfter payload (reviewer marked the review a beforeAfter)', () => {
+  it('asks for the pair, says the reviewer’s call stands, and owes nothing else', () => {
+    const prompt = buildBeforeAfterRequestPrompt({ repo, changeset: changeset() })
+    expect(prompt).toContain('marked the review')
+    expect(prompt).toContain('Their call stands')
+    expect(prompt).toContain('reads "Writing…"')
+    expect(prompt).toContain(BEFORE_AFTER.what)
+    expect(prompt).toContain(BEFORE_AFTER.sides)
+    expect(prompt).toContain(BEFORE_AFTER.diagram)
+    for (const line of GUIDE_CLASSDEFS) expect(prompt).toContain(line)
+    expect(prompt).toContain(BEFORE_AFTER.stance)
+    expect(prompt).toContain(BEFORE_AFTER.shape)
+    expect(prompt).toContain(CLI_COMMANDS.beforeAfter)
+    expect(prompt).toContain(CLI_COMMANDS.beforeAfterStdin)
+    expect(prompt).toContain('no reply, no comment')
+    expect(prompt).toContain(CLI_COMMANDS.poll)
+  })
+
+  it('the next step names the post', () => {
+    expect(nextStepFor('before-after', 0)).toContain(CLI_COMMANDS.beforeAfter)
   })
 })
 

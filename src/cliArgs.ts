@@ -137,8 +137,9 @@ The loop:
    \`diffo before-after --json '[{"title":"…","before":"…","after":"…"}]'\` (or
    pipe it to \`diffo before-after --stdin\`). It is ${BEFORE_AFTER.what};
    ${BEFORE_AFTER.sections}; ${BEFORE_AFTER.sides}.
-   No behaviour change: post nothing. The reviewer's toggle overrules your read.
-   \`diffo help before-after\` has the shape.
+   No behaviour change: post nothing. The reviewer's toggle overrules your read;
+   marking one on with nothing posted reaches you as a \`"kind": "before-after"\`
+   poll payload. \`diffo help before-after\` has the shape.
 6. Act: \`[issue]\` threads want a code change; \`[question]\` threads want an
    answer in the reply and no edit. Your edits reach the reviewer live.
 7. Reply: \`diffo reply <threadId> --message "<text>"\` (pipe long replies on
@@ -385,7 +386,8 @@ Diagram: ${BEFORE_AFTER.diagram}:
 
 ${BEFORE_AFTER.stance}.
 ${BEFORE_AFTER.replace}. The reviewer's toggle overrules your read either way: marking
-the review as not changing behaviour hides what you posted.
+a review a behaviour change with nothing posted reaches you as a "kind": "before-after" poll
+payload; marking it not one hides what you posted.
 
 Shape: ${BEFORE_AFTER.shape}
 

@@ -185,7 +185,9 @@ the connection alive; a single poll is capped at **30 minutes**.
 `superseded` (another session took the review), or `ended`. A `feedback`
 payload's `kind` is `threads` (individual sends), `finish` (the reviewer is done
 reading), `layers` (the reviewer asked for the outline; see
-[`diffo layers`](#diffo-layers)), or `cleared` (they started the review over).
+[`diffo layers`](#diffo-layers)), `before-after` (they marked the review a behaviour
+change and want its before/after; see [`diffo before-after`](#diffo-before-after)), or `cleared` (they
+started the review over).
 
 Run it attended: as a tracked background task when its completion wakes the
 session on its own, otherwise in the foreground without ending the turn, and
@@ -318,7 +320,8 @@ when the reviewer has marked the review as not changing behaviour: the post is
 kept, and appears if they flip the toggle back.
 
 The reviewer's **Behaviour change** toggle in the header overrules the agent's
-read either way.
+read either way. Marking a review a behaviour change with nothing posted reaches
+the agent as a `kind: "before-after"` poll payload whose prompt asks for exactly this post.
 
 ### `diffo end`
 
