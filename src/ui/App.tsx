@@ -13,11 +13,13 @@ import {
   type Coverage,
   isDraft,
   type ReviewThread,
+  showsBeforeAfter,
   threadsInChangeset,
   untouchedAgentVoice,
 } from '../shared/review.js'
 import { type Changeset, type CommitInfo, type FileChange, UNCOMMITTED } from '../shared/types.js'
 import {
+  type BeforeAfterRequest,
   type LayersRequest,
   type Presence,
   type PresenceReason,
@@ -30,13 +32,14 @@ import {
 } from './api.js'
 import { copyText } from './clipboard.js'
 import { AgentNotices } from './components/AgentNotices.js'
+import { BeforeAfterCard } from './components/BeforeAfter.js'
 import { ClearThreads } from './components/ClearThreads.js'
 import { CommitRail, commitProgress } from './components/CommitRail.js'
 import { FinishReview } from './components/FinishReview.js'
 import { Header } from './components/Header.js'
 import { Icon, IconSprite } from './components/Icon.js'
 import { InviteAgent } from './components/InviteAgent.js'
-import { LayerRail } from './components/LayerRail.js'
+import { BeforeAfterRow, LayerRail } from './components/LayerRail.js'
 import { LayerSource, type LayerSourceKind } from './components/LayerSource.js'
 import { LayersEmpty, type LayersEmptyState } from './components/LayersEmpty.js'
 import { LeftPanel } from './components/LeftPanel.js'
@@ -111,6 +114,15 @@ const FILE_BATCH = 12
 /** The active-layer key for row 0, the guide — not a stored layer, so not an id. */
 const OVERVIEW_KEY = 'overview'
 
+/** The active-layer key for the Before / after, above the Overview. */
+const BEFORE_AFTER_KEY = 'before-after'
+
+/** The row's count line once posted: a lone section's title, else how many. */
+function beforeAfterSummary(sections: readonly { title?: string }[]): string {
+  if (sections.length > 1) return `${sections.length} behaviour changes`
+  return sections[0]?.title ?? 'what it did, and what it does now'
+}
+
 const FILE_GAP = 16
 
 const NO_THREADS: ReadonlySet<string> = new Set()
@@ -145,10 +157,13 @@ function useLiveUpdates(): {
   /** The reviewer's layers request: parked for the next poll, in the agent's
    * hands, or none. */
   layersRequest: LayersRequest
+  /** The reviewer's before/after request, the same way. */
+  beforeAfterRequest: BeforeAfterRequest
 } {
   const client = useQueryClient()
   const [presence, setPresence] = useState<Presence>('waiting')
   const [layersRequest, setLayersRequest] = useState<LayersRequest>(null)
+  const [beforeAfterRequest, setBeforeAfterRequest] = useState<BeforeAfterRequest>(null)
   const [reason, setReason] = useState<PresenceReason>('no-agent')
   const [since, setSince] = useState<number | null>(null)
   const [workingOn, setWorkingOn] = useState<ReadonlySet<string>>(NO_THREADS)
@@ -172,12 +187,18 @@ function useLiveUpdates(): {
           queued?: string[]
           answered?: string[]
           layers?: unknown
+          beforeAfter?: unknown
         }
         const { state } = detail
         if (state === 'waiting' || state === 'listening' || state === 'working') {
           setPresence(state)
           setLayersRequest(
             detail.layers === 'queued' || detail.layers === 'outlining' ? detail.layers : null,
+          )
+          setBeforeAfterRequest(
+            detail.beforeAfter === 'queued' || detail.beforeAfter === 'writing'
+              ? detail.beforeAfter
+              : null,
           )
           if (detail.reason) setReason(detail.reason)
           setSince(typeof detail.since === 'number' ? detail.since : null)
@@ -220,7 +241,16 @@ function useLiveUpdates(): {
     }
     return () => source.close()
   }, [client])
-  return { presence, reason, since, workingOn, queuedOn, answeredOn, layersRequest }
+  return {
+    presence,
+    reason,
+    since,
+    workingOn,
+    queuedOn,
+    answeredOn,
+    layersRequest,
+    beforeAfterRequest,
+  }
 }
 
 /**
@@ -292,6 +322,7 @@ function Review() {
     queuedOn,
     answeredOn,
     layersRequest,
+    beforeAfterRequest,
   } = useLiveUpdates()
   const {
     viewed,
@@ -331,6 +362,7 @@ function Review() {
   useEffect(() => () => dragTeardown.current?.(), [])
 
   const { data: review } = useReview()
+  const client = useQueryClient()
   const reviewActions = useReviewActions()
   const [composeHunkId, setComposeHunkId] = useState<string | null>(null)
   const [composeFilePath, setComposeFilePath] = useState<string | null>(null)
@@ -417,6 +449,11 @@ function Review() {
   // threads — the orientation — and no layer's files. Only exists with a guide
   // or a description.
   const onOverview = layerMode && activeLayerKey === OVERVIEW_KEY && hasOverview
+  // The Before / after: a row of the Layers tab whether or not there are
+  // layers, above the Overview. Standing on it, the pane is the agent's
+  // sections and no files.
+  const beforeAfterOn = review ? showsBeforeAfter(review) : false
+  const onBeforeAfterKey = beforeAfterOn && activeLayerKey === BEFORE_AFTER_KEY
   const foundLayer = resolvedLayers.findIndex((l) => layerKey(l) === activeLayerKey)
   // A fresh outline with nothing read yet opens on the Overview; otherwise on
   // the first layer with something unread.
@@ -426,7 +463,7 @@ function Review() {
   )
   const activeIndex = !layerMode
     ? -1
-    : onOverview
+    : onOverview || onBeforeAfterKey
       ? -1
       : foundLayer === -1
         ? startingLayer(shownLayers, viewed)
@@ -451,26 +488,38 @@ function Review() {
     commitsOffered && sourcePick === 'commits' ? 'commits' : 'steps'
   const commitSource = panel === 'layers' && layerSource === 'commits'
   const inLayers = layerMode && panel === 'layers' && !commitSource
+  const onBeforeAfter = onBeforeAfterKey && panel === 'layers' && !commitSource
   const paneLayerActive = inLayers ? activeLayer : undefined
   useEffect(() => {
-    if (!layerMode || !viewedLoaded || foundLayer !== -1 || onOverview) return
+    if (!layerMode || !viewedLoaded || foundLayer !== -1 || onOverview || onBeforeAfterKey) return
     // Pin the derived start once, so a later mark cannot slide the reviewer on.
+    // A fresh review opens on what comes first: the before/after, the Overview.
+    const fresh = untouched && activeLayerKey === null
     setActiveLayerKey(
-      hasOverview && untouched && activeLayerKey === null
-        ? OVERVIEW_KEY
-        : layerKey(resolvedLayers[activeIndex]!),
+      beforeAfterOn && fresh
+        ? BEFORE_AFTER_KEY
+        : hasOverview && fresh
+          ? OVERVIEW_KEY
+          : layerKey(resolvedLayers[activeIndex]!),
     )
   }, [
     layerMode,
     viewedLoaded,
     foundLayer,
     onOverview,
+    onBeforeAfterKey,
+    beforeAfterOn,
     resolvedLayers,
     activeIndex,
     hasOverview,
     untouched,
     activeLayerKey,
   ])
+  // Without layers the tab holds one row, and a fresh review opens on it.
+  useEffect(() => {
+    if (layerMode || !viewedLoaded || !beforeAfterOn || activeLayerKey !== null) return
+    if (allFiles.every((f) => !isFileViewed(f, viewed))) setActiveLayerKey(BEFORE_AFTER_KEY)
+  }, [layerMode, viewedLoaded, beforeAfterOn, activeLayerKey, allFiles, viewed])
   // ---------- commits: the changeset as it was written ----------
   // A lens like the outline: while the Layers tab reads by commit the pane
   // shows one commit's own diff (`sha^..sha`), not the cumulative one. Marks
@@ -527,12 +576,20 @@ function Review() {
     () =>
       commitSource
         ? (activeCommitFiles ?? EMPTY_FILES)
-        : inLayers && onOverview
+        : onBeforeAfter || (inLayers && onOverview)
           ? []
           : paneLayerActive
             ? paneLayerActive.files.map((f) => f.file)
             : filter.files,
-    [commitSource, activeCommitFiles, inLayers, onOverview, paneLayerActive, filter.files],
+    [
+      commitSource,
+      activeCommitFiles,
+      onBeforeAfter,
+      inLayers,
+      onOverview,
+      paneLayerActive,
+      filter.files,
+    ],
   )
   // A layer whose files all left the changeset is skipped by next/prev.
   const layerEmptied = useCallback((layer: ResolvedLayer) => layer.files.length === 0, [])
@@ -562,6 +619,40 @@ function Review() {
       document.querySelector<HTMLElement>('.reading-pane')?.scrollTo({ top: 0 })
     })
   }, [])
+
+  const goBeforeAfter = useCallback(() => {
+    setActiveLayerKey(BEFORE_AFTER_KEY)
+    setSelectedId(null)
+    setFocusPath(null)
+    requestAnimationFrame(() => {
+      document.querySelector<HTMLElement>('.reading-pane')?.scrollTo({ top: 0 })
+    })
+  }, [])
+  // The toggle, and the card's ask: both ride the server, which asks the agent
+  // for a before/after when the review is marked a behaviour change without one.
+  const setBeforeAfter = useCallback(
+    (on: boolean) => {
+      void reviewApi
+        .setBeforeAfter(on)
+        .then(() => client.invalidateQueries({ queryKey: ['review'] }))
+        .catch(() => {})
+    },
+    [client],
+  )
+  // The review turning into a behaviour change brings the Layers tab up, the way posted
+  // layers do; flipped on live, by either side, it goes to the row too.
+  const wasBeforeAfter = useRef<boolean | null>(null)
+  useEffect(() => {
+    if (!review) return
+    const was = wasBeforeAfter.current
+    wasBeforeAfter.current = beforeAfterOn
+    if (!beforeAfterOn || was === true) return
+    setPanel('layers')
+    if (was === false) {
+      setSourcePick('steps')
+      goBeforeAfter()
+    }
+  }, [review, beforeAfterOn, goBeforeAfter])
 
   const goCommit = useCallback((sha: string) => {
     setActiveCommitSha(sha)
@@ -698,7 +789,11 @@ function Review() {
   const activity =
     presence === 'working'
       ? (agentActivity(batch.stillTo, lastAnswered) ??
-        (layersRequest === 'outlining' ? 'outlining layers' : null))
+        (layersRequest === 'outlining'
+          ? 'outlining layers'
+          : beforeAfterRequest === 'writing'
+            ? 'writing the before/after'
+            : null))
       : null
   const [monitorOpen, setMonitorOpen] = useState(false)
   useEffect(() => {
@@ -1229,6 +1324,8 @@ function Review() {
       }
     } else {
       file = allFiles.find(unread)
+      // The before/after has no files under it: read them on the Files tab.
+      if (file && onBeforeAfter) setPanel('files')
     }
     if (!file) return
     revealFile(file.path)
@@ -1257,6 +1354,7 @@ function Review() {
     commitList,
     commitDiffs,
     goCommit,
+    onBeforeAfter,
   ])
 
   const openThread = useCallback(
@@ -1275,8 +1373,10 @@ function Review() {
         if (target !== -1 && layerKey(resolvedLayers[target]!) !== activeLayerKey) goLayer(target)
       } else if (item.path) {
         holdOpenRef.current = item.path
-        // A thread on a file this commit did not touch is read on the Files tab.
+        // A thread on a file this commit did not touch is read on the Files tab,
+        // and so is any file thread from a before/after with no layers to enter.
         if (inCommits && !activeCommitFiles!.some((f) => f.path === item.path)) setPanel('files')
+        if (onBeforeAfter && !layerMode) setPanel('files')
         enterLayerFor(item.path)
         revealFile(item.path)
         setCollapsed((prev) => {
@@ -1289,8 +1389,8 @@ function Review() {
         // A changeset thread lives in the changeset strip, which a layer does
         // not draw: in layers it is the Overview — row 0 — or, with no Overview
         // to go to, the flat pane on the Files tab.
-        if (inLayers && !onOverview) {
-          if (hasOverview) goOverview()
+        if ((inLayers && !onOverview) || onBeforeAfter) {
+          if (hasOverview && layerMode) goOverview()
           else setPanel('files')
         }
         setRevealThreadId(item.threadId)
@@ -1326,6 +1426,8 @@ function Review() {
       goOverview,
       inCommits,
       activeCommitFiles,
+      onBeforeAfter,
+      layerMode,
     ],
   )
   /** The rail's row, as `openThread` wants it. */
@@ -1465,15 +1567,23 @@ function Review() {
         if (commitIndex >= 0 && to >= 0 && to < commitList.length) goCommit(commitList[to]!.sha)
       } else if (action === 'next-layer' || action === 'prev-layer') {
         if (!inLayers) return
+        // `]` off the before/after lands on the Overview, when there is one.
+        if (onBeforeAfter && action === 'next-layer' && hasOverview) {
+          goOverview()
+          return
+        }
         const to = stepLayer(
           shownLayers,
           activeIndex,
           action === 'next-layer' ? 1 : -1,
           layerEmptied,
         )
-        // `[` off the front of the outline lands on the Overview, when there is one.
+        // `[` off the front of the outline lands on the Overview, when there is
+        // one, and off that on the before/after.
         if (to !== null) goLayer(to)
-        else if (action === 'prev-layer' && hasOverview && !onOverview) goOverview()
+        else if (action === 'prev-layer' && hasOverview && !onOverview && !onBeforeAfter)
+          goOverview()
+        else if (action === 'prev-layer' && beforeAfterOn && !onBeforeAfter) goBeforeAfter()
       } else if (action === 'next-decision') {
         // Walk the layer's decisions: open the next card and land on the first
         // place it names. A decision with no place in the diff opens at the
@@ -1510,6 +1620,10 @@ function Review() {
     goOverview,
     guide,
     onOverview,
+    onBeforeAfter,
+    beforeAfterOn,
+    goBeforeAfter,
+    hasOverview,
     paneLayerActive,
     openDecision,
     jumpTo,
@@ -1645,6 +1759,17 @@ function Review() {
     const step = (dir: 1 | -1) => stepLayer(shownLayers, activeIndex, dir, layerEmptied)
     const to = (i: number | null) =>
       i === null ? null : { title: resolvedLayers[i]!.title, onGo: () => goLayer(i) }
+    const toBeforeAfter = beforeAfterOn ? { title: 'Before / after', onGo: goBeforeAfter } : null
+    const toOverview = hasOverview ? { title: 'Overview', onGo: goOverview } : null
+    if (onBeforeAfter) {
+      return {
+        text: 'behaviour change · before / after',
+        title: 'what the program did before this change, and what it does now',
+        progress: null,
+        prev: null,
+        next: inLayers ? (toOverview ?? to(step(1))) : null,
+      }
+    }
     if (inLayers && onOverview) {
       return {
         text: description ? 'overview · the description' : 'overview · the guide',
@@ -1652,7 +1777,7 @@ function Review() {
           ? 'the author’s description of this change; ] enters the first layer'
           : 'the agent’s orientation to this change; ] enters the first layer',
         progress: null,
-        prev: null,
+        prev: toBeforeAfter,
         next: to(step(1)),
       }
     }
@@ -1674,7 +1799,7 @@ function Review() {
       title: `${p.doneFiles} of ${p.files} files in this layer marked reviewed`,
       progress: p.marks === 0 ? 0 : p.doneMarks / p.marks,
       stats: layerLineStats(activeLayer),
-      prev: prev !== null ? to(prev) : hasOverview ? { title: 'Overview', onGo: goOverview } : null,
+      prev: prev !== null ? to(prev) : (toOverview ?? toBeforeAfter),
       next: to(step(1)),
     }
   }, [
@@ -1691,11 +1816,31 @@ function Review() {
     goOverview,
     description,
     hasOverview,
+    onBeforeAfter,
+    beforeAfterOn,
+    goBeforeAfter,
   ])
   // Nobody attached wins: a request parked for a poll nobody is running is not
   // "outlining", and the honest thing to offer is Invite.
   const layersEmptyState: LayersEmptyState =
     presence === 'waiting' ? 'noagent' : (layersRequest ?? 'quiet')
+  const beforeAfterRow = beforeAfterOn ? (
+    <BeforeAfterRow
+      active={onBeforeAfter}
+      onOpen={goBeforeAfter}
+      status={
+        review?.beforeAfter
+          ? beforeAfterSummary(review.beforeAfter.sections)
+          : !agentAttached
+            ? 'not written; no agent attached'
+            : beforeAfterRequest === 'writing'
+              ? 'the agent is writing it…'
+              : beforeAfterRequest === 'queued'
+                ? 'asked · waits for the open threads'
+                : 'not written yet'
+      }
+    />
+  ) : null
 
   if (isLoading) {
     return (
@@ -1756,6 +1901,15 @@ function Review() {
             publicDrafts,
             onFinishReview: () => setFinishOpen(true),
           }}
+          beforeAfter={
+            review
+              ? {
+                  on: beforeAfterOn,
+                  overruled: review.beforeAfterToggle !== undefined,
+                  onToggle: () => setBeforeAfter(!beforeAfterOn),
+                }
+              : undefined
+          }
           settings={{
             theme,
             onSetTheme: setTheme,
@@ -1829,12 +1983,14 @@ function Review() {
                     }}
                     onRefresh={agentAttached ? requestLayers : undefined}
                     request={agentAttached ? layersRequest : null}
+                    lead={beforeAfterRow}
                   />
                 ) : (
                   <LayersEmpty
                     state={layersEmptyState}
                     onOutline={requestLayers}
                     onInvite={() => setInviteOpen(true)}
+                    lead={beforeAfterRow}
                   />
                 )}
               </>
@@ -1918,6 +2074,17 @@ function Review() {
             onLoadMore={loadMoreFiles}
             layer={commitSource ? commitView : layerView}
             overview={!inCommits && inLayers && onOverview}
+            beforeAfter={
+              onBeforeAfter ? (
+                <BeforeAfterCard
+                  post={review?.beforeAfter}
+                  request={beforeAfterRequest}
+                  agentAttached={agentAttached}
+                  onAsk={() => setBeforeAfter(true)}
+                  onInvite={() => setInviteOpen(true)}
+                />
+              ) : undefined
+            }
             controls={{
               layer: commitSource ? commitBar : paneLayer,
               navHidden,

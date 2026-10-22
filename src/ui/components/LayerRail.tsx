@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { type ReactNode, useMemo, useState } from 'react'
 import type { ReviewThread } from '../../shared/review.js'
 import type { LayersRequest } from '../api.js'
 import { isFileViewed } from '../fileMarks.js'
@@ -203,6 +203,53 @@ function LayerFiles({
   return <FileTree files={files} notes={notes} {...tree} />
 }
 
+/**
+ * The before/after's row: above the Overview, since what the change does to
+ * the program's behaviour is the first thing to know. Not markable — it is
+ * not code.
+ */
+export function BeforeAfterRow({
+  active,
+  onOpen,
+  status,
+}: {
+  active: boolean
+  onOpen: () => void
+  /** The count line, in words: what the row holds right now. */
+  status: string
+}) {
+  return (
+    // biome-ignore lint/a11y/noStaticElementInteractions: the pick button inside is the keyboard path; the row widens the mouse target
+    // biome-ignore lint/a11y/useKeyWithClickEvents: same
+    <div
+      className="row row-layer row-layer-overview row-layer-ba"
+      aria-current={active ? 'true' : undefined}
+      onClick={onOpen}
+    >
+      <span className="row-box" aria-hidden="true">
+        <Icon name="compare" size="sm" />
+      </span>
+      <button
+        type="button"
+        className="row-pick"
+        title="What the program did before this change, and what it does now"
+        onClick={(e) => {
+          e.stopPropagation()
+          onOpen()
+        }}
+      >
+        <span className="row-name">
+          <span className="row-base">Before / after</span>
+        </span>
+        <span className="ch-sub">
+          <span>{status}</span>
+        </span>
+      </button>
+      <span className="row-right" />
+    </div>
+  )
+}
+
 export function LayerRail({
   layers,
   activeIndex,
@@ -223,6 +270,7 @@ export function LayerRail({
   onAskFile,
   onRefresh,
   request = null,
+  lead,
 }: {
   layers: readonly ResolvedLayer[]
   activeIndex: number
@@ -253,6 +301,8 @@ export function LayerRail({
   /** A re-outline is in flight — parked behind the agent's open threads, or in
    * its hands. The line says which, and cannot be clicked again. */
   request?: LayersRequest
+  /** A row above all the others — the Before / after. */
+  lead?: ReactNode
 }) {
   const threadCount = (layer: ResolvedLayer) =>
     layer.files.reduce((n, f) => n + (threads?.get(f.file.path)?.length ?? 0), 0)
@@ -270,6 +320,7 @@ export function LayerRail({
     })
   return (
     <div className="rail-scroll">
+      {lead}
       {(guide || description) && (
         // biome-ignore lint/a11y/noStaticElementInteractions: the pick button inside is the keyboard path; the row widens the mouse target
         // biome-ignore lint/a11y/useKeyWithClickEvents: same
