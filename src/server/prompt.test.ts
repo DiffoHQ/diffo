@@ -5,6 +5,8 @@ import type { Changeset } from '../shared/types.js'
 import { DEV_SKILL_NAME, SKILL_NAME } from '../skill.js'
 import {
   ACK_NEXT_STEP,
+  BEFORE_AFTER,
+  beforeAfterNudge,
   buildClearedPrompt,
   buildCoalescedPrompt,
   buildConnectAsk,
@@ -23,6 +25,7 @@ import {
   layersNudge,
   nextStepFor,
   ownPrAsk,
+  PR_DOCTRINE,
   voiceLines,
 } from './prompt.js'
 
@@ -1022,7 +1025,6 @@ describe('layers doctrine', () => {
   it('summaries inherit the guide’s stance verbatim', () => {
     expect(LAYERS.stance).toBe(GUIDE.stance)
   })
-
   it('the mechanical rule names the bar and the default when unsure', () => {
     expect(LAYERS.mechanical).toMatch(/no behaviour/)
     expect(LAYERS.mechanical).toMatch(/if unsure, don't tag/)
@@ -1033,6 +1035,36 @@ describe('layers doctrine', () => {
       expect(ACK_NEXT_STEP[key]).toContain(CLI_COMMANDS.poll)
     }
     expect(ACK_NEXT_STEP.layersSuggested).toContain(CLI_COMMANDS.layers)
+  })
+})
+
+describe('before/after doctrine', () => {
+  it('the nudge asks for it at open, unless one is posted', () => {
+    const nudge = beforeAfterNudge({})!
+    expect(nudge).toContain(CLI_COMMANDS.beforeAfter)
+    expect(nudge).toContain(BEFORE_AFTER.when)
+    expect(nudge).toContain(BEFORE_AFTER.not)
+    expect(nudge).toContain(BEFORE_AFTER.what)
+    expect(nudge).toContain(BEFORE_AFTER.sections)
+    expect(nudge).toContain(BEFORE_AFTER.sides)
+    expect(nudge).toContain(BEFORE_AFTER.stance)
+    expect(nudge).toContain('No behaviour change: post nothing')
+    expect(
+      beforeAfterNudge({ beforeAfter: { sections: [{ before: 'a', after: 'b' }], postedAt: '' } }),
+    ).toBeNull()
+  })
+
+  it('on a pull request the agent judges from what the author wrote', () => {
+    expect(beforeAfterNudge({}, PR_DOCTRINE)).toContain(PR_DOCTRINE.beforeAfter.when)
+    expect(PR_DOCTRINE.beforeAfter.when).toContain('labels and linked issues')
+  })
+
+  it('the before/after inherits the guide’s stance verbatim', () => {
+    expect(BEFORE_AFTER.stance).toBe(GUIDE.stance)
+  })
+
+  it('the ack names the next poll', () => {
+    expect(ACK_NEXT_STEP.beforeAfter).toContain(CLI_COMMANDS.poll)
   })
 })
 

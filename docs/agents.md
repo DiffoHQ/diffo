@@ -275,6 +275,25 @@ If the agent suggests layers, the suggestion belongs in its handoff message
 too, where the reviewer's eyes already are: *say "layers" and I'll outline it
 before you start*. Saying it in the terminal is the zero-UI path.
 
+## Before / after
+
+A change that alters behaviour reads best from what it does differently. When
+the agent reads the change that way, it posts a **before/after** at open,
+unasked: for each behaviour it alters, what the program did before and what it
+does now. The review then shows a *Before / after* row at the top of the Layers
+tab, whether or not there are layers.
+
+| | |
+| --- | --- |
+| **When** | The change alters behaviour someone running or calling the code would notice: a bug fixed; a default, limit, error or output changed; a flow that now runs differently. Judged from the branch name, the commit messages and the diff itself; on a pull request, from its title, description, labels and linked issues too. A refactor, a cleanup, tests or docs alone, or a feature with nothing before it to compare against do not count |
+| **Post** | `diffo before-after --json '[{"title":"…","before":"…","after":"…"}]'`, or piped to `diffo before-after --stdin`. A post replaces every section. No behaviour change: post nothing; that is the agent's "no" |
+| **Sections** | One per distinct behaviour: two bugs fixed are two sections, each titled in a few words. At most five; a lone section may go untitled |
+| **Each side** | One to three sentences: the trigger, then the effect. The after answers the same trigger, so the two read as a pair. What a user or a caller sees, with the symptoms and numbers a reader can check; the mechanism belongs to the layers |
+| **Diagrams** | Rarely: only when the flow itself changed. A small `flowchart TD` (each side is half the pane wide), six nodes at most, the same flow on both sides, tagged as the guide's are |
+| **Stance** | The guide's line holds verbatim: describe, never grade |
+
+The sections go when the reviewer clears the review.
+
 ## Presence: what the reviewer can see
 
 The review always shows whether a Send is reaching anybody. The states are derived

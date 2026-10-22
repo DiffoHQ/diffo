@@ -9222,3 +9222,61 @@ i.q-now {
   font-size: var(--t-11);
   color: var(--ink-3);
 }
+
+/* ---------- behaviour change: the before/after ---------- */
+
+/* The Overview's row hides its box; this one shows its icon there instead. */
+.row-layer-ba .row-box {
+  visibility: visible;
+  color: var(--ink-3);
+}
+
+.row-layer-ba[aria-current="true"] .row-box {
+  color: var(--attn);
+}
+
+/* One section per behaviour; sections after the first sit under a hairline. */
+.ba-section + .ba-section {
+  margin-top: var(--s-7);
+  padding-top: var(--s-6);
+  border-top: 1px solid var(--hair);
+}
+
+.ba-title {
+  margin: var(--s-4) 0 0;
+  font-size: var(--t-14);
+  font-weight: 600;
+  color: var(--ink);
+}
+
+/* Two passages side by side, each under its rule, in the diff's colours: red
+   for what it did, green for what it does now. One column when narrow. */
+.ba-sides {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: var(--s-4);
+  margin-top: var(--s-3);
+}
+
+.ba-side {
+  min-width: 0;
+  padding-left: 12px;
+  border-left: 2px solid var(--hair);
+}
+
+.ba-side-before {
+  border-left-color: var(--del);
+}
+
+.ba-side-after {
+  border-left-color: var(--add);
+}
+
+.ba-label {
+  margin-bottom: 4px;
+  font-size: var(--t-11);
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+}
