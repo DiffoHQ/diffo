@@ -9,9 +9,9 @@ describe('LayersEmpty', () => {
   it('quiet: a title, one line, and the one action', () => {
     const onOutline = vi.fn()
     render(<LayersEmpty state="quiet" onOutline={onOutline} />)
-    expect(screen.getByRole('heading', { name: 'Read in layers' })).toBeTruthy()
+    expect(screen.getByRole('heading', { name: 'Read in steps' })).toBeTruthy()
     expect(screen.getByText(/steps you read in order/)).toBeTruthy()
-    fireEvent.click(screen.getByRole('button', { name: /Ask the agent to outline/ }))
+    fireEvent.click(screen.getByRole('button', { name: /Ask the agent for steps/ }))
     expect(onOutline).toHaveBeenCalled()
   })
 

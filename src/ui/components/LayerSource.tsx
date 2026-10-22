@@ -1,8 +1,7 @@
 /**
  * The Layers tab reads the change in one of two orders: the agent's steps, or
  * git's commits. The switch is offered only when a branch review has commits
- * to step through; with no outline posted, Commits is the tab's default body,
- * and Steps is where the ask-to-outline lives.
+ * to step through; Steps is the default either way.
  */
 
 export type LayerSourceKind = 'steps' | 'commits'

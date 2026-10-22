@@ -441,16 +441,14 @@ function Review() {
   // Files or Threads it is the flat list it always was — the outline is a lens
   // the reviewer picks up by looking at it, not a mode the review is stuck in.
   // The Layers tab reads in one of two orders: the agent's steps, or git's
-  // commits. Commits are offered once a branch review has two or more entries
-  // to step through, and until an outline is posted they are the tab's body.
+  // commits. Commits are offered once a branch review has any to step through;
+  // Steps is the default either way.
   const commitsQuery = useCommits(data?.version, data?.spec.kind === 'branch')
   const commitList = commitsQuery.data?.commits ?? EMPTY_COMMITS
-  const commitsOffered = commitList.length >= 2
+  const commitsOffered = commitList.length > 0
   const [sourcePick, setSourcePick] = useState<LayerSourceKind | null>(null)
   const layerSource: LayerSourceKind =
-    commitsOffered && (sourcePick ?? (layerMode ? 'steps' : 'commits')) === 'commits'
-      ? 'commits'
-      : 'steps'
+    commitsOffered && sourcePick === 'commits' ? 'commits' : 'steps'
   const commitSource = panel === 'layers' && layerSource === 'commits'
   const inLayers = layerMode && panel === 'layers' && !commitSource
   const paneLayerActive = inLayers ? activeLayer : undefined

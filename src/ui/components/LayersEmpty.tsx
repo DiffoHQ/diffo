@@ -47,7 +47,7 @@ export function LayersEmpty({
   return (
     <div className="rail-scroll">
       <div className="ch-empty" data-state={state} aria-live="polite">
-        <h2 className="ch-empty-title">Read in layers</h2>
+        <h2 className="ch-empty-title">Read in steps</h2>
         <p className="ch-empty-sub">The agent splits its change into steps you read in order.</p>
         {state === 'noagent' ? (
           <>
@@ -66,7 +66,7 @@ export function LayersEmpty({
             disabled={!onOutline}
           >
             <Icon name="list" size="sm" />
-            Ask the agent to outline
+            Ask the agent for steps
           </button>
         )}
       </div>

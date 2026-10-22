@@ -6,9 +6,9 @@ against its parent.
 
 ## Steps or commits
 
-On a branch review with two or more commits (uncommitted edits count as one),
-the Layers tab carries a switch: **Steps**, the agent's outline, or
-**Commits**. Until the agent posts an outline, Commits is what the tab shows.
+On a branch review, the Layers tab carries a switch: **Steps**, the agent's
+outline, or **Commits**. Steps is where the tab opens; switch to Commits to
+read the branch as it was written, outline or not.
 
 Each row is a commit: subject, short sha, author, age and size. Uncommitted
 edits follow as a last row. Picking a row narrows the pane to that commit's own

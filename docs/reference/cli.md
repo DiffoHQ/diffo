@@ -284,7 +284,7 @@ Prints `{ "ok": true, "layers": 4, "next_step": "…" }` after a post, and
 `suggested` is `false` when layers already exist: there is nothing left to
 suggest, and the next step says to re-post instead.
 
-The reviewer's **Ask the agent to outline** button, and *re-outline* over
+The reviewer's **Ask the agent for steps** button, and *re-outline* over
 an existing outline, reach the agent as a `kind: "layers"` poll payload whose
 prompt asks for exactly this post. A post concludes the request.
 

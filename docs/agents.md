@@ -108,7 +108,7 @@ closing note leads that batch as its own thread on the whole changeset, with an 
 to reply to. It re-ships every thread that was sent, including ones already
 answered, and the prompt tells the agent not to answer those twice.
 
-A `kind: "layers"` payload is the reviewer pressing **Ask the agent to outline**,
+A `kind: "layers"` payload is the reviewer pressing **Ask the agent for steps**,
 or *re-outline* over an outline that has gone stale. It carries no threads and owes no
 reply: the prompt restates the whole [layers](#layers) doctrine and asks for one
 `diffo layers --json` post, which is what concludes it. A `kind: "cleared"`
