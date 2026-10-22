@@ -16,6 +16,12 @@ Until 1.0, minor versions may break things. When they do, the entry says how to 
   Files tab. See
   [Commit by commit](https://diffohq.github.io/diffo/guide/commits).
 
+### Fixed
+
+- **C++, Objective-C, GN and protobuf files are syntax-highlighted.** `.cc`,
+  `.cxx`, `.hh`, `.hxx`, `.m`, `.mm`, `.gn`, `.gni` and `.proto` rendered in a
+  single colour; `.h` now uses the C++ grammar instead of C.
+
 ## [0.17.2] — 2026-10-16
 
 ### Fixed

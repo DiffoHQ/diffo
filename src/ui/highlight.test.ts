@@ -1,6 +1,6 @@
 import type { ThemedToken } from 'shiki/core'
 import { describe, expect, it } from 'vitest'
-import { symbolRuns } from './highlight.js'
+import { langForPath, symbolRuns } from './highlight.js'
 
 function token(parts: [string, string][]): ThemedToken {
   return {
@@ -68,5 +68,17 @@ describe('symbolRuns', () => {
   it('treats a token without scopes as one hoverable run', () => {
     const plain: ThemedToken = { content: 'anything at all', offset: 0 }
     expect(symbolRuns(plain)).toEqual([{ content: 'anything at all', sym: true }])
+  })
+})
+
+describe('langForPath', () => {
+  it('maps C++, Objective-C and GN sources', () => {
+    expect(langForPath('base/files/file_path.cc')).toBe('cpp')
+    expect(langForPath('base/files/file_path.h')).toBe('cpp')
+    expect(langForPath('chrome/browser/mac/bridge.mm')).toBe('objective-cpp')
+    expect(langForPath('ui/base/cocoa/view.m')).toBe('objective-c')
+    expect(langForPath('components/foo/BUILD.gn')).toBe('gn')
+    expect(langForPath('build/config/features.gni')).toBe('gn')
+    expect(langForPath('components/foo/proto/msg.proto')).toBe('proto')
   })
 })
