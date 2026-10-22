@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto'
 import { resolve } from 'node:path'
+import { type BeforeAfterInput, parseBeforeAfterInput } from '../shared/beforeAfter.js'
 import { type LayerInput, parseLayersInput, parseSuggestReason } from '../shared/layers.js'
 import {
   type Anchor,
@@ -7,6 +8,7 @@ import {
   type AnchoredLines,
   type Audience,
   type Author,
+  type BeforeAfter,
   type Coverage,
   type DraftOrigin,
   EMPTY_REVIEW,
@@ -400,8 +402,16 @@ export class ReviewStore {
    */
   reset(): string[] {
     const ids = this.state.threads.map((t) => t.id)
-    const { lastFinish, landed, title, layers, layersSuggested } = this.state
-    if (ids.length === 0 && !lastFinish && !landed && !title && !layers && !layersSuggested) {
+    const { lastFinish, landed, title, layers, layersSuggested, beforeAfter } = this.state
+    if (
+      ids.length === 0 &&
+      !lastFinish &&
+      !landed &&
+      !title &&
+      !layers &&
+      !layersSuggested &&
+      !beforeAfter
+    ) {
       return []
     }
     const {
@@ -411,6 +421,8 @@ export class ReviewStore {
       // The plan described the round that ended; the next one is outlined afresh.
       layers: _layers,
       layersSuggested: _suggested,
+      // So did the before/after.
+      beforeAfter: _beforeAfter,
       ...rest
     } = this.state
     this.state = { ...rest, threads: [] }
@@ -444,6 +456,14 @@ export class ReviewStore {
     this.state = { ...this.state, layersSuggested: reason ? { reason } : {} }
     this.commit()
     return true
+  }
+
+  /** The agent's before/after: every section, replacing any earlier post. */
+  setBeforeAfter(input: BeforeAfterInput): BeforeAfter {
+    const beforeAfter: BeforeAfter = { sections: input, postedAt: new Date().toISOString() }
+    this.state = { ...this.state, beforeAfter }
+    this.commit()
+    return beforeAfter
   }
 
   /** The agent's name for this changeset, carried by its poll. The newest one
@@ -804,6 +824,7 @@ export function parseReview(raw: string): ReviewState | null {
   const title = normalizeTitle(parsed.title)
   const layers = normalizeLayers(parsed.layers, now)
   const layersSuggested = normalizeSuggested(parsed.layersSuggested)
+  const beforeAfter = normalizeBeforeAfter(parsed.beforeAfter, now)
   const pr = normalizePr(parsed.pr)
   return {
     version: 1,
@@ -818,7 +839,19 @@ export function parseReview(raw: string): ReviewState | null {
     ...(layers ? { layers } : {}),
     // A suggestion answered by a post has nothing left to say.
     ...(layersSuggested && !layers ? { layersSuggested } : {}),
+    ...(beforeAfter ? { beforeAfter } : {}),
   }
+}
+
+/** A stored before/after goes back through the post's validation; one that
+ * would be refused at the door is dropped. A lone `{ before, after }` (the
+ * shape before sections) reads as one section. */
+function normalizeBeforeAfter(value: unknown, now: string): BeforeAfter | null {
+  if (typeof value !== 'object' || value === null) return null
+  const v = value as { sections?: unknown; postedAt?: unknown }
+  const parsed = parseBeforeAfterInput(v.sections ?? value)
+  if (!parsed.ok) return null
+  return { sections: parsed.value, postedAt: typeof v.postedAt === 'string' ? v.postedAt : now }
 }
 
 /** Stored layers go back through the same validation a post does; a list that

@@ -1040,3 +1040,52 @@ describe('parseReview layers', () => {
     expect(parsed.layersSuggested).toBeUndefined()
   })
 })
+
+describe('ReviewStore before/after', () => {
+  it('persists the sections, and reset takes them with the round', () => {
+    const root = tempRoot()
+    const store = makeStore(root)
+    const beforeAfter = store.setBeforeAfter([{ before: 'a', after: 'b' }])
+    expect(beforeAfter.postedAt).toBeTruthy()
+    expect(makeStore(root).get()).toMatchObject({ beforeAfter })
+    expect(store.reset()).toEqual([])
+    expect(store.get().beforeAfter).toBeUndefined()
+  })
+})
+
+describe('parseReview before/after', () => {
+  it('round-trips the sections, and drops a post that would fail validation', () => {
+    const parsed = parseReview(
+      JSON.stringify({
+        version: 1,
+        threads: [],
+        beforeAfter: {
+          sections: [{ title: 'T', before: 'a', after: 'b' }],
+          postedAt: '2026-10-01T00:00:00Z',
+        },
+      }),
+    )!
+    expect(parsed.beforeAfter).toEqual({
+      sections: [{ title: 'T', before: 'a', after: 'b' }],
+      postedAt: '2026-10-01T00:00:00Z',
+    })
+    const broken = parseReview(
+      JSON.stringify({
+        version: 1,
+        threads: [],
+        beforeAfter: { before: 'a' },
+      }),
+    )!
+    expect(broken.beforeAfter).toBeUndefined()
+  })
+  it('reads a stored lone pair as one section', () => {
+    const parsed = parseReview(
+      JSON.stringify({
+        version: 1,
+        threads: [],
+        beforeAfter: { before: 'a', after: 'b', postedAt: 'p' },
+      }),
+    )!
+    expect(parsed.beforeAfter).toEqual({ sections: [{ before: 'a', after: 'b' }], postedAt: 'p' })
+  })
+})
