@@ -6,7 +6,12 @@ import type {
   FileChange,
 } from '../shared/types.js'
 import { UNCOMMITTED } from '../shared/types.js'
-import { getCommitDiffAsync, getFullDiffAsync, listCommitsAsync } from './git.js'
+import {
+  getCommitDiffAsync,
+  getFullDiffAsync,
+  listCommitShasAsync,
+  listCommitsAsync,
+} from './git.js'
 import { parsePatch } from './parse.js'
 
 function stats(files: FileChange[]) {
@@ -65,8 +70,9 @@ export async function listCommits(root: string, spec: ChangesetSpec): Promise<Co
 
 /**
  * One listed commit's own diff. The sha must be one `listCommits` returns: the
- * route never hands git a ref the reviewer typed, only one it already listed.
- * Null when it is not in the changeset.
+ * route never hands git a ref the reviewer typed, only a full sha it already
+ * listed — checked against the cheap sha listing, not the one that diffs every
+ * commit for its stats. Null when it is not in the changeset.
  */
 export async function getCommitChangeset(
   root: string,
@@ -77,7 +83,8 @@ export async function getCommitChangeset(
     if (spec.kind !== 'branch') return null
     return { sha, files: await uncommittedFiles(root) }
   }
-  const listed = await listCommitsAsync(root, spec)
-  if (!listed.some((c) => c.sha === sha)) return null
+  if (!/^[0-9a-f]{40}$/.test(sha)) return null
+  const listed = await listCommitShasAsync(root, spec)
+  if (!listed.includes(sha)) return null
   return { sha, files: commitFiles(await getCommitDiffAsync(root, sha)) }
 }

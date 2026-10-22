@@ -1,14 +1,18 @@
 # Read it commit by commit
 
-The Files tab folds every commit into one diff. **Commits** reads the branch
-the way it was written: one commit at a time, oldest first, each against its
-parent.
+The Files tab folds every commit into one diff. The Layers tab can also read
+the branch the way it was written: one commit at a time, oldest first, each
+against its parent.
 
-## The tab
+## Steps or commits
+
+On a branch review with two or more commits (uncommitted edits count as one),
+the Layers tab carries a switch: **Steps**, the agent's outline, or
+**Commits**. Until the agent posts an outline, Commits is what the tab shows.
 
 Each row is a commit: subject, short sha, author, age and size. Uncommitted
 edits follow as a last row. Picking a row narrows the pane to that commit's own
-diff, under its message. The tab opens on the first commit with something
+diff, under its message. The list opens on the first commit with something
 unread.
 
 | Key | |
@@ -24,7 +28,8 @@ touched is ticked in both. A hunk a later commit rewrote is a new hunk, still
 unread.
 
 A comment keeps the code it was made on. On the Files tab it sits on the same
-line, or on its file if a later commit moved that line.
+line, renumbered if a later commit grew the file above it, or on its file if
+that line is gone from the final diff.
 
 ## Not covered
 

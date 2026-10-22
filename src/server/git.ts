@@ -438,14 +438,27 @@ function parseShortstat(line: string): RawCommit['stats'] {
  * none: its changeset is not made of commits. Merges are skipped — what they
  * bring in is the base branch, which this review is not about.
  */
+async function branchStart(root: string, base: string): Promise<string> {
+  try {
+    return (await gitAsync(root, ['merge-base', base, 'HEAD'])).trim()
+  } catch {
+    throw new MissingBaseError(base)
+  }
+}
+
+/** Just the shas of `listCommitsAsync`, in the same order: a `rev-list`, no
+ * per-commit stats, so a route that only needs to know whether a sha is in the
+ * changeset does not pay for diffing every commit. */
+export async function listCommitShasAsync(root: string, spec: ChangesetSpec): Promise<string[]> {
+  if (spec.kind !== 'branch') return []
+  const mergeBase = await branchStart(root, spec.base)
+  const out = await gitAsync(root, ['rev-list', '--reverse', '--no-merges', `${mergeBase}..HEAD`])
+  return out.split('\n').filter((sha) => sha !== '')
+}
+
 export async function listCommitsAsync(root: string, spec: ChangesetSpec): Promise<RawCommit[]> {
   if (spec.kind !== 'branch') return []
-  let mergeBase: string
-  try {
-    mergeBase = (await gitAsync(root, ['merge-base', spec.base, 'HEAD'])).trim()
-  } catch {
-    throw new MissingBaseError(spec.base)
-  }
+  const mergeBase = await branchStart(root, spec.base)
   const out = await gitAsync(root, [
     'log',
     '--reverse',

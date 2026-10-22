@@ -202,7 +202,7 @@ export interface CreateThreadOptions {
   /** A public draft made from the agent's suggestion: the private thread and
    * message it came from. The server stamps the suggestion as added. */
   origin?: { threadId: string; messageId: string }
-  /** The commit whose diff the comment was made on, when the Commits tab is up:
+  /** The commit whose diff the comment was made on, when reading by commit:
    * its hunk may exist only there, and the server snapshots the code from it. */
   commit?: string
 }

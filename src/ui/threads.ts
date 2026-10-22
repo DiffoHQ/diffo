@@ -127,10 +127,9 @@ export interface ThreadItem {
   outdated?: boolean
 }
 
-/** The rail's lists. Layers is always present — with layers it is the
- * default and carries a count; without, its body offers to outline. Commits
- * reads the changeset one commit at a time. */
-export type PanelTab = 'layers' | 'files' | 'threads' | 'commits'
+/** The rail's three lists. Layers is always present — with layers it is the
+ * default and carries a count; without, its body offers to outline. */
+export type PanelTab = 'layers' | 'files' | 'threads'
 
 /** The first non-blank line, trimmed: what a collapsed card or rail row shows
  * for a body that may run to paragraphs (a bot's review comment, say). */

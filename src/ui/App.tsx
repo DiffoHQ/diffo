@@ -9,6 +9,7 @@ import {
   useRef,
   useState,
 } from 'react'
+import { translateHunkAnchor } from '../shared/anchors.js'
 import {
   type Coverage,
   isDraft,
@@ -36,6 +37,7 @@ import { Header } from './components/Header.js'
 import { Icon, IconSprite } from './components/Icon.js'
 import { InviteAgent } from './components/InviteAgent.js'
 import { LayerRail } from './components/LayerRail.js'
+import { LayerSource, type LayerSourceKind } from './components/LayerSource.js'
 import { LayersEmpty, type LayersEmptyState } from './components/LayersEmpty.js'
 import { LeftPanel } from './components/LeftPanel.js'
 import { LivingMark } from './components/LivingMark.js'
@@ -438,7 +440,19 @@ function Review() {
   // The pane reads one layer at a time only while the Layers tab is up. On
   // Files or Threads it is the flat list it always was — the outline is a lens
   // the reviewer picks up by looking at it, not a mode the review is stuck in.
-  const inLayers = layerMode && panel === 'layers'
+  // The Layers tab reads in one of two orders: the agent's steps, or git's
+  // commits. Commits are offered once a branch review has two or more entries
+  // to step through, and until an outline is posted they are the tab's body.
+  const commitsQuery = useCommits(data?.version, data?.spec.kind === 'branch')
+  const commitList = commitsQuery.data?.commits ?? EMPTY_COMMITS
+  const commitsOffered = commitList.length >= 2
+  const [sourcePick, setSourcePick] = useState<LayerSourceKind | null>(null)
+  const layerSource: LayerSourceKind =
+    commitsOffered && (sourcePick ?? (layerMode ? 'steps' : 'commits')) === 'commits'
+      ? 'commits'
+      : 'steps'
+  const commitSource = panel === 'layers' && layerSource === 'commits'
+  const inLayers = layerMode && panel === 'layers' && !commitSource
   const paneLayerActive = inLayers ? activeLayer : undefined
   useEffect(() => {
     if (!layerMode || !viewedLoaded || foundLayer !== -1 || onOverview) return
@@ -460,16 +474,15 @@ function Review() {
     activeLayerKey,
   ])
   // ---------- commits: the changeset as it was written ----------
-  // A lens like the outline: while the Commits tab is up the pane reads one
-  // commit's own diff (`sha^..sha`), not the cumulative one. Marks are
-  // hunk-keyed and content-addressed, so a hunk no later commit touched is the
-  // same mark here and on the Files tab. Diffs load only once the tab is opened.
+  // A lens like the outline: while the Layers tab reads by commit the pane
+  // shows one commit's own diff (`sha^..sha`), not the cumulative one. Marks
+  // are hunk-keyed and content-addressed, so a hunk no later commit touched is
+  // the same mark here and on the Files tab. Diffs load only once the lens is
+  // first picked up.
   const [commitsOpened, setCommitsOpened] = useState(false)
   useEffect(() => {
-    if (panel === 'commits') setCommitsOpened(true)
-  }, [panel])
-  const commitsQuery = useCommits(data?.version, data?.spec.kind === 'branch')
-  const commitList = commitsQuery.data?.commits ?? EMPTY_COMMITS
+    if (commitSource) setCommitsOpened(true)
+  }, [commitSource])
   const commitShas = useMemo(
     () => (commitsOpened ? commitList.map((c) => c.sha) : []),
     [commitsOpened, commitList],
@@ -500,14 +513,14 @@ function Review() {
     () => (activeCommitRaw ? treeOrder(activeCommitRaw) : undefined),
     [activeCommitRaw],
   )
-  const inCommits = panel === 'commits' && activeCommitFiles !== undefined
+  const inCommits = commitSource && activeCommitFiles !== undefined
   const allCommitsLoaded = commitList.every((c) => commitDiffs.has(c.sha))
   useEffect(() => {
     // Pin the derived start once every diff is in — the first unread commit is
     // only knowable then — so a later mark cannot slide the reviewer on.
-    if (panel !== 'commits' || !viewedLoaded || foundCommit !== -1 || !allCommitsLoaded) return
+    if (!commitSource || !viewedLoaded || foundCommit !== -1 || !allCommitsLoaded) return
     if (activeCommit) setActiveCommitSha(activeCommit.sha)
-  }, [panel, viewedLoaded, foundCommit, allCommitsLoaded, activeCommit])
+  }, [commitSource, viewedLoaded, foundCommit, allCommitsLoaded, activeCommit])
 
   // The pane's file order: the active layer's files as the agent listed them,
   // every one of them — the outline is the narrowing, so the filters step
@@ -660,7 +673,16 @@ function Review() {
           ? paths.has(t.anchor.path)
           : false,
     )
-    return partitionThreads(activeCommitFiles!, mine)
+    // A thread's line is numbered as the full diff numbers it; in a hunk the
+    // commit shares with the full diff, that line is renamed into the commit's
+    // own numbering, so the card sits under the line it is about.
+    const full = data?.files ?? EMPTY_FILES
+    const placed = mine.map((t) =>
+      t.anchor.kind === 'hunk'
+        ? { ...t, anchor: translateHunkAnchor(t.anchor, full, activeCommitFiles!) }
+        : t,
+    )
+    return partitionThreads(activeCommitFiles!, placed)
   }, [data, activeThreads, inCommits, activeCommitFiles])
   const items = useMemo(
     () => threadItems(activeThreads, workingOn, queuedOn),
@@ -1252,6 +1274,7 @@ function Review() {
         // A layer thread's card lives on its layer's summary card, which only
         // the Layers view draws: go there, and to that layer.
         setPanel('layers')
+        setSourcePick('steps')
         const target = resolvedLayers.findIndex((l) => l.id === item.layerId)
         if (target !== -1 && layerKey(resolvedLayers[target]!) !== activeLayerKey) goLayer(target)
       } else if (item.path) {
@@ -1441,7 +1464,7 @@ function Review() {
         if (selectedPath) toggleCollapsed(selectedPath)
       } else if (action === 'hide-reviewed') {
         filter.setHideReviewed(!filter.hideReviewed)
-      } else if ((action === 'next-layer' || action === 'prev-layer') && panel === 'commits') {
+      } else if ((action === 'next-layer' || action === 'prev-layer') && commitSource) {
         const to = commitIndex + (action === 'next-layer' ? 1 : -1)
         if (commitIndex >= 0 && to >= 0 && to < commitList.length) goCommit(commitList[to]!.sha)
       } else if (action === 'next-layer' || action === 'prev-layer') {
@@ -1494,7 +1517,7 @@ function Review() {
     paneLayerActive,
     openDecision,
     jumpTo,
-    panel,
+    commitSource,
     commitIndex,
     commitList,
     goCommit,
@@ -1748,58 +1771,66 @@ function Review() {
             threadCount={liveThreads}
             settledCount={settledThreads}
             layerCount={layerMode ? layerCount : null}
-            commitCount={commitsQuery.data ? realCommits.length : null}
-            commits={
-              <CommitRail
-                commits={commitList}
-                filesBySha={commitDiffs}
-                activeSha={activeCommit?.sha ?? null}
-                onPick={goCommit}
-                viewed={viewed}
-                threads={commitThreads}
-                loading={commitsQuery.isLoading}
-                error={commitsQuery.error ? (commitsQuery.error as Error).message : undefined}
-                selectedPath={selectedPath}
-                onPickFile={pickFile}
-                onToggleFileViewed={toggleFileViewed}
-                onMarkCommitFiles={markCommitFiles}
-                onClearCommitFiles={clearCommitFiles}
-              />
-            }
             layersSuggested={review?.layersSuggested !== undefined}
             layers={
-              layerMode ? (
-                <LayerRail
-                  layers={shownLayers}
-                  activeIndex={activeIndex}
-                  onPick={goLayer}
-                  viewed={viewed}
-                  guide={guide}
-                  description={description}
-                  overviewActive={onOverview}
-                  onOpenGuide={hasOverview ? goOverview : undefined}
-                  threads={fileThreads}
-                  attention={fileAttention}
-                  changed={sinceLastReview.changed}
-                  selectedPath={selectedPath}
-                  onPickFile={pickFile}
-                  onToggleFileViewed={toggleFileViewed}
-                  onMarkFiles={markFilesViewed}
-                  onClearFiles={clearFilesViewed}
-                  onAskFile={(path) => {
-                    revealFile(path)
-                    setComposeFilePath(path)
-                  }}
-                  onRefresh={agentAttached ? requestLayers : undefined}
-                  request={agentAttached ? layersRequest : null}
-                />
-              ) : (
-                <LayersEmpty
-                  state={layersEmptyState}
-                  onOutline={requestLayers}
-                  onInvite={() => setInviteOpen(true)}
-                />
-              )
+              <>
+                {commitsOffered && (
+                  <LayerSource
+                    source={layerSource}
+                    onPick={setSourcePick}
+                    stepCount={layerMode ? layerCount : null}
+                    commitCount={realCommits.length}
+                  />
+                )}
+                {layerSource === 'commits' ? (
+                  <CommitRail
+                    commits={commitList}
+                    filesBySha={commitDiffs}
+                    activeSha={activeCommit?.sha ?? null}
+                    onPick={goCommit}
+                    viewed={viewed}
+                    threads={commitThreads}
+                    loading={commitsQuery.isLoading}
+                    error={commitsQuery.error ? (commitsQuery.error as Error).message : undefined}
+                    selectedPath={selectedPath}
+                    onPickFile={pickFile}
+                    onToggleFileViewed={toggleFileViewed}
+                    onMarkCommitFiles={markCommitFiles}
+                    onClearCommitFiles={clearCommitFiles}
+                  />
+                ) : layerMode ? (
+                  <LayerRail
+                    layers={shownLayers}
+                    activeIndex={activeIndex}
+                    onPick={goLayer}
+                    viewed={viewed}
+                    guide={guide}
+                    description={description}
+                    overviewActive={onOverview}
+                    onOpenGuide={hasOverview ? goOverview : undefined}
+                    threads={fileThreads}
+                    attention={fileAttention}
+                    changed={sinceLastReview.changed}
+                    selectedPath={selectedPath}
+                    onPickFile={pickFile}
+                    onToggleFileViewed={toggleFileViewed}
+                    onMarkFiles={markFilesViewed}
+                    onClearFiles={clearFilesViewed}
+                    onAskFile={(path) => {
+                      revealFile(path)
+                      setComposeFilePath(path)
+                    }}
+                    onRefresh={agentAttached ? requestLayers : undefined}
+                    request={agentAttached ? layersRequest : null}
+                  />
+                ) : (
+                  <LayersEmpty
+                    state={layersEmptyState}
+                    onOutline={requestLayers}
+                    onInvite={() => setInviteOpen(true)}
+                  />
+                )}
+              </>
             }
             files={
               <Nav

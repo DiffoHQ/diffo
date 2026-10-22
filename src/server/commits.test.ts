@@ -157,4 +157,41 @@ describe('a comment made on a commit', () => {
     const without = (await (await create({})).json()) as ReviewThread
     expect(without.codeContext).toBeNull()
   })
+
+  it('renumbers the line into the full diff when a later commit grew the file above it', async () => {
+    const repo = tempRepo()
+    const lines = Array.from({ length: 20 }, (_, i) => `line ${i + 1}`)
+    write(repo, 'a.ts', `${lines.join('\n')}\n`)
+    commitAll(repo, 'base')
+    git(repo, 'checkout', '-b', 'feature')
+    lines[14] = 'LINE 15'
+    write(repo, 'a.ts', `${lines.join('\n')}\n`)
+    commitAll(repo, 'shout fifteen')
+    write(repo, 'a.ts', `zero\nzero\n${lines.join('\n')}\n`)
+    commitAll(repo, 'prepend two')
+    const dbDir = `${repo}-db`
+    cleanups.push(dbDir)
+    const store = new ChangesetStore(repo, BRANCH)
+    const review = new ReviewStore(repo, new DiffoDb(join(dbDir, 'diffo.db')), BRANCH)
+    const app = createApp({ root: repo, spec: BRANCH, clientDir: '/nope' }, store, review)
+
+    const { commits } = await listCommits(repo, BRANCH)
+    const first = (await getCommitChangeset(repo, BRANCH, commits[0]!.sha))!
+    const hunk = first.files[0]!.hunks[0]!
+    // The same hunk, by content, sits two lines lower in the full diff.
+    expect(store.get().files[0]!.hunks.map((h) => h.id)).toContain(hunk.id)
+
+    const res = await app.request('/api/review/threads', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        anchor: { kind: 'hunk', hunkId: hunk.id, path: 'a.ts', side: 'new', line: 15 },
+        text: 'why shout?',
+        commit: commits[0]!.sha,
+      }),
+    })
+    const thread = (await res.json()) as ReviewThread
+    expect(thread.anchor).toMatchObject({ kind: 'hunk', hunkId: hunk.id, line: 17 })
+    expect(thread.codeContext).toContain('+LINE 15')
+  })
 })

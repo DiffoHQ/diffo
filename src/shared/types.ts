@@ -119,7 +119,7 @@ export interface PrInfo {
  * commits as one more step to read. Not a sha, so it can never collide with one. */
 export const UNCOMMITTED = 'uncommitted'
 
-/** One commit in the changeset, as the Commits tab lists it — or the
+/** One commit in the changeset, as the Layers tab lists them by commit — or the
  * `UNCOMMITTED` pseudo-entry, which has no author or date of its own. */
 export interface CommitInfo {
   sha: string

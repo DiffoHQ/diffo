@@ -6,6 +6,7 @@ import { type Context, Hono } from 'hono'
 import { stream, streamSSE } from 'hono/streaming'
 import { SRC_STAMP } from '../devStamp.js'
 import type { ForgeClient, PrRef, ReviewEvent } from '../forge/types.js'
+import { translateHunkAnchor } from '../shared/anchors.js'
 import { parseLayersInput, parseSuggestReason } from '../shared/layers.js'
 import {
   type Anchor,
@@ -430,14 +431,25 @@ export function createApp(
         edited: message.prComment!.text.trim() !== text,
       }
     }
-    let capture = store ? captureAnchor(store.get(), anchor, review.get().layers) : null
-    // Made on the Commits tab, the comment may sit on a hunk only that commit's
-    // diff has. Freeze the code from there, so the agent reads what was seen.
-    if (store && !capture && anchor.kind === 'hunk' && typeof body?.commit === 'string') {
-      const commit = await getCommitChangeset(ctx.root, ctx.spec, body.commit).catch(() => null)
-      if (commit) capture = captureAnchor({ ...store.get(), files: commit.files }, anchor)
+    // Made while reading by commit, the comment carries that commit's line
+    // numbers. Where the full diff still has the hunk, the anchor is renamed
+    // into the full diff's numbering, so the Files tab and a GitHub draft land
+    // on the line that was read; where the hunk exists only in that commit,
+    // the code is frozen from there, so the agent reads what was seen.
+    const commitFiles =
+      store && anchor.kind === 'hunk' && typeof body?.commit === 'string'
+        ? ((await getCommitChangeset(ctx.root, ctx.spec, body.commit).catch(() => null))?.files ??
+          null)
+        : null
+    const placed =
+      commitFiles && anchor.kind === 'hunk'
+        ? translateHunkAnchor(anchor, commitFiles, store!.get().files)
+        : anchor
+    let capture = store ? captureAnchor(store.get(), placed, review.get().layers) : null
+    if (store && !capture && commitFiles) {
+      capture = captureAnchor({ ...store.get(), files: commitFiles }, anchor)
     }
-    const created = review.createThread(anchor, text, capture, intent, 'reviewer', {
+    const created = review.createThread(placed, text, capture, intent, 'reviewer', {
       ...(audience ? { audience } : {}),
       ...(parentId ? { parentId } : {}),
       ...(origin ? { origin } : {}),
