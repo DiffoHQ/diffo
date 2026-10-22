@@ -409,6 +409,81 @@ export async function getFullDiffAsync(root: string, spec: ChangesetSpec): Promi
   return [raw, untracked].filter(Boolean).join('\n')
 }
 
+// ---------- commits: the changeset one step at a time ----------
+
+const COMMIT_FIELDS = ['%H', '%h', '%an', '%aI', '%s', '%b'].join('%x1f')
+
+export interface RawCommit {
+  sha: string
+  short: string
+  author: string
+  at: string
+  subject: string
+  body: string
+  stats: { files: number; additions: number; deletions: number }
+}
+
+/** `3 files changed, 10 insertions(+), 2 deletions(-)` — any part may be absent. */
+function parseShortstat(line: string): RawCommit['stats'] {
+  const n = (re: RegExp) => Number.parseInt(re.exec(line)?.[1] ?? '0', 10)
+  return {
+    files: n(/(\d+) files? changed/),
+    additions: n(/(\d+) insertions?\(\+\)/),
+    deletions: n(/(\d+) deletions?\(-\)/),
+  }
+}
+
+/**
+ * The commits a branch review spans, oldest first. A working-tree review has
+ * none: its changeset is not made of commits. Merges are skipped — what they
+ * bring in is the base branch, which this review is not about.
+ */
+async function branchStart(root: string, base: string): Promise<string> {
+  try {
+    return (await gitAsync(root, ['merge-base', base, 'HEAD'])).trim()
+  } catch {
+    throw new MissingBaseError(base)
+  }
+}
+
+/** Just the shas of `listCommitsAsync`, in the same order: a `rev-list`, no
+ * per-commit stats, so a route that only needs to know whether a sha is in the
+ * changeset does not pay for diffing every commit. */
+export async function listCommitShasAsync(root: string, spec: ChangesetSpec): Promise<string[]> {
+  if (spec.kind !== 'branch') return []
+  const mergeBase = await branchStart(root, spec.base)
+  const out = await gitAsync(root, ['rev-list', '--reverse', '--no-merges', `${mergeBase}..HEAD`])
+  return out.split('\n').filter((sha) => sha !== '')
+}
+
+export async function listCommitsAsync(root: string, spec: ChangesetSpec): Promise<RawCommit[]> {
+  if (spec.kind !== 'branch') return []
+  const mergeBase = await branchStart(root, spec.base)
+  const out = await gitAsync(root, [
+    'log',
+    '--reverse',
+    '--no-merges',
+    '--no-color',
+    `--format=%x1e${COMMIT_FIELDS}%x1f`,
+    '--shortstat',
+    `${mergeBase}..HEAD`,
+  ])
+  return out
+    .split('\x1e')
+    .filter((chunk) => chunk.trim() !== '')
+    .map((chunk) => {
+      const [sha = '', short = '', author = '', at = '', subject = '', body = '', stat = ''] =
+        chunk.split('\x1f')
+      return { sha, short, author, at, subject, body: body.trim(), stats: parseShortstat(stat) }
+    })
+}
+
+/** One commit's own patch, against its first parent — or against nothing, for
+ * a root commit, which `git show` handles where `sha^` would not resolve. */
+export async function getCommitDiffAsync(root: string, sha: string): Promise<string> {
+  return gitAsync(root, ['show', '--format=', '--patch', ...DIFF_FLAGS, sha])
+}
+
 function isSafeRepoPath(root: string, relPath: string): boolean {
   const full = resolve(root, relPath)
   return full.startsWith(resolve(root) + sep)

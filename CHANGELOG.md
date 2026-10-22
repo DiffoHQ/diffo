@@ -7,6 +7,15 @@ Until 1.0, minor versions may break things. When they do, the entry says how to 
 
 ## [Unreleased]
 
+### Added
+
+- **Read the change one commit at a time.** On a branch review, the Layers
+  tab offers two orders: the agent's steps, or the commits, oldest first, plus
+  uncommitted edits. Picking a commit shows its
+  own diff, and `]` / `[` step between them. Read marks are shared with the
+  Files tab. See
+  [Commit by commit](https://diffohq.github.io/diffo/guide/commits).
+
 ### Fixed
 
 - **C++, Objective-C, GN and protobuf files are syntax-highlighted.** `.cc`,

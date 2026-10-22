@@ -946,6 +946,10 @@ export function parseAnchor(value: unknown): Anchor | null {
       anchor.endLine > anchor.line
         ? anchor.endLine
         : undefined
+    const commit =
+      typeof anchor.commit === 'string' && /^[0-9a-f]{40}$/.test(anchor.commit)
+        ? anchor.commit
+        : undefined
     return {
       kind: 'hunk',
       hunkId: anchor.hunkId,
@@ -953,6 +957,7 @@ export function parseAnchor(value: unknown): Anchor | null {
       side: anchor.side,
       line: anchor.line,
       ...(endLine !== undefined ? { endLine } : {}),
+      ...(commit !== undefined ? { commit } : {}),
     }
   }
   if (anchor.kind === 'file') {

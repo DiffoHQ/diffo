@@ -187,6 +187,20 @@ describe('githubPosition', () => {
     ).toMatchObject({ line: 11, side: 'LEFT' })
   })
 
+  it('downgrades a commit-numbered anchor whose hunk the full diff lacks', () => {
+    const commit = 'a'.repeat(40)
+    expect(
+      githubPosition(
+        { kind: 'hunk', hunkId: 'gone', path: 'src/upload.ts', side: 'new', line: 12, commit },
+        'x',
+        [file],
+      ),
+    ).toEqual({
+      draft: { path: 'src/upload.ts', body: 'x', subjectType: 'FILE' },
+      downgraded: true,
+    })
+  })
+
   it('opens a range with startLine on the same side', () => {
     expect(
       githubPosition(

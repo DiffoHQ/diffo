@@ -6,6 +6,7 @@ import {
   anchorForLine,
   anchorForRange,
   lineIndexForAnchor,
+  partitionForCommit,
   partitionThreads,
   placementIndexForAnchor,
   rangedRows,
@@ -256,5 +257,49 @@ describe('rangedRows', () => {
       thread('s', { kind: 'hunk', hunkId: 'h', path: 'p', side: 'new', line: 4 }),
     ])
     expect([...rows]).toEqual([0])
+  })
+})
+
+describe('partitionForCommit', () => {
+  const thread = (anchor: ReviewThread['anchor'], id = 't'): ReviewThread =>
+    ({ id, anchor, messages: [] }) as unknown as ReviewThread
+  // The same edit, four lines lower in the full diff than in the commit's own.
+  const inCommit = file('a.ts', [hunk('h', 'a.ts', [ctx(10, 10), del(11), add(11), ctx(12, 12)])])
+  const inFull = file('a.ts', [hunk('h', 'a.ts', [ctx(14, 14), del(15), add(15), ctx(16, 16)])])
+
+  it('renames a shared hunk’s line into the commit’s numbering', () => {
+    const t = thread({ kind: 'hunk', hunkId: 'h', path: 'a.ts', side: 'new', line: 15 })
+    const p = partitionForCommit([inCommit], [inFull], [t])
+    expect(p.byHunk.get('h')?.[0]?.anchor).toMatchObject({ line: 11 })
+  })
+
+  it('keeps changeset threads, drops threads on files the commit did not touch', () => {
+    const p = partitionForCommit(
+      [inCommit],
+      [inFull],
+      [
+        thread({ kind: 'changeset' }, 'c'),
+        thread({ kind: 'file', path: 'b.ts' }, 'b'),
+        thread({ kind: 'file', path: 'a.ts' }, 'a'),
+      ],
+    )
+    expect(p.changeset.map((t) => t.id)).toEqual(['c'])
+    expect(p.byFile.get('a.ts')?.map((t) => t.id)).toEqual(['a'])
+    expect(p.byFile.has('b.ts')).toBe(false)
+  })
+
+  it('does not re-home a commit-numbered anchor by line outside its commit', () => {
+    const sha = 'a'.repeat(40)
+    const t = thread({
+      kind: 'hunk',
+      hunkId: 'gone',
+      path: 'a.ts',
+      side: 'new',
+      line: 15,
+      commit: sha,
+    })
+    const p = partitionThreads([inFull], [t])
+    expect(p.byHunk.size).toBe(0)
+    expect(p.byFile.get('a.ts')?.length).toBe(1)
   })
 })

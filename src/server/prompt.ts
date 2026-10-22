@@ -1,4 +1,5 @@
 import { fileURLToPath } from 'node:url'
+import { findHunk as findHunkIn } from '../shared/anchors.js'
 import {
   type Anchor,
   type AnchoredLayer,
@@ -21,11 +22,7 @@ import type { Submitted } from './delivery.js'
 const ANCHORED_TEXT_CAP = 10
 
 function findHunk(changeset: Changeset, hunkId: string): Hunk | null {
-  for (const file of changeset.files) {
-    const hunk = file.hunks.find((h) => h.id === hunkId)
-    if (hunk) return hunk
-  }
-  return null
+  return findHunkIn(changeset.files, hunkId) ?? null
 }
 
 /**

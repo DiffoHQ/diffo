@@ -12,10 +12,11 @@ import {
 import {
   type Coverage,
   isDraft,
+  type ReviewThread,
   threadsInChangeset,
   untouchedAgentVoice,
 } from '../shared/review.js'
-import type { Changeset, FileChange } from '../shared/types.js'
+import { type Changeset, type CommitInfo, type FileChange, UNCOMMITTED } from '../shared/types.js'
 import {
   type LayersRequest,
   type Presence,
@@ -23,16 +24,20 @@ import {
   type ReviewEvent,
   reviewApi,
   useChangeset,
+  useCommitDiffs,
+  useCommits,
   useReview,
 } from './api.js'
 import { copyText } from './clipboard.js'
 import { AgentNotices } from './components/AgentNotices.js'
 import { ClearThreads } from './components/ClearThreads.js'
+import { CommitRail, commitProgress } from './components/CommitRail.js'
 import { FinishReview } from './components/FinishReview.js'
 import { Header } from './components/Header.js'
 import { Icon, IconSprite } from './components/Icon.js'
 import { InviteAgent } from './components/InviteAgent.js'
 import { LayerRail } from './components/LayerRail.js'
+import { LayerSource, type LayerSourceKind } from './components/LayerSource.js'
 import { LayersEmpty, type LayersEmptyState } from './components/LayersEmpty.js'
 import { LeftPanel } from './components/LeftPanel.js'
 import { LivingMark } from './components/LivingMark.js'
@@ -52,7 +57,7 @@ import { TelemetryNotice } from './components/TelemetryNotice.js'
 import { ThreadRail } from './components/ThreadRail.js'
 import type { ReviewActions } from './components/Threads.js'
 import { useCritter } from './critterPref.js'
-import { isFileViewed } from './fileMarks.js'
+import { fileMarks, isFileViewed } from './fileMarks.js'
 import { fileAnchor, glideTo } from './hooks.js'
 import { actionForKey, isTypingTarget } from './keyboard.js'
 import {
@@ -70,9 +75,10 @@ import {
   stepLayer,
 } from './layers.js'
 import { computeDelta, EMPTY_DELTA } from './liveDelta.js'
+import { timeAgo } from './markdown.js'
 import { PrContext } from './prMode.js'
 import { isTestFile, useReviewFilter } from './reviewFilter.js'
-import { partitionThreads, threadsByFile } from './reviewPlacement.js'
+import { partitionForCommit, partitionThreads, threadsByFile } from './reviewPlacement.js'
 import { computeSinceLastReview } from './sinceLastReview.js'
 import { useTelemetry } from './telemetry.js'
 import { useTheme } from './theme.js'
@@ -127,6 +133,7 @@ function flashLanding(node: Element): void {
 }
 
 const EMPTY_FILES: FileChange[] = []
+const EMPTY_COMMITS: CommitInfo[] = []
 
 function useLiveUpdates(): {
   presence: Presence
@@ -292,6 +299,7 @@ function Review() {
     toggleFile,
     markFiles,
     clearFiles,
+    setMarks,
     progress,
     fileProgress,
   } = useViewed(data)
@@ -432,7 +440,17 @@ function Review() {
   // The pane reads one layer at a time only while the Layers tab is up. On
   // Files or Threads it is the flat list it always was — the outline is a lens
   // the reviewer picks up by looking at it, not a mode the review is stuck in.
-  const inLayers = layerMode && panel === 'layers'
+  // The Layers tab reads in one of two orders: the agent's steps, or git's
+  // commits. Commits are offered once a branch review has any to step through;
+  // Steps is the default either way.
+  const commitsQuery = useCommits(data?.version, data?.spec.kind === 'branch')
+  const commitList = commitsQuery.data?.commits ?? EMPTY_COMMITS
+  const commitsOffered = commitList.length > 0
+  const [sourcePick, setSourcePick] = useState<LayerSourceKind | null>(null)
+  const layerSource: LayerSourceKind =
+    commitsOffered && sourcePick === 'commits' ? 'commits' : 'steps'
+  const commitSource = panel === 'layers' && layerSource === 'commits'
+  const inLayers = layerMode && panel === 'layers' && !commitSource
   const paneLayerActive = inLayers ? activeLayer : undefined
   useEffect(() => {
     if (!layerMode || !viewedLoaded || foundLayer !== -1 || onOverview) return
@@ -453,18 +471,68 @@ function Review() {
     untouched,
     activeLayerKey,
   ])
+  // ---------- commits: the changeset as it was written ----------
+  // A lens like the outline: while the Layers tab reads by commit the pane
+  // shows one commit's own diff (`sha^..sha`), not the cumulative one. Marks
+  // are hunk-keyed and content-addressed, so a hunk no later commit touched is
+  // the same mark here and on the Files tab. Diffs load only once the lens is
+  // first picked up.
+  const [commitsOpened, setCommitsOpened] = useState(false)
+  useEffect(() => {
+    if (commitSource) setCommitsOpened(true)
+  }, [commitSource])
+  const commitShas = useMemo(
+    () => (commitsOpened ? commitList.map((c) => c.sha) : []),
+    [commitsOpened, commitList],
+  )
+  const commitDiffs = useCommitDiffs(commitShas, data?.version)
+  const [activeCommitSha, setActiveCommitSha] = useState<string | null>(null)
+  const foundCommit = commitList.findIndex((c) => c.sha === activeCommitSha)
+  // Until the reviewer picks one, open on the first commit with something
+  // unread — the same start the outline makes. A commit whose diff is still
+  // on the way may be that one, so it counts as unread until it is in.
+  const commitIndex =
+    foundCommit !== -1
+      ? foundCommit
+      : commitList.length === 0
+        ? -1
+        : Math.max(
+            0,
+            commitList.findIndex((c) => {
+              const files = commitDiffs.get(c.sha)
+              return files === undefined || files.some((f) => !isFileViewed(f, viewed))
+            }),
+          )
+  const activeCommit = commitIndex >= 0 ? commitList[commitIndex] : undefined
+  const activeCommitRaw = activeCommit ? commitDiffs.get(activeCommit.sha) : undefined
+  const activeCommitFiles = useMemo(
+    () => (activeCommitRaw ? treeOrder(activeCommitRaw) : undefined),
+    [activeCommitRaw],
+  )
+  // While the commit's own diff is on the way the pane is already its — empty
+  // under the commit's head — never a flash of the full diff in between.
+  const inCommits = commitSource && activeCommitFiles !== undefined
+  useEffect(() => {
+    // Pin the derived start once its own diff is in — every commit before it
+    // is loaded and read by then — so a later mark cannot slide the reviewer on.
+    if (!commitSource || !viewedLoaded || foundCommit !== -1 || !inCommits) return
+    if (activeCommit) setActiveCommitSha(activeCommit.sha)
+  }, [commitSource, viewedLoaded, foundCommit, inCommits, activeCommit])
+
   // The pane's file order: the active layer's files as the agent listed them,
   // every one of them — the outline is the narrowing, so the filters step
   // aside while it is up — or, outside layer mode, the filtered tree order.
   // On the Overview there are no files: the pane is the changeset threads.
   const paneOrder = useMemo(
     () =>
-      inLayers && onOverview
-        ? []
-        : paneLayerActive
-          ? paneLayerActive.files.map((f) => f.file)
-          : filter.files,
-    [inLayers, onOverview, paneLayerActive, filter.files],
+      commitSource
+        ? (activeCommitFiles ?? EMPTY_FILES)
+        : inLayers && onOverview
+          ? []
+          : paneLayerActive
+            ? paneLayerActive.files.map((f) => f.file)
+            : filter.files,
+    [commitSource, activeCommitFiles, inLayers, onOverview, paneLayerActive, filter.files],
   )
   // A layer whose files all left the changeset is skipped by next/prev.
   const layerEmptied = useCallback((layer: ResolvedLayer) => layer.files.length === 0, [])
@@ -490,6 +558,16 @@ function Review() {
     setActiveLayerKey(OVERVIEW_KEY)
     setSelectedId(null)
     setFocusPath(null)
+    requestAnimationFrame(() => {
+      document.querySelector<HTMLElement>('.reading-pane')?.scrollTo({ top: 0 })
+    })
+  }, [])
+
+  const goCommit = useCallback((sha: string) => {
+    setActiveCommitSha(sha)
+    setSelectedId(null)
+    setFocusPath(null)
+    setVisibleCount(FILE_BATCH)
     requestAnimationFrame(() => {
       document.querySelector<HTMLElement>('.reading-pane')?.scrollTo({ top: 0 })
     })
@@ -555,12 +633,14 @@ function Review() {
           ? activeLayerFull
           : layersByPath.get(path)
         : undefined
-      const idx = layer
-        ? layer.files.findIndex((f) => f.file.path === path)
-        : allFiles.findIndex((f) => f.path === path)
+      const idx = inCommits
+        ? paneOrder.findIndex((f) => f.path === path)
+        : layer
+          ? layer.files.findIndex((f) => f.file.path === path)
+          : allFiles.findIndex((f) => f.path === path)
       if (idx >= 0) setVisibleCount((c) => Math.max(c, idx + 1))
     },
-    [allFiles, filter.pin, inLayers, activeLayerFull, layersByPath],
+    [allFiles, filter.pin, inLayers, activeLayerFull, layersByPath, inCommits, paneOrder],
   )
   const visibleFiles = useMemo(() => paneOrder.slice(0, visibleCount), [paneOrder, visibleCount])
 
@@ -576,9 +656,16 @@ function Review() {
       past: [...split.past, ...outdated],
     }
   }, [data, review])
+  // In a commit the pane holds that commit's files only: the threads it places
+  // are the ones about those files, plus the changeset-wide ones. A thread on a
+  // hunk the commit's diff does not have re-homes by line, as it would after an
+  // edit, then falls back to its file.
   const partition = useMemo(
-    () => partitionThreads(data?.files ?? [], activeThreads),
-    [data, activeThreads],
+    () =>
+      inCommits
+        ? partitionForCommit(activeCommitFiles!, data?.files ?? EMPTY_FILES, activeThreads)
+        : partitionThreads(data?.files ?? [], activeThreads),
+    [data, activeThreads, inCommits, activeCommitFiles],
   )
   const items = useMemo(
     () => threadItems(activeThreads, workingOn, queuedOn),
@@ -630,11 +717,25 @@ function Review() {
   const [revealPastTick, setRevealPastTick] = useState(0)
   const [revealThreadId, setRevealThreadId] = useState<string | null>(null)
   const [openThreadId, setOpenThreadId] = useState<string | null>(null)
+  // A comment made in a commit names that commit, so the server can freeze the
+  // code it was about even when the hunk exists only in that commit's diff.
+  const commentCommit = inCommits ? (activeCommit?.sha ?? null) : null
+  const paneActions = useMemo<ReviewActions>(
+    () =>
+      commentCommit === null
+        ? reviewActions
+        : {
+            ...reviewActions,
+            create: (anchor, text, intent, options) =>
+              reviewActions.create(anchor, text, intent, { ...options, commit: commentCommit }),
+          },
+    [reviewActions, commentCommit],
+  )
   const comments: ReviewComments = useMemo(
     () => ({
       partition,
       past: pastThreads,
-      actions: reviewActions,
+      actions: paneActions,
       agentConnected: agentAttached,
       workingOn,
       queuedOn,
@@ -652,7 +753,7 @@ function Review() {
     [
       partition,
       pastThreads,
-      reviewActions,
+      paneActions,
       agentAttached,
       workingOn,
       queuedOn,
@@ -911,14 +1012,18 @@ function Review() {
 
   const toggleFileViewed = useCallback(
     (path: string) => {
-      const file = data?.files.find((f) => f.path === path)
+      // In a commit the file is that commit's version of it, whose hunks may
+      // not be in the cumulative diff at all.
+      const commitFile = inCommits ? activeCommitFiles!.find((f) => f.path === path) : undefined
+      const file = commitFile ?? data?.files.find((f) => f.path === path)
       if (!file) return
       const wasComplete = isFileViewed(file, viewed)
-      if (!wasComplete && filter.hideReviewed) {
+      if (!wasComplete && filter.hideReviewed && !commitFile) {
         rememberLanding(path)
         filter.unpin(path)
       }
-      toggleFile(path)
+      if (commitFile) setMarks(fileMarks(commitFile), !wasComplete)
+      else toggleFile(path)
       setCollapsed((prev) => {
         const next = new Set(prev)
         if (wasComplete) next.delete(path)
@@ -926,7 +1031,37 @@ function Review() {
         return next
       })
     },
-    [data, toggleFile, viewed, filter.hideReviewed, filter.unpin, rememberLanding],
+    [
+      data,
+      toggleFile,
+      viewed,
+      filter.hideReviewed,
+      filter.unpin,
+      rememberLanding,
+      inCommits,
+      activeCommitFiles,
+      setMarks,
+    ],
+  )
+
+  // A commit's roll-up mark, and its folder rows: the files are that commit's.
+  const markCommitFiles = useCallback(
+    (files: readonly FileChange[]) => {
+      setMarks(files.flatMap(fileMarks), true)
+      setCollapsed((prev) => new Set([...prev, ...files.map((f) => f.path)]))
+    },
+    [setMarks],
+  )
+  const clearCommitFiles = useCallback(
+    (files: readonly FileChange[]) => {
+      setMarks(files.flatMap(fileMarks), false)
+      setCollapsed((prev) => {
+        const next = new Set(prev)
+        for (const f of files) next.delete(f.path)
+        return next
+      })
+    },
+    [setMarks],
   )
 
   /**
@@ -1069,7 +1204,18 @@ function Review() {
   const nextUnreviewed = useCallback(() => {
     const unread = (f: FileChange) => !isFileViewed(f, viewed)
     let file: FileChange | undefined
-    if (inLayers) {
+    if (inCommits) {
+      // Like the outline: this commit first, then on into the next one with
+      // something unread, as far as the diffs have loaded.
+      file = activeCommitFiles!.find(unread)
+      for (let i = commitIndex + 1; !file && i < commitList.length; i++) {
+        const hit = commitDiffs.get(commitList[i]!.sha)?.find(unread)
+        if (hit) {
+          file = hit
+          goCommit(commitList[i]!.sha)
+        }
+      }
+    } else if (inLayers) {
       // From the Overview the plan starts at layer 1.
       const from = Math.max(activeIndex, 0)
       const walk = [...shownLayers.slice(from), ...shownLayers.slice(0, from)]
@@ -1105,6 +1251,12 @@ function Review() {
     shownLayers,
     goLayer,
     scrollToFile,
+    inCommits,
+    activeCommitFiles,
+    commitIndex,
+    commitList,
+    commitDiffs,
+    goCommit,
   ])
 
   const openThread = useCallback(
@@ -1118,10 +1270,13 @@ function Review() {
         // A layer thread's card lives on its layer's summary card, which only
         // the Layers view draws: go there, and to that layer.
         setPanel('layers')
+        setSourcePick('steps')
         const target = resolvedLayers.findIndex((l) => l.id === item.layerId)
         if (target !== -1 && layerKey(resolvedLayers[target]!) !== activeLayerKey) goLayer(target)
       } else if (item.path) {
         holdOpenRef.current = item.path
+        // A thread on a file this commit did not touch is read on the Files tab.
+        if (inCommits && !activeCommitFiles!.some((f) => f.path === item.path)) setPanel('files')
         enterLayerFor(item.path)
         revealFile(item.path)
         setCollapsed((prev) => {
@@ -1169,6 +1324,8 @@ function Review() {
       onOverview,
       hasOverview,
       goOverview,
+      inCommits,
+      activeCommitFiles,
     ],
   )
   /** The rail's row, as `openThread` wants it. */
@@ -1303,6 +1460,9 @@ function Review() {
         if (selectedPath) toggleCollapsed(selectedPath)
       } else if (action === 'hide-reviewed') {
         filter.setHideReviewed(!filter.hideReviewed)
+      } else if ((action === 'next-layer' || action === 'prev-layer') && commitSource) {
+        const to = commitIndex + (action === 'next-layer' ? 1 : -1)
+        if (commitIndex >= 0 && to >= 0 && to < commitList.length) goCommit(commitList[to]!.sha)
       } else if (action === 'next-layer' || action === 'prev-layer') {
         if (!inLayers) return
         const to = stepLayer(
@@ -1353,10 +1513,94 @@ function Review() {
     paneLayerActive,
     openDecision,
     jumpTo,
+    commitSource,
+    commitIndex,
+    commitList,
+    goCommit,
   ])
 
   // ---------- what the pane and the bar say about the active layer ----------
   const layerCount = resolvedLayers.filter((l) => !l.derived).length
+  const realCommits = useMemo(() => commitList.filter((c) => c.sha !== UNCOMMITTED), [commitList])
+  const commitView: LayerView | undefined = useMemo(() => {
+    if (!commitSource || !activeCommit) return undefined
+    const files = activeCommitFiles ?? EMPTY_FILES
+    const pending = activeCommit.sha === UNCOMMITTED
+    const number = realCommits.indexOf(activeCommit) + 1
+    const who = [
+      activeCommit.short,
+      activeCommit.author,
+      activeCommit.at && timeAgo(activeCommit.at),
+    ]
+      .filter(Boolean)
+      .join(' · ')
+    return {
+      // No identity to hang a layer thread on: comments go on the lines.
+      id: null,
+      kicker: pending ? 'Not committed yet' : `Commit ${number} of ${realCommits.length} · ${who}`,
+      title: activeCommit.subject,
+      mechanical: false,
+      ...(pending
+        ? { summary: 'Edits in the working tree that no commit holds yet.' }
+        : activeCommit.body
+          ? { summary: activeCommit.body }
+          : {}),
+      missing: [],
+      listed: files.length,
+      hidden: 0,
+      onJump: jumpTo,
+      notes: new Map(),
+      knownPaths: files.map((f) => f.path),
+    }
+  }, [commitSource, activeCommit, realCommits, activeCommitFiles, jumpTo])
+  const commitBar = useMemo(() => {
+    if (!commitSource || !activeCommit) return undefined
+    const p = commitProgress(activeCommitFiles ?? EMPTY_FILES, viewed)
+    const pending = activeCommit.sha === UNCOMMITTED
+    const left =
+      activeCommitFiles === undefined
+        ? 'reading…'
+        : p.files === 0
+          ? 'nothing here'
+          : p.doneFiles === p.files
+            ? 'read'
+            : `${p.files - p.doneFiles} left`
+    const to = (i: number) => {
+      const c = commitList[i]
+      return c ? { title: c.subject, onGo: () => goCommit(c.sha) } : null
+    }
+    return {
+      text: `${pending ? 'uncommitted' : `commit ${realCommits.indexOf(activeCommit) + 1} / ${realCommits.length}`} · ${p.files} ${p.files === 1 ? 'file' : 'files'} · ${left}`,
+      title: `${p.doneFiles} of ${p.files} files in this commit marked reviewed`,
+      progress: p.marks === 0 ? 0 : p.doneMarks / p.marks,
+      stats: activeCommit.stats,
+      prev: to(commitIndex - 1),
+      next: to(commitIndex + 1),
+      noun: 'commit',
+    }
+  }, [
+    commitSource,
+    activeCommit,
+    activeCommitFiles,
+    viewed,
+    commitList,
+    commitIndex,
+    realCommits,
+    goCommit,
+  ])
+  // Every commit row counts its threads, not just the open one's: the threads
+  // on the files that commit touched, wherever the pane places them.
+  const threadsByPath = useMemo(() => {
+    const map = new Map<string, ReviewThread[]>()
+    for (const t of activeThreads) {
+      if (t.anchor.kind !== 'hunk' && t.anchor.kind !== 'file') continue
+      const list = map.get(t.anchor.path)
+      if (list) list.push(t)
+      else map.set(t.anchor.path, [t])
+    }
+    return map
+  }, [activeThreads])
+
   const layerView: LayerView | undefined = useMemo(() => {
     const activeLayer = paneLayerActive
     if (!activeLayer) return undefined
@@ -1536,38 +1780,64 @@ function Review() {
             layerCount={layerMode ? layerCount : null}
             layersSuggested={review?.layersSuggested !== undefined}
             layers={
-              layerMode ? (
-                <LayerRail
-                  layers={shownLayers}
-                  activeIndex={activeIndex}
-                  onPick={goLayer}
-                  viewed={viewed}
-                  guide={guide}
-                  description={description}
-                  overviewActive={onOverview}
-                  onOpenGuide={hasOverview ? goOverview : undefined}
-                  threads={fileThreads}
-                  attention={fileAttention}
-                  changed={sinceLastReview.changed}
-                  selectedPath={selectedPath}
-                  onPickFile={pickFile}
-                  onToggleFileViewed={toggleFileViewed}
-                  onMarkFiles={markFilesViewed}
-                  onClearFiles={clearFilesViewed}
-                  onAskFile={(path) => {
-                    revealFile(path)
-                    setComposeFilePath(path)
-                  }}
-                  onRefresh={agentAttached ? requestLayers : undefined}
-                  request={agentAttached ? layersRequest : null}
-                />
-              ) : (
-                <LayersEmpty
-                  state={layersEmptyState}
-                  onOutline={requestLayers}
-                  onInvite={() => setInviteOpen(true)}
-                />
-              )
+              <>
+                {commitsOffered && (
+                  <LayerSource
+                    source={layerSource}
+                    onPick={setSourcePick}
+                    stepCount={layerMode ? layerCount : null}
+                    commitCount={realCommits.length}
+                  />
+                )}
+                {layerSource === 'commits' ? (
+                  <CommitRail
+                    commits={commitList}
+                    filesBySha={commitDiffs}
+                    activeSha={activeCommit?.sha ?? null}
+                    onPick={goCommit}
+                    viewed={viewed}
+                    threads={threadsByPath}
+                    loading={commitsQuery.isLoading}
+                    error={commitsQuery.error ? (commitsQuery.error as Error).message : undefined}
+                    selectedPath={selectedPath}
+                    onPickFile={pickFile}
+                    onToggleFileViewed={toggleFileViewed}
+                    onMarkCommitFiles={markCommitFiles}
+                    onClearCommitFiles={clearCommitFiles}
+                  />
+                ) : layerMode ? (
+                  <LayerRail
+                    layers={shownLayers}
+                    activeIndex={activeIndex}
+                    onPick={goLayer}
+                    viewed={viewed}
+                    guide={guide}
+                    description={description}
+                    overviewActive={onOverview}
+                    onOpenGuide={hasOverview ? goOverview : undefined}
+                    threads={fileThreads}
+                    attention={fileAttention}
+                    changed={sinceLastReview.changed}
+                    selectedPath={selectedPath}
+                    onPickFile={pickFile}
+                    onToggleFileViewed={toggleFileViewed}
+                    onMarkFiles={markFilesViewed}
+                    onClearFiles={clearFilesViewed}
+                    onAskFile={(path) => {
+                      revealFile(path)
+                      setComposeFilePath(path)
+                    }}
+                    onRefresh={agentAttached ? requestLayers : undefined}
+                    request={agentAttached ? layersRequest : null}
+                  />
+                ) : (
+                  <LayersEmpty
+                    state={layersEmptyState}
+                    onOutline={requestLayers}
+                    onInvite={() => setInviteOpen(true)}
+                  />
+                )}
+              </>
             }
             files={
               <Nav
@@ -1646,10 +1916,10 @@ function Review() {
             sinceReview={sinceLastReview.changedHunkIds}
             hasMore={visibleCount < paneOrder.length}
             onLoadMore={loadMoreFiles}
-            layer={layerView}
-            overview={inLayers && onOverview}
+            layer={commitSource ? commitView : layerView}
+            overview={!inCommits && inLayers && onOverview}
             controls={{
-              layer: paneLayer,
+              layer: commitSource ? commitBar : paneLayer,
               navHidden,
               onToggleNav: toggleNav,
               left: fileProgress.total - fileProgress.viewed,
@@ -1660,7 +1930,7 @@ function Review() {
               hunkCount: hunkOrder.length,
               query: filter.query,
               onClearQuery: () => filter.setQuery(''),
-              hiddenQuery: inLayers ? 0 : filter.hiddenQuery,
+              hiddenQuery: inLayers || inCommits ? 0 : filter.hiddenQuery,
               hideReviewed: filter.hideReviewed,
               onHideReviewed: filter.setHideReviewed,
               hideTests: filter.hideTests,
@@ -1672,9 +1942,13 @@ function Review() {
               // In layer mode the pane is the layer, and only Hide tests reaches
               // it — so the foot of the pane counts that layer's hidden tests
               // and nothing the flat list would have hidden.
-              hiddenTests: inLayers ? (paneLayerActive?.hidden ?? 0) : filter.hiddenTests,
-              hiddenReviewed: inLayers ? 0 : filter.hiddenReviewed,
-              hiddenUnchanged: inLayers ? 0 : filter.hiddenUnchanged,
+              hiddenTests: inCommits
+                ? 0
+                : inLayers
+                  ? (paneLayerActive?.hidden ?? 0)
+                  : filter.hiddenTests,
+              hiddenReviewed: inLayers || inCommits ? 0 : filter.hiddenReviewed,
+              hiddenUnchanged: inLayers || inCommits ? 0 : filter.hiddenUnchanged,
               pinned: filter.pinned,
               onSweep: filter.unpin,
               onShowAll: filter.showAll,

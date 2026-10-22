@@ -42,6 +42,10 @@ export interface FileChange {
    * and that gap simply isn't offered.
    */
   newLineCount?: number | null
+  /** Set on one commit's own diff: the sha whose version of the file the head
+   * side is, so expanding context reads that version, not the working tree.
+   * Absent on the full diff and on uncommitted edits. */
+  rev?: string
 }
 
 export interface ChangesetStats {
@@ -113,4 +117,32 @@ export interface PrInfo {
   changesRequested: number
   viewer: { login: string; isAuthor: boolean; pendingReviewId: string | null }
   fetchedAt: string
+}
+
+/** The working-tree edits a branch review also carries, listed after the
+ * commits as one more step to read. Not a sha, so it can never collide with one. */
+export const UNCOMMITTED = 'uncommitted'
+
+/** One commit in the changeset, as the Layers tab lists them by commit — or the
+ * `UNCOMMITTED` pseudo-entry, which has no author or date of its own. */
+export interface CommitInfo {
+  sha: string
+  short: string
+  subject: string
+  body: string
+  author: string | null
+  at: string | null
+  stats: ChangesetStats
+}
+
+export interface CommitsResponse {
+  /** Oldest first: the order the change was written in. Merges are left out —
+   * their first-parent diff is the base branch, not the change. */
+  commits: CommitInfo[]
+}
+
+/** One commit's own diff — `sha^..sha`, not the cumulative one. */
+export interface CommitChangeset {
+  sha: string
+  files: FileChange[]
 }

@@ -16,6 +16,10 @@ export type Anchor =
       side: 'old' | 'new'
       line: number
       endLine?: number
+      /** The comment was made on this commit's own diff, and its hunk is not
+       * in the full diff: `line` is numbered as that commit's diff numbers it,
+       * so outside that commit the thread sits on its file, never on a line. */
+      commit?: string
     }
   | { kind: 'file'; path: string }
   | { kind: 'changeset' }

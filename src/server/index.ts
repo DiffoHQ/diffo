@@ -6,6 +6,7 @@ import { type Context, Hono } from 'hono'
 import { stream, streamSSE } from 'hono/streaming'
 import { SRC_STAMP } from '../devStamp.js'
 import type { ForgeClient, PrRef, ReviewEvent } from '../forge/types.js'
+import { findHunk, translateHunkAnchor } from '../shared/anchors.js'
 import { parseLayersInput, parseSuggestReason } from '../shared/layers.js'
 import {
   type Anchor,
@@ -28,6 +29,7 @@ import {
 } from '../shared/review.js'
 import type { ChangesetSpec, PrInfo } from '../shared/types.js'
 import { VERSION } from '../version.js'
+import { getCommitChangeset, isListedCommit, listCommits } from './commits.js'
 import { DiffoDb, type ServerRecord } from './db.js'
 import { DeliveryQueue, type Snapshot } from './delivery.js'
 import {
@@ -429,8 +431,29 @@ export function createApp(
         edited: message.prComment!.text.trim() !== text,
       }
     }
-    const capture = store ? captureAnchor(store.get(), anchor, review.get().layers) : null
-    const created = review.createThread(anchor, text, capture, intent, 'reviewer', {
+    // Made while reading by commit, the comment carries that commit's line
+    // numbers. Where the full diff still has the hunk, the anchor is renamed
+    // into the full diff's numbering, so the Files tab and a GitHub draft land
+    // on the line that was read; where the hunk exists only in that commit,
+    // the code is frozen from there, so the agent reads what was seen.
+    const commitFiles =
+      store && anchor.kind === 'hunk' && typeof body?.commit === 'string'
+        ? ((await getCommitChangeset(ctx.root, ctx.spec, body.commit).catch(() => null))?.files ??
+          null)
+        : null
+    const placed =
+      commitFiles && anchor.kind === 'hunk'
+        ? findHunk(store!.get().files, anchor.hunkId)
+          ? translateHunkAnchor(anchor, commitFiles, store!.get().files)
+          : // The hunk is that commit's alone: the line keeps its numbering and
+            // says whose, so nothing later reads it as the full diff's.
+            { ...anchor, commit: body.commit as string }
+        : anchor
+    let capture = store ? captureAnchor(store.get(), placed, review.get().layers) : null
+    if (store && !capture && commitFiles) {
+      capture = captureAnchor({ ...store.get(), files: commitFiles }, anchor)
+    }
+    const created = review.createThread(placed, text, capture, intent, 'reviewer', {
       ...(audience ? { audience } : {}),
       ...(parentId ? { parentId } : {}),
       ...(origin ? { origin } : {}),
@@ -1141,18 +1164,50 @@ export function createApp(
     }
   })
 
-  app.get('/api/file', (c) => {
+  // The changeset one commit at a time: the list, then any listed commit's own
+  // diff. Read on demand, never stored — a rebase is just the next answer.
+  app.get('/api/commits', async (c) => {
+    try {
+      return c.json(await listCommits(ctx.root, ctx.spec))
+    } catch (err) {
+      if (err instanceof MissingBaseError) return c.json({ error: err.message }, 400)
+      throw err
+    }
+  })
+
+  app.get('/api/commits/:sha', async (c) => {
+    try {
+      const commit = await getCommitChangeset(ctx.root, ctx.spec, c.req.param('sha'))
+      return commit ? c.json(commit) : c.json({ error: 'no such commit in this changeset' }, 404)
+    } catch (err) {
+      if (err instanceof MissingBaseError) return c.json({ error: err.message }, 400)
+      throw err
+    }
+  })
+
+  app.get('/api/file', async (c) => {
     const path = c.req.query('path')
     const side = c.req.query('side')
+    const rev = c.req.query('rev')
     if (!path || (side !== 'base' && side !== 'head')) {
       return c.json({ error: 'need ?path= and ?side=base|head' }, 400)
     }
     let bytes: Buffer | null
     try {
-      bytes =
-        side === 'head'
-          ? getHeadFileBytes(ctx.root, path)
-          : getBaseFileBytes(ctx.root, resolveBaseRef(ctx.root, ctx.spec), path)
+      if (rev !== undefined) {
+        // The file as one of the changeset's commits had it: the head side of
+        // that commit's own diff. Only a sha the changeset lists is read.
+        if (side !== 'head') return c.json({ error: '?rev= reads the head side only' }, 400)
+        if (!(await isListedCommit(ctx.root, ctx.spec, rev))) {
+          return c.json({ error: 'no such commit in this changeset' }, 404)
+        }
+        bytes = getBaseFileBytes(ctx.root, rev, path)
+      } else {
+        bytes =
+          side === 'head'
+            ? getHeadFileBytes(ctx.root, path)
+            : getBaseFileBytes(ctx.root, resolveBaseRef(ctx.root, ctx.spec), path)
+      }
     } catch (err) {
       if (err instanceof MissingBaseError) return c.json({ error: err.message }, 400)
       throw err

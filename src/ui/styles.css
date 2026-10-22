@@ -1183,6 +1183,53 @@ body {
   background: var(--attn);
 }
 
+/* The Layers tab's two orders — the agent's steps or git's commits — as a
+   segmented control under the tab strip: one segment is always lit. */
+.src-seg {
+  display: flex;
+  gap: 2px;
+  margin: 0 12px 8px;
+  padding: 2px;
+  background: var(--fill-2);
+  border-radius: var(--r-sm);
+  flex: none;
+}
+
+.src-chip {
+  flex: 1;
+  min-width: 0;
+  height: 22px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  padding: 0 8px;
+  border: 0;
+  border-radius: calc(var(--r-sm) - 2px);
+  background: transparent;
+  color: var(--ink-3);
+  cursor: pointer;
+  font: inherit;
+  font-size: var(--t-12);
+  white-space: nowrap;
+}
+
+.src-chip:hover {
+  color: var(--ink);
+}
+
+.src-chip[aria-checked="true"] {
+  background: var(--paper);
+  color: var(--ink);
+  font-weight: 600;
+  box-shadow: 0 1px 2px rgb(0 0 0 / 0.12);
+}
+
+.src-chip:focus-visible {
+  outline: 2px solid var(--acc);
+  outline-offset: -1px;
+}
+
 .rail-scroll {
   flex: 1;
   overflow-y: auto;

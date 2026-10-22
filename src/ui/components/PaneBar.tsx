@@ -19,6 +19,8 @@ export interface PaneLayer {
   stats?: { additions: number; deletions: number }
   prev: { title: string; onGo: () => void } | null
   next: { title: string; onGo: () => void } | null
+  /** What the pager steps through, for its tooltips. Defaults to `layer`. */
+  noun?: string
 }
 
 export function PaneBar({
@@ -136,7 +138,7 @@ export function PaneBar({
           className="pane-size"
           title={
             layer
-              ? 'lines added and removed in this layer'
+              ? `lines added and removed in this ${layer.noun ?? 'layer'}`
               : 'lines added and removed across the changeset'
           }
         >
@@ -236,8 +238,8 @@ export function PaneBar({
               <button
                 type="button"
                 className="btn btn-ghost btn-sm"
-                title={`Previous layer: ${layer.prev.title} ([)`}
-                aria-label={`Previous layer: ${layer.prev.title}`}
+                title={`Previous ${layer.noun ?? 'layer'}: ${layer.prev.title} ([)`}
+                aria-label={`Previous ${layer.noun ?? 'layer'}: ${layer.prev.title}`}
                 onClick={layer.prev.onGo}
               >
                 ‹ <span className="ch-pager-t">{layer.prev.title}</span>
@@ -247,8 +249,8 @@ export function PaneBar({
               <button
                 type="button"
                 className="btn btn-sm"
-                title={`Next layer: ${layer.next.title} (])`}
-                aria-label={`Next layer: ${layer.next.title}`}
+                title={`Next ${layer.noun ?? 'layer'}: ${layer.next.title} (])`}
+                aria-label={`Next ${layer.noun ?? 'layer'}: ${layer.next.title}`}
                 onClick={layer.next.onGo}
               >
                 <span className="ch-pager-t">{layer.next.title}</span> ›{' '}

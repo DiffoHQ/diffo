@@ -575,7 +575,10 @@ function useGapExpansion(file: FileChange) {
     let headLines = live.headLines
     if (headLines === null) {
       try {
-        const res = await fetch(`/api/file?path=${encodeURIComponent(file.path)}&side=head`)
+        // One commit's own diff reads the file as that commit had it; the full
+        // diff and uncommitted edits read the working tree.
+        const rev = file.rev ? `&rev=${encodeURIComponent(file.rev)}` : ''
+        const res = await fetch(`/api/file?path=${encodeURIComponent(file.path)}&side=head${rev}`)
         if (!res.ok) throw new Error(`/api/file → ${res.status}`)
         const text = await res.text()
         headLines = text.endsWith('\n') ? text.slice(0, -1).split('\n') : text.split('\n')

@@ -19,7 +19,7 @@ Three ways in, all the same ask:
 - **The header chip.** When the agent thinks the change reads better in order,
   it says so at open, and the header shows *agent · suggests layers* with the
   agent's reason beside it. One click.
-- **The Layers tab.** Its **Ask the agent to outline** button works whether the
+- **The Layers tab.** Its **Ask the agent for steps** button works whether the
   agent suggested it or not.
 - **In the terminal.** Say "layers" to the agent. It offers exactly this in its
   handoff message when it suggests them.
