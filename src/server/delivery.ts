@@ -64,6 +64,7 @@ export type Snapshot =
   | { kind: 'threads'; threadIds: string[] }
   | { kind: 'finish'; coverage: Coverage; absorbedThreadIds: string[] }
   | { kind: 'layers' }
+  | { kind: 'before-after' }
   | { kind: 'cleared' }
   | { kind: 'submitted'; submitted: Submitted }
 
@@ -90,6 +91,10 @@ export interface Submitted {
  * in the agent's hands, or nowhere. */
 export type LayersRequest = 'queued' | 'outlining' | null
 
+/** Where the reviewer's request for a before/after stands — the same three
+ * places as a layers request. */
+export type BeforeAfterRequest = 'queued' | 'writing' | null
+
 interface ScopePending {
   threads: Set<string>
   finish: Coverage | null
@@ -108,6 +113,12 @@ interface ScopePending {
    * reply clock: the post that answers it (`layersPosted`) or a settled
    * re-poll without one ends it. */
   outlining: number | null
+  /** The reviewer marked the review a behaviour change and the agent has posted no
+   * before/after: one is owed. A boolean like `layers`. */
+  beforeAfter: boolean
+  /** The before/after request was delivered: epoch ms, or null. Ends the way
+   * `outlining` does — the post, or a settled re-poll without one. */
+  writingBeforeAfter: number | null
 }
 
 export class DeliveryQueue {
@@ -257,6 +268,8 @@ export class DeliveryQueue {
         cleared: false,
         layers: false,
         outlining: null,
+        beforeAfter: false,
+        writingBeforeAfter: null,
         submitted: null,
       }
       this.buckets.set(this.scope, bucket)
@@ -277,7 +290,7 @@ export class DeliveryQueue {
     // A stall does NOT drop out of 'working' — a slow agent is indistinguishable
     // from a dead one, so `reason`/`since` carry how long it has been quiet.
     if (this.awaitingReply) return 'working'
-    if (this.outlining() !== null) return 'working'
+    if (this.owesPost()) return 'working'
     if (this.waiter) return 'listening'
     if (this.betweenPolls) return 'working'
     return 'waiting'
@@ -294,13 +307,28 @@ export class DeliveryQueue {
     return this.buckets.get(this.scope)?.outlining ?? null
   }
 
+  /** Where the reviewer's before/after request stands (see `BeforeAfterRequest`). */
+  beforeAfterRequest(): BeforeAfterRequest {
+    const bucket = this.buckets.get(this.scope)
+    if ((bucket?.writingBeforeAfter ?? null) !== null) return 'writing'
+    if (bucket?.beforeAfter) return 'queued'
+    return null
+  }
+
+  /** A delivered request the agent still owes a post for: an outline, or a
+   * before/after. Either one is the agent at work. */
+  private owesPost(): boolean {
+    const bucket = this.buckets.get(this.scope)
+    return (bucket?.outlining ?? null) !== null || (bucket?.writingBeforeAfter ?? null) !== null
+  }
+
   presenceDetail(): PresenceDetail {
     return { state: this.presence(), reason: this.reason(), since: this.since }
   }
 
   private reason(): PresenceReason {
     if (this.awaitingReply) return this.stalled ? 'stalled' : 'delivered'
-    if (this.outlining() !== null) return 'delivered'
+    if (this.owesPost()) return 'delivered'
     if (this.waiter) return 'polling'
     if (this.betweenPolls) return this.parked
     return this.lastDetach ?? 'no-agent'
@@ -427,7 +455,7 @@ export class DeliveryQueue {
     // Mid-batch (a re-poll inside the settle window) the batch already says
     // working, and an outline in progress says so too; the grace is for the
     // poll that was the only thing holding the agent.
-    if (!sessionGone && !this.awaitingReply && this.outlining() === null) {
+    if (!sessionGone && !this.awaitingReply && !this.owesPost()) {
       this.armGrace('repolling')
     }
     this.notify()
@@ -521,6 +549,40 @@ export class DeliveryQueue {
     return Date.now() - since
   }
 
+  /** The reviewer marked the review a behaviour change with no before/after posted.
+   * Rides like the layers request. */
+  enqueueBeforeAfter(): void {
+    this.bucket().beforeAfter = true
+    const queued = this.waiter === null
+    this.wake()
+    if (queued) this.notify()
+  }
+
+  /** The reviewer took the behaviour-change mark back, or cleared the review: the
+   * request is withdrawn wherever it stands. A post that arrives anyway still
+   * lands. */
+  dropBeforeAfter(): void {
+    const bucket = this.buckets.get(this.scope)
+    if (bucket) {
+      bucket.beforeAfter = false
+      bucket.writingBeforeAfter = null
+    }
+    this.notify()
+  }
+
+  /** The agent posted a before/after. Concludes an outstanding request, the
+   * way `layersPosted` does; also withdraws one still parked, since the post
+   * already answers it. */
+  beforeAfterPosted(): void {
+    const bucket = this.buckets.get(this.scope)
+    if (bucket === undefined) return
+    const owed = bucket.writingBeforeAfter !== null
+    bucket.beforeAfter = false
+    bucket.writingBeforeAfter = null
+    if (owed && !this.awaitingReply && !this.betweenPolls) this.armGrace()
+    this.notify()
+  }
+
   drop(threadId: string): void {
     for (const bucket of this.buckets.values()) bucket.threads.delete(threadId)
     this.deliveredAt.delete(threadId)
@@ -551,6 +613,13 @@ export class DeliveryQueue {
       Date.now() - owing.outlining >= this.batchSettleMs
     ) {
       owing.outlining = null
+    }
+    if (
+      owing !== undefined &&
+      owing.writingBeforeAfter !== null &&
+      Date.now() - owing.writingBeforeAfter >= this.batchSettleMs
+    ) {
+      owing.writingBeforeAfter = null
     }
     if (this.hasPending()) return Promise.resolve('data')
     return new Promise((resolve) => {
@@ -603,6 +672,7 @@ export class DeliveryQueue {
         bucket.finish !== null ||
         bucket.cleared ||
         bucket.layers ||
+        bucket.beforeAfter ||
         bucket.submitted !== null)
     )
   }
@@ -627,6 +697,8 @@ export class DeliveryQueue {
       }
     }
     if (bucket.threads.size > 0) return { kind: 'threads', threadIds: [...bucket.threads] }
+    // A before/after is a few lines: it goes ahead of the outline.
+    if (bucket.beforeAfter) return { kind: 'before-after' }
     // The outline is heavy work: it waits behind replies the reviewer is
     // already owed, and ahead of the cleared heads-up, which owes nothing.
     if (bucket.layers) return { kind: 'layers' }
@@ -644,6 +716,13 @@ export class DeliveryQueue {
       const bucket = this.bucket()
       bucket.layers = false
       bucket.outlining = Date.now()
+      this.notify()
+      return
+    }
+    if (snapshot.kind === 'before-after') {
+      const bucket = this.bucket()
+      bucket.beforeAfter = false
+      bucket.writingBeforeAfter = Date.now()
       this.notify()
       return
     }
@@ -725,7 +804,10 @@ export class DeliveryQueue {
     this.releaseWaiter('ended')
     this.closeBatch('ended')
     this.awaitingReply = false
-    for (const bucket of this.buckets.values()) bucket.outlining = null
+    for (const bucket of this.buckets.values()) {
+      bucket.outlining = null
+      bucket.writingBeforeAfter = null
+    }
     this.stalled = false
     this.clearStall()
     this.clearGrace()

@@ -106,6 +106,9 @@ export function buildCliCommands(cli: string) {
     layersSuggest: `${cli} layers --suggest "<why, in one line>"`,
     layers: `${cli} layers --json '<Layer[]>'`,
     layersStdin: `${cli} layers --stdin`,
+    // The before/after of a behaviour change (inline or piped).
+    beforeAfter: `${cli} before-after --json '[{"title":"…","before":"…","after":"…"}]'`,
+    beforeAfterStdin: `${cli} before-after --stdin`,
     end: `${cli} end`,
     setup: `${cli} setup`,
   } as const
@@ -182,9 +185,12 @@ export const TAB_TITLE = {
 } as const
 
 export function nextStepFor(
-  kind: 'threads' | 'finish' | 'cleared' | 'layers' | 'submitted',
+  kind: 'threads' | 'finish' | 'cleared' | 'layers' | 'before-after' | 'submitted',
   actionable: number,
 ): string {
+  if (kind === 'before-after') {
+    return `Post the before/after with \`${CLI_COMMANDS.beforeAfter}\` (or pipe it to \`${CLI_COMMANDS.beforeAfterStdin}\`), then run \`${CLI_COMMANDS.poll}\` again to keep listening (${POLL_STANCE}).`
+  }
   if (kind === 'submitted') {
     return `Nothing to act on — tell the user the review was submitted, then run \`${CLI_COMMANDS.poll}\` again to keep listening (${POLL_STANCE}), or \`${CLI_COMMANDS.end}\` if they are done.`
   }
@@ -253,6 +259,8 @@ export const ACK_NEXT_STEP = {
   layers: `The outline is live in the reviewer's Layers tab, resolved against the changeset as it moves. Files you touch later land in a trailing "Since your review" layer until you re-post the whole list. Continue with the review threads, then run \`${CLI_COMMANDS.poll}\`.`,
   layersSuggested: `The review now offers the outline to the reviewer. Mention it in your handoff too — "say layers and I'll outline it" — and post it with \`${CLI_COMMANDS.layers}\` when they ask. Then run \`${CLI_COMMANDS.poll}\`.`,
   layersAlready: `This review already carries layers, so there is nothing to suggest — re-post the whole list with \`${CLI_COMMANDS.layers}\` if the outline is stale. Then run \`${CLI_COMMANDS.poll}\`.`,
+  beforeAfter: `The before/after is live at the top of the reviewer's Layers tab. If the change moves, re-post every section; a post replaces them all. Continue with the review threads, then run \`${CLI_COMMANDS.poll}\`.`,
+  beforeAfterHidden: `Stored, but the reviewer marked this review as not changing behaviour, so it stays hidden unless they flip it back. Nothing else is owed. Continue with the review threads, then run \`${CLI_COMMANDS.poll}\`.`,
   end: 'Detached. Do not reopen or re-poll this review unless the user asks — deliver anything remaining directly in the conversation.',
 } as const
 
@@ -388,6 +396,45 @@ export const LAYERS = {
     '[{ "title": "…", "summary": "…", "kind": "mechanical" (optional), "files": ["src/a.ts", { "path": "src/b.ts", "note": "why this file is in this step" }], "decisions": [{ "text": "…", "detail": "…", "at": "src/a.ts:12-18" | ["src/a.ts:12-18", "test/a.test.ts:40"] }] (optional, at most five) }]',
 } as const
 
+/** Which changes alter behaviour; `judge` is what the reader has to go on. */
+const behaviourChange = (judge: string) =>
+  `the change alters behaviour someone running or calling the code would notice (a bug fixed; a default, limit, error or output changed; a flow that now runs differently) — judge from ${judge}`
+
+/**
+ * The before/after doctrine — what the program did before the change and what
+ * it does now, for a change that alters behaviour. Same single-source rule as
+ * LAYERS: the skill, `help agent`, `help before-after`, the open-time nudge
+ * and the poll's request all interpolate these.
+ *
+ * Unlike layers it is posted unasked: a few short passages cost little, and
+ * the open is when the agent still knows what it changed. Not posting is the
+ * agent's "no behaviour change"; the reviewer's toggle overrules either way,
+ * and marking one on asks the agent for it.
+ */
+export const BEFORE_AFTER = {
+  /** When the change counts — and that many do not. */
+  when: behaviourChange('the branch name, the commit messages and the diff itself'),
+  /** What does not count, though it touches the code. */
+  not: 'a refactor, a cleanup, tests or docs alone, or a feature with nothing before it to compare against do not count — the guide and layers cover those',
+  /** What it is. */
+  what: 'a before/after: for each behaviour the change alters, two short markdown passages, "before" and "after" — what the program did before this change, and what it does now; what a user or a caller sees, not the code, since the how belongs to the layers',
+  /** One section per behaviour. */
+  sections:
+    'one section per distinct behaviour — two bugs fixed are two sections, each with a "title" naming the behaviour in a few words ("Duplicated output on long commands"); a change that alters one thing is one section; at most five',
+  /** How each side reads, and how the two pair up. */
+  sides:
+    'each side one to three sentences: the trigger, then the effect ("Logging in with an expired token returns a 500 and the page goes blank"); the after answers the same trigger, so the two read as a pair ("…returns a 401, and the client refreshes the token and retries once"); keep the symptoms and numbers a reader can check — an error message, a rate, a size — and leave the mechanism to the layers',
+  /** Diagrams only when the flow itself changed. */
+  diagram:
+    'rarely — only when the flow itself changed and a sentence cannot carry it: then a small ```mermaid `flowchart TD` (top to bottom: each side is half the pane wide, and a left-to-right chart shrinks past reading), six nodes at most, the same flow on both sides so they compare node for node; tag nodes as the guide does (`:::new`, `:::changed`, plain for anything existing) with the same two classDef lines',
+  /** Describe, never grade: the guide's line, verbatim. */
+  stance: GUIDE.stance,
+  /** A post is every section. */
+  replace: 'a post replaces every section',
+  /** The payload, in one line. */
+  shape: '[{ "title": "…", "before": "…", "after": "…" }] (a lone section may leave out its title)',
+} as const
+
 /**
  * The two doctrines, one switch. Everything an agent is taught depends on
  * whether it wrote the code: the author's session remembers the order it would
@@ -398,6 +445,7 @@ export const LAYERS = {
 export interface Doctrine {
   guide: { when: string; what: string; stance: string; update: string }
   layers: { [K in keyof typeof LAYERS]: string }
+  beforeAfter: { [K in keyof typeof BEFORE_AFTER]: string }
   /** The intent contract for `fix` threads. */
   fix: string
   /** Pull requests only: when and how to attach a review comment for the
@@ -409,6 +457,7 @@ export interface Doctrine {
 export const AUTHOR_DOCTRINE: Doctrine = {
   guide: GUIDE,
   layers: LAYERS,
+  beforeAfter: BEFORE_AFTER,
   fix: '- `issue` threads want a code change. Address each one, or push back in the thread with your reasoning.',
 }
 
@@ -473,6 +522,12 @@ export const PR_DOCTRINE: Doctrine = {
     ...LAYERS,
     order:
       'the order you would explain it in after reading the description and the commits — the file that explains the rest first, mechanical consequences last; for a feature, follow the request from entry point to effect; for a refactor, contract first, then consumers',
+  },
+  beforeAfter: {
+    ...BEFORE_AFTER,
+    when: behaviourChange(
+      'its title, description, labels and linked issues, the commit messages, and the diff itself',
+    ),
   },
   fix: '- `issue` threads want a fix you cannot push: work it out in the worktree, verify it the cheapest honest way, restore the worktree (`git checkout -- .`), and reply with a ```suggestion block plus what you checked. Never commit or push to the pull request.',
   prComment: PR_COMMENT_DOCTRINE,
@@ -545,6 +600,25 @@ export function layersNudge(
     `outline it"). Post the outline only when asked: \`${CLI_COMMANDS.layers}\` — each layer ` +
     `${D.layers.what}; ${D.layers.summary}; ${D.layers.diagram}; ${D.layers.order}. ${D.layers.stance}. ` +
     `\`diffo help layers\` has the shape.`
+  )
+}
+
+/**
+ * Printed by `diffo` (open) while the review has no before/after and the
+ * reviewer has not ruled out a behaviour change. The open is when the agent
+ * still knows what it changed, so the before/after is posted here, unasked —
+ * or nothing is, which is how the agent says "no behaviour change".
+ */
+export function beforeAfterNudge(
+  review: { beforeAfter?: unknown; beforeAfterToggle?: boolean },
+  D: Doctrine = AUTHOR_DOCTRINE,
+): string | null {
+  if (review.beforeAfter || review.beforeAfterToggle === false) return null
+  return (
+    `if ${D.beforeAfter.when} — post its before/after now: ` +
+    `\`${CLI_COMMANDS.beforeAfter}\`. (${D.beforeAfter.not}.) It is ${D.beforeAfter.what}; ${D.beforeAfter.sections}; ${D.beforeAfter.sides}; ${D.beforeAfter.diagram}. ` +
+    `${D.beforeAfter.stance}. No behaviour change: post nothing — the reviewer can still mark it one, and ` +
+    `the poll then asks you for it. \`diffo help before-after\` has the shape.`
   )
 }
 
@@ -1071,6 +1145,32 @@ export function buildSubmittedPrompt(ctx: PromptContext, submitted: Submitted): 
  * orientation for the fresh round, so this restates the guide doctrine the way
  * the open-time nudge does (payloads must stand alone — see POLL_STANCE).
  */
+/**
+ * The reviewer marked the review a behaviour change and no before/after is
+ * posted: the poll item that asks for one. Standalone, like every payload.
+ */
+export function buildBeforeAfterRequestPrompt(ctx: PromptContext): string {
+  const D = doctrineFor(ctx.changeset)
+  return [
+    `The reviewer marked the review of \`${ctx.repo.name}\` (branch \`${ctx.repo.branch}\`) as changing behaviour and asked for its before/after. Their call stands even if you read the change otherwise. The Layers tab reads "Writing…" until you post.`,
+    '',
+    ...prLines(ctx),
+    ...(ctx.changeset ? [specLine(ctx.changeset), ''] : []),
+    `It is ${D.beforeAfter.what}. Sections: ${D.beforeAfter.sections}. Each side: ${D.beforeAfter.sides}. Diagram: ${D.beforeAfter.diagram}:`,
+    '',
+    ...GUIDE_CLASSDEFS.map((line) => `    ${line}`),
+    '',
+    `${D.beforeAfter.stance}.`,
+    '',
+    `Shape: ${BEFORE_AFTER.shape}`,
+    '',
+    `Post it: \`${CLI_COMMANDS.beforeAfter}\`, or pipe the JSON to \`${CLI_COMMANDS.beforeAfterStdin}\`. Nothing else is owed for this item — no reply, no comment.`,
+    '',
+    `Then run \`${CLI_COMMANDS.poll}\` again to keep listening (${POLL_STANCE}).`,
+    '',
+  ].join('\n')
+}
+
 /**
  * The reviewer pressed Outline (or refresh): the poll item that asks for the
  * layers. Standalone by the same rule as every payload — an agent with no

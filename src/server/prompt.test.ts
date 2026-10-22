@@ -5,6 +5,9 @@ import type { Changeset } from '../shared/types.js'
 import { DEV_SKILL_NAME, SKILL_NAME } from '../skill.js'
 import {
   ACK_NEXT_STEP,
+  BEFORE_AFTER,
+  beforeAfterNudge,
+  buildBeforeAfterRequestPrompt,
   buildClearedPrompt,
   buildCoalescedPrompt,
   buildConnectAsk,
@@ -23,6 +26,7 @@ import {
   layersNudge,
   nextStepFor,
   ownPrAsk,
+  PR_DOCTRINE,
   voiceLines,
 } from './prompt.js'
 
@@ -926,6 +930,29 @@ describe('the layers payload (reviewer pressed Outline)', () => {
   })
 })
 
+describe('the beforeAfter payload (reviewer marked the review a beforeAfter)', () => {
+  it('asks for the pair, says the reviewer’s call stands, and owes nothing else', () => {
+    const prompt = buildBeforeAfterRequestPrompt({ repo, changeset: changeset() })
+    expect(prompt).toContain('marked the review')
+    expect(prompt).toContain('Their call stands')
+    expect(prompt).toContain('reads "Writing…"')
+    expect(prompt).toContain(BEFORE_AFTER.what)
+    expect(prompt).toContain(BEFORE_AFTER.sides)
+    expect(prompt).toContain(BEFORE_AFTER.diagram)
+    for (const line of GUIDE_CLASSDEFS) expect(prompt).toContain(line)
+    expect(prompt).toContain(BEFORE_AFTER.stance)
+    expect(prompt).toContain(BEFORE_AFTER.shape)
+    expect(prompt).toContain(CLI_COMMANDS.beforeAfter)
+    expect(prompt).toContain(CLI_COMMANDS.beforeAfterStdin)
+    expect(prompt).toContain('no reply, no comment')
+    expect(prompt).toContain(CLI_COMMANDS.poll)
+  })
+
+  it('the next step names the post', () => {
+    expect(nextStepFor('before-after', 0)).toContain(CLI_COMMANDS.beforeAfter)
+  })
+})
+
 describe('the cleared payload (reviewer started the review over)', () => {
   it('says what happened, owes nothing, and restates the guide doctrine', () => {
     const prompt = buildClearedPrompt({ repo, changeset: changeset() })
@@ -1022,7 +1049,6 @@ describe('layers doctrine', () => {
   it('summaries inherit the guide’s stance verbatim', () => {
     expect(LAYERS.stance).toBe(GUIDE.stance)
   })
-
   it('the mechanical rule names the bar and the default when unsure', () => {
     expect(LAYERS.mechanical).toMatch(/no behaviour/)
     expect(LAYERS.mechanical).toMatch(/if unsure, don't tag/)
@@ -1033,6 +1059,39 @@ describe('layers doctrine', () => {
       expect(ACK_NEXT_STEP[key]).toContain(CLI_COMMANDS.poll)
     }
     expect(ACK_NEXT_STEP.layersSuggested).toContain(CLI_COMMANDS.layers)
+  })
+})
+
+describe('before/after doctrine', () => {
+  it('the nudge asks for it at open, unless one is posted or the reviewer ruled it out', () => {
+    const nudge = beforeAfterNudge({})!
+    expect(nudge).toContain(CLI_COMMANDS.beforeAfter)
+    expect(nudge).toContain(BEFORE_AFTER.when)
+    expect(nudge).toContain(BEFORE_AFTER.not)
+    expect(nudge).toContain(BEFORE_AFTER.what)
+    expect(nudge).toContain(BEFORE_AFTER.sections)
+    expect(nudge).toContain(BEFORE_AFTER.sides)
+    expect(nudge).toContain(BEFORE_AFTER.stance)
+    expect(nudge).toContain('No behaviour change: post nothing')
+    expect(beforeAfterNudge({ beforeAfterToggle: true })).not.toBeNull()
+    expect(
+      beforeAfterNudge({ beforeAfter: { sections: [{ before: 'a', after: 'b' }], postedAt: '' } }),
+    ).toBeNull()
+    expect(beforeAfterNudge({ beforeAfterToggle: false })).toBeNull()
+  })
+
+  it('on a pull request the agent judges from what the author wrote', () => {
+    expect(beforeAfterNudge({}, PR_DOCTRINE)).toContain(PR_DOCTRINE.beforeAfter.when)
+    expect(PR_DOCTRINE.beforeAfter.when).toContain('labels and linked issues')
+  })
+
+  it('the before/after inherits the guide’s stance verbatim', () => {
+    expect(BEFORE_AFTER.stance).toBe(GUIDE.stance)
+  })
+
+  it('both acks name the next poll', () => {
+    expect(ACK_NEXT_STEP.beforeAfter).toContain(CLI_COMMANDS.poll)
+    expect(ACK_NEXT_STEP.beforeAfterHidden).toContain(CLI_COMMANDS.poll)
   })
 })
 

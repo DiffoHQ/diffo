@@ -7,7 +7,15 @@ Until 1.0, minor versions may break things. When they do, the entry says how to 
 
 ## [Unreleased]
 
-Nothing yet.
+### Added
+
+- **A before/after for behaviour changes.** When the agent reads the change
+  as altering behaviour (a bug fixed, a default or an error changed, a flow
+  rerouted), it posts what the program did before and what it does now, one
+  titled section per behaviour (`diffo before-after`), shown side by side in a
+  *Before / after* row at the top of the Layers tab. A **Behaviour change**
+  toggle in the header overrules the agent's read either way; marking a review
+  one with no before/after asks the agent for it. See [Read it in layers](https://diffohq.github.io/diffo/guide/layers).
 
 ## [0.18.0] — 2026-10-22
 

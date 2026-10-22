@@ -35,6 +35,7 @@ nothing.
 | [`diffo reply`](#diffo-reply-threadid) | agent | Reply to a thread |
 | [`diffo comment`](#diffo-comment-file) | agent | Start a thread in the agent's own voice |
 | [`diffo layers`](#diffo-layers) | agent | Outline the changeset as steps to read in order |
+| [`diffo before-after`](#diffo-before-after) | agent | Post what a behaviour change did before, and does now |
 | [`diffo end`](#diffo-end) | agent | Detach from the review |
 | [`diffo help`](#help-and-version) | both | Help for the CLI, or for one command |
 | [`diffo help pr`](#help-and-version) | both | Help for reviewing a pull request: the spellings, the worktree, what `gh` needs |
@@ -184,7 +185,9 @@ the connection alive; a single poll is capped at **30 minutes**.
 `superseded` (another session took the review), or `ended`. A `feedback`
 payload's `kind` is `threads` (individual sends), `finish` (the reviewer is done
 reading), `layers` (the reviewer asked for the outline; see
-[`diffo layers`](#diffo-layers)), or `cleared` (they started the review over).
+[`diffo layers`](#diffo-layers)), `before-after` (they marked the review a behaviour
+change and want its before/after; see [`diffo before-after`](#diffo-before-after)), or `cleared` (they
+started the review over).
 
 Run it attended: as a tracked background task when its completion wakes the
 session on its own, otherwise in the foreground without ending the turn, and
@@ -287,6 +290,38 @@ suggest, and the next step says to re-post instead.
 The reviewer's **Ask the agent for steps** button, and *re-outline* over
 an existing outline, reach the agent as a `kind: "layers"` poll payload whose
 prompt asks for exactly this post. A post concludes the request.
+
+### `diffo before-after`
+
+```bash
+diffo before-after --json '[{"title":"Expired-token login","before":"An expired token returns a 500.","after":"It returns a 401, and the client retries once."}]'
+cat sections.json | diffo before-after --stdin
+```
+
+Posts a **before/after** for a change that alters behaviour: for each behaviour
+it alters, what the program did before and what it does now, as two short
+markdown passages under a title. The agent posts it at open, unasked, when it
+reads the change that way, and posts nothing otherwise.
+[Before / after](/agents#before-after) has the doctrine.
+
+Exactly one of:
+
+| Option | What it does |
+| --- | --- |
+| `--json '<Section[]>'` | Post the sections, `[{ "title", "before", "after" }]` (at most five; a lone object is one section, and may go untitled). **Replaces** any earlier post |
+| `--stdin` | The same payload, piped |
+
+A side that is missing, empty or not a string, or a missing title when there
+are several sections, fails with exit 1 (`before-after: section 2: needs a
+non-empty "after"`), and nothing is stored.
+
+Prints `{ "ok": true, "shown": true, "next_step": "…" }`. `shown` is `false`
+when the reviewer has marked the review as not changing behaviour: the post is
+kept, and appears if they flip the toggle back.
+
+The reviewer's **Behaviour change** toggle in the header overrules the agent's
+read either way. Marking a review a behaviour change with nothing posted reaches
+the agent as a `kind: "before-after"` poll payload whose prompt asks for exactly this post.
 
 ### `diffo end`
 

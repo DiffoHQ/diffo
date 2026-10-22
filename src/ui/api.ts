@@ -26,6 +26,9 @@ export type Presence = 'waiting' | 'listening' | 'working'
  * for the next poll, in the agent's hands, or none. Mirrors the server's type. */
 export type LayersRequest = 'queued' | 'outlining' | null
 
+/** The reviewer's before/after request, the same way. Mirrors the server's type. */
+export type BeforeAfterRequest = 'queued' | 'writing' | null
+
 export type PresenceReason =
   | 'no-agent'
   | 'arriving'
@@ -260,5 +263,8 @@ export const reviewApi = {
   clear: () => del<{ removed: number }>('/api/review/threads'),
   /** Outline, or refresh: the click rides to the agent's next poll. */
   requestLayers: () => post<{ ok: boolean }>('/api/review/layers/request'),
+  /** The reviewer's behaviour-change toggle. On with no before/after, it asks the agent
+   * for one at its next poll. */
+  setBeforeAfter: (on: boolean) => post<{ ok: boolean }>('/api/review/before-after/toggle', { on }),
   dismissLanded: () => del<{ ok: boolean }>('/api/review/landed'),
 }

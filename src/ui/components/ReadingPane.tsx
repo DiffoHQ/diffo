@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import { type ReactNode, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { isPublic, type ReviewThread } from '../../shared/review.js'
 import type { DiffLine, FileChange, Hunk } from '../../shared/types.js'
 import { copyText } from '../clipboard.js'
@@ -824,6 +824,7 @@ export function ReadingPane({
   landed,
   layer,
   overview = false,
+  beforeAfter,
   ...handlers
 }: {
   files: FileChange[]
@@ -839,6 +840,9 @@ export function ReadingPane({
   /** Layer mode, standing on the Overview: the pane is the changeset threads —
    * the guide first — and nothing else. */
   overview?: boolean
+  /** Standing on the Before / after: the pane is that card, and
+   * nothing else. */
+  beforeAfter?: ReactNode
 } & ReviewHandlers) {
   const [fileComposerFor, setFileComposerFor] = useState<string | null>(null)
   const [doneDismissed, setDoneDismissed] = useState(false)
@@ -966,7 +970,7 @@ export function ReadingPane({
   // On the Overview the strip IS the pane, so it cannot fold; on a layer it is
   // not shown at all — the guide is one click away as row 0 of the outline.
   const notesExpanded = overview || notesOpen || comments?.changesetComposerOpen === true
-  const stripShown = overview || layer === undefined
+  const stripShown = !beforeAfter && (overview || layer === undefined)
   const [pastOpen, setPastOpen] = useState(false)
   const pastTick = comments?.revealPastTick ?? 0
   useEffect(() => {
@@ -1157,7 +1161,9 @@ export function ReadingPane({
     />
   )
 
-  const body = overview ? null : emptyChangeset ? (
+  const body = beforeAfter ? (
+    beforeAfter
+  ) : overview ? null : emptyChangeset ? (
     landed ? (
       <ReviewLanded {...landed} shape="full" />
     ) : (
