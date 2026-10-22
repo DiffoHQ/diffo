@@ -9,14 +9,11 @@ Until 1.0, minor versions may break things. When they do, the entry says how to 
 
 ### Added
 
-- **A Commits tab reads the change one commit at a time.** Beside Files,
-  Threads and Layers, it lists a branch review's commits oldest first, with
-  uncommitted edits as a last entry. Picking one narrows the reading pane to
-  that commit's own diff, headed by its message; `]` / `[` step between
-  commits. Read marks are shared with the Files tab: a hunk no later commit
-  touched is ticked in both. Comments made in a commit land on the matching
-  line of the full diff, or on its file when that line moved on. Merge commits
-  are not listed. See [Commit by commit](https://diffohq.github.io/diffo/guide/commits).
+- **A Commits tab reads the change one commit at a time.** It lists a branch
+  review's commits oldest first, plus uncommitted edits; picking one shows
+  that commit's own diff, and `]` / `[` step between them. Read marks are
+  shared with the Files tab. See
+  [Commit by commit](https://diffohq.github.io/diffo/guide/commits).
 
 ## [0.17.2] — 2026-10-16
 
