@@ -190,7 +190,7 @@ export function CommitRail({
   activeSha: string | null
   onPick: (sha: string) => void
   viewed: ReadonlySet<string>
-  /** Threads by path, as the pane places them for the open commit. */
+  /** Threads by the path they are on; a row counts the ones on its files. */
   threads?: Map<string, ReviewThread[]>
   onMarkCommitFiles?: (files: readonly FileChange[]) => void
   onClearCommitFiles?: (files: readonly FileChange[]) => void
@@ -236,7 +236,7 @@ export function CommitRail({
               open={open}
               onToggleOpen={() => toggle(commit.sha)}
               viewed={viewed}
-              threadCount={commit.sha === activeSha ? threadCount(files) : 0}
+              threadCount={threadCount(files)}
               onPick={() => onPick(commit.sha)}
               onMarkFiles={onMarkCommitFiles}
               onClearFiles={onClearCommitFiles}
@@ -247,7 +247,7 @@ export function CommitRail({
                   files={files}
                   viewed={viewed}
                   {...tree}
-                  threads={commit.sha === activeSha ? threads : undefined}
+                  threads={threads}
                   selectedPath={commit.sha === activeSha ? tree.selectedPath : null}
                   onPickFile={
                     tree.onPickFile

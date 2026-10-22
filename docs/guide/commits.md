@@ -18,7 +18,7 @@ unread.
 | Key | |
 | --- | --- |
 | `]` / `[` | Next / previous commit |
-| `n` | Next unread file in this commit |
+| `n` | Next unread file, on into the next commit once this one is read |
 | `J` / `K` | Next / previous file in this commit |
 
 ## Marks and comments
@@ -36,5 +36,4 @@ that line is gone from the final diff.
 - **Merge commits** are not listed; their diff is the base branch coming in.
 - **Working-tree reviews** have no commits. Open the review against a branch
   (`diffo main`).
-- **Image previews and expanded context** show the current files, not the
-  commit's version.
+- **Image previews** show the current files, not the commit's version.

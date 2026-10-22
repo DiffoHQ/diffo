@@ -154,6 +154,7 @@ describe('a comment made on a commit', () => {
     const withCommit = (await (await create({ commit: commits[0]!.sha })).json()) as ReviewThread
     expect(withCommit.codeContext).toContain('+TWO')
     expect(withCommit.codeContext).not.toContain('TWO!')
+    expect(withCommit.anchor).toMatchObject({ commit: commits[0]!.sha })
     const without = (await (await create({})).json()) as ReviewThread
     expect(without.codeContext).toBeNull()
   })
@@ -192,6 +193,31 @@ describe('a comment made on a commit', () => {
     })
     const thread = (await res.json()) as ReviewThread
     expect(thread.anchor).toMatchObject({ kind: 'hunk', hunkId: hunk.id, line: 17 })
+    expect(thread.anchor).not.toHaveProperty('commit')
     expect(thread.codeContext).toContain('+LINE 15')
+  })
+})
+
+describe('a commit’s files', () => {
+  it('carry the sha, and /api/file reads the file as that commit had it', async () => {
+    const repo = featureRepo()
+    write(repo, 'a.ts', 'one\nTWO!\nthree\n')
+    commitAll(repo, 'louder')
+    const dbDir = `${repo}-db`
+    cleanups.push(dbDir)
+    const store = new ChangesetStore(repo, BRANCH)
+    const review = new ReviewStore(repo, new DiffoDb(join(dbDir, 'diffo.db')), BRANCH)
+    const app = createApp({ root: repo, spec: BRANCH, clientDir: '/nope' }, store, review)
+
+    const { commits } = await listCommits(repo, BRANCH)
+    const first = (await getCommitChangeset(repo, BRANCH, commits[0]!.sha))!
+    expect(first.files[0]!.rev).toBe(commits[0]!.sha)
+    const at = (q: string) => app.request(`/api/file?path=a.ts&side=head${q}`)
+    expect(await (await at(`&rev=${commits[0]!.sha}`)).text()).toBe('one\nTWO\nthree\n')
+    expect(await (await at('')).text()).toBe('one\nTWO!\nthree\n')
+    expect((await at(`&rev=${git(repo, 'rev-parse', 'main').trim()}`)).status).toBe(404)
+    expect((await app.request(`/api/file?path=a.ts&side=base&rev=${commits[0]!.sha}`)).status).toBe(
+      400,
+    )
   })
 })

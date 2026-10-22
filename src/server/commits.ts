@@ -29,9 +29,44 @@ function stats(files: FileChange[]) {
 }
 
 /** A commit's diff has no working-tree file to size a trailing gap from, so
- * `newLineCount` stays unknown and that gap is simply not offered. */
-const commitFiles = (raw: string): FileChange[] =>
-  parsePatch(raw).map((file) => ({ ...file, staged: false, newLineCount: null }))
+ * `newLineCount` stays unknown and that gap is simply not offered. The other
+ * gaps read the file at `rev`, the commit's own version. */
+const commitFiles = (raw: string, rev?: string): FileChange[] =>
+  parsePatch(raw).map((file) => ({
+    ...file,
+    staged: false,
+    newLineCount: null,
+    ...(rev ? { rev } : {}),
+  }))
+
+/**
+ * The tab fetches every commit's diff at once, and each is a git process: a
+ * few at a time keeps a long branch from spawning one per commit in a burst.
+ */
+const GIT_SLOTS = 4
+let gitBusy = 0
+const gitWaiting: (() => void)[] = []
+async function withGitSlot<T>(work: () => Promise<T>): Promise<T> {
+  if (gitBusy >= GIT_SLOTS) await new Promise<void>((resolve) => gitWaiting.push(resolve))
+  gitBusy++
+  try {
+    return await work()
+  } finally {
+    gitBusy--
+    gitWaiting.shift()?.()
+  }
+}
+
+/** Whether `sha` is a full sha of one of the changeset's commits: the cheap
+ * listing answers, so a reviewer-typed ref never reaches git as one. */
+export async function isListedCommit(
+  root: string,
+  spec: ChangesetSpec,
+  sha: string,
+): Promise<boolean> {
+  if (!/^[0-9a-f]{40}$/.test(sha)) return false
+  return withGitSlot(async () => (await listCommitShasAsync(root, spec)).includes(sha))
+}
 
 const uncommittedFiles = async (root: string): Promise<FileChange[]> =>
   commitFiles(await getFullDiffAsync(root, { kind: 'working-tree' }))
@@ -83,8 +118,7 @@ export async function getCommitChangeset(
     if (spec.kind !== 'branch') return null
     return { sha, files: await uncommittedFiles(root) }
   }
-  if (!/^[0-9a-f]{40}$/.test(sha)) return null
-  const listed = await listCommitShasAsync(root, spec)
-  if (!listed.includes(sha)) return null
-  return { sha, files: commitFiles(await getCommitDiffAsync(root, sha)) }
+  if (!(await isListedCommit(root, spec, sha))) return null
+  const raw = await withGitSlot(() => getCommitDiffAsync(root, sha))
+  return { sha, files: commitFiles(raw, sha) }
 }

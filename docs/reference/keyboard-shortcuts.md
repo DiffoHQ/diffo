@@ -8,7 +8,7 @@ The review UI is keyboard-first. Press `?` in the review for this sheet.
 | --- | --- |
 | `j` / `k` | Next / previous hunk |
 | `J` / `K` | Next / previous file |
-| `n` | Next unreviewed file, rolling into the next layer when the current one is read |
+| `n` | Next unreviewed file, rolling into the next layer or commit when the current one is read |
 | `]` / `[` | Next / previous layer (when the agent has posted [layers](/agents#layers)), or commit when the Layers tab reads [by commit](/guide/commits) |
 | `.` | Next decision in this layer: opens its card and lands on the first place it names (see [Decisions](/guide/layers#decisions)) |
 | `/` | Filter files |

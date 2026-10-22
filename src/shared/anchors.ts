@@ -3,7 +3,7 @@ import type { DiffLine, FileChange, Hunk } from './types.js'
 
 export type HunkAnchor = Extract<Anchor, { kind: 'hunk' }>
 
-function findHunk(files: readonly FileChange[], id: string): Hunk | undefined {
+export function findHunk(files: readonly FileChange[], id: string): Hunk | undefined {
   for (const file of files) {
     const hunk = file.hunks.find((h) => h.id === id)
     if (hunk) return hunk
@@ -11,7 +11,13 @@ function findHunk(files: readonly FileChange[], id: string): Hunk | undefined {
   return undefined
 }
 
-function indexOfSideLine(lines: readonly DiffLine[], side: 'old' | 'new', line: number): number {
+/** Index of the line numbered `line` on `side`, or -1: a deleted line is not
+ * on the new side, an added one not on the old. */
+export function indexOfSideLine(
+  lines: readonly DiffLine[],
+  side: 'old' | 'new',
+  line: number,
+): number {
   return lines.findIndex((l) =>
     side === 'old' ? l.kind !== 'add' && l.oldNo === line : l.kind !== 'del' && l.newNo === line,
   )

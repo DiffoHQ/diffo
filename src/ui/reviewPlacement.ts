@@ -1,3 +1,4 @@
+import { indexOfSideLine, translateHunkAnchor } from '../shared/anchors.js'
 import type { Anchor, ReviewThread } from '../shared/review.js'
 import type { DiffLine, FileChange, Hunk } from '../shared/types.js'
 
@@ -38,7 +39,8 @@ export function partitionThreads(files: FileChange[], threads: ReviewThread[]): 
       else changeset.push(thread)
     } else if (hunkIds.has(anchor.hunkId)) push(byHunk, anchor.hunkId, thread)
     else {
-      const rehomed = rehome(files, anchor)
+      // A line numbered in one commit's diff says nothing about this one.
+      const rehomed = anchor.commit === undefined ? rehome(files, anchor) : null
       if (rehomed !== null) push(byHunk, rehomed, thread)
       else if (paths.has(anchor.path)) push(byFile, anchor.path, thread)
       else changeset.push(thread)
@@ -62,6 +64,32 @@ function rehome(files: FileChange[], anchor: Extract<Anchor, { kind: 'hunk' }>):
   const file = files.find((f) => f.path === anchor.path)
   if (!file) return null
   return file.hunks.find((h) => lineIndexForAnchor(h.lines, anchor) !== -1)?.id ?? null
+}
+
+/**
+ * The partition for one commit's own diff: the threads about its files, each
+ * hunk anchor renamed from the full diff's numbering into the commit's where
+ * the two share the hunk, so the card sits under the line it is about. A
+ * thread on a file the commit did not touch is not placed; it is read on the
+ * Files tab.
+ */
+export function partitionForCommit(
+  commitFiles: FileChange[],
+  fullFiles: readonly FileChange[],
+  threads: readonly ReviewThread[],
+): ThreadPartition {
+  const paths = new Set(commitFiles.map((f) => f.path))
+  const placed: ReviewThread[] = []
+  for (const thread of threads) {
+    const anchor = thread.anchor
+    if (anchor.kind === 'changeset') placed.push(thread)
+    else if (anchor.kind === 'file') {
+      if (paths.has(anchor.path)) placed.push(thread)
+    } else if (anchor.kind === 'hunk' && paths.has(anchor.path)) {
+      placed.push({ ...thread, anchor: translateHunkAnchor(anchor, fullFiles, commitFiles) })
+    }
+  }
+  return partitionThreads(commitFiles, placed)
 }
 
 export function threadsByFile(
@@ -128,12 +156,6 @@ export function anchorForRange(
     }
   }
   return end > start.line ? { ...start, endLine: end } : start
-}
-
-function indexOfSideLine(lines: DiffLine[], side: 'old' | 'new', line: number): number {
-  return lines.findIndex((l) =>
-    side === 'old' ? l.kind !== 'add' && l.oldNo === line : l.kind !== 'del' && l.newNo === line,
-  )
 }
 
 /** Index in `lines` after which a hunk-anchored thread renders; -1 when the anchored

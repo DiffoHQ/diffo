@@ -42,6 +42,10 @@ export interface FileChange {
    * and that gap simply isn't offered.
    */
   newLineCount?: number | null
+  /** Set on one commit's own diff: the sha whose version of the file the head
+   * side is, so expanding context reads that version, not the working tree.
+   * Absent on the full diff and on uncommitted edits. */
+  rev?: string
 }
 
 export interface ChangesetStats {

@@ -6,7 +6,7 @@ import { type Context, Hono } from 'hono'
 import { stream, streamSSE } from 'hono/streaming'
 import { SRC_STAMP } from '../devStamp.js'
 import type { ForgeClient, PrRef, ReviewEvent } from '../forge/types.js'
-import { translateHunkAnchor } from '../shared/anchors.js'
+import { findHunk, translateHunkAnchor } from '../shared/anchors.js'
 import { parseLayersInput, parseSuggestReason } from '../shared/layers.js'
 import {
   type Anchor,
@@ -29,7 +29,7 @@ import {
 } from '../shared/review.js'
 import type { ChangesetSpec, PrInfo } from '../shared/types.js'
 import { VERSION } from '../version.js'
-import { getCommitChangeset, listCommits } from './commits.js'
+import { getCommitChangeset, isListedCommit, listCommits } from './commits.js'
 import { DiffoDb, type ServerRecord } from './db.js'
 import { DeliveryQueue, type Snapshot } from './delivery.js'
 import {
@@ -443,7 +443,11 @@ export function createApp(
         : null
     const placed =
       commitFiles && anchor.kind === 'hunk'
-        ? translateHunkAnchor(anchor, commitFiles, store!.get().files)
+        ? findHunk(store!.get().files, anchor.hunkId)
+          ? translateHunkAnchor(anchor, commitFiles, store!.get().files)
+          : // The hunk is that commit's alone: the line keeps its numbering and
+            // says whose, so nothing later reads it as the full diff's.
+            { ...anchor, commit: body.commit as string }
         : anchor
     let capture = store ? captureAnchor(store.get(), placed, review.get().layers) : null
     if (store && !capture && commitFiles) {
@@ -1181,18 +1185,29 @@ export function createApp(
     }
   })
 
-  app.get('/api/file', (c) => {
+  app.get('/api/file', async (c) => {
     const path = c.req.query('path')
     const side = c.req.query('side')
+    const rev = c.req.query('rev')
     if (!path || (side !== 'base' && side !== 'head')) {
       return c.json({ error: 'need ?path= and ?side=base|head' }, 400)
     }
     let bytes: Buffer | null
     try {
-      bytes =
-        side === 'head'
-          ? getHeadFileBytes(ctx.root, path)
-          : getBaseFileBytes(ctx.root, resolveBaseRef(ctx.root, ctx.spec), path)
+      if (rev !== undefined) {
+        // The file as one of the changeset's commits had it: the head side of
+        // that commit's own diff. Only a sha the changeset lists is read.
+        if (side !== 'head') return c.json({ error: '?rev= reads the head side only' }, 400)
+        if (!(await isListedCommit(ctx.root, ctx.spec, rev))) {
+          return c.json({ error: 'no such commit in this changeset' }, 404)
+        }
+        bytes = getBaseFileBytes(ctx.root, rev, path)
+      } else {
+        bytes =
+          side === 'head'
+            ? getHeadFileBytes(ctx.root, path)
+            : getBaseFileBytes(ctx.root, resolveBaseRef(ctx.root, ctx.spec), path)
+      }
     } catch (err) {
       if (err instanceof MissingBaseError) return c.json({ error: err.message }, 400)
       throw err

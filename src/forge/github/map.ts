@@ -180,6 +180,11 @@ export function githubPosition(
   if (anchor.kind === 'file')
     return { draft: { path: anchor.path, body, subjectType: 'FILE' }, downgraded: false }
   const file = files.find((f) => f.path === anchor.path)
+  // Numbered in one commit's diff, and that hunk is gone from the full diff:
+  // the number means nothing here, so the comment goes on the file.
+  if (anchor.commit !== undefined && !file?.hunks.some((h) => h.id === anchor.hunkId)) {
+    return { draft: { path: anchor.path, body, subjectType: 'FILE' }, downgraded: true }
+  }
   const has = (n: number) =>
     file?.hunks.some((h) =>
       h.lines.some((l) =>
