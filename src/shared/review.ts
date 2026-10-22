@@ -398,6 +398,11 @@ export interface BeforeAfter {
   postedAt: string
 }
 
+/** Whether the review shows a before/after: whether the agent posted one. */
+export function showsBeforeAfter(state: Pick<ReviewState, 'beforeAfter'>): boolean {
+  return state.beforeAfter !== undefined
+}
+
 export interface ReviewState {
   version: 1
   threads: ReviewThread[]
