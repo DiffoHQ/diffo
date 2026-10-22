@@ -260,5 +260,7 @@ export const reviewApi = {
   clear: () => del<{ removed: number }>('/api/review/threads'),
   /** Outline, or refresh: the click rides to the agent's next poll. */
   requestLayers: () => post<{ ok: boolean }>('/api/review/layers/request'),
+  /** The reviewer's behaviour-change toggle, overruling the agent's read. */
+  setBeforeAfter: (on: boolean) => post<{ ok: boolean }>('/api/review/before-after/toggle', { on }),
   dismissLanded: () => del<{ ok: boolean }>('/api/review/landed'),
 }

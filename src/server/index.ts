@@ -7,6 +7,7 @@ import { stream, streamSSE } from 'hono/streaming'
 import { SRC_STAMP } from '../devStamp.js'
 import type { ForgeClient, PrRef, ReviewEvent } from '../forge/types.js'
 import { findHunk, translateHunkAnchor } from '../shared/anchors.js'
+import { parseBeforeAfterInput } from '../shared/beforeAfter.js'
 import { parseLayersInput, parseSuggestReason } from '../shared/layers.js'
 import {
   type Anchor,
@@ -521,6 +522,26 @@ export function createApp(
     if (!review || !queue) return c.json({ error: 'review unavailable' }, 503)
     queue.enqueueLayers()
     return c.json({ ok: true, request: queue.layersRequest(), presence: queue.presence() })
+  })
+
+  // The agent's before/after — its sections, replacing any earlier post.
+  // `shown` tells the agent whether the reviewer will see it: a review they
+  // marked as not changing behaviour keeps it, hidden.
+  app.post('/api/review/before-after', async (c) => {
+    if (!review) return c.json({ error: 'review unavailable' }, 503)
+    const parsed = parseBeforeAfterInput(await c.req.json().catch(() => null))
+    if (!parsed.ok) return c.json({ error: parsed.error }, 400)
+    const beforeAfter = review.setBeforeAfter(parsed.value)
+    return c.json({ beforeAfter, shown: review.get().beforeAfterToggle !== false })
+  })
+
+  // The reviewer's toggle, overruling the agent's read either way.
+  app.post('/api/review/before-after/toggle', async (c) => {
+    if (!review) return c.json({ error: 'review unavailable' }, 503)
+    const body = await c.req.json().catch(() => null)
+    if (typeof body?.on !== 'boolean') return c.json({ error: 'need {on: boolean}' }, 400)
+    review.setBeforeAfterToggle(body.on)
+    return c.json({ ok: true })
   })
 
   app.post('/api/review/threads/:id/messages', async (c) => {
