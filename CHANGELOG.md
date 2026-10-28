@@ -12,6 +12,9 @@ Until 1.0, minor versions may break things. When they do, the entry says how to 
 - **A `path:line` link lands on its line.** Clicking a file reference in a
   thread or layer summary scrolled to the top of the hunk, so in a new file it
   always landed on line 1. It now centres the row, like a symbol usage does.
+- **A suggested PR comment on a layer thread can be added.** Add as PR comment
+  draft failed with a 400. The draft now lands on the line of the decision the
+  thread cites, else the layer's only file, else the review body.
 
 ## [0.18.0] — 2026-10-22
 
