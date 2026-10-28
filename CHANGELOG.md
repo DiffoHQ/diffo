@@ -7,7 +7,11 @@ Until 1.0, minor versions may break things. When they do, the entry says how to 
 
 ## [Unreleased]
 
-Nothing yet.
+### Fixed
+
+- **A `path:line` link lands on its line.** Clicking a file reference in a
+  thread or layer summary scrolled to the top of the hunk, so in a new file it
+  always landed on line 1. It now centres the row, like a symbol usage does.
 
 ## [0.18.0] — 2026-10-22
 

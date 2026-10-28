@@ -1093,42 +1093,6 @@ function Review() {
     [revealFile, enterLayerFor, scrollToFile],
   )
 
-  // A `path:line` reference in a layer summary. The line is head-side; the hunk
-  // that shows it is found by its rendered rows, falling back to the file card.
-  const jumpTo = useCallback(
-    (path: string, line: number | null) => {
-      const file = data?.files.find((f) => f.path === path)
-      if (!file) return
-      enterLayerFor(path)
-      revealFile(path)
-      setCollapsed((prev) => {
-        if (!prev.has(path)) return prev
-        const next = new Set(prev)
-        next.delete(path)
-        return next
-      })
-      const hunk =
-        line === null
-          ? undefined
-          : file.hunks.find((h) => h.lines.some((l) => l.kind !== 'del' && l.newNo === line))
-      if (hunk) {
-        setSelectedId(hunk.id)
-        setFocusPath(null)
-        requestAnimationFrame(() => {
-          const seek = (attempts: number) => {
-            const node = document.querySelector(`[data-hunk-id="${hunk.id}"]`)
-            if (node) glideTo(node, flashLanding)
-            else if (attempts > 0) requestAnimationFrame(() => seek(attempts - 1))
-          }
-          seek(30)
-        })
-      } else {
-        scrollToFile(path)
-      }
-    },
-    [data, enterLayerFor, revealFile, scrollToFile],
-  )
-
   // A usage picked in the symbol hover card. Unlike a `path:line` reference the
   // line may be base-side (a name on a deleted line), and the landing is the row
   // itself, centred — the reviewer asked for *that* line, not the hunk it is in.
@@ -1164,6 +1128,18 @@ function Review() {
       })
     },
     [data, enterLayerFor, revealFile, scrollToFile],
+  )
+
+  // A `path:line` reference in a layer summary or a thread. The line is
+  // head-side, and the landing is its row, the way a usage lands: a new file is
+  // one hunk, so landing on the hunk would mean landing on line 1.
+  const jumpTo = useCallback(
+    (path: string, line: number | null) => {
+      if (!data?.files.some((f) => f.path === path)) return
+      if (line === null) pickFile(path)
+      else jumpToLine({ path, side: 'head', line })
+    },
+    [data, pickFile, jumpToLine],
   )
 
   // The guide is a map; a map you can click is navigation. File references in
