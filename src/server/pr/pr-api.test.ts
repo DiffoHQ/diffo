@@ -290,6 +290,50 @@ describe('a pull request in the review API', () => {
     expect(source2.messages.find((m) => m.id === message.id)!.prComment!.outcome).toBeUndefined()
   })
 
+  it('a suggestion taken from a layer thread lands on the code the thread points at', async () => {
+    const { app, review } = setup()
+    await post(app, '/api/review/layers', {
+      items: [
+        {
+          title: 'Constants',
+          files: ['app.ts', 'other.ts'],
+          decisions: [{ text: 'b is now 42', at: 'app.ts:2' }],
+        },
+      ],
+    })
+    const layer = review.get().layers!.items[0]!
+    const anchor = { kind: 'layer', layerId: layer.id, title: layer.title }
+    const draftFrom = async (asked: string) => {
+      const res = await post(app, '/api/review/threads', { anchor, text: asked })
+      const { id } = (await res.json()) as ReviewThread
+      const replied = await post(app, `/api/review/threads/${id}/messages`, {
+        author: 'agent',
+        text: 'because',
+        prComment: 'Why 42?',
+      })
+      const { thread } = (await replied.json()) as { thread: ReviewThread }
+      return post(app, '/api/review/threads', {
+        anchor,
+        text: 'Why 42?',
+        audience: 'pr',
+        origin: { threadId: id, messageId: thread.messages.at(-1)!.id },
+      })
+    }
+
+    const cited = await draftFrom('> decision: b is now 42\n\nexample?')
+    expect(cited.status).toBe(200)
+    expect(((await cited.json()) as ReviewThread).anchor).toMatchObject({
+      kind: 'hunk',
+      path: 'app.ts',
+      line: 2,
+    })
+
+    // Citing nothing in a layer of two files, it goes to the review body.
+    const uncited = await draftFrom('why one step?')
+    expect(uncited.status).toBe(200)
+    expect(((await uncited.json()) as ReviewThread).anchor).toEqual({ kind: 'changeset' })
+  })
+
   it('a reply on an imported thread is held for GitHub, never delivered to the agent', async () => {
     const { app, queue } = setup()
     const res = await post(app, '/api/review/threads/gh:T_existing/messages', {

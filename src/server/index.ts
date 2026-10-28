@@ -13,6 +13,8 @@ import {
   type Coverage,
   type DraftOrigin,
   isPublic,
+  type Layer,
+  layerFilePath,
   liveSuggestion,
   normalizeTitle,
   type OutgoingThread,
@@ -353,6 +355,23 @@ export function createApp(
     return inChangeset ? { kind: 'file', path: file } : { kind: 'changeset' }
   }
 
+  /** Where a PR comment drafted from a layer thread lands on GitHub, which has
+   * no layers: the first place of the decision the thread cites, else the
+   * layer's one file, else the changeset — the review body. */
+  const layerDraftAnchor = (layer: Layer, source: ReviewThread): Anchor => {
+    const cited = /^> decision: (.+)$/m.exec(source.messages[0]?.text ?? '')?.[1]?.trim()
+    const place = layer.decisions?.find((d) => d.text === cited)?.at?.[0]
+    if (place) {
+      const placed = agentAnchor(place.path, place.line ?? null)
+      if (placed.kind !== 'hunk' || place.endLine === undefined) return placed
+      const hunk = findHunk(store?.get().files ?? [], placed.hunkId)
+      const inHunk = hunk?.lines.some((l) => l.kind !== 'del' && l.newNo === place.endLine)
+      return inHunk ? { ...placed, endLine: place.endLine } : placed
+    }
+    const files = layer.files.map(layerFilePath)
+    return files.length === 1 ? agentAnchor(files[0]!, null) : { kind: 'changeset' }
+  }
+
   app.post('/api/review/threads', async (c) => {
     if (!review) return c.json({ error: 'review unavailable' }, 503)
     const body = await c.req.json().catch(() => null)
@@ -382,14 +401,13 @@ export function createApp(
         }),
       )
     }
-    const anchor = parseAnchor(body?.anchor)
+    let anchor = parseAnchor(body?.anchor)
     if (!anchor) return c.json({ error: 'need {anchor, text}' }, 400)
     // A layer thread needs its layer: one the outline has right now. The stored
     // title is the outline's, not the client's, so a label never drifts.
+    const layerId = anchor.kind === 'layer' ? anchor.layerId : undefined
     const layer =
-      anchor.kind === 'layer'
-        ? review.get().layers?.items.find((l) => l.id === anchor.layerId)
-        : undefined
+      layerId !== undefined ? review.get().layers?.items.find((l) => l.id === layerId) : undefined
     if (anchor.kind === 'layer') {
       if (!layer) return c.json({ error: 'that layer is not in the outline' }, 400)
       anchor.title = layer.title
@@ -400,9 +418,17 @@ export function createApp(
     if (audience && !ctx.pr) {
       return c.json({ error: 'public comments need a pull request under review' }, 400)
     }
-    // GitHub has no layers: a comment on one is always for the agent.
+    // GitHub has no layers: a comment on one is for the agent, unless it is the
+    // agent's suggestion taken from a layer thread — then it moves to the code.
     if (audience && anchor.kind === 'layer') {
-      return c.json({ error: 'a comment on a layer is for the agent, not the pull request' }, 400)
+      const source =
+        typeof body?.origin?.threadId === 'string'
+          ? review.get().threads.find((t) => t.id === body.origin.threadId)
+          : undefined
+      if (!source || !layer) {
+        return c.json({ error: 'a comment on a layer is for the agent, not the pull request' }, 400)
+      }
+      anchor = layerDraftAnchor(layer, source)
     }
     const parentId =
       typeof body?.parentId === 'string' && review.get().threads.some((t) => t.id === body.parentId)
