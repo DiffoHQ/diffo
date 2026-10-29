@@ -1714,6 +1714,41 @@ describe('the layers request loop', () => {
   })
 })
 
+describe('the before/after', () => {
+  it('the agent posts its sections; the review carries them', async () => {
+    const { app } = setup()
+    const res = await post(app, '/api/review/before-after', [
+      { title: 'Expired token', before: ' 500 ', after: '401' },
+      { title: 'Retry', before: 'none', after: 'once' },
+    ])
+    expect(res.status).toBe(200)
+    expect(await res.json()).toMatchObject({
+      beforeAfter: {
+        sections: [{ title: 'Expired token', before: '500', after: '401' }, { title: 'Retry' }],
+      },
+    })
+    const got = (await (await app.request('/api/review')).json()) as { beforeAfter?: unknown }
+    expect(got.beforeAfter).toMatchObject({
+      sections: [{ before: '500', after: '401' }, { after: 'once' }],
+    })
+  })
+
+  it('refuses a section missing a side', async () => {
+    const { app, review } = setup()
+    const res = await post(app, '/api/review/before-after', { before: 'a' })
+    expect(res.status).toBe(400)
+    expect(await res.json()).toEqual({ error: 'needs a non-empty "after"' })
+    expect(review.get().beforeAfter).toBeUndefined()
+  })
+
+  it('clearing the review drops it', async () => {
+    const { app, review } = setup()
+    await post(app, '/api/review/before-after', { before: 'a', after: 'b' })
+    await app.request('/api/review/threads', { method: 'DELETE' })
+    expect(review.get().beforeAfter).toBeUndefined()
+  })
+})
+
 describe('editing a message', () => {
   const agentPoll = async (app: ReturnType<typeof setup>['app']) =>
     pollResult(await app.request('/api/agent/poll', { headers: { 'x-diffo-agent': 'cli' } }))

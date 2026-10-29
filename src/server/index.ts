@@ -7,6 +7,7 @@ import { stream, streamSSE } from 'hono/streaming'
 import { SRC_STAMP } from '../devStamp.js'
 import type { ForgeClient, PrRef, ReviewEvent } from '../forge/types.js'
 import { findHunk, translateHunkAnchor } from '../shared/anchors.js'
+import { parseBeforeAfterInput } from '../shared/beforeAfter.js'
 import { parseLayersInput, parseSuggestReason } from '../shared/layers.js'
 import {
   type Anchor,
@@ -547,6 +548,14 @@ export function createApp(
     if (!review || !queue) return c.json({ error: 'review unavailable' }, 503)
     queue.enqueueLayers()
     return c.json({ ok: true, request: queue.layersRequest(), presence: queue.presence() })
+  })
+
+  // The agent's before/after — its sections, replacing any earlier post.
+  app.post('/api/review/before-after', async (c) => {
+    if (!review) return c.json({ error: 'review unavailable' }, 503)
+    const parsed = parseBeforeAfterInput(await c.req.json().catch(() => null))
+    if (!parsed.ok) return c.json({ error: parsed.error }, 400)
+    return c.json({ beforeAfter: review.setBeforeAfter(parsed.value) })
   })
 
   app.post('/api/review/threads/:id/messages', async (c) => {
