@@ -540,7 +540,7 @@ export function ThreadCard({
   const ghost = offered !== null && reply === ''
   // Take the offer as the draft: the box opens with it, caret at the end, so
   // the next keystroke edits it and ⌘↵ sends it.
-  const useOffer = () => {
+  const acceptOffer = () => {
     if (offered === null) return
     setReply(offered)
     setReplyOpen(true)
@@ -1099,7 +1099,7 @@ export function ThreadCard({
               <button
                 type="button"
                 className="btn btn-outline btn-sm thread-offer-use"
-                onClick={useOffer}
+                onClick={acceptOffer}
                 title="take the suggested reply into the box, ready to edit or send"
               >
                 Use
@@ -1159,7 +1159,7 @@ export function ThreadCard({
                   className="thread-offer-kbd thread-ghost-hint"
                   // Keep the caret in the box: a click here must not blur it shut.
                   onMouseDown={(e) => e.preventDefault()}
-                  onClick={useOffer}
+                  onClick={acceptOffer}
                   title="take the suggested reply (Tab)"
                 >
                   Tab
