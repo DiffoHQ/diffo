@@ -49,6 +49,18 @@ On a pull request, row 0 of the list is the **Overview**: the pull request's
 description, in the place a guide takes on a local review. See
 [Reviewing a pull request](/guide/pr-review).
 
+## Before / after, for a behaviour change
+
+When the agent reads the change as altering behaviour someone would notice — a
+bug fixed, a default or an error changed, a flow that now runs differently — it
+says what the program did before and what it does now, and the Layers tab opens
+on a **Before / after** row above everything else, layers or not. Its card has
+one section per behaviour the change alters, each titled, with the two states
+side by side in a few lines (a small diagram only when the flow itself changed).
+A refactor, a cleanup or a brand-new feature gets none.
+
+`[` from the Overview or the first layer lands on it, and `]` leaves it.
+
 ## Decisions
 
 Under a layer's summary the agent may list its **decisions**: what it chose,

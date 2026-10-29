@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { HELP_TEXT, helpFor, parseCliArgs } from './cliArgs.js'
-import { GUIDE, GUIDE_CLASSDEFS, LAYERS } from './server/prompt.js'
+import { BEFORE_AFTER, GUIDE, GUIDE_CLASSDEFS, LAYERS } from './server/prompt.js'
 
 describe('parseCliArgs', () => {
   it('defaults to working tree, auto port, open browser, background server', () => {
@@ -283,7 +283,17 @@ describe('parseCliArgs — help is never an error', () => {
   })
 
   it('every verb answers --help / -h, whatever else is on the line', () => {
-    for (const verb of ['poll', 'reply', 'comment', 'layers', 'end', 'setup', 'status', 'stop']) {
+    for (const verb of [
+      'poll',
+      'reply',
+      'comment',
+      'layers',
+      'before-after',
+      'end',
+      'setup',
+      'status',
+      'stop',
+    ]) {
       expect(parseCliArgs([verb, '--help'])).toEqual({ kind: 'help', topic: verb })
       expect(parseCliArgs([verb, '-h'])).toEqual({ kind: 'help', topic: verb })
     }
@@ -295,7 +305,17 @@ describe('parseCliArgs — help is never an error', () => {
   it('helpFor returns the main help, or a per-command page with an example', () => {
     expect(helpFor()).toBe(HELP_TEXT)
     expect(helpFor('nonsense')).toBe(HELP_TEXT)
-    for (const verb of ['poll', 'reply', 'comment', 'layers', 'end', 'setup', 'status', 'stop']) {
+    for (const verb of [
+      'poll',
+      'reply',
+      'comment',
+      'layers',
+      'before-after',
+      'end',
+      'setup',
+      'status',
+      'stop',
+    ]) {
       const page = helpFor(verb)
       expect(page).toContain(`diffo ${verb}`)
       expect(page).toContain('Usage:')
@@ -438,6 +458,39 @@ describe('parseCliArgs — unknown commands', () => {
       force: true,
       all: true,
     })
+  })
+})
+
+describe('parseCliArgs — before-after', () => {
+  it('takes exactly one source: --json or --stdin', () => {
+    expect(parseCliArgs(['before-after', '--json', '{"before":"a","after":"b"}'])).toEqual({
+      kind: 'before-after',
+      source: { kind: 'json', text: '{"before":"a","after":"b"}' },
+    })
+    expect(parseCliArgs(['before-after', '--stdin'])).toEqual({
+      kind: 'before-after',
+      source: { kind: 'stdin' },
+    })
+    expect(parseCliArgs(['before-after'])).toMatchObject({ kind: 'error' })
+    expect(parseCliArgs(['before-after', '--json', '{}', '--stdin'])).toMatchObject({
+      kind: 'error',
+    })
+  })
+
+  it('the payload never rides as a positional, and an empty --json is an error', () => {
+    expect(parseCliArgs(['before-after', '{}'])).toMatchObject({ kind: 'error' })
+    expect(parseCliArgs(['before-after', '--stdin', 'x'])).toMatchObject({ kind: 'error' })
+    expect(parseCliArgs(['before-after', '--json', '  '])).toMatchObject({ kind: 'error' })
+  })
+
+  it('help before-after teaches when to post, the sections, each side, and the shape', () => {
+    const page = helpFor('before-after')
+    expect(page).toContain(BEFORE_AFTER.when)
+    expect(page).toContain(BEFORE_AFTER.sections)
+    expect(page).toContain(BEFORE_AFTER.sides)
+    expect(page).toContain(BEFORE_AFTER.shape)
+    expect(page).toContain('No behaviour change: post nothing')
+    expect(helpFor('agent')).toContain('5. Before/after:')
   })
 })
 

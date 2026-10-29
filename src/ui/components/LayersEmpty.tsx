@@ -1,3 +1,4 @@
+import type { ReactNode } from 'react'
 import { Icon } from './Icon.js'
 
 /**
@@ -17,15 +18,20 @@ export function LayersEmpty({
   state,
   onOutline,
   onInvite,
+  lead,
 }: {
   state: LayersEmptyState
   onOutline?: () => void
   onInvite?: () => void
+  /** A row above the empty state — the Before / after, which needs
+   * no layers to exist. */
+  lead?: ReactNode
 }) {
   if (state === 'queued' || state === 'outlining') {
     const outlining = state === 'outlining'
     return (
       <div className="rail-scroll">
+        {lead}
         <div className="ch-empty" data-state={state} aria-live="polite">
           <h2 className="ch-empty-title">
             <span className={`ch-working${outlining ? '' : ' ch-working-idle'}`} aria-hidden="true">
@@ -46,6 +52,7 @@ export function LayersEmpty({
   }
   return (
     <div className="rail-scroll">
+      {lead}
       <div className="ch-empty" data-state={state} aria-live="polite">
         <h2 className="ch-empty-title">Read in steps</h2>
         <p className="ch-empty-sub">The agent splits its change into steps you read in order.</p>

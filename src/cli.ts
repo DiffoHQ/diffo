@@ -30,6 +30,7 @@ import {
 } from './server/pr/worktree.js'
 import {
   ACK_NEXT_STEP,
+  beforeAfterNudge,
   CHECKOUT_ROOT,
   CLI_COMMANDS,
   doctrineFor,
@@ -59,6 +60,7 @@ import {
 } from './serverLifecycle.js'
 import { apiUrl, reviewUrl } from './serverUrl.js'
 import { postRegisterHint, refreshInstalledSkills, runSetup } from './setup.js'
+import { parseBeforeAfterInput } from './shared/beforeAfter.js'
 import { parseLayersInput } from './shared/layers.js'
 import type { Layers, ReviewState } from './shared/review.js'
 import type { ChangesetSpec as CliSpec, PrInfo } from './shared/types.js'
@@ -739,6 +741,29 @@ if (command.kind === 'layers') {
   process.exit(0)
 }
 
+if (command.kind === 'before-after') {
+  const { source } = command
+  if (source.kind === 'stdin' && process.stdin.isTTY) {
+    fail('before-after --stdin needs the JSON piped on stdin, or pass it with --json')
+  }
+  const port = await requireServer()
+  const text = source.kind === 'json' ? source.text : await readStdin()
+  let raw: unknown
+  try {
+    raw = JSON.parse(text)
+  } catch (err) {
+    fail(`before-after needs JSON [{ "title", "before", "after" }]: ${(err as Error).message}`)
+  }
+  const parsed = parseBeforeAfterInput(raw)
+  if (!parsed.ok) fail(`before-after: ${parsed.error}`)
+  const { status, body } = await postJson(port, '/api/review/before-after', parsed.value)
+  if (status === 400)
+    fail(`before-after: ${(body as { error?: string } | null)?.error ?? 'rejected'}`)
+  if (status !== 200) fail(`before-after failed (${status})`)
+  console.log(JSON.stringify({ ok: true, next_step: ACK_NEXT_STEP.beforeAfter }))
+  process.exit(0)
+}
+
 if (command.kind === 'end') {
   const port = await requireServer()
   const { status, body } = await postJson(port, '/api/agent/end', {})
@@ -788,6 +813,8 @@ async function printAgentNextStep(port: number, pr?: PrInfo): Promise<void> {
   if (nudge) console.log(`then: ${nudge}`)
   const layers = review ? layersNudge(review, D) : null
   if (layers) console.log(`also: ${layers}`)
+  const beforeAfter = review ? beforeAfterNudge(review, D) : null
+  if (beforeAfter) console.log(`also: ${beforeAfter}`)
 }
 
 /**
