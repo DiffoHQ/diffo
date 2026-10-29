@@ -7,6 +7,7 @@ import { stream, streamSSE } from 'hono/streaming'
 import { SRC_STAMP } from '../devStamp.js'
 import type { ForgeClient, PrRef, ReviewEvent } from '../forge/types.js'
 import { findHunk, translateHunkAnchor } from '../shared/anchors.js'
+import { parseBeforeAfterInput } from '../shared/beforeAfter.js'
 import { parseLayersInput, parseSuggestReason } from '../shared/layers.js'
 import {
   type Anchor,
@@ -57,6 +58,7 @@ import { PrPuller } from './pr/puller.js'
 import { removeWorktree } from './pr/worktree.js'
 import {
   answeredByAgent,
+  buildBeforeAfterRequestPrompt,
   buildClearedPrompt,
   buildCoalescedPrompt,
   buildConnectAsk,
@@ -549,6 +551,31 @@ export function createApp(
     return c.json({ ok: true, request: queue.layersRequest(), presence: queue.presence() })
   })
 
+  // The agent's before/after — its sections, replacing any earlier post.
+  // `shown` tells the agent whether the reviewer will see it: a review they
+  // marked as not changing behaviour keeps it, hidden.
+  app.post('/api/review/before-after', async (c) => {
+    if (!review) return c.json({ error: 'review unavailable' }, 503)
+    const parsed = parseBeforeAfterInput(await c.req.json().catch(() => null))
+    if (!parsed.ok) return c.json({ error: parsed.error }, 400)
+    const beforeAfter = review.setBeforeAfter(parsed.value)
+    queue?.beforeAfterPosted()
+    return c.json({ beforeAfter, shown: review.get().beforeAfterToggle !== false })
+  })
+
+  // The reviewer's toggle, overruling the agent's read. Marking a review a
+  // behaviour change with no before/after asks the agent for one, the way Outline
+  // asks for layers; unmarking withdraws the ask.
+  app.post('/api/review/before-after/toggle', async (c) => {
+    if (!review || !queue) return c.json({ error: 'review unavailable' }, 503)
+    const body = await c.req.json().catch(() => null)
+    if (typeof body?.on !== 'boolean') return c.json({ error: 'need {on: boolean}' }, 400)
+    review.setBeforeAfterToggle(body.on)
+    if (body.on && !review.get().beforeAfter) queue.enqueueBeforeAfter()
+    else queue.dropBeforeAfter()
+    return c.json({ ok: true, request: queue.beforeAfterRequest(), presence: queue.presence() })
+  })
+
   app.post('/api/review/threads/:id/messages', async (c) => {
     if (!review) return c.json({ error: 'review unavailable' }, 503)
     const body = await c.req.json().catch(() => null)
@@ -690,8 +717,10 @@ export function createApp(
     const hadRound = before.threads.length > 0 || before.lastFinish !== undefined
     const removed = review.reset()
     for (const id of removed) queue?.drop(id)
-    // reset() dropped the layers; a request for them has nothing to answer.
+    // reset() dropped the layers and the before/after; a request for either
+    // has nothing to answer.
     queue?.dropLayers()
+    queue?.dropBeforeAfter()
     // The fresh round may already be on screen, guideless — wake the polling
     // agent with the heads-up so it can orient the reviewer with a new guide.
     if (hadRound && (store?.get().files.length ?? 0) > 0) queue?.enqueueCleared()
@@ -969,6 +998,17 @@ export function createApp(
           { repo: repoInfo(), changeset: store?.get() ?? null },
           review?.get().layers?.items ?? null,
         ),
+      }
+    }
+    if (snapshot.kind === 'before-after') {
+      return {
+        status: 'feedback' as const,
+        kind: 'before-after' as const,
+        threadIds: [] as string[],
+        prompt: buildBeforeAfterRequestPrompt({
+          repo: repoInfo(),
+          changeset: store?.get() ?? null,
+        }),
       }
     }
     if (snapshot.kind === 'cleared') {
@@ -1289,6 +1329,7 @@ export function createApp(
             queued: queue.queuedThreadIds(),
             answered: queue.currentBatch()?.answered ?? [],
             layers: queue.layersRequest(),
+            beforeAfter: queue.beforeAfterRequest(),
           }),
           id: String(id++),
         })
@@ -1317,6 +1358,7 @@ export function createApp(
             queued: queue.queuedThreadIds(),
             answered: queue.currentBatch()?.answered ?? [],
             layers: queue.layersRequest(),
+            beforeAfter: queue.beforeAfterRequest(),
           }),
           id: String(id++),
         })

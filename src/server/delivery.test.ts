@@ -967,6 +967,78 @@ describe('DeliveryQueue — the full protocol is owed once per session', () => {
   })
 })
 
+describe('DeliveryQueue — the beforeAfter request', () => {
+  const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms))
+
+  it('wakes a waiting attach, is consumed by its confirm, and reads as writing', async () => {
+    const q = new DeliveryQueue()
+    const attached = q.attach()
+    expect(q.beforeAfterRequest()).toBeNull()
+    q.enqueueBeforeAfter()
+    expect(await attached).toBe('data')
+    const snapshot = q.take()!
+    expect(snapshot).toEqual({ kind: 'before-after' })
+    q.confirm(snapshot, [])
+    expect(q.take()).toBeNull()
+    expect(q.presence()).toBe('working')
+    expect(q.presenceDetail().reason).toBe('delivered')
+    expect(q.beforeAfterRequest()).toBe('writing')
+    expect(q.layersRequest()).toBeNull()
+  })
+
+  it('waits behind replies, ahead of an outline', () => {
+    const q = new DeliveryQueue()
+    q.enqueueLayers()
+    q.enqueueBeforeAfter()
+    q.enqueueThreads(['t1'])
+    const first = q.take()!
+    expect(first).toMatchObject({ kind: 'threads' })
+    q.confirm(first, ['t1'])
+    const second = q.take()!
+    expect(second).toEqual({ kind: 'before-after' })
+    q.confirm(second, [])
+    expect(q.take()).toEqual({ kind: 'layers' })
+  })
+
+  it('the post concludes it, whether parked or in the agent’s hands', () => {
+    const parked = new DeliveryQueue()
+    parked.enqueueBeforeAfter()
+    parked.beforeAfterPosted()
+    expect(parked.beforeAfterRequest()).toBeNull()
+    expect(parked.take()).toBeNull()
+
+    const q = new DeliveryQueue()
+    q.enqueueBeforeAfter()
+    q.confirm(q.take()!, [])
+    q.beforeAfterPosted()
+    expect(q.beforeAfterRequest()).toBeNull()
+    expect(q.presence()).toBe('working')
+    expect(q.presenceDetail().reason).toBe('replied')
+  })
+
+  it('a settled re-poll without a post lapses the request', async () => {
+    const slow = new DeliveryQueue(undefined, undefined, {}, 10)
+    slow.enqueueBeforeAfter()
+    slow.confirm(slow.take()!, [])
+    await sleep(25)
+    void slow.attach()
+    expect(slow.beforeAfterRequest()).toBeNull()
+    expect(slow.presence()).toBe('listening')
+    slow.end()
+  })
+
+  it('dropBeforeAfter withdraws it, and end() clears one in flight', () => {
+    const q = new DeliveryQueue()
+    q.enqueueBeforeAfter()
+    q.dropBeforeAfter()
+    expect(q.take()).toBeNull()
+    q.enqueueBeforeAfter()
+    q.confirm(q.take()!, [])
+    q.end()
+    expect(q.beforeAfterRequest()).toBeNull()
+  })
+})
+
 describe('DeliveryQueue — the layers request', () => {
   const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms))
 

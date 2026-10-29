@@ -89,7 +89,8 @@ A `feedback` payload:
 {
   "status": "feedback",
   "kind": "threads",           // "threads" = individual sends · "finish" = the reviewer is done reading
-                               // "layers" = the reviewer asked for the outline · "cleared" = they started over
+                               // "layers" = the reviewer asked for the outline · "before-after" = they want the before/after
+                               // "cleared" = they started over
   "threadIds": ["4f1c9a2e-…"], // reply to each of these
   "prompt": "…",               // the authoritative instruction (see below)
   "next_step": "…"             // what to do once they are all handled
@@ -111,7 +112,11 @@ answered, and the prompt tells the agent not to answer those twice.
 A `kind: "layers"` payload is the reviewer pressing **Ask the agent for steps**,
 or *re-outline* over an outline that has gone stale. It carries no threads and owes no
 reply: the prompt restates the whole [layers](#layers) doctrine and asks for one
-`diffo layers --json` post, which is what concludes it. A `kind: "cleared"`
+`diffo layers --json` post, which is what concludes it. A `kind: "before-after"`
+payload is the reviewer marking the review a behaviour change that has no
+before/after: it restates the [before/after](#before-after) doctrine and asks for
+one `diffo before-after` post.
+A `kind: "cleared"`
 payload is the reviewer starting the review over; it owes nothing but a fresh
 guide, if the changeset warrants one.
 
@@ -274,6 +279,28 @@ The rules that make a post safe to repeat:
 If the agent suggests layers, the suggestion belongs in its handoff message
 too, where the reviewer's eyes already are: *say "layers" and I'll outline it
 before you start*. Saying it in the terminal is the zero-UI path.
+
+## Before / after
+
+A change that alters behaviour reads best from what it does differently. When
+the agent reads the change that way, it posts a **before/after** at open,
+unasked: for each behaviour it alters, what the program did before and what it
+does now. The review then carries a **Behaviour change** toggle in the header,
+switched on, and a *Before / after* row at the top of the Layers tab, whether
+or not there are layers.
+
+| | |
+| --- | --- |
+| **When** | The change alters behaviour someone running or calling the code would notice: a bug fixed; a default, limit, error or output changed; a flow that now runs differently. Judged from the branch name, the commit messages and the diff itself; on a pull request, from its title, description, labels and linked issues too. A refactor, a cleanup, tests or docs alone, or a feature with nothing before it to compare against do not count |
+| **Post** | `diffo before-after --json '[{"title":"…","before":"…","after":"…"}]'`, or piped to `diffo before-after --stdin`. A post replaces every section. No behaviour change: post nothing; that is the agent's "no" |
+| **Sections** | One per distinct behaviour: two bugs fixed are two sections, each titled in a few words. At most five; a lone section may go untitled |
+| **Each side** | One to three sentences: the trigger, then the effect. The after answers the same trigger, so the two read as a pair. What a user or a caller sees, with the symptoms and numbers a reader can check; the mechanism belongs to the layers |
+| **Diagrams** | Rarely: only when the flow itself changed. A small `flowchart TD` (each side is half the pane wide), six nodes at most, the same flow on both sides, tagged as the guide's are |
+| **Stance** | The guide's line holds verbatim: describe, never grade |
+| **The toggle** | The reviewer's word overrules the agent's either way, and stays theirs once flipped. Marked on with nothing posted, the ask arrives through the poll as a `kind: "before-after"` payload, and the row reads *writing* until the post lands; a re-poll without a post lets the ask lapse. Marked off, what the agent posted stays stored and hidden |
+
+The sections, the toggle and any standing ask all go when the reviewer clears
+the review.
 
 ## Presence: what the reviewer can see
 

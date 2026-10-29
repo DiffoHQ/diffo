@@ -380,6 +380,32 @@ export function layerFileNote(file: LayerFile): string | undefined {
   return typeof file === 'string' ? undefined : file.note
 }
 
+/**
+ * One behaviour the change alters, told as two states of the program: what it
+ * did before the change, and what it does now. Behaviour, not code — the diff
+ * is the code. Markdown; a ```mermaid fence renders, same as a layer summary.
+ * The title names the behaviour; a lone section may go without one.
+ */
+export interface BeforeAfterSection {
+  title?: string
+  before: string
+  after: string
+}
+
+/** The agent's before/after: one section per behaviour the change alters. */
+export interface BeforeAfter {
+  sections: BeforeAfterSection[]
+  postedAt: string
+}
+
+/** Whether the review shows a before/after: the reviewer's toggle when they
+ * have flipped it, otherwise whether the agent posted one. */
+export function showsBeforeAfter(
+  state: Pick<ReviewState, 'beforeAfter' | 'beforeAfterToggle'>,
+): boolean {
+  return state.beforeAfterToggle ?? state.beforeAfter !== undefined
+}
+
 export interface ReviewState {
   version: 1
   threads: ReviewThread[]
@@ -396,6 +422,17 @@ export interface ReviewState {
    * request. Cleared the moment layers are posted.
    */
   layersSuggested?: { reason?: string }
+  /**
+   * The agent's before/after, posted because it read the change as altering
+   * behaviour someone would notice.
+   * Posting it is the agent's verdict; `beforeAfterToggle` is the reviewer's.
+   */
+  beforeAfter?: BeforeAfter
+  /**
+   * The reviewer's word on whether this changeset changes behaviour, overruling the
+   * agent's. Absent until they flip it: the agent's post decides until then.
+   */
+  beforeAfterToggle?: boolean
   /**
    * What this changeset is, in a few words, as the agent named it when it
    * started polling. Exists for one job: telling a reviewer's tabs apart, all
