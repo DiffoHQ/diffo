@@ -1714,6 +1714,63 @@ describe('the layers request loop', () => {
   })
 })
 
+describe('the before/after', () => {
+  it('the agent posts its sections; the review carries them and shows a before/after', async () => {
+    const { app, review } = setup()
+    const res = await post(app, '/api/review/before-after', [
+      { title: 'Expired token', before: ' 500 ', after: '401' },
+      { title: 'Retry', before: 'none', after: 'once' },
+    ])
+    expect(res.status).toBe(200)
+    expect(await res.json()).toMatchObject({
+      beforeAfter: {
+        sections: [{ title: 'Expired token', before: '500', after: '401' }, { title: 'Retry' }],
+      },
+      shown: true,
+    })
+    const got = (await (await app.request('/api/review')).json()) as { beforeAfter?: unknown }
+    expect(got.beforeAfter).toMatchObject({
+      sections: [{ before: '500', after: '401' }, { after: 'once' }],
+    })
+    expect(review.get().beforeAfterToggle).toBeUndefined()
+  })
+
+  it('refuses a section missing a side', async () => {
+    const { app, review } = setup()
+    const res = await post(app, '/api/review/before-after', { before: 'a' })
+    expect(res.status).toBe(400)
+    expect(await res.json()).toEqual({ error: 'needs a non-empty "after"' })
+    expect(review.get().beforeAfter).toBeUndefined()
+  })
+
+  it('the reviewer’s toggle is stored, and a post under it is kept but hidden', async () => {
+    const { app, review } = setup()
+    expect(
+      await (await post(app, '/api/review/before-after/toggle', { on: false })).json(),
+    ).toEqual({
+      ok: true,
+    })
+    const res = await post(app, '/api/review/before-after', { before: 'a', after: 'b' })
+    expect(await res.json()).toMatchObject({ shown: false })
+    expect(review.get().beforeAfter).toBeDefined()
+    expect(review.get().beforeAfterToggle).toBe(false)
+  })
+
+  it('the toggle needs a boolean', async () => {
+    const { app } = setup()
+    expect((await post(app, '/api/review/before-after/toggle', { on: 'yes' })).status).toBe(400)
+  })
+
+  it('clearing the review drops the before/after and the toggle', async () => {
+    const { app, review } = setup()
+    await post(app, '/api/review/before-after', { before: 'a', after: 'b' })
+    await post(app, '/api/review/before-after/toggle', { on: false })
+    await app.request('/api/review/threads', { method: 'DELETE' })
+    expect(review.get().beforeAfter).toBeUndefined()
+    expect(review.get().beforeAfterToggle).toBeUndefined()
+  })
+})
+
 describe('editing a message', () => {
   const agentPoll = async (app: ReturnType<typeof setup>['app']) =>
     pollResult(await app.request('/api/agent/poll', { headers: { 'x-diffo-agent': 'cli' } }))

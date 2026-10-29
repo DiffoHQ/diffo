@@ -1,5 +1,6 @@
 import { parseArgs } from 'node:util'
 import {
+  BEFORE_AFTER,
   CLI_COMMANDS,
   GUIDE,
   GUIDE_CLASSDEFS,
@@ -55,6 +56,9 @@ For the agent (the AI that wrote the change):
   layers             Outline the changeset as steps to read in order
                      (--suggest ["why"] flags it at open; --json '<Layer[]>'
                      or --stdin posts the list, replacing the last one)
+  before-after       Post what a behaviour change did before and does now
+                     (--json '[{"title","before","after"}]' or --stdin; the
+                     reviewer's toggle can overrule it)
   end                Detach from the review politely
   help agent         The agent's whole protocol on one page
   help guide         The guide comment — the map of the change — with an example
@@ -128,24 +132,31 @@ The loop:
    Summary: ${LAYERS.summary}. Diagram: ${LAYERS.diagram}.
    Order: ${LAYERS.order}. ${LAYERS.mechanical}. ${LAYERS.stance}.
    ${LAYERS.replace}. \`diffo help layers\` has the shape.
-5. Act: \`[issue]\` threads want a code change; \`[question]\` threads want an
+5. Before/after: post one at open, unasked, when
+   ${BEFORE_AFTER.when}; ${BEFORE_AFTER.not}.
+   \`diffo before-after --json '[{"title":"…","before":"…","after":"…"}]'\` (or
+   pipe it to \`diffo before-after --stdin\`). It is ${BEFORE_AFTER.what};
+   ${BEFORE_AFTER.sections}; ${BEFORE_AFTER.sides}.
+   No behaviour change: post nothing. The reviewer's toggle overrules your read.
+   \`diffo help before-after\` has the shape.
+6. Act: \`[issue]\` threads want a code change; \`[question]\` threads want an
    answer in the reply and no edit. Your edits reach the reviewer live.
-6. Reply: \`diffo reply <threadId> --message "<text>"\` (pipe long replies on
+7. Reply: \`diffo reply <threadId> --message "<text>"\` (pipe long replies on
    stdin), concise, addressed to the reviewer. Markdown renders; a
    \`\`\`mermaid fence draws a diagram. A reply that only promises a
    follow-up ("I'll investigate and report back") goes out with \`--more\`, so
    the reviewer keeps seeing you at work, and the real answer follows as a
    plain reply before the next poll.
-7. Comment (sparingly): \`diffo comment [<file>] [--line <n>] -m "<text>"\`
+8. Comment (sparingly): \`diffo comment [<file>] [--line <n>] -m "<text>"\`
    starts a thread in your voice: a concern, or context that helps the read.
    When a reply or comment of yours ends in a decision that is the
    reviewer's ("want me to extract this?"), add \`--suggest-reply "<one
    line>"\`; it shows as ghost text in their reply box, taken with Tab.
    Offer the answer you expect, not a menu; skip it on messages that only
    report.
-8. Poll again only when the whole batch is handled; a new poll tells the
+9. Poll again only when the whole batch is handled; a new poll tells the
    reviewer you are done with the previous one.
-9. Detach: run \`diffo end\` when the review is over or the user moves on.
+10. Detach: run \`diffo end\` when the review is over or the user moves on.
 
 Rules:
 - An open review with no attended poll is a broken state: never end a turn
@@ -357,6 +368,31 @@ Output: {"ok":true,"layers":4,"next_step":"…"}
 Examples:
   diffo layers --suggest "the parser change explains the rest"
   diffo layers --json '[{"title":"Parser contract","summary":"The contract the rest of the change leans on: bad input now comes back as null, not an exception.","files":["src/parse.ts"],"decisions":[{"text":"Bad input returns null, not a throw","detail":"Callers already branch on null for a missing value; a throw would need a try at every site.","at":"src/parse.ts:41-46"}]},{"title":"Callers adapted","kind":"mechanical","summary":"Call sites following the new return type.","files":["src/cli.ts","src/api.ts"]}]'`,
+  'before-after': `diffo before-after: what a behaviour change did before, and does now
+
+Usage: diffo before-after --json '<Section[]>'   post the sections, replacing the last post
+       … | diffo before-after --stdin            the same payload, piped
+
+Post it at open, unasked, when ${BEFORE_AFTER.when}. ${BEFORE_AFTER.not[0]!.toUpperCase()}${BEFORE_AFTER.not.slice(1)}. No behaviour change: post nothing.
+
+It is ${BEFORE_AFTER.what}.
+Sections: ${BEFORE_AFTER.sections}.
+Each side: ${BEFORE_AFTER.sides}.
+Diagram: ${BEFORE_AFTER.diagram}:
+
+  ${GUIDE_CLASSDEFS[0]}
+  ${GUIDE_CLASSDEFS[1]}
+
+${BEFORE_AFTER.stance}.
+${BEFORE_AFTER.replace}. The reviewer's toggle overrules your read either way: marking
+the review as not changing behaviour hides what you posted.
+
+Shape: ${BEFORE_AFTER.shape}
+
+Output: {"ok":true,"shown":true,"next_step":"…"}
+
+Example:
+  diffo before-after --json '[{"title":"Expired-token login","before":"Logging in with an expired token returns a 500 and the page goes blank.","after":"The same login returns a 401; the client refreshes the token and retries once."},{"title":"Session length","before":"A session lasts 24 hours, idle or not.","after":"A session ends after 2 idle hours, and still at 24 hours at most."}]'`,
   end: `diffo end: detach from the review politely
 
 Usage: diffo end
@@ -473,6 +509,7 @@ export type CliCommand =
       prComment: string | null
     }
   | { kind: 'layers'; source: LayersSource }
+  | { kind: 'before-after'; source: { kind: 'json'; text: string } | { kind: 'stdin' } }
   | { kind: 'end' }
   | { kind: 'setup' }
   | { kind: 'telemetry'; action: 'status' | 'on' | 'off' }
@@ -491,6 +528,7 @@ const VERBS = new Set([
   'reply',
   'comment',
   'layers',
+  'before-after',
   'end',
   'setup',
   'telemetry',
@@ -725,6 +763,45 @@ function parseLayersVerb(rest: string[]): CliCommand {
   return { kind: 'layers', source: { kind: 'json', text: values.json! } }
 }
 
+/** `before-after` parses on its own for the same reason `layers` does: its `--json`
+ * takes a value. Exactly one source. */
+function parseBeforeAfterVerb(rest: string[]): CliCommand {
+  const parsed = tryParse(() =>
+    parseArgs({
+      args: rest,
+      allowPositionals: true,
+      options: {
+        json: { type: 'string' },
+        stdin: { type: 'boolean' },
+        help: { type: 'boolean', short: 'h' },
+      },
+    }),
+  )
+  if (!parsed.ok) return { kind: 'error', message: parsed.message }
+  const { values, positionals } = parsed.value
+  if (values.help) return { kind: 'help', topic: 'before-after' }
+  if ((values.json !== undefined) === (values.stdin === true)) {
+    return {
+      kind: 'error',
+      message: 'before-after takes exactly one of --json <Section[]> or --stdin',
+    }
+  }
+  if (positionals.length > 0) {
+    return {
+      kind: 'error',
+      message: 'pass the before/after with --json or on stdin (--stdin), not as an argument',
+    }
+  }
+  if (values.stdin) return { kind: 'before-after', source: { kind: 'stdin' } }
+  if (values.json!.trim() === '') {
+    return {
+      kind: 'error',
+      message: '--json needs JSON [{ "title", "before", "after" }]; see `diffo help before-after`',
+    }
+  }
+  return { kind: 'before-after', source: { kind: 'json', text: values.json! } }
+}
+
 function parseCleanVerb(rest: string[]): CliCommand {
   const parsed = tryParse(() =>
     parseArgs({
@@ -765,6 +842,7 @@ function parseTelemetryVerb(rest: string[]): CliCommand {
 
 function parseVerb(verb: string, rest: string[]): CliCommand {
   if (verb === 'layers') return parseLayersVerb(rest)
+  if (verb === 'before-after') return parseBeforeAfterVerb(rest)
   if (verb === 'clean') return parseCleanVerb(rest)
   if (verb === 'telemetry') return parseTelemetryVerb(rest)
   const parsed = tryParse(() =>

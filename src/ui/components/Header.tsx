@@ -522,16 +522,51 @@ export interface HeaderSettings {
   onShowPrivacy?: () => void
 }
 
+/** Whether this review changes behaviour, and so shows a before/after: the
+ * agent's read until the reviewer flips it, theirs after. */
+export interface HeaderBeforeAfter {
+  on: boolean
+  /** The reviewer flipped it; the agent's read no longer decides. */
+  overruled: boolean
+  onToggle: () => void
+}
+
+function BeforeAfterToggle({ on, overruled, onToggle }: HeaderBeforeAfter) {
+  const title = overruled
+    ? on
+      ? 'you marked this change as altering behaviour; click to hide its before/after'
+      : 'you marked this change as not altering behaviour; click to mark it as one'
+    : on
+      ? 'the agent read this change as altering behaviour; click to overrule'
+      : 'the agent did not read this change as altering behaviour; click to mark it as one'
+  return (
+    <button
+      type="button"
+      role="switch"
+      aria-checked={on}
+      className={`chip ba-toggle${on ? ' ba-toggle-on' : ''}`}
+      title={title}
+      onClick={onToggle}
+    >
+      <Icon name="compare" size="xs" />
+      Behaviour change
+      {on && !overruled && <span className="ba-who">agent</span>}
+    </button>
+  )
+}
+
 export function Header({
   changeset,
   agent = {},
   review = {},
   settings = {},
+  beforeAfter,
 }: {
   changeset: Changeset
   agent?: HeaderAgent
   review?: HeaderReview
   settings?: HeaderSettings
+  beforeAfter?: HeaderBeforeAfter
 }) {
   const { openComments = 0, publicDrafts = 0, onFinishReview } = review
   // The chip's face is the companion's seat; it is empty while the companion is out.
@@ -574,6 +609,7 @@ export function Header({
       </span>
       {changeset.pr && <PrChips pr={changeset.pr} />}
       <Comparison changeset={changeset} />
+      {beforeAfter && <BeforeAfterToggle {...beforeAfter} />}
       {agent.presence && critter ? (
         <CritterTrack
           presence={agent.presence}

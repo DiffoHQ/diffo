@@ -65,6 +65,7 @@ export type IconName =
   | 'diff-mod'
   | 'undo'
   | 'bell'
+  | 'compare'
 
 export type IconSize = 'xs' | 'sm' | 'md' | 'lg'
 
@@ -413,6 +414,16 @@ export function IconSprite() {
           <circle cx="2.8" cy="8" r=".9" fill="currentColor" stroke="none" />
           <circle cx="2.8" cy="12" r=".9" fill="currentColor" stroke="none" />
         </g>
+      </symbol>
+      <symbol id="i-compare" viewBox="0 0 16 16">
+        <path
+          d="M2.5 5.5h10M10 3l2.5 2.5L10 8M13.5 10.5h-10M6 8l-2.5 2.5L6 13"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="1.5"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        />
       </symbol>
       <symbol id="i-quote" viewBox="0 0 16 16">
         <path

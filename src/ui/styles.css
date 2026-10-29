@@ -9222,3 +9222,99 @@ i.q-now {
   font-size: var(--t-11);
   color: var(--ink-3);
 }
+
+/* ---------- behaviour change: the header toggle and the before/after ---------- */
+
+/* A chip that is a switch: muted while off, the attention wash while on. The
+   small "agent" tag says whose read it is until the reviewer flips it. */
+.ba-toggle {
+  border: 0;
+  color: var(--ink-3);
+  background: var(--fill);
+  font-family: var(--sans);
+  cursor: pointer;
+}
+
+.ba-toggle:hover {
+  color: var(--ink-2);
+  background: var(--fill-2);
+}
+
+.ba-toggle-on,
+.ba-toggle-on:hover {
+  color: var(--attn);
+  background: var(--attn-wash);
+}
+
+.ba-who {
+  font-size: var(--t-11);
+  font-weight: 400;
+  opacity: 0.75;
+}
+
+/* The Overview's row hides its box; this one shows its icon there instead. */
+.row-layer-ba .row-box {
+  visibility: visible;
+  color: var(--ink-3);
+}
+
+.row-layer-ba[aria-current="true"] .row-box {
+  color: var(--attn);
+}
+
+/* One section per behaviour; sections after the first sit under a hairline. */
+.ba-section + .ba-section {
+  margin-top: var(--s-7);
+  padding-top: var(--s-6);
+  border-top: 1px solid var(--hair);
+}
+
+.ba-title {
+  margin: var(--s-4) 0 0;
+  font-size: var(--t-14);
+  font-weight: 600;
+  color: var(--ink);
+}
+
+/* Two passages side by side, each under its rule, in the diff's colours: red
+   for what it did, green for what it does now. One column when narrow. */
+.ba-sides {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: var(--s-4);
+  margin-top: var(--s-3);
+}
+
+.ba-side {
+  min-width: 0;
+  padding-left: 12px;
+  border-left: 2px solid var(--hair);
+}
+
+.ba-side-before {
+  border-left-color: var(--del);
+}
+
+.ba-side-after {
+  border-left-color: var(--add);
+}
+
+.ba-label {
+  margin-bottom: 4px;
+  font-size: var(--t-11);
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+}
+
+.ba-note {
+  margin-top: var(--s-3);
+  max-width: 52ch;
+  font-size: var(--t-14);
+  color: var(--ink-2);
+}
+
+.ba-note p {
+  margin: 0;
+}
