@@ -25,12 +25,16 @@ const MAX_INLINE_BYTES = 2 * 1024 * 1024
 // color.ui=always, external diff drivers), with rename detection.
 const DIFF_FLAGS = ['--no-ext-diff', '--no-color', '-M'] as const
 
+// `windowsHide` on every child: the daemon runs with no console (`detached` is
+// `DETACHED_PROCESS` on Windows), so each `git` would otherwise be handed a
+// brand-new cmd window that flashes open and shut. A no-op elsewhere.
 function git(root: string, args: string[]): string {
   return execFileSync('git', args, {
     cwd: root,
     encoding: 'utf-8',
     stdio: ['ignore', 'pipe', 'pipe'],
     maxBuffer: MAX_BUFFER,
+    windowsHide: true,
   })
 }
 
@@ -49,6 +53,7 @@ async function gitAsync(root: string, args: string[]): Promise<string> {
     cwd: root,
     encoding: 'utf-8',
     maxBuffer: MAX_BUFFER,
+    windowsHide: true,
   })
   return stdout
 }
@@ -97,6 +102,7 @@ export async function branchExistsAsync(root: string, branch: string): Promise<b
       cwd: root,
       encoding: 'utf-8',
       maxBuffer: MAX_BUFFER,
+      windowsHide: true,
     })
     return true
   } catch (err) {
@@ -516,6 +522,7 @@ export function getBaseFileBytes(root: string, ref: string, relPath: string): Bu
       cwd: root,
       stdio: ['ignore', 'pipe', 'pipe'],
       maxBuffer: MAX_BUFFER,
+      windowsHide: true,
     })
   } catch {
     return null
@@ -598,6 +605,7 @@ function fetchSync(root: string, args: string[]): void {
     encoding: 'utf-8',
     stdio: ['ignore', 'pipe', 'pipe'],
     maxBuffer: MAX_BUFFER,
+    windowsHide: true,
     timeout: FETCH_TIMEOUT_MS,
     env: FETCH_ENV,
   })
@@ -622,6 +630,7 @@ export async function fetchPrHeadAsync(
       cwd: root,
       encoding: 'utf-8',
       maxBuffer: MAX_BUFFER,
+      windowsHide: true,
       timeout: FETCH_TIMEOUT_MS,
       env: FETCH_ENV,
     },
@@ -642,6 +651,7 @@ export async function fetchBranchAsync(
     cwd: root,
     encoding: 'utf-8',
     maxBuffer: MAX_BUFFER,
+    windowsHide: true,
     timeout: FETCH_TIMEOUT_MS,
     env: FETCH_ENV,
   })

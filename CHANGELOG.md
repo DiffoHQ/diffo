@@ -7,7 +7,11 @@ Until 1.0, minor versions may break things. When they do, the entry says how to 
 
 ## [Unreleased]
 
-Nothing yet.
+### Fixed
+
+- **No more flashing cmd windows on Windows.** The background server has no
+  console, so every `git` it ran was given a new one that popped open and shut.
+  Children now run hidden; `--foreground` is no longer needed as a workaround.
 
 ## [0.18.1] — 2026-10-28
 
