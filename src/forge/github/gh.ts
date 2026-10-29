@@ -51,6 +51,7 @@ export const execGh: GhExec = (args) =>
       {
         encoding: 'utf-8',
         maxBuffer: MAX_BUFFER,
+        windowsHide: true,
         env: { ...process.env, GH_PROMPT_DISABLED: '1' },
       },
       (err, stdout, stderr) => {

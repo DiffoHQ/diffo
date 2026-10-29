@@ -257,6 +257,7 @@ function spawnDaemonProcess(opts: EnsureServerOptions): void {
       cwd: opts.repoPath,
       detached: true,
       stdio: ['ignore', logFd, logFd],
+      windowsHide: true,
       env: { ...(opts.env ?? process.env), DIFFO_DAEMON: '1' },
     },
   )
