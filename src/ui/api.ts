@@ -24,7 +24,7 @@ export type Presence = 'waiting' | 'listening' | 'working'
 
 /** The reviewer's layers request, as the presence stream reports it: parked
  * for the next poll, in the agent's hands, or none. Mirrors the server's type. */
-export type LayersRequest = 'queued' | 'outlining' | null
+export type LayersRequest = 'queued' | 'outlining' | 'stalled' | null
 
 export type PresenceReason =
   | 'no-agent'

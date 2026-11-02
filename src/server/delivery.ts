@@ -37,6 +37,12 @@ export const ARRIVE_GRACE_MS = 5 * 60_000
 /** A re-poll within this window of a delivery reads as "hasn't started yet". */
 export const BATCH_SETTLE_MS = 2_000
 
+/** An outline owed this long with no post reads as stalled: the reviewer gets
+ * the reason and their button back instead of "Outlining…" for good. Shorter
+ * than a reply's stall — an agent whose harness refused the post is told to
+ * stop, and nothing else ends the wait: no re-poll, no reply clock. */
+export const OUTLINE_STALL_MS = 3 * 60_000
+
 export type BatchCloseReason = 'repoll' | 'ended' | 'gone'
 
 export interface BatchClosed {
@@ -88,7 +94,7 @@ export interface Submitted {
 
 /** Where the reviewer's request for layers stands: parked for the next poll,
  * in the agent's hands, or nowhere. */
-export type LayersRequest = 'queued' | 'outlining' | null
+export type LayersRequest = 'queued' | 'outlining' | 'stalled' | null
 
 interface ScopePending {
   threads: Set<string>
@@ -119,6 +125,7 @@ export class DeliveryQueue {
   private deliveredAt = new Map<string, number>()
   private listeners = new Set<(presence: Presence) => void>()
   private stalled = false
+  private outlineTimer: ReturnType<typeof setTimeout> | null = null
   private stallTimer: ReturnType<typeof setTimeout> | null = null
   private betweenPolls = false
   /** Why the agent is parked between polls: a reply just landed, its poll
@@ -157,6 +164,7 @@ export class DeliveryQueue {
       arriveGraceMs?: number
     } = {},
     private batchSettleMs: number = BATCH_SETTLE_MS,
+    private outlineStallMs: number = OUTLINE_STALL_MS,
   ) {}
 
   onBatchClosed(listener: (closed: BatchClosed) => void): () => void {
@@ -285,7 +293,7 @@ export class DeliveryQueue {
 
   /** Where the reviewer's layers request stands (see `LayersRequest`). */
   layersRequest(): LayersRequest {
-    if (this.outlining() !== null) return 'outlining'
+    if (this.outlining() !== null) return this.outlineStalled() ? 'stalled' : 'outlining'
     if (this.buckets.get(this.scope)?.layers) return 'queued'
     return null
   }
@@ -294,13 +302,20 @@ export class DeliveryQueue {
     return this.buckets.get(this.scope)?.outlining ?? null
   }
 
+  /** Derived, not flagged: the clock is the delivery itself, so a stall needs
+   * no state to clear — only `armOutlineWatch` to announce the crossing. */
+  private outlineStalled(): boolean {
+    const since = this.outlining()
+    return since !== null && Date.now() - since >= this.outlineStallMs
+  }
+
   presenceDetail(): PresenceDetail {
     return { state: this.presence(), reason: this.reason(), since: this.since }
   }
 
   private reason(): PresenceReason {
     if (this.awaitingReply) return this.stalled ? 'stalled' : 'delivered'
-    if (this.outlining() !== null) return 'delivered'
+    if (this.outlining() !== null) return this.outlineStalled() ? 'stalled' : 'delivered'
     if (this.waiter) return 'polling'
     if (this.betweenPolls) return this.parked
     return this.lastDetach ?? 'no-agent'
@@ -362,6 +377,23 @@ export class DeliveryQueue {
   private clearStall(): void {
     if (this.stallTimer !== null) clearTimeout(this.stallTimer)
     this.stallTimer = null
+  }
+
+  private armOutlineWatch(): void {
+    this.clearOutlineWatch()
+    const timer = setTimeout(() => {
+      this.outlineTimer = null
+      // A lapsed or answered outline reads as such already; a re-armed one
+      // has its own timer. Only the crossing itself is news.
+      if (this.outlineStalled()) this.notify()
+    }, this.outlineStallMs)
+    timer.unref?.()
+    this.outlineTimer = timer
+  }
+
+  private clearOutlineWatch(): void {
+    if (this.outlineTimer !== null) clearTimeout(this.outlineTimer)
+    this.outlineTimer = null
   }
 
   private armGrace(
@@ -489,7 +521,14 @@ export class DeliveryQueue {
    * the cleared heads-up: a boolean per scope, surfaced once real feedback is
    * answered. */
   enqueueLayers(): void {
-    this.bucket().layers = true
+    const bucket = this.bucket()
+    bucket.layers = true
+    // Asking again over a stalled outline withdraws it: the click means "that
+    // one is not coming", and the ask reads as parked for the next poll.
+    if (this.outlineStalled()) {
+      bucket.outlining = null
+      this.clearOutlineWatch()
+    }
     const queued = this.waiter === null
     this.wake()
     if (queued) this.notify()
@@ -504,6 +543,7 @@ export class DeliveryQueue {
       bucket.layers = false
       bucket.outlining = null
     }
+    this.clearOutlineWatch()
     this.notify()
   }
 
@@ -514,6 +554,7 @@ export class DeliveryQueue {
     const since = bucket?.outlining ?? null
     if (bucket === undefined || since === null) return null
     bucket.outlining = null
+    this.clearOutlineWatch()
     // Not mid-batch and not already parked: the agent re-polls next, and the
     // grace window is what models that.
     if (!this.awaitingReply && !this.betweenPolls) this.armGrace()
@@ -551,6 +592,7 @@ export class DeliveryQueue {
       Date.now() - owing.outlining >= this.batchSettleMs
     ) {
       owing.outlining = null
+      this.clearOutlineWatch()
     }
     if (this.hasPending()) return Promise.resolve('data')
     return new Promise((resolve) => {
@@ -644,6 +686,7 @@ export class DeliveryQueue {
       const bucket = this.bucket()
       bucket.layers = false
       bucket.outlining = Date.now()
+      this.armOutlineWatch()
       this.notify()
       return
     }
@@ -726,6 +769,7 @@ export class DeliveryQueue {
     this.closeBatch('ended')
     this.awaitingReply = false
     for (const bucket of this.buckets.values()) bucket.outlining = null
+    this.clearOutlineWatch()
     this.stalled = false
     this.clearStall()
     this.clearGrace()

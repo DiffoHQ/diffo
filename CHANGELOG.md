@@ -7,7 +7,17 @@ Until 1.0, minor versions may break things. When they do, the entry says how to 
 
 ## [Unreleased]
 
-Nothing yet.
+### Fixed
+
+- **An outline that never comes no longer reads "Outlining…" for good.** Claude
+  Code's auto mode can refuse the `diffo layers --stdin` post (it screens each
+  command on its own and distrusts a pipe from a file it never saw written), and
+  it tells the agent to stop, so nothing ended the wait. After three minutes the
+  Layers tab now says the post never came and why it might not have, and offers
+  the ask again. The agent's instructions now say to write the file in one
+  command and post it in the next, which the classifier accepts, and to tell the
+  reviewer in chat when a post is refused. The FAQ names the one-line allow
+  rule that takes the classifier out of the loop.
 
 ## [0.18.2] — 2026-10-29
 

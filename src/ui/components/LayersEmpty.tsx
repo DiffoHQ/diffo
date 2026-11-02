@@ -9,9 +9,12 @@ import { Icon } from './Icon.js'
  *   quiet      the button is there
  *   queued     the outline was asked for, and waits behind the agent's open threads
  *   outlining  the agent has the request and is writing the plan
+ *   stalled    it took the request minutes ago and nothing came — most often
+ *              its harness refused the post and told it to stop — so say why
+ *              and give the action back
  *   noagent    nobody is attached, so nobody can outline — Invite instead
  */
-export type LayersEmptyState = 'quiet' | 'queued' | 'outlining' | 'noagent'
+export type LayersEmptyState = 'quiet' | 'queued' | 'outlining' | 'stalled' | 'noagent'
 
 export function LayersEmpty({
   state,
@@ -40,6 +43,28 @@ export function LayersEmpty({
               ? 'The steps appear here as soon as the agent posts them.'
               : 'The agent starts once it finishes the threads it’s answering.'}
           </p>
+        </div>
+      </div>
+    )
+  }
+  if (state === 'stalled') {
+    return (
+      <div className="rail-scroll">
+        <div className="ch-empty" data-state={state} aria-live="polite">
+          <h2 className="ch-empty-title">No steps yet</h2>
+          <p className="ch-empty-sub">
+            The agent took the request a while ago and hasn’t posted. Its harness may have refused
+            the command: ask it in chat, or ask again here.
+          </p>
+          <button
+            type="button"
+            className="btn ch-empty-cta"
+            onClick={onOutline}
+            disabled={!onOutline}
+          >
+            <Icon name="list" size="sm" />
+            Ask again
+          </button>
         </div>
       </div>
     )

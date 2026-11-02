@@ -70,6 +70,25 @@ copy into the `~/.agents/skills` directory that Codex, Gemini CLI, Amp, Goose an
 read. Any agent that can run a shell command can drive the loop: `diffo poll`,
 `diffo reply`, `diffo comment`, `diffo layers`, `diffo end`. That's the whole protocol.
 
+### Claude Code's auto mode refused `diffo layers --stdin`. Why, and what now?
+
+Auto mode screens every shell command with a classifier that reads the transcript, and
+it refuses a write whose content it cannot trace: a command that writes a file and pipes
+it to `diffo` in one go, or a pipe from a file the session never visibly wrote (the
+reason it prints is *External System Writes*). Nothing about `localhost` changes that
+verdict. The CLI's own instructions now say to write the file in one command and post
+it in the next, which the classifier accepts, and inline `--json` was never affected.
+If the post is still refused, the Layers tab stops saying *Outlining…* after three
+minutes and offers the ask again. To take the classifier out of the loop for Diffo
+altogether, allow its commands in your Claude Code settings:
+
+```json
+{ "permissions": { "allow": ["Bash(npx -y @diffohq/diffo:*)"] } }
+```
+
+Narrow `Bash(...)` allow rules are resolved before the classifier runs, so with this in
+place every `diffo` command goes through unasked.
+
 ### I closed my terminal. Is the review gone?
 
 No. `diffo` leaves a background server by default, precisely so the review outlives the
