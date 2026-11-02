@@ -177,7 +177,11 @@ function useLiveUpdates(): {
         if (state === 'waiting' || state === 'listening' || state === 'working') {
           setPresence(state)
           setLayersRequest(
-            detail.layers === 'queued' || detail.layers === 'outlining' ? detail.layers : null,
+            detail.layers === 'queued' ||
+              detail.layers === 'outlining' ||
+              detail.layers === 'stalled'
+              ? detail.layers
+              : null,
           )
           if (detail.reason) setReason(detail.reason)
           setSince(typeof detail.since === 'number' ? detail.since : null)

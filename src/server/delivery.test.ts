@@ -1042,6 +1042,48 @@ describe('DeliveryQueue — the layers request', () => {
     slow.end()
   })
 
+  it('an outline owed past the stall window reads as stalled, and announces the crossing', async () => {
+    const q = new DeliveryQueue(undefined, undefined, {}, undefined, 20)
+    const seen: string[] = []
+    q.subscribe(() => seen.push(q.presenceDetail().reason))
+    q.enqueueLayers()
+    q.confirm(q.take()!, [])
+    expect(q.layersRequest()).toBe('outlining')
+    expect(q.presenceDetail().reason).toBe('delivered')
+    await sleep(35)
+    // No re-poll, no post: the harness refused the command and told the agent
+    // to stop. The clock alone turns the wait into a reason the reviewer can act on.
+    expect(q.layersRequest()).toBe('stalled')
+    expect(q.presence()).toBe('working')
+    expect(q.presenceDetail().reason).toBe('stalled')
+    expect(seen.at(-1)).toBe('stalled')
+    // A late post still concludes it.
+    expect(q.layersPosted()).toBeGreaterThanOrEqual(35)
+    expect(q.layersRequest()).toBeNull()
+    q.end()
+  })
+
+  it('asking again over a stalled outline withdraws it and parks the new ask', async () => {
+    const q = new DeliveryQueue(undefined, undefined, {}, undefined, 10)
+    q.enqueueLayers()
+    q.confirm(q.take()!, [])
+    await sleep(20)
+    expect(q.layersRequest()).toBe('stalled')
+    q.enqueueLayers()
+    expect(q.layersRequest()).toBe('queued')
+    expect(q.presence()).toBe('waiting')
+    // ...and the next poll carries it again.
+    expect(q.take()).toEqual({ kind: 'layers' })
+    // Before the window, a second click changes nothing: the outline is still being written.
+    const fresh = new DeliveryQueue(undefined, undefined, {}, undefined, 10_000)
+    fresh.enqueueLayers()
+    fresh.confirm(fresh.take()!, [])
+    fresh.enqueueLayers()
+    expect(fresh.layersRequest()).toBe('outlining')
+    fresh.end()
+    q.end()
+  })
+
   it('dropLayers withdraws a parked request and an outline in flight alike', () => {
     const q = new DeliveryQueue()
     q.enqueueLayers()

@@ -189,7 +189,7 @@ export function nextStepFor(
     return `Nothing to act on — tell the user the review was submitted, then run \`${CLI_COMMANDS.poll}\` again to keep listening (${POLL_STANCE}), or \`${CLI_COMMANDS.end}\` if they are done.`
   }
   if (kind === 'layers') {
-    return `Post the outline with \`${CLI_COMMANDS.layers}\` (or pipe it to \`${CLI_COMMANDS.layersStdin}\`), then run \`${CLI_COMMANDS.poll}\` again to keep listening (${POLL_STANCE}).`
+    return `Post the outline with \`${CLI_COMMANDS.layers}\` — ${LAYERS.post} (\`${CLI_COMMANDS.layersStdin}\`). If the post is refused, say so to the reviewer in chat — they are watching the Layers tab for it. Then run \`${CLI_COMMANDS.poll}\` again to keep listening (${POLL_STANCE}).`
   }
   if (kind === 'cleared') {
     // A cleared review dropped its tab title along with its threads (see
@@ -378,6 +378,13 @@ export const LAYERS = {
   /** A post is the whole list. */
   replace:
     "a post replaces the whole list, never merges; ids are kept for titles that match, so a re-post never moves the reviewer's place",
+  /** How the payload reaches the CLI. Two commands when it is long, because a
+   * harness that screens each command on its own (Claude Code's auto mode, for
+   * one) refuses a post it cannot trace: a command that writes the file and
+   * pipes it in one go, or a pipe from a file the session never visibly wrote.
+   * The refusal also tells the agent to stop, so the reviewer sees "Outlining…"
+   * until the server gives up on it (see OUTLINE_STALL_MS). */
+  post: 'inline with --json when it fits on a command line; when it is long, write the JSON to a file in one command and pipe that file to --stdin in the next — never write and post in the same command, and never pipe a file this session did not itself write, because a harness that screens commands one at a time refuses a post it cannot trace back to you',
   /** What earns a line in a layer's `decisions`, and the bar for it. The
    * reviewer reads these before the diff — or instead of it — so every entry
    * must be something they could act on, never a retelling of the change. */
@@ -1106,7 +1113,7 @@ export function buildLayersRequestPrompt(
     '',
     `Shape: ${LAYERS.shape}`,
     '',
-    `Post it: \`${CLI_COMMANDS.layers}\`, or pipe the JSON to \`${CLI_COMMANDS.layersStdin}\` when it is long. Nothing else is owed for this item — no reply, no comment.`,
+    `Post it: \`${CLI_COMMANDS.layers}\` — ${D.layers.post} (\`${CLI_COMMANDS.layersStdin}\`). If the post is refused, tell the reviewer in chat; they are watching the Layers tab for it. Nothing else is owed for this item — no reply, no comment.`,
     '',
     `Then run \`${CLI_COMMANDS.poll}\` again to keep listening (${POLL_STANCE}).`,
     '',

@@ -354,7 +354,16 @@ export function LayerRail({
       })}
       {/* The foot of the outline, in the voice of the Threads tab's "Clear all
           threads…": a sentence, not a button, and only ever the one action. */}
-      {request !== null ? (
+      {request === 'stalled' && onRefresh ? (
+        <button
+          type="button"
+          className="ch-foot ch-foot-act"
+          title="the agent took the request but never re-posted; its harness may have refused the command"
+          onClick={onRefresh}
+        >
+          The re-outline never came · ask again…
+        </button>
+      ) : request !== null && request !== 'stalled' ? (
         <div className="ch-foot ch-foot-live" aria-live="polite">
           <span className="ch-working" aria-hidden="true">
             <i />

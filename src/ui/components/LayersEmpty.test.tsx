@@ -29,6 +29,16 @@ describe('LayersEmpty', () => {
     expect(screen.queryByRole('button')).toBeNull()
   })
 
+  it('stalled: says the post never came and why it might not have, and gives the action back', () => {
+    const onOutline = vi.fn()
+    render(<LayersEmpty state="stalled" onOutline={onOutline} />)
+    expect(screen.getByRole('heading', { name: 'No steps yet' })).toBeTruthy()
+    expect(screen.getByText(/harness may have refused/)).toBeTruthy()
+    expect(screen.queryByText(/Outlining/)).toBeNull()
+    fireEvent.click(screen.getByRole('button', { name: /Ask again/ }))
+    expect(onOutline).toHaveBeenCalled()
+  })
+
   it('noagent: nobody to ask, so Invite instead', () => {
     const onInvite = vi.fn()
     render(<LayersEmpty state="noagent" onOutline={() => {}} onInvite={onInvite} />)
