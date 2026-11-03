@@ -816,6 +816,37 @@ describe('ReadingPane in layer mode', () => {
     expect(head.nextElementSibling?.className).toContain('file-section')
   })
 
+  it('the card closes with the reading order: the words, then both orders as chips', () => {
+    const onPick = vi.fn()
+    const { container, unmount } = render(
+      <ReadingPane files={[FILES[0]!]} layer={view({ reading: { kind: 'order', onPick } })} />,
+    )
+    const row = container.querySelector('.ch-head-order')!
+    expect(row.querySelector('.ch-head-order-cap')?.textContent).toBe('Read the files in')
+    const group = row.querySelector('[role="radiogroup"]')!
+    // The label is the words in front of the chips, not a title to hover for.
+    expect(group.getAttribute('aria-labelledby')).toBe(row.querySelector('.ch-head-order-cap')?.id)
+    const [agent, folders] = [...group.querySelectorAll('[role="radio"]')]
+    expect(agent!.textContent).toBe('the agent’s order')
+    expect(folders!.textContent).toBe('folder order')
+    expect(agent!.getAttribute('aria-checked')).toBe('true')
+    expect(folders!.getAttribute('aria-checked')).toBe('false')
+    fireEvent.click(folders!)
+    expect(onPick).toHaveBeenCalledWith('tree')
+    unmount()
+    const { container: c2, unmount: u2 } = render(
+      <ReadingPane files={[FILES[0]!]} layer={view({ reading: { kind: 'tree', onPick } })} />,
+    )
+    const chips = [...c2.querySelectorAll('.ch-head-order [role="radio"]')]
+    expect(chips.map((c) => c.getAttribute('aria-checked'))).toEqual(['false', 'true'])
+    fireEvent.click(chips[0]!)
+    expect(onPick).toHaveBeenLastCalledWith('order')
+    u2()
+    // Nothing to order, nothing said.
+    const { container: c3 } = render(<ReadingPane files={[FILES[0]!]} layer={view()} />)
+    expect(c3.querySelector('.ch-head-order')).toBeNull()
+  })
+
   it('a `path:line` reference in the summary jumps instead of navigating', () => {
     const v = view()
     const { container } = render(<ReadingPane files={[FILES[0]!]} layer={v} />)

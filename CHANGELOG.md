@@ -7,7 +7,13 @@ Until 1.0, minor versions may break things. When they do, the entry says how to 
 
 ## [Unreleased]
 
-Nothing yet.
+### Added
+
+- **Read a layer by folder.** The pane reads a layer's files in the order the
+  agent outlined them. The foot of the layer's card, **Read the files in**,
+  now offers the other way: folder order, as the Files tab lists them. `J` /
+  `K` and `n` follow the pick; the rail's folder tree is unchanged. One pick
+  for the whole review, remembered across reviews.
 
 ## [0.19.0] — 2026-11-03
 
