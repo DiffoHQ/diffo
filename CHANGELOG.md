@@ -7,6 +7,10 @@ Until 1.0, minor versions may break things. When they do, the entry says how to 
 
 ## [Unreleased]
 
+Nothing yet.
+
+## [0.20.0] — 2026-11-03
+
 ### Added
 
 - **Read a layer by folder.** The pane reads a layer's files in the order the
@@ -14,6 +18,14 @@ Until 1.0, minor versions may break things. When they do, the entry says how to 
   now offers the other way: folder order, as the Files tab lists them. `J` /
   `K` and `n` follow the pick; the rail's folder tree is unchanged. One pick
   for the whole review, remembered across reviews.
+
+### Fixed
+
+- **A stalled outline could keep reading "Outlining…".** The stall is
+  announced on a timer, and a timer can fire a hair before the clock agrees
+  the window has passed; the announcement then still said "delivered", and
+  nothing came after to correct it. It now waits out the remainder and
+  announces the crossing once it is one.
 
 ## [0.19.0] — 2026-11-03
 
@@ -883,7 +895,8 @@ shipped in it, written as a starting point rather than a history.
 - **Guided reading** — splitting a large change into an ordered sequence of small,
   reviewable sections — is designed but not built.
 
-[Unreleased]: https://github.com/DiffoHQ/diffo/compare/v0.19.0...HEAD
+[Unreleased]: https://github.com/DiffoHQ/diffo/compare/v0.20.0...HEAD
+[0.20.0]: https://github.com/DiffoHQ/diffo/compare/v0.19.0...v0.20.0
 [0.19.0]: https://github.com/DiffoHQ/diffo/compare/v0.18.2...v0.19.0
 [0.18.2]: https://github.com/DiffoHQ/diffo/compare/v0.18.1...v0.18.2
 [0.18.1]: https://github.com/DiffoHQ/diffo/compare/v0.18.0...v0.18.1
