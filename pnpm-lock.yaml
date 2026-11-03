@@ -10,10 +10,10 @@ importers:
     dependencies:
       '@hono/node-server':
         specifier: ^2.1.1
-        version: 2.1.5(hono@4.13.13)
+        version: 2.1.5(hono@4.13.14)
       hono:
         specifier: ^4.13.3
-        version: 4.13.13
+        version: 4.13.14
     devDependencies:
       '@biomejs/biome':
         specifier: ^2.5.9
@@ -2040,8 +2040,8 @@ packages:
   hast-util-whitespace@3.0.0:
     resolution: {integrity: sha512-88JUN06ipLwsnv+dVn+OIYOvAuvBMy/Qoi6O7mQHxdPXpjy+Cd6xRkWwux7DKO+4sYILtLBRIKgsdpS2gQc7qw==}
 
-  hono@4.13.13:
-    resolution: {integrity: sha512-CQ46U0ZkAGmbT/4UxdzzGJpacP2IeKgY4a5/tOI9AABbpOMfK739wfDXmv1usCk+3RkKj1hQy4/fjhiwa2xlrA==}
+  hono@4.13.14:
+    resolution: {integrity: sha512-yhRLQ21U6qa9Hsu2N7Qcbh8tE+WKEcoErjIo56LeSGiGXGp9sA7UpE86Ui9uexb61KakiGwuHMn2QdV7w6i6kQ==}
     engines: {node: '>=16.9.0'}
 
   hookable@5.5.3:
@@ -3191,9 +3191,9 @@ snapshots:
 
   '@exodus/bytes@1.16.0': {}
 
-  '@hono/node-server@2.1.5(hono@4.13.13)':
+  '@hono/node-server@2.1.5(hono@4.13.14)':
     dependencies:
-      hono: 4.13.13
+      hono: 4.13.14
 
   '@iconify-json/simple-icons@1.2.93':
     dependencies:
@@ -4374,7 +4374,7 @@ snapshots:
     dependencies:
       '@types/hast': 3.0.5
 
-  hono@4.13.13: {}
+  hono@4.13.14: {}
 
   hookable@5.5.3: {}
 
