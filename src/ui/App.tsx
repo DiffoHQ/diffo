@@ -56,6 +56,7 @@ import { type JumpTarget, SymbolHoverLayer } from './components/SymbolHover.js'
 import { TelemetryNotice } from './components/TelemetryNotice.js'
 import { ThreadRail } from './components/ThreadRail.js'
 import type { ReviewActions } from './components/Threads.js'
+import { Voice } from './components/Voice.js'
 import { useCritter } from './critterPref.js'
 import { fileMarks, isFileViewed } from './fileMarks.js'
 import { fileAnchor, glideTo } from './hooks.js'
@@ -96,6 +97,7 @@ import {
 import { useAgentNotifications } from './useAgentNotifications.js'
 import { useViewed } from './useViewed.js'
 import { loadViewed, storageKey } from './viewedStore.js'
+import { useVoice } from './voicePref.js'
 
 const queryClient = new QueryClient()
 
@@ -347,6 +349,8 @@ function Review() {
   const [critter, setCritter] = useCritter()
   const telemetry = useTelemetry()
   const [privacyOpen, setPrivacyOpen] = useState(false)
+  const voicePref = useVoice()
+  const [voiceOpen, setVoiceOpen] = useState(false)
   const [panel, setPanel] = useState<PanelTab>('files')
   const [searchFocusTick, setSearchFocusTick] = useState(0)
   // The pull request under review, when there is one (see prMode.ts). Null is
@@ -725,14 +729,16 @@ function Review() {
   // code it was about even when the hunk exists only in that commit's diff.
   const commentCommit = inCommits ? (activeCommit?.sha ?? null) : null
   const paneActions = useMemo<ReviewActions>(
-    () =>
-      commentCommit === null
-        ? reviewActions
+    () => ({
+      ...reviewActions,
+      ...(commentCommit === null
+        ? {}
         : {
-            ...reviewActions,
             create: (anchor, text, intent, options) =>
               reviewActions.create(anchor, text, intent, { ...options, commit: commentCommit }),
-          },
+          }),
+      editVoice: () => setVoiceOpen(true),
+    }),
     [reviewActions, commentCommit],
   )
   const comments: ReviewComments = useMemo(
@@ -1741,6 +1747,7 @@ function Review() {
             onSetTheme: setTheme,
             critter,
             onSetCritter: setCritter,
+            onShowVoice: () => setVoiceOpen(true),
             ...(telemetry.status ? { onShowPrivacy: () => setPrivacyOpen(true) } : {}),
             onShowShortcuts: () => setShortcutsOpen(true),
           }}
@@ -2021,6 +2028,13 @@ function Review() {
           />
         )}
         {shortcutsOpen && <Shortcuts onClose={() => setShortcutsOpen(false)} />}
+        {voiceOpen && (
+          <Voice
+            voice={voicePref.voice}
+            onSave={voicePref.setVoice}
+            onClose={() => setVoiceOpen(false)}
+          />
+        )}
         {inviteOpen && (
           <InviteAgent
             presence={presence}

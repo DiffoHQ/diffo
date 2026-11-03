@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest'
+import { VOICE_MAX } from '../shared/voice.js'
 import { createApp, markDevIndex } from './index.js'
 
 const ctx = {
@@ -81,7 +82,7 @@ describe('ui settings', () => {
   it('answers null without a store, and refuses writes', async () => {
     const app = createApp(ctx)
     const res = await app.request('/api/settings')
-    expect(await res.json()).toEqual({ theme: null, critter: null })
+    expect(await res.json()).toEqual({ theme: null, critter: null, voice: null })
     expect((await put(app, '{"theme":"dark"}')).status).toBe(503)
   })
 
@@ -90,7 +91,7 @@ describe('ui settings', () => {
     expect((await put(app, '{"theme":"dark"}')).status).toBe(200)
     expect(kv.get('theme')).toBe('dark')
     const res = await app.request('/api/settings')
-    expect(await res.json()).toEqual({ theme: 'dark', critter: null })
+    expect(await res.json()).toEqual({ theme: 'dark', critter: null, voice: null })
   })
 
   it('rejects a theme outside the three real values', async () => {
@@ -105,7 +106,7 @@ describe('ui settings', () => {
     kv.set('theme', 'neon')
     kv.set('critter', 'maybe')
     const res = await app.request('/api/settings')
-    expect(await res.json()).toEqual({ theme: null, critter: null })
+    expect(await res.json()).toEqual({ theme: null, critter: null, voice: null })
   })
 
   it('round-trips the critter switch on its own, leaving the theme alone', async () => {
@@ -113,7 +114,28 @@ describe('ui settings', () => {
     kv.set('theme', 'dark')
     expect((await put(app, '{"critter":"off"}')).status).toBe(200)
     const res = await app.request('/api/settings')
-    expect(await res.json()).toEqual({ theme: 'dark', critter: 'off' })
+    expect(await res.json()).toEqual({ theme: 'dark', critter: 'off', voice: null })
+  })
+
+  it('round-trips the voice, trimmed; empty resets it to the default (null)', async () => {
+    const { app, kv } = withStore()
+    expect((await put(app, '{"voice":"  Short. Blunt.\\n"}')).status).toBe(200)
+    expect(kv.get('voice')).toBe('Short. Blunt.')
+    expect(await (await app.request('/api/settings')).json()).toMatchObject({
+      voice: 'Short. Blunt.',
+    })
+    expect((await put(app, '{"voice":""}')).status).toBe(200)
+    expect(kv.get('voice')).toBe('')
+    expect(await (await app.request('/api/settings')).json()).toMatchObject({ voice: null })
+  })
+
+  it('refuses a voice over the cap or not a string, and reads an oversized stored one as the default', async () => {
+    const { app, kv } = withStore()
+    expect((await put(app, JSON.stringify({ voice: 'x'.repeat(VOICE_MAX + 1) }))).status).toBe(400)
+    expect((await put(app, '{"voice":42}')).status).toBe(400)
+    expect(kv.size).toBe(0)
+    kv.set('voice', 'x'.repeat(VOICE_MAX + 1))
+    expect(await (await app.request('/api/settings')).json()).toMatchObject({ voice: null })
   })
 
   it('rejects a critter value other than on or off, and writes nothing', async () => {

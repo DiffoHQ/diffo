@@ -148,6 +148,16 @@ describe('Header', () => {
       expect(onSetCritter).toHaveBeenCalledWith(false)
     })
 
+    it('opens the Voice dialog from its own item', () => {
+      const onShowVoice = vi.fn()
+      render(
+        <Header changeset={changeset()} settings={{ onShowVoice, onShowShortcuts: () => {} }} />,
+      )
+      fireEvent.click(screen.getByLabelText('Settings'))
+      fireEvent.click(screen.getByText('Voice').closest('button')!)
+      expect(onShowVoice).toHaveBeenCalled()
+    })
+
     it('closes on Escape even with an item focused', () => {
       const { container } = render(
         <Header changeset={changeset()} settings={{ onShowShortcuts: () => {} }} />,

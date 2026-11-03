@@ -46,6 +46,9 @@ export interface ReviewActions {
   dismissPrComment?: (threadId: string, messageId: string) => Promise<unknown>
   /** Take a dismissal back: the suggestion returns live. */
   restorePrComment?: (threadId: string, messageId: string) => Promise<unknown>
+  /** Opens Settings → Voice: the chip on a suggested PR comment, for the
+   * moment a draft reads wrong and the fix is the standing instruction. */
+  editVoice?: () => void
 }
 
 /** The kind the reviewer declared, as the card shows it — the composer's own
@@ -242,6 +245,7 @@ function SuggestedPrComment({
   onAdd,
   onDismiss,
   onRestore,
+  onEditVoice,
 }: {
   message: ReviewMessage
   live: boolean
@@ -252,6 +256,8 @@ function SuggestedPrComment({
   onAdd: (text: string) => Promise<unknown>
   onDismiss?: () => void
   onRestore?: () => void
+  /** The voice chip: opens the standing instructions this draft was written to. */
+  onEditVoice?: () => void
 }) {
   const suggestion = message.prComment!
   const outcome = suggestion.outcome
@@ -319,7 +325,18 @@ function SuggestedPrComment({
       <div className="psc-head">
         <Icon name="globe" size="sm" />
         <span>Suggested PR comment</span>
-        <span className="psc-head-note">for the author, in your words</span>
+        {onEditVoice ? (
+          <button
+            type="button"
+            className="psc-head-note psc-voice"
+            title="written in your voice; open your voice to change how these read"
+            onClick={onEditVoice}
+          >
+            for the author, in your voice <Icon name="edit" size="sm" />
+          </button>
+        ) : (
+          <span className="psc-head-note">for the author, in your words</span>
+        )}
       </div>
       <Markdown className="psc-body markdown" text={suggestion.text} />
       <div className="psc-foot">
@@ -1045,6 +1062,7 @@ export function ThreadCard({
                       onRestore={
                         actions.restorePrComment ? () => restorePrComment(m.id) : undefined
                       }
+                      onEditVoice={actions.editVoice}
                     />
                   )}
                 </div>
