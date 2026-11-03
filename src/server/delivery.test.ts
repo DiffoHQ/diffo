@@ -1050,15 +1050,21 @@ describe('DeliveryQueue — the layers request', () => {
     q.confirm(q.take()!, [])
     expect(q.layersRequest()).toBe('outlining')
     expect(q.presenceDetail().reason).toBe('delivered')
-    await sleep(35)
     // No re-poll, no post: the harness refused the command and told the agent
-    // to stop. The clock alone turns the wait into a reason the reviewer can act on.
+    // to stop. The clock alone turns the wait into a reason the reviewer can
+    // act on — and the announcement is what the UI re-renders from, so it is
+    // the announcement that must already read stalled. Waited for, not slept
+    // past: a timer may fire a hair before the clock agrees, and the queue is
+    // expected to hold its news until it does.
+    const announced = new Promise<string>((resolve) => {
+      q.subscribe(() => resolve(q.presenceDetail().reason))
+    })
+    expect(await announced).toBe('stalled')
     expect(q.layersRequest()).toBe('stalled')
     expect(q.presence()).toBe('working')
-    expect(q.presenceDetail().reason).toBe('stalled')
     expect(seen.at(-1)).toBe('stalled')
     // A late post still concludes it.
-    expect(q.layersPosted()).toBeGreaterThanOrEqual(35)
+    expect(q.layersPosted()).toBeGreaterThanOrEqual(20)
     expect(q.layersRequest()).toBeNull()
     q.end()
   })

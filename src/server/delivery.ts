@@ -382,14 +382,24 @@ export class DeliveryQueue {
   private armOutlineWatch(): void {
     this.clearOutlineWatch()
     const since = this.outlining()
+    if (since === null) return
+    this.watchOutline(since, this.outlineStallMs)
+  }
+
+  /** The crossing's witness. A lapsed or answered outline reads as such
+   * already, and a re-armed one has its own timer, so only the crossing is
+   * news — and it is news only once `Date.now()` agrees, because a timer can
+   * fire a hair early, and a notify then would carry "delivered" to every
+   * listener with nothing coming after to correct it. Early, it waits out
+   * the remainder instead. */
+  private watchOutline(since: number, ms: number): void {
     const timer = setTimeout(() => {
       this.outlineTimer = null
-      // A lapsed or answered outline reads as such already; a re-armed one
-      // has its own timer. Only the crossing itself is news, and the timer is
-      // its witness: re-reading the clock here would miss it, since a timer
-      // can fire a hair before `Date.now()` agrees the window has passed.
-      if (this.outlining() === since) this.notify()
-    }, this.outlineStallMs)
+      if (this.outlining() !== since) return
+      const left = since + this.outlineStallMs - Date.now()
+      if (left > 0) this.watchOutline(since, left)
+      else this.notify()
+    }, ms)
     timer.unref?.()
     this.outlineTimer = timer
   }
