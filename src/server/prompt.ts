@@ -16,6 +16,7 @@ import {
   type ThreadIntent,
 } from '../shared/review.js'
 import type { Changeset, FileChange, Hunk, PrInfo } from '../shared/types.js'
+import { effectiveVoice, normalizeVoice } from '../shared/voice.js'
 import type { Submitted } from './delivery.js'
 
 /** A comment can anchor to a long range; the frozen text keeps its head. */
@@ -290,9 +291,10 @@ export const HELP_AGENT_PR = `Reviewing a pull request (\`diffo <PR URL | owner/
   when they were wrong (say so privately), not on pushback against your own
   reply — redraft the one already in the thread instead — and not when asked
   but you have nothing worth saying to the author: say so privately, never
-  invent one. Keep it to one or two short sentences, the point first, the
-  way a person types a review comment; no preamble, no "Suggest …", no
-  report.
+  invent one. Write it in the reviewer's voice: their standing instructions
+  for how their comments read (Settings → Voice) come with every delivery.
+  By default, one or two short sentences, the point first, the way a person
+  types a review comment; no preamble, no "Suggest …", no report.
 - The guide and layers work as above, built from the description, the commits
   and the diff; skip the guide when the description already orients.
 - When the reviewer submits, a poll returns a \`"kind": "submitted"\` notice:
@@ -426,7 +428,8 @@ export const AUTHOR_DOCTRINE: Doctrine = {
  * addressed to the author in the reviewer's voice; nothing of it posts until the
  * reviewer adds it to their review and submits.
  */
-export const PR_COMMENT_DOCTRINE = `## Drafting a review comment for the author
+export function prCommentDoctrine(voice?: string | null): string {
+  return `## Drafting a review comment for the author
 
 The reviewer's private messages are of two kinds. A question to you ("what
 calls this?") wants an answer. A finding stated about the code ("this resets
@@ -451,23 +454,31 @@ request is the one thing the reviewer cannot tell apart from a finding. On a
 comment of your own (\`${CLI} comment\`), the same flag carries a finding you
 can show, never a hunch.
 
-Write it the way a person types a review comment at the line: one or two
-short sentences, the point first, done. "This resets the streak on late
-completions — should it?" is a review comment. A paragraph that states the
-finding, explains why it matters and proposes the fix is not; it is a report,
-and the reviewer rewrites it every time. No preamble ("This reads as…"), no
-"Suggest …" or "Consider …" framing, no restating what the diff already
-shows, no examples in parentheses, no hedging. Name the fix only when it is
-not obvious from the finding, and when it is local to the anchored lines put
-it in a \`\`\`suggestion block instead of prose. A question is often the
-whole comment. Nothing about you, the worktree, tests you ran, or Diffo —
-that evidence goes in --message, where the reviewer reads it. Match how this
-reviewer writes: their own review comments on this pull request are quoted
-under "The reviewer's voice" when there are any.
+Write it in the reviewer's voice. Their standing instructions for how a
+review comment of theirs reads (Settings → Voice in Diffo; every delivery
+carries the current text, so follow the latest):
+
+${indent(effectiveVoice(voice))}
+
+Nothing about you, the worktree, tests you ran, or Diffo — that evidence
+goes in --message, where the reviewer reads it. Their own review comments
+on this pull request are quoted under "The reviewer's voice" when there are
+any; match those too.
 
 Nothing you attach reaches GitHub. It appears under your reply with Add as
 PR comment draft / Edit / Dismiss; the reviewer decides, and the submit
 notice tells you what happened to each.`
+}
+
+/** The doctrine as shipped before the voice could be set: the default voice. */
+export const PR_COMMENT_DOCTRINE = prCommentDoctrine()
+
+function indent(text: string): string {
+  return text
+    .split('\n')
+    .map((line) => (line === '' ? '' : `    ${line}`))
+    .join('\n')
+}
 
 export const PR_DOCTRINE: Doctrine = {
   guide: {
@@ -485,8 +496,15 @@ export const PR_DOCTRINE: Doctrine = {
   prComment: PR_COMMENT_DOCTRINE,
 }
 
-export function doctrineFor(changeset: Pick<Changeset, 'pr'> | null | undefined): Doctrine {
-  return changeset?.pr ? PR_DOCTRINE : AUTHOR_DOCTRINE
+/** The doctrine for a review, with the reviewer's voice folded into the PR
+ * comment rule when they set one; the author's doctrine has no voice to carry. */
+export function doctrineFor(
+  changeset: Pick<Changeset, 'pr'> | null | undefined,
+  voice?: string | null,
+): Doctrine {
+  if (!changeset?.pr) return AUTHOR_DOCTRINE
+  const custom = normalizeVoice(voice)
+  return custom === null ? PR_DOCTRINE : { ...PR_DOCTRINE, prComment: prCommentDoctrine(custom) }
 }
 
 /**
@@ -712,6 +730,9 @@ export interface PromptContext {
    * how this reviewer writes to authors, and how they edited what the agent
    * suggested. Ignored off a pull request. */
   voice?: ReviewThread[]
+  /** The reviewer's standing voice instructions (Settings → Voice), as
+   * stored; empty or absent means the default. Ignored off a pull request. */
+  voiceSetting?: string | null
 }
 
 const VOICE_COMMENT_CAP = 5
@@ -991,7 +1012,7 @@ function prLines(ctx: PromptContext): string[] {
 
 export function buildThreadPrompt(thread: ReviewThread, ctx: PromptContext): string {
   const siblings = siblingLines(ctx.siblings ?? [])
-  const D = doctrineFor(ctx.changeset)
+  const D = doctrineFor(ctx.changeset, ctx.voiceSetting)
   const pr = ctx.changeset?.pr
   return [
     pr
@@ -1011,7 +1032,7 @@ export function buildThreadPrompt(thread: ReviewThread, ctx: PromptContext): str
 
 export function buildCoalescedPrompt(threads: ReviewThread[], ctx: PromptContext): string {
   const siblings = siblingLines(ctx.siblings ?? [])
-  const D = doctrineFor(ctx.changeset)
+  const D = doctrineFor(ctx.changeset, ctx.voiceSetting)
   const pr = ctx.changeset?.pr
   return [
     pr
@@ -1089,7 +1110,7 @@ export function buildLayersRequestPrompt(
 ): string {
   const refresh = existing !== null && existing.length > 0
   const titles = refresh ? existing.map((l) => `"${l.title}"`).join(', ') : ''
-  const D = doctrineFor(ctx.changeset)
+  const D = doctrineFor(ctx.changeset, ctx.voiceSetting)
   return [
     refresh
       ? `The reviewer asked you to refresh the layers in \`${ctx.repo.name}\` (branch \`${ctx.repo.branch}\`): the code moved since you outlined it, and files outside the outline have been gathering under "Since your review". Re-post the whole list as the change stands now.`
@@ -1121,7 +1142,7 @@ export function buildLayersRequestPrompt(
 }
 
 export function buildClearedPrompt(ctx: PromptContext): string {
-  const D = doctrineFor(ctx.changeset)
+  const D = doctrineFor(ctx.changeset, ctx.voiceSetting)
   return [
     `The reviewer cleared the review in \`${ctx.repo.name}\` (branch \`${ctx.repo.branch}\`): the previous round landed, and its threads and guide are gone. What the reviewer sees now is a fresh round.`,
     '',
@@ -1190,7 +1211,7 @@ export function buildFinishPrompt(
           '',
         ]
       : []
-  const D = doctrineFor(ctx.changeset)
+  const D = doctrineFor(ctx.changeset, ctx.voiceSetting)
   const pr = ctx.changeset?.pr
   const parts = [
     pr

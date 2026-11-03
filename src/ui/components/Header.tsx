@@ -517,6 +517,8 @@ export interface HeaderSettings {
    * unless switched off. */
   critter?: boolean
   onSetCritter?: (on: boolean) => void
+  /** Opens the Voice dialog: how the agent writes PR comments in the reviewer's name. */
+  onShowVoice?: () => void
   onShowShortcuts?: () => void
   /** Opens the Privacy dialog, where the usage-data switch lives. */
   onShowPrivacy?: () => void
@@ -543,6 +545,7 @@ export function Header({
     onSetTheme,
     critter = true,
     onSetCritter,
+    onShowVoice,
     onShowShortcuts,
     onShowPrivacy,
   } = settings
@@ -678,9 +681,23 @@ export function Header({
                 </MenuItem>
               </>
             )}
-            {onShowShortcuts && (
+            {onShowVoice && (
               <>
                 {(onSetTheme || onSetCritter) && <MenuSep />}
+                <MenuItem
+                  icon="chat"
+                  onClick={() => {
+                    close()
+                    onShowVoice()
+                  }}
+                >
+                  Voice
+                </MenuItem>
+              </>
+            )}
+            {onShowShortcuts && (
+              <>
+                {(onSetTheme || onSetCritter || onShowVoice) && <MenuSep />}
                 <MenuItem
                   icon="keys"
                   kbd="?"
@@ -695,7 +712,7 @@ export function Header({
             )}
             {onShowPrivacy && (
               <>
-                {(onSetTheme || onSetCritter || onShowShortcuts) && <MenuSep />}
+                {(onSetTheme || onSetCritter || onShowVoice || onShowShortcuts) && <MenuSep />}
                 <MenuItem
                   icon="lock"
                   onClick={() => {

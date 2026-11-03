@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { fixturePr } from '../forge/fixture.js'
 import { type Anchor, describeAnchor, type ReviewThread } from '../shared/review.js'
 import type { Changeset } from '../shared/types.js'
+import { DEFAULT_VOICE } from '../shared/voice.js'
 import { DEV_SKILL_NAME, SKILL_NAME } from '../skill.js'
 import {
   ACK_NEXT_STEP,
@@ -15,6 +16,7 @@ import {
   CLI,
   CLI_COMMANDS,
   captureAnchor,
+  doctrineFor,
   GUIDE,
   GUIDE_CLASSDEFS,
   guideInherit,
@@ -23,6 +25,7 @@ import {
   layersNudge,
   nextStepFor,
   ownPrAsk,
+  PR_COMMENT_DOCTRINE,
   voiceLines,
 } from './prompt.js'
 
@@ -1039,17 +1042,43 @@ describe('layers doctrine', () => {
 describe('suggested PR comments — the doctrine, the voice, the notice', () => {
   const onPr = (over: Partial<Changeset> = {}) => changeset({ pr: fixturePr(), ...over })
   const at = '2026-10-02T00:00:00Z'
+  const defaultVoiceLine = `    ${DEFAULT_VOICE.split('\n')[0]}`
 
   it('a pull request teaches the agent to read a finding as a comment in the making; a local review never does', () => {
     const prPrompt = buildThreadPrompt(thread(), { repo, changeset: onPr() })
     expect(prPrompt).toContain('## Drafting a review comment for the author')
     expect(prPrompt).toContain('--pr-comment')
     expect(prPrompt).toMatch(/lean toward attaching/)
-    expect(prPrompt).toMatch(/one or two\nshort sentences, the point first/)
+    expect(prPrompt).toContain("Write it in the reviewer's voice")
+    expect(prPrompt).toContain(defaultVoiceLine)
     expect(prPrompt).toMatch(/Nothing you attach reaches GitHub/)
     const local = buildThreadPrompt(thread(), { repo, changeset: changeset() })
     expect(local).not.toContain('--pr-comment')
     expect(local).not.toContain('Drafting a review comment')
+    expect(local).not.toContain(DEFAULT_VOICE.split('\n')[0])
+  })
+
+  it("the reviewer's own voice replaces the default; empty or absent keeps it", () => {
+    const custom = 'Blunt and short. British spelling.\n\nNever a question.'
+    const prompt = buildThreadPrompt(thread(), { repo, changeset: onPr(), voiceSetting: custom })
+    expect(prompt).toContain('    Blunt and short. British spelling.\n\n    Never a question.')
+    expect(prompt).not.toContain(DEFAULT_VOICE.split('\n')[0])
+    // The fixed rule around it stays.
+    expect(prompt).toMatch(/Nothing about you, the worktree/)
+    for (const empty of ['', '  \n', null, undefined]) {
+      const dflt = buildThreadPrompt(thread(), { repo, changeset: onPr(), voiceSetting: empty })
+      expect(dflt).toContain(defaultVoiceLine)
+    }
+    // Off a pull request there is no author to write to, voice or not.
+    const local = buildThreadPrompt(thread(), {
+      repo,
+      changeset: changeset(),
+      voiceSetting: custom,
+    })
+    expect(local).not.toContain('Blunt and short')
+    expect(doctrineFor(onPr(), custom).prComment).toContain('Blunt and short')
+    expect(doctrineFor(onPr(), '').prComment).toBe(PR_COMMENT_DOCTRINE)
+    expect(doctrineFor(changeset(), custom).prComment).toBeUndefined()
   })
 
   it('the compact protocol keeps the rule in one paragraph, PR only', () => {

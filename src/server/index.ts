@@ -30,6 +30,7 @@ import {
   untouchedAgentVoice,
 } from '../shared/review.js'
 import type { ChangesetSpec, PrInfo } from '../shared/types.js'
+import { normalizeVoice, VOICE_MAX } from '../shared/voice.js'
 import { VERSION } from '../version.js'
 import { getCommitChangeset, isListedCommit, listCommits } from './commits.js'
 import { DiffoDb, type ServerRecord } from './db.js'
@@ -239,10 +240,14 @@ export function createApp(
     const value = ctx.uiSettings?.get(key) ?? null
     return value !== null && values.has(value) ? value : null
   }
+  // The reviewer's voice (see shared/voice.ts): null is the default, which the
+  // client knows on its own. Stored empty to reset, so the row never has to go.
+  const storedVoice = () => normalizeVoice(ctx.uiSettings?.get('voice'))
   app.get('/api/settings', (c) => {
     return c.json({
       theme: stored('theme', THEME_VALUES),
       critter: stored('critter', CRITTER_VALUES),
+      voice: storedVoice(),
     })
   })
 
@@ -251,23 +256,28 @@ export function createApp(
     const body = await c.req.json().catch(() => null)
     const theme: unknown = body?.theme
     const critter: unknown = body?.critter
+    const voice: unknown = body?.voice
     const themeOk = typeof theme === 'string' && THEME_VALUES.has(theme)
     const critterOk = typeof critter === 'string' && CRITTER_VALUES.has(critter)
+    // An empty voice is the reset; anything else must fit the prompt budget.
+    const voiceOk = typeof voice === 'string' && voice.trim().length <= VOICE_MAX
     // Each key is optional, but one must be there and whatever is there must be valid.
     if (
       (theme !== undefined && !themeOk) ||
       (critter !== undefined && !critterOk) ||
-      !(themeOk || critterOk)
+      (voice !== undefined && !voiceOk) ||
+      !(themeOk || critterOk || voiceOk)
     ) {
       return c.json(
         {
-          error: 'need {theme?: "system" | "light" | "dark", critter?: "on" | "off"}, at least one',
+          error: `need {theme?: "system" | "light" | "dark", critter?: "on" | "off", voice?: string (up to ${VOICE_MAX} characters, empty for the default)}, at least one`,
         },
         400,
       )
     }
     if (themeOk) ctx.uiSettings.set('theme', theme)
     if (critterOk) ctx.uiSettings.set('critter', critter)
+    if (voiceOk) ctx.uiSettings.set('voice', voice.trim())
     return c.json({ ok: true })
   })
 
@@ -313,7 +323,7 @@ export function createApp(
   const promptCtx = (...excludeThreadIds: string[]): PromptContext => ({
     repo: repoInfo(),
     changeset: store?.get() ?? null,
-    ...(ctx.pr && review ? { voice: review.get().threads } : {}),
+    ...(ctx.pr && review ? { voice: review.get().threads, voiceSetting: storedVoice() } : {}),
     siblings:
       review
         ?.get()

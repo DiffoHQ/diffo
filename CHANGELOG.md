@@ -7,6 +7,17 @@ Until 1.0, minor versions may break things. When they do, the entry says how to 
 
 ## [Unreleased]
 
+### Added
+
+- **Your voice, for the comments the agent drafts in your name.** On a pull
+  request the agent writes the review comment you would leave the author;
+  how it should read was fixed text in the protocol. It is now yours to edit:
+  **Settings → Voice**, or the *in your voice* note on any suggested comment.
+  The default asks for one or two plain sentences, the point first, no
+  em-dashes, no "Consider…" framing. The text is kept with your other
+  settings, across reviews and repos, and reaches the agent with its next
+  delivery; **Reset to default** brings the original back.
+
 ### Fixed
 
 - **An outline that never comes no longer reads "Outlining…" for good.** Claude

@@ -126,6 +126,18 @@ go: your own review comments on the pull request, and the suggestions you
 edited before adding, travel with every delivery, so the third suggestion sounds
 like you.
 
+### Your voice
+
+What the agent starts from is a page of standing instructions, yours to edit:
+**Settings → Voice**, or the *in your voice* note on any suggested comment,
+which opens the same dialog. The default asks for the comment a person types
+at the line: one or two short sentences, the point first, plain words, no
+em-dashes, no "Consider…" framing, no report. Change it to how you actually
+write ("British spelling", "never a question", "always say why") and the agent
+reads the new text before its next suggestion, on every pull request, on every
+repo, until you change it again. It shapes the drafts only; nothing in it is
+posted anywhere, and **Reset to default** brings the original back.
+
 When the agent attached nothing, the manual bridge is still there: under any
 private thread, **Post as PR comment** turns its answer, or its
 ```` ```suggestion ```` block when it wrote one, into an editable public draft.

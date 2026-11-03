@@ -9222,3 +9222,54 @@ i.q-now {
   font-size: var(--t-11);
   color: var(--ink-3);
 }
+
+/* ---------- the voice: how the agent writes PR comments in the reviewer's name ---------- */
+
+/* The head note of a suggested comment doubles as the way in: it already says
+   whose words these are. */
+.psc-voice {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 0 4px;
+  margin-right: -4px;
+  border: 0;
+  border-radius: var(--r-sm);
+  background: none;
+  font: inherit;
+  font-size: var(--t-11);
+  cursor: pointer;
+}
+
+.psc-voice:hover,
+.psc-voice:focus-visible {
+  color: var(--gh);
+  background: color-mix(in srgb, var(--gh) 10%, transparent);
+  outline: none;
+}
+
+.psc-voice svg {
+  opacity: 0.7;
+}
+
+.voice-input {
+  min-height: 12em;
+  line-height: 1.5;
+  font-size: var(--t-13);
+}
+
+.voice-count {
+  margin-left: auto;
+  font-size: var(--t-12);
+  color: var(--ink-3);
+  font-variant-numeric: tabular-nums;
+}
+
+.voice-count-over {
+  color: var(--danger);
+}
+
+.voice-state {
+  color: var(--ink-3);
+  font-size: var(--t-12);
+}

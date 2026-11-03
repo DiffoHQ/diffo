@@ -398,7 +398,11 @@ usual:
   nothing worth saying to the author, where it says so privately rather
   than inventing one. Payloads quote the reviewer's own
   review comments, and the suggestions they edited before adding, under
-  **The reviewer's voice**, so the next suggestion sounds like them.
+  **The reviewer's voice**, so the next suggestion sounds like them. How the
+  comment should read in the first place is the reviewer's own standing text
+  (Settings → Voice in the review page; a default asks for one or two plain
+  sentences, the point first, no em-dashes), and the current text travels with
+  every delivery.
 - **How it ends.** Finish submits the review on GitHub and hands the private
   threads to the agent as always. A poll then returns a `"kind": "submitted"`
   notice (the verdict, the comment count, the body, and what became of the

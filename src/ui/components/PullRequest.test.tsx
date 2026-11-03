@@ -297,6 +297,17 @@ describe("the agent's suggested PR comment inside a private thread", () => {
     )
   })
 
+  it('the head note opens the voice when the review offers it, and stays a plain note otherwise', () => {
+    const editVoice = vi.fn()
+    render(onPr(<ThreadList threads={[suggested()]} actions={actions({ editVoice })} />))
+    fireEvent.click(screen.getByRole('button', { name: /in your voice/ }))
+    expect(editVoice).toHaveBeenCalled()
+    cleanup()
+    render(onPr(<ThreadList threads={[suggested()]} actions={actions()} />))
+    expect(screen.queryByRole('button', { name: /in your voice/ })).toBeNull()
+    expect(screen.getByTestId('pr-suggestion').textContent).toContain('in your words')
+  })
+
   it('Edit opens the PR composer in place, prefilled; the edited text is what joins the review', () => {
     const acts = actions()
     render(onPr(<ThreadList threads={[suggested()]} actions={acts} />))
