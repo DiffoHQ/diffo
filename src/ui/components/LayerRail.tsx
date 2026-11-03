@@ -16,8 +16,9 @@ import { FileTree, type FileTreeProps } from './Nav.js'
  * truncated titles; the thread count is the one thing that stays on the right,
  * and only when it is non-zero. An opened layer shows its files as the Files
  * tab's own tree — folders that fold, roll-up marks and all — so a layer reads
- * as a place in the repo, not a flat list. The reading pane still reads the
- * layer in the order the agent listed it; the tree is the map, not the route.
+ * as a place in the repo, not a flat list. The reading pane reads the layer in
+ * the agent's order, or in the tree's: that is switched on the layer card
+ * (see `reading` in ReadingPane.tsx), and the tree here is the map either way.
  */
 
 const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? '' : 's'}`

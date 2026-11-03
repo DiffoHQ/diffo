@@ -7165,6 +7165,29 @@ i.q-now {
   color: var(--ink-3);
 }
 
+/* The reading order, closing the card right above the files: one phrase,
+   the words then the two orders as chips (the Steps / Commits control, inline
+   and unstretched) with the live one lit. */
+.ch-head-order {
+  display: flex;
+  align-items: center;
+  gap: var(--s-3);
+  margin-top: 14px;
+  padding-top: 12px;
+  border-top: 1px solid var(--hair-2);
+  font-size: var(--t-12);
+  color: var(--ink-3);
+}
+
+.ch-order-seg {
+  margin: 0;
+  flex: none;
+}
+
+.ch-order-seg .src-chip {
+  flex: none;
+}
+
 /* The step's own conversation, closing the card: full width so the thread
  * cards and the composer line up with the file sections below. Rendered only
  * when there is a thread or one is being written. */

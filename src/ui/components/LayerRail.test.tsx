@@ -223,11 +223,14 @@ describe('LayerRail', () => {
         onMarkFiles={onMarkFiles}
       />,
     )
+    // No reading-order control of its own: that switch lives on the layer card
+    // and moves the pane, never this tree.
+    expect(screen.queryByRole('radiogroup')).toBeNull()
     const names = () =>
       [...document.querySelectorAll('.ch-files .row .row-base')].map((n) => n.textContent)
     fireEvent.click(screen.getByLabelText('Show the files in Weekday resolution'))
     // By folder, files by basename under it — not the flat list the agent
-    // posted. The pane keeps the agent's order; the rail is the map.
+    // posted. The pane keeps the agent's order; the tree is the map.
     expect(names()).toEqual(['src', 'dates.ts', 'weekday.ts'])
     const dir = document.querySelector('.ch-files .row-dir')!
     expect(dir.querySelector('.dir-ico')).toBeTruthy()

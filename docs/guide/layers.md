@@ -45,6 +45,12 @@ Each layer carries its own progress, read off the same hunk marks
 **Finish review** reports. A layer tagged *mechanical* changes no behaviour, a
 rename or call sites following a signature, and keeps its files folded.
 
+The pane reads a layer's files in the order the agent outlined them. The foot
+of the layer's card, **Read the files in**, offers the two orders: the agent's,
+or **folder order**, the way the Files tab lists them. `J` / `K` and `n`
+follow the pick; the rail shows the layer's files as a folder tree either way.
+One pick covers every layer, and it is remembered across reviews.
+
 On a pull request, row 0 of the list is the **Overview**: the pull request's
 description, in the place a guide takes on a local review. See
 [Reviewing a pull request](/guide/pr-review).

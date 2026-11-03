@@ -15,6 +15,7 @@ import {
   NO_EXPANSION,
 } from '../gaps.js'
 import { fileAnchor } from '../hooks.js'
+import type { LayerListKind } from '../layerListPref.js'
 import { linkPaths, type RefLinks, type ResolvedDecision, refClickTarget } from '../layers.js'
 import { EMPTY_DELTA, type LiveDelta } from '../liveDelta.js'
 import { usePr } from '../prMode.js'
@@ -113,6 +114,11 @@ export interface LayerView {
   /** The open decision card, owned above so `.` can drive it. */
   openDecision?: number | null
   onOpenDecision?: (index: number | null) => void
+  /** The order the pane reads this layer's files in — the agent's, or by
+   * folder — and the switch to the other. One pick for the whole review; the
+   * card is where it shows because the card is where a layer starts. Absent
+   * when there is nothing to order (one file or none). */
+  reading?: { kind: LayerListKind; onPick: (kind: LayerListKind) => void }
 }
 
 function LayerHead({
@@ -239,6 +245,45 @@ function LayerHead({
               }
             />
           )}
+        </div>
+      )}
+      {/* The order the files below come in, as one phrase: the words, then
+          the two orders as chips with the live one lit — both states in view,
+          nothing to decode, and the label touching what it labels. The pick
+          is review-wide; here is where it is felt. */}
+      {layer.reading && !emptied && (
+        <div className="ch-head-order">
+          <span className="ch-head-order-cap" id={`ch-order-${layer.id ?? 'since'}`}>
+            Read the files in
+          </span>
+          <span
+            className="src-seg ch-order-seg"
+            role="radiogroup"
+            aria-labelledby={`ch-order-${layer.id ?? 'since'}`}
+          >
+            {/* biome-ignore lint/a11y/useSemanticElements: styled chips; a native radio cannot carry this treatment */}
+            <button
+              type="button"
+              role="radio"
+              className="src-chip"
+              aria-checked={layer.reading.kind !== 'tree'}
+              data-tip="The order the agent outlined this layer in"
+              onClick={() => layer.reading!.onPick('order')}
+            >
+              the agent’s order
+            </button>
+            {/* biome-ignore lint/a11y/useSemanticElements: styled chips; a native radio cannot carry this treatment */}
+            <button
+              type="button"
+              role="radio"
+              className="src-chip"
+              aria-checked={layer.reading.kind === 'tree'}
+              data-tip="By folder, the way the Files tab lists them"
+              onClick={() => layer.reading!.onPick('tree')}
+            >
+              folder order
+            </button>
+          </span>
         </div>
       )}
       {/* The step's own conversation: only there when there is one, or one is

@@ -61,6 +61,7 @@ import { useCritter } from './critterPref.js'
 import { fileMarks, isFileViewed } from './fileMarks.js'
 import { fileAnchor, glideTo } from './hooks.js'
 import { actionForKey, isTypingTarget } from './keyboard.js'
+import { layerReadOrder, useLayerList } from './layerListPref.js'
 import {
   findDescription,
   findGuide,
@@ -455,6 +456,10 @@ function Review() {
   const commitList = commitsQuery.data?.commits ?? EMPTY_COMMITS
   const commitsOffered = commitList.length > 0
   const [sourcePick, setSourcePick] = useState<LayerSourceKind | null>(null)
+  // The order the pane reads a layer in: the agent's, or the folder tree's.
+  // One choice for every layer, switched on the layer card; the rail's tree
+  // is the map whichever is picked.
+  const [layerList, setLayerList] = useLayerList()
   const layerSource: LayerSourceKind =
     commitsOffered && sourcePick === 'commits' ? 'commits' : 'steps'
   const commitSource = panel === 'layers' && layerSource === 'commits'
@@ -538,9 +543,17 @@ function Review() {
         : inLayers && onOverview
           ? []
           : paneLayerActive
-            ? paneLayerActive.files.map((f) => f.file)
+            ? layerReadOrder(paneLayerActive, layerList)
             : filter.files,
-    [commitSource, activeCommitFiles, inLayers, onOverview, paneLayerActive, filter.files],
+    [
+      commitSource,
+      activeCommitFiles,
+      inLayers,
+      onOverview,
+      paneLayerActive,
+      layerList,
+      filter.files,
+    ],
   )
   // A layer whose files all left the changeset is skipped by next/prev.
   const layerEmptied = useCallback((layer: ResolvedLayer) => layer.files.length === 0, [])
@@ -1206,7 +1219,7 @@ function Review() {
       const from = Math.max(activeIndex, 0)
       const walk = [...shownLayers.slice(from), ...shownLayers.slice(0, from)]
       for (const layer of walk) {
-        const hit = layer.files.map((f) => f.file).find(unread)
+        const hit = layerReadOrder(layer, layerList).find(unread)
         if (hit) {
           file = hit
           if (layer !== activeLayer) goLayer(shownLayers.indexOf(layer))
@@ -1235,6 +1248,7 @@ function Review() {
     activeIndex,
     activeLayer,
     shownLayers,
+    layerList,
     goLayer,
     scrollToFile,
     inCommits,
@@ -1625,8 +1639,12 @@ function Review() {
       onJump: jumpTo,
       notes,
       knownPaths: allFiles.map((f) => f.path),
+      // One file has no order; the line would only state the obvious.
+      ...(activeLayer.files.length > 1
+        ? { reading: { kind: layerList, onPick: setLayerList } }
+        : {}),
     }
-  }, [paneLayerActive, layerCount, jumpTo, allFiles, openDecision])
+  }, [paneLayerActive, layerCount, jumpTo, allFiles, openDecision, layerList, setLayerList])
   const paneLayer = useMemo(() => {
     const step = (dir: 1 | -1) => stepLayer(shownLayers, activeIndex, dir, layerEmptied)
     const to = (i: number | null) =>
