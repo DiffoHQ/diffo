@@ -381,11 +381,14 @@ export class DeliveryQueue {
 
   private armOutlineWatch(): void {
     this.clearOutlineWatch()
+    const since = this.outlining()
     const timer = setTimeout(() => {
       this.outlineTimer = null
       // A lapsed or answered outline reads as such already; a re-armed one
-      // has its own timer. Only the crossing itself is news.
-      if (this.outlineStalled()) this.notify()
+      // has its own timer. Only the crossing itself is news, and the timer is
+      // its witness: re-reading the clock here would miss it, since a timer
+      // can fire a hair before `Date.now()` agrees the window has passed.
+      if (this.outlining() === since) this.notify()
     }, this.outlineStallMs)
     timer.unref?.()
     this.outlineTimer = timer
