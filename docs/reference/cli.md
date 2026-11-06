@@ -262,9 +262,12 @@ Exactly one of:
 A layer is `{ title, summary?, kind?, files, decisions? }`. `files` holds
 repo-relative paths, as strings or as `{ "path", "note" }` where the note is one
 line on why the file is in this step. `kind` may only be `"mechanical"`: the
-layer changes no behaviour, and its files render folded. A `path:from-to` string
-is accepted and reserved; today it means the whole file. Unknown paths are
-accepted and show nothing until the file lands.
+layer changes no behaviour, and its files render folded. A bare path is the
+whole file; `path:from-to` (head-side lines) is the hunks that range touches,
+for a file whose hunks belong to different steps — list it with its own range
+in each step that has a part of it. A path listed whole in one layer and by
+range in another fails the post. Unknown paths are accepted and show nothing
+until the file lands.
 
 `decisions` is optional and holds at most five `{ text, detail?, at? }`: `text`
 one short line, `detail` one sentence more, and `at` where it lives: `"path"`,
@@ -279,14 +282,19 @@ decisions fails with exit 1 and
 names the layer at fault (`layer 2 ("Callers"): needs a non-empty "files" list`).
 Nothing is stored on a failed post.
 
-Prints `{ "ok": true, "layers": 4, "next_step": "…" }` after a post, and
+Prints `{ "ok": true, "layers": 4, "next_step": "…" }` after a post — with an
+`uncovered` list when the outline leaves hunks or files in no layer
+(`[{ "path": "src/a.ts", "ranges": ["88-95"] }, { "path": "src/b.ts" }]`; a path
+alone is a file the outline never names), and a `next_step` that asks for a
+re-post with them placed — and
 `{ "ok": true, "suggested": true, "next_step": "…" }` after a suggestion.
 `suggested` is `false` when layers already exist: there is nothing left to
 suggest, and the next step says to re-post instead.
 
 The reviewer's **Ask the agent for steps** button, and *re-outline* over
 an existing outline, reach the agent as a `kind: "layers"` poll payload whose
-prompt asks for exactly this post. A post concludes the request.
+prompt asks for exactly this post and lists every file with its hunks' head-side
+line ranges, so splitting a file is copying a range. A post concludes the request.
 
 ### `diffo end`
 

@@ -1,5 +1,14 @@
 import { describe, expect, it } from 'vitest'
-import { parseDecisionAt, parseLayersInput, parseSuggestReason } from './layers.js'
+import {
+  formatSpan,
+  hunkHeadSpan,
+  parseDecisionAt,
+  parseLayersInput,
+  parseSuggestReason,
+  rangeTouchesHunk,
+  uncoveredByLayers,
+} from './layers.js'
+import type { FileChange, Hunk } from './types.js'
 
 const ok = (raw: unknown) => {
   const parsed = parseLayersInput(raw)
@@ -38,11 +47,40 @@ describe('parseLayersInput', () => {
     expect(layer).not.toHaveProperty('id')
   })
 
-  it('keeps the reserved path:from-to form verbatim, but validates the path part', () => {
+  it('keeps a path:from-to range, normalised, and validates the path part', () => {
     expect(ok([{ title: 'A', files: ['src/dates.ts:41-80'] }])[0]!.files).toEqual([
       'src/dates.ts:41-80',
     ])
+    // `from` first, and a single line is the one-line range.
+    expect(
+      ok([{ title: 'A', files: ['src/dates.ts:80-41', { path: 'src/a.ts:7' }] }])[0]!.files,
+    ).toEqual(['src/dates.ts:41-80', { path: 'src/a.ts:7-7' }])
     expect(err([{ title: 'A', files: ['/abs/dates.ts:1-2'] }])).toContain('absolute')
+    expect(err([{ title: 'A', files: ['src/a.ts:0-4'] }])).toContain('must start at 1')
+  })
+
+  it('refuses a path listed whole in one layer and by range in another, naming both', () => {
+    expect(
+      err([
+        { title: 'Contract', files: ['src/a.ts'] },
+        { title: 'Consumers', files: ['src/a.ts:40-60'] },
+      ]),
+    ).toBe(
+      'layer 2 ("Consumers"): "src/a.ts" is listed by range here and whole in layer 1 ("Contract") — range it in every step that has a part of it, or list it whole once',
+    )
+    expect(
+      err([
+        { title: 'Contract', files: ['src/a.ts:1-10'] },
+        { title: 'Consumers', files: [{ path: 'src/a.ts', note: 'rest' }] },
+      ]),
+    ).toContain('listed whole here and by range in layer 1 ("Contract")')
+    // Ranged in both, or whole once: both fine.
+    expect(
+      ok([
+        { title: 'Contract', files: ['src/a.ts:1-10'] },
+        { title: 'Consumers', files: ['src/a.ts:40-60', 'src/a.ts:70-72'] },
+      ]),
+    ).toHaveLength(2)
   })
 
   it('refuses what is not a list of layers', () => {
@@ -206,5 +244,72 @@ describe('decisions on a layer', () => {
     expect(l!.decisions![0]!.text.length).toBeLessThanOrEqual(120)
     expect(l!.decisions![0]!.text.endsWith('…')).toBe(true)
     expect(l!.decisions![0]!.detail).toHaveLength(400)
+  })
+})
+
+describe('ranges against hunks', () => {
+  const hunk = (path: string, id: string, newStart: number, kinds: string): Hunk => ({
+    id,
+    path,
+    oldStart: newStart,
+    newStart,
+    lines: [...kinds].map((k, i) => ({
+      kind: k === '+' ? 'add' : k === '-' ? 'del' : 'context',
+      oldNo: k === '+' ? null : newStart + i,
+      newNo: k === '-' ? null : newStart + i,
+      text: '',
+    })),
+  })
+  const file = (path: string, hunks: Hunk[]): FileChange => ({
+    path,
+    oldPath: null,
+    status: 'modified',
+    kind: 'text',
+    staged: false,
+    hunks,
+  })
+  // a.ts: context+adds at 12-16, a pure deletion after line 40, and a hunk at 88-90.
+  const a = file('src/a.ts', [
+    hunk('src/a.ts', 'a1', 12, ' ++  '),
+    hunk('src/a.ts', 'a2', 40, '--'),
+    hunk('src/a.ts', 'a3', 88, ' + '),
+  ])
+  const b = file('src/b.ts', [hunk('src/b.ts', 'b1', 1, '+')])
+  const img = file('logo.png', [])
+
+  it('a hunk spans the head lines it shows; a pure deletion is the line before it', () => {
+    expect(hunkHeadSpan(a.hunks[0]!)).toEqual({ from: 12, to: 16 })
+    expect(hunkHeadSpan(a.hunks[1]!)).toEqual({ from: 40, to: 40 })
+    expect(hunkHeadSpan(hunk('x', 'x', 0, '-'))).toEqual({ from: 1, to: 1 })
+    expect(formatSpan({ from: 12, to: 16 })).toBe('12-16')
+    expect(formatSpan({ from: 40, to: 40 })).toBe('40')
+  })
+
+  it('a range claims every hunk it overlaps, by a line or by all of them', () => {
+    expect(rangeTouchesHunk({ from: 16, to: 30 }, a.hunks[0]!)).toBe(true)
+    expect(rangeTouchesHunk({ from: 17, to: 30 }, a.hunks[0]!)).toBe(false)
+    expect(rangeTouchesHunk({ from: 1, to: 200 }, a.hunks[2]!)).toBe(true)
+    expect(rangeTouchesHunk({ from: 40, to: 40 }, a.hunks[1]!)).toBe(true)
+  })
+
+  it('reports the hunks no layer claims and the files no layer lists', () => {
+    const out = uncoveredByLayers(
+      [{ files: ['src/a.ts:12-16'] }, { files: [{ path: 'src/a.ts:88-88' }] }],
+      [a, b, img],
+    )
+    expect(out).toEqual([
+      { path: 'src/a.ts', hunks: [a.hunks[1]], unlisted: false },
+      { path: 'src/b.ts', hunks: [], unlisted: true },
+      { path: 'logo.png', hunks: [], unlisted: true },
+    ])
+  })
+
+  it('a whole-file entry claims every hunk; a full outline leaves nothing', () => {
+    expect(
+      uncoveredByLayers(
+        [{ files: ['src/a.ts', 'logo.png'] }, { files: ['src/b.ts:1-1'] }],
+        [a, b, img],
+      ),
+    ).toEqual([])
   })
 })

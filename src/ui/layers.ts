@@ -1,9 +1,13 @@
+import { rangeTouchesHunk, uncoveredByLayers } from '../shared/layers.js'
 import {
   type Decision,
   type DecisionAt,
   type Layers,
+  type LineRange,
   layerFileNote,
   layerFilePath,
+  layerFileRange,
+  layerFileRef,
   type ReviewThread,
   startedByAgent,
 } from '../shared/review.js'
@@ -20,6 +24,22 @@ export interface ResolvedLayerFile {
   file: FileChange
   /** The agent's one line on why this file is in this step. */
   note?: string
+  /** The hunks this layer shows of the file, in file order: all of them for
+   * a whole-file entry, the ones its ranges touch otherwise. */
+  hunks: Hunk[]
+  /** Some of the file's hunks belong to other steps: the pane shows `hunks`
+   * and folds the rest, and the marks this entry counts are `hunks` alone. */
+  partial: boolean
+}
+
+/** What this entry's read mark is made of: its hunks when it holds part of
+ * the file, else the file's own marks (which cover a hunkless file too). */
+export function entryMarks(entry: ResolvedLayerFile): string[] {
+  return entry.partial ? entry.hunks.map((h) => h.id) : fileMarks(entry.file)
+}
+
+export function entryViewed(entry: ResolvedLayerFile, viewed: ReadonlySet<string>): boolean {
+  return entryMarks(entry).every((m) => viewed.has(m))
 }
 
 /**
@@ -88,40 +108,104 @@ export function resolveDecisions(
   }))
 }
 
+/** The layer with every `path:from-to` cut back to its path: what the
+ * split-off switch resolves against. Notes stay with their file. */
+function withoutRanges(layer: Layers['items'][number]): Layers['items'][number] {
+  return {
+    ...layer,
+    files: layer.files.map((entry) =>
+      typeof entry === 'string' ? layerFilePath(entry) : { ...entry, path: layerFilePath(entry) },
+    ),
+  }
+}
+
+/** The outline names a part of some file — the split switch has something
+ * to switch. */
+export function outlineHasRanges(layers: Layers | undefined): boolean {
+  return (layers?.items ?? []).some((l) => l.files.some((f) => layerFileRange(f) !== null))
+}
+
+/** One path's entries within a layer, folded together: whole, or the union
+ * of its ranges, with the first note. */
+interface PathClaim {
+  path: string
+  whole: boolean
+  ranges: LineRange[]
+  /** Every `path:from-to` as written, for the missing list. */
+  refs: string[]
+  note?: string
+}
+
+function claimsOf(layer: { files: Layers['items'][number]['files'] }): PathClaim[] {
+  const claims = new Map<string, PathClaim>()
+  for (const entry of layer.files) {
+    const path = layerFilePath(entry)
+    const range = layerFileRange(entry)
+    const note = layerFileNote(entry)
+    let claim = claims.get(path)
+    if (!claim) {
+      claim = { path, whole: false, ranges: [], refs: [] }
+      claims.set(path, claim)
+    }
+    if (range === null) claim.whole = true
+    else {
+      claim.ranges.push(range)
+      claim.refs.push(layerFileRef(entry))
+    }
+    if (note && !claim.note) claim.note = note
+  }
+  return [...claims.values()]
+}
+
 /**
  * Layers against the live changeset. Empty when there are no layers — the UI is
- * exactly today's then. Otherwise every layer in order, plus, when some file
+ * exactly today's then. Otherwise every layer in order, plus, when something
  * escaped the outline, one derived layer at the end holding the rest in the
- * order `files` came in (the rail's tree order, so the two never disagree).
+ * order `files` came in (the rail's tree order, so the two never disagree):
+ * the files no layer lists, and the hunks no range claimed.
  *
  * A path listed twice in one layer counts once; a path listed in two layers
  * appears in both, and the reviewer marks it once because marks live on hunks.
- * A renamed file lands here under its new name — the agent absorbs it by
- * re-posting; the resolver does not guess.
+ * A ranged entry resolves to the hunks its lines touch today, so a range the
+ * code moved from under simply holds fewer hunks, and the rest surface in the
+ * derived layer. A renamed file lands there under its new name — the agent
+ * absorbs it by re-posting; the resolver does not guess.
  */
 export function resolveLayers(
   layers: Layers | undefined,
   files: readonly FileChange[],
+  options: {
+    /** Ignore every range: a split file is a whole file in each step that
+     * lists it. The reviewer's switch, not the agent's. */
+    wholeFiles?: boolean
+  } = {},
 ): ResolvedLayer[] {
   if (!layers || layers.items.length === 0) return []
+  const items = options.wholeFiles ? layers.items.map(withoutRanges) : layers.items
   const byPath = new Map(files.map((f) => [f.path, f]))
-  const listed = new Set<string>()
-  const resolved: ResolvedLayer[] = layers.items.map((layer, i) => {
-    const seen = new Set<string>()
+  const resolved: ResolvedLayer[] = items.map((layer, i) => {
     const present: ResolvedLayerFile[] = []
     const missing: string[] = []
-    for (const entry of layer.files) {
-      const path = layerFilePath(entry)
-      if (seen.has(path)) continue
-      seen.add(path)
-      listed.add(path)
-      const file = byPath.get(path)
+    for (const claim of claimsOf(layer)) {
+      const file = byPath.get(claim.path)
       if (!file) {
-        missing.push(path)
+        missing.push(claim.path)
         continue
       }
-      const note = layerFileNote(entry)
-      present.push(note ? { file, note } : { file })
+      const hunks = claim.whole
+        ? file.hunks
+        : file.hunks.filter((h) => claim.ranges.some((r) => rangeTouchesHunk(r, h)))
+      if (!claim.whole && hunks.length === 0) {
+        // The file is here, the lines are not: say which part drifted away.
+        missing.push(...claim.refs)
+        continue
+      }
+      present.push({
+        file,
+        ...(claim.note ? { note: claim.note } : {}),
+        hunks,
+        partial: hunks.length < file.hunks.length,
+      })
     }
     const decisions = resolveDecisions(layer.decisions, byPath)
     return {
@@ -136,13 +220,18 @@ export function resolveLayers(
       ...(decisions ? { decisions } : {}),
     }
   })
-  const rest = files.filter((f) => !listed.has(f.path))
+  const rest = uncoveredByLayers(items, files)
   if (rest.length > 0) {
     resolved.push({
       id: null,
       number: null,
       title: SINCE_TITLE,
-      files: rest.map((file) => ({ file })),
+      files: rest.map(({ path, hunks, unlisted }) => {
+        const file = byPath.get(path)!
+        return unlisted
+          ? { file, hunks: file.hunks, partial: false }
+          : { file, hunks, partial: hunks.length < file.hunks.length }
+      }),
       missing: [],
       derived: true,
     })
@@ -188,13 +277,39 @@ export function findDescription(threads: readonly ReviewThread[]): ReviewThread 
   return threads.find((t) => t.github?.kind === 'description')
 }
 
-/** The layer each file belongs to — the first one that lists it — for the Files
- * tab's index numbers and for opening a file inside its layer. */
+/** The layer each file belongs to — the first one that lists it — for opening
+ * a file inside its layer. */
 export function layerByPath(resolved: readonly ResolvedLayer[]): Map<string, ResolvedLayer> {
   const map = new Map<string, ResolvedLayer>()
   for (const layer of resolved) {
     for (const { file } of layer.files) {
       if (!map.has(file.path)) map.set(file.path, layer)
+    }
+  }
+  return map
+}
+
+/** Every layer a file has a part in, in outline order: one for most files,
+ * several for a file whose hunks the agent split across steps. */
+export function layersByPath(resolved: readonly ResolvedLayer[]): Map<string, ResolvedLayer[]> {
+  const map = new Map<string, ResolvedLayer[]>()
+  for (const layer of resolved) {
+    for (const { file } of layer.files) {
+      const list = map.get(file.path)
+      if (list) list.push(layer)
+      else map.set(file.path, [layer])
+    }
+  }
+  return map
+}
+
+/** The layer each hunk reads in — the first that holds it — so a jump to a
+ * hunk, and the fold that hides it elsewhere, both know where it lives. */
+export function layerByHunk(resolved: readonly ResolvedLayer[]): Map<string, ResolvedLayer> {
+  const map = new Map<string, ResolvedLayer>()
+  for (const layer of resolved) {
+    for (const { hunks } of layer.files) {
+      for (const hunk of hunks) if (!map.has(hunk.id)) map.set(hunk.id, layer)
     }
   }
   return map
@@ -213,8 +328,8 @@ export function layerProgress(layer: ResolvedLayer, viewed: ReadonlySet<string>)
   let marks = 0
   let doneMarks = 0
   let doneFiles = 0
-  for (const { file } of layer.files) {
-    const own = fileMarks(file)
+  for (const entry of layer.files) {
+    const own = entryMarks(entry)
     const done = own.filter((m) => viewed.has(m)).length
     marks += own.length
     doneMarks += done
@@ -223,14 +338,15 @@ export function layerProgress(layer: ResolvedLayer, viewed: ReadonlySet<string>)
   return { files: layer.files.length, doneFiles, marks, doneMarks }
 }
 
-/** Lines added and removed across a layer's shown files — the layer's size,
+/** Lines added and removed across a layer's shown hunks — the layer's size,
  * so the outline says how big a step is before the reviewer takes it. Hidden
- * files are left out, the same way `layerProgress` leaves them out. */
+ * files are left out, the same way `layerProgress` leaves them out, and so is
+ * the part of a split file that reads in another step. */
 export function layerLineStats(layer: ResolvedLayer): { additions: number; deletions: number } {
   let additions = 0
   let deletions = 0
-  for (const { file } of layer.files) {
-    for (const hunk of file.hunks) {
+  for (const { hunks } of layer.files) {
+    for (const hunk of hunks) {
       for (const line of hunk.lines) {
         if (line.kind === 'add') additions++
         else if (line.kind === 'del') deletions++

@@ -21,8 +21,10 @@ import {
   GUIDE_CLASSDEFS,
   guideInherit,
   guideNudge,
+  hunkListLines,
   LAYERS,
   layersNudge,
+  layersUncoveredStep,
   nextStepFor,
   ownPrAsk,
   PR_COMMENT_DOCTRINE,
@@ -616,7 +618,7 @@ describe('captureAnchor (what a new thread freezes)', () => {
     expect(captureAnchor(withHunk, anchor({ hunkId: 'gone' }))).toBeNull()
   })
 
-  it('a layer anchor freezes the step as outlined — no diff snapshot', () => {
+  it('a layer anchor freezes the step as outlined, ranges and all — no diff snapshot', () => {
     const layers = {
       items: [
         {
@@ -635,7 +637,8 @@ describe('captureAnchor (what a new thread freezes)', () => {
       anchoredLayer: {
         title: 'Contract',
         summary: 'The parser returns null.',
-        files: ['src/a.ts', 'src/b.ts'],
+        // The part of a file the step holds is what the comment was about.
+        files: ['src/a.ts:1-9', 'src/b.ts'],
       },
     })
     expect(
@@ -912,6 +915,51 @@ describe('the layers payload (reviewer pressed Outline)', () => {
     expect(prompt).toContain('no reply, no comment')
     expect(prompt).toContain('The changeset under review')
     expect(prompt).toContain(CLI_COMMANDS.poll)
+    expect(prompt).toContain(LAYERS.files)
+  })
+
+  it('lists every file with its hunks as head-side ranges, so a split is a copied range', () => {
+    const cs = changeset()
+    cs.files[0]!.hunks = [
+      {
+        id: 'h1',
+        path: 'src/a.ts',
+        oldStart: 12,
+        newStart: 12,
+        lines: [
+          { kind: 'context', oldNo: 12, newNo: 12, text: '' },
+          { kind: 'add', oldNo: null, newNo: 13, text: '' },
+          { kind: 'add', oldNo: null, newNo: 14, text: '' },
+        ],
+      },
+      {
+        id: 'h2',
+        path: 'src/a.ts',
+        oldStart: 40,
+        newStart: 40,
+        lines: [{ kind: 'del', oldNo: 40, newNo: null, text: '' }],
+      },
+    ]
+    const lines = hunkListLines(cs)
+    expect(lines[0]).toContain('copy a range')
+    expect(lines).toContain('  src/a.ts  12-14 · 40')
+    expect(lines).toContain('  src/new.ts  (no hunks)')
+    expect(buildLayersRequestPrompt({ repo, changeset: cs }, null)).toContain(
+      '  src/a.ts  12-14 · 40',
+    )
+    // Nothing to list without a changeset.
+    expect(buildLayersRequestPrompt({ repo, changeset: null }, null)).not.toContain('copy a range')
+  })
+
+  it('a post that left part of the changeset out says what, and asks for a re-post', () => {
+    const step = layersUncoveredStep([
+      { path: 'src/a.ts', ranges: ['88-95', '140-162'] },
+      { path: 'src/b.ts' },
+    ])
+    expect(step).toContain('src/a.ts:88-95, src/a.ts:140-162, src/b.ts (whole)')
+    expect(step).toContain('Since your review')
+    expect(step).toContain(CLI_COMMANDS.layers)
+    expect(step).toContain(CLI_COMMANDS.poll)
   })
 
   it('a refresh names the outline they have and asks for the whole list again', () => {

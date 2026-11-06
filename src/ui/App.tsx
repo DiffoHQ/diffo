@@ -45,6 +45,8 @@ import { Monitor } from './components/Monitor.js'
 import { Nav, treeOrder } from './components/Nav.js'
 import { Privacy } from './components/Privacy.js'
 import {
+  type ElsewhereStep,
+  type FilePart,
   type LayerView,
   ReadingPane,
   type ReviewComments,
@@ -61,15 +63,21 @@ import { useCritter } from './critterPref.js'
 import { fileMarks, isFileViewed } from './fileMarks.js'
 import { fileAnchor, glideTo } from './hooks.js'
 import { actionForKey, isTypingTarget } from './keyboard.js'
-import { layerReadOrder, useLayerList } from './layerListPref.js'
+import { layerReadEntries, layerReadOrder, useLayerList } from './layerListPref.js'
+import { useLayerSplit } from './layerSplitPref.js'
 import {
+  entryMarks,
+  entryViewed,
   findDescription,
   findGuide,
   hideLayerFiles,
+  layerByHunk,
   layerByPath,
   layerKey,
   layerLineStats,
   layerProgress,
+  layersByPath,
+  outlineHasRanges,
   type RefLinks,
   type ResolvedLayer,
   resolveLayers,
@@ -383,12 +391,34 @@ function Review() {
   // Resolved against the live changeset on every render, never stored (see
   // ui/layers.ts). With none, `layerMode` is off and the pane is exactly the
   // flat list it always was.
+  // The reviewer's switch on a split file: parts (the agent's ranges), or
+  // whole in every step that lists it. Off, the ranges are ignored here and
+  // nothing downstream knows they were posted.
+  const [layerSplit, setLayerSplit] = useLayerSplit()
+  const splitOffered = useMemo(() => outlineHasRanges(review?.layers), [review?.layers])
   const resolvedLayers = useMemo(
-    () => resolveLayers(review?.layers, allFiles),
-    [review?.layers, allFiles],
+    () => resolveLayers(review?.layers, allFiles, { wholeFiles: layerSplit === 'whole' }),
+    [review?.layers, allFiles, layerSplit],
   )
   const layerMode = resolvedLayers.length > 0
-  const layersByPath = useMemo(() => layerByPath(resolvedLayers), [resolvedLayers])
+  const layersByPathFirst = useMemo(() => layerByPath(resolvedLayers), [resolvedLayers])
+  // Where each hunk reads: a file the agent split across steps has a layer per
+  // part, and a jump to a hunk must land in the step that shows it.
+  const hunkLayers = useMemo(() => layerByHunk(resolvedLayers), [resolvedLayers])
+  // Every layer a file has a part in — for the Files tab, which names the
+  // steps of a split file after its name.
+  const layersPerPath = useMemo(() => layersByPath(resolvedLayers), [resolvedLayers])
+  const splitFileSteps = useMemo(() => {
+    const map = new Map<string, string>()
+    for (const [path, layers] of layersPerPath) {
+      if (layers.length < 2) continue
+      map.set(
+        path,
+        `steps ${layers.map((l) => (l.number === null ? '…' : String(l.number))).join(' · ')}`,
+      )
+    }
+    return map
+  }, [layersPerPath])
   // `Hide tests` follows the reviewer into the outline — the one filter that
   // does. It retires a category of file, which the outline's narrowing has no
   // opinion on; the others (reviewed, since, the typed word) step aside here.
@@ -430,7 +460,8 @@ function Review() {
   // A fresh outline with nothing read yet opens on the Overview; otherwise on
   // the first layer with something unread.
   const untouched = useMemo(
-    () => resolvedLayers.every((l) => l.files.every((f) => !isFileViewed(f.file, viewed))),
+    () =>
+      resolvedLayers.every((l) => l.files.every((f) => entryMarks(f).every((m) => !viewed.has(m)))),
     [resolvedLayers, viewed],
   )
   const activeIndex = !layerMode
@@ -598,13 +629,21 @@ function Review() {
   // thread jump, and `n` all land here first. Outside the Layers tab the pane
   // is flat and there is nothing to switch.
   const enterLayerFor = useCallback(
-    (path: string) => {
+    (path: string, hunkId?: string) => {
       if (!inLayers) return
-      if (activeLayerFull?.files.some((f) => f.file.path === path)) return
-      const target = layersByPath.get(path)
-      if (target) goLayer(resolvedLayers.indexOf(target))
+      // A split file: the step that shows this hunk, when one is known. The
+      // active layer holds the file whole or holds this part — stay.
+      const here = activeLayerFull?.files.find((f) => f.file.path === path)
+      if (
+        here &&
+        (hunkId === undefined || !here.partial || here.hunks.some((h) => h.id === hunkId))
+      )
+        return
+      const target =
+        (hunkId !== undefined ? hunkLayers.get(hunkId) : undefined) ?? layersByPathFirst.get(path)
+      if (target && target !== activeLayerFull) goLayer(resolvedLayers.indexOf(target))
     },
-    [inLayers, activeLayerFull, layersByPath, resolvedLayers, goLayer],
+    [inLayers, activeLayerFull, hunkLayers, layersByPathFirst, resolvedLayers, goLayer],
   )
 
   // A mechanical layer's files arrive folded — fold, never hide — each time the
@@ -652,7 +691,7 @@ function Review() {
       const layer = inLayers
         ? activeLayerFull?.files.some((f) => f.file.path === path)
           ? activeLayerFull
-          : layersByPath.get(path)
+          : layersByPathFirst.get(path)
         : undefined
       const idx = inCommits
         ? paneOrder.findIndex((f) => f.path === path)
@@ -661,7 +700,7 @@ function Review() {
           : allFiles.findIndex((f) => f.path === path)
       if (idx >= 0) setVisibleCount((c) => Math.max(c, idx + 1))
     },
-    [allFiles, filter.pin, inLayers, activeLayerFull, layersByPath, inCommits, paneOrder],
+    [allFiles, filter.pin, inLayers, activeLayerFull, layersByPathFirst, inCommits, paneOrder],
   )
   const visibleFiles = useMemo(() => paneOrder.slice(0, visibleCount), [paneOrder, visibleCount])
 
@@ -1123,7 +1162,10 @@ function Review() {
     ({ path, side, line }: JumpTarget) => {
       const file = data?.files.find((f) => f.path === path)
       if (!file) return
-      enterLayerFor(path)
+      const hunk = file.hunks.find((h) =>
+        h.lines.some((l) => (side === 'base' ? l.oldNo : l.newNo) === line),
+      )
+      enterLayerFor(path, hunk?.id)
       revealFile(path)
       setCollapsed((prev) => {
         if (!prev.has(path)) return prev
@@ -1131,9 +1173,6 @@ function Review() {
         next.delete(path)
         return next
       })
-      const hunk = file.hunks.find((h) =>
-        h.lines.some((l) => (side === 'base' ? l.oldNo : l.newNo) === line),
-      )
       if (!hunk) {
         scrollToFile(path)
         return
@@ -1197,12 +1236,60 @@ function Review() {
     [clearFiles],
   )
 
+  // The same marks under a layer: a file the layer holds whole is marked whole;
+  // a file it holds part of is marked by that part's hunks, so reading step 1's
+  // half of a file never ticks step 3's half.
+  const markLayerFiles = useCallback(
+    (paths: string[], layer: ResolvedLayer, on: boolean) => {
+      const wanted = new Set(paths)
+      const entries = layer.files.filter((e) => wanted.has(e.file.path))
+      const whole = entries.filter((e) => !e.partial).map((e) => e.file.path)
+      const parts = entries.filter((e) => e.partial)
+      if (whole.length > 0) (on ? markFilesViewed : clearFilesViewed)(whole)
+      if (parts.length > 0) {
+        const marks = parts.flatMap(entryMarks)
+        setMarks(marks, on)
+        // Folding is for a settled file. A part read is not that: the file's
+        // other hunks are still unread in their own steps, and the fold is
+        // shared across steps, so it would hide them there.
+        const marked = new Set(marks)
+        setCollapsed((prev) => {
+          const next = new Set(prev)
+          for (const e of parts) {
+            const settled = on && e.file.hunks.every((h) => viewed.has(h.id) || marked.has(h.id))
+            if (settled) next.add(e.file.path)
+            else next.delete(e.file.path)
+          }
+          return next
+        })
+      }
+    },
+    [markFilesViewed, clearFilesViewed, setMarks, viewed],
+  )
+  const toggleLayerFile = useCallback(
+    (path: string, layer: ResolvedLayer) => {
+      const entry = layer.files.find((e) => e.file.path === path)
+      if (!entry?.partial) return toggleFileViewed(path)
+      markLayerFiles([path], layer, !entryViewed(entry, viewed))
+    },
+    [toggleFileViewed, markLayerFiles, viewed],
+  )
+  // The pane's header toggle and `v`: under a layer, that layer's part.
+  const toggleViewedHere = useCallback(
+    (path: string) => {
+      if (paneLayerActive) toggleLayerFile(path, paneLayerActive)
+      else toggleFileViewed(path)
+    },
+    [paneLayerActive, toggleLayerFile, toggleFileViewed],
+  )
+
   // `n`: the next unread file. In layer mode it walks the plan — this layer's
   // files first, then the layers after it, wrapping to the front — so one key
   // reads the whole outline end to end; the layer switches as the file does.
   const nextUnreviewed = useCallback(() => {
     const unread = (f: FileChange) => !isFileViewed(f, viewed)
     let file: FileChange | undefined
+    let firstHunk: string | null = null
     if (inCommits) {
       // Like the outline: this commit first, then on into the next one with
       // something unread, as far as the diffs have loaded.
@@ -1215,13 +1302,15 @@ function Review() {
         }
       }
     } else if (inLayers) {
-      // From the Overview the plan starts at layer 1.
+      // From the Overview the plan starts at layer 1. A file the layer holds
+      // part of is unread by that part, and the landing is its first hunk.
       const from = Math.max(activeIndex, 0)
       const walk = [...shownLayers.slice(from), ...shownLayers.slice(0, from)]
       for (const layer of walk) {
-        const hit = layerReadOrder(layer, layerList).find(unread)
+        const hit = layerReadEntries(layer, layerList).find((e) => !entryViewed(e, viewed))
         if (hit) {
-          file = hit
+          file = hit.file
+          firstHunk = hit.hunks[0]?.id ?? null
           if (layer !== activeLayer) goLayer(shownLayers.indexOf(layer))
           break
         }
@@ -1237,7 +1326,7 @@ function Review() {
       next.delete(file!.path)
       return next
     })
-    setSelectedId(file.hunks[0]?.id ?? null)
+    setSelectedId(firstHunk ?? file.hunks[0]?.id ?? null)
     setFocusPath(file.hunks.length === 0 ? file.path : null)
     scrollToFile(file.path)
   }, [
@@ -1277,7 +1366,8 @@ function Review() {
         holdOpenRef.current = item.path
         // A thread on a file this commit did not touch is read on the Files tab.
         if (inCommits && !activeCommitFiles!.some((f) => f.path === item.path)) setPanel('files')
-        enterLayerFor(item.path)
+        const anchor = review?.threads.find((t) => t.id === item.threadId)?.anchor
+        enterLayerFor(item.path, anchor?.kind === 'hunk' ? anchor.hunkId : undefined)
         revealFile(item.path)
         setCollapsed((prev) => {
           if (!prev.has(item.path!)) return prev
@@ -1326,6 +1416,7 @@ function Review() {
       goOverview,
       inCommits,
       activeCommitFiles,
+      review?.threads,
     ],
   )
   /** The rail's row, as `openThread` wants it. */
@@ -1437,7 +1528,7 @@ function Review() {
       if (!action) return
       e.preventDefault()
       if (action === 'toggle-viewed') {
-        if (selectedPath) toggleFileViewed(selectedPath)
+        if (selectedPath) toggleViewedHere(selectedPath)
       } else if (action === 'comment') {
         if (selectedId) setComposeHunkId(selectedId)
       } else if (action === 'toggle-view-mode') {
@@ -1495,7 +1586,7 @@ function Review() {
     moveSelection,
     selectedId,
     selectedPath,
-    toggleFileViewed,
+    toggleViewedHere,
     hunkOrder,
     toggleNav,
     nextUnreviewed,
@@ -1605,14 +1696,35 @@ function Review() {
     const activeLayer = paneLayerActive
     if (!activeLayer) return undefined
     const notes = new Map<string, string>()
-    for (const { file, note } of activeLayer.files) {
+    for (const { file, note, hunks } of activeLayer.files) {
       if (note) notes.set(file.path, note)
-      else if (activeLayer.kind === 'mechanical' && file.hunks.length > 0) {
-        notes.set(file.path, `${file.hunks.length} ${file.hunks.length === 1 ? 'site' : 'sites'}`)
+      else if (activeLayer.kind === 'mechanical' && hunks.length > 0) {
+        notes.set(file.path, `${hunks.length} ${hunks.length === 1 ? 'site' : 'sites'}`)
       }
+    }
+    // A file this layer holds part of: the pane shows the part and folds the
+    // rest under the name of the step each hunk reads in.
+    const parts = new Map<string, FilePart>()
+    for (const entry of activeLayer.files) {
+      if (!entry.partial) continue
+      const shown = new Set(entry.hunks.map((h) => h.id))
+      const elsewhere = new Map<string, ElsewhereStep>()
+      for (const hunk of entry.file.hunks) {
+        if (shown.has(hunk.id)) continue
+        const where = hunkLayers.get(hunk.id)
+        const index = where ? resolvedLayers.indexOf(where) : -1
+        elsewhere.set(
+          hunk.id,
+          where && index !== -1
+            ? { index, title: where.title, number: where.number }
+            : { index: -1, title: 'another step', number: null },
+        )
+      }
+      parts.set(entry.file.path, { shown, elsewhere })
     }
     return {
       id: activeLayer.id,
+      ...(parts.size > 0 ? { parts, onGoLayer: goLayer } : {}),
       ...(activeLayer.decisions
         ? {
             decisions: activeLayer.decisions,
@@ -1628,7 +1740,7 @@ function Review() {
       ...(activeLayer.derived
         ? {
             summary:
-              'Files no layer lists: touched after the outline was posted, or left out of it. The agent absorbs them by re-posting.',
+              'Files no layer lists, and hunks no step claims: touched after the outline was posted, or left out of it. The agent absorbs them by re-posting.',
           }
         : activeLayer.summary
           ? { summary: activeLayer.summary }
@@ -1643,8 +1755,25 @@ function Review() {
       ...(activeLayer.files.length > 1
         ? { reading: { kind: layerList, onPick: setLayerList } }
         : {}),
+      ...(splitOffered && !activeLayer.derived
+        ? { split: { kind: layerSplit, onPick: setLayerSplit } }
+        : {}),
     }
-  }, [paneLayerActive, layerCount, jumpTo, allFiles, openDecision, layerList, setLayerList])
+  }, [
+    paneLayerActive,
+    layerCount,
+    jumpTo,
+    allFiles,
+    openDecision,
+    layerList,
+    setLayerList,
+    hunkLayers,
+    resolvedLayers,
+    goLayer,
+    splitOffered,
+    layerSplit,
+    setLayerSplit,
+  ])
   const paneLayer = useMemo(() => {
     const step = (dir: 1 | -1) => stepLayer(shownLayers, activeIndex, dir, layerEmptied)
     const to = (i: number | null) =>
@@ -1825,9 +1954,9 @@ function Review() {
                     changed={sinceLastReview.changed}
                     selectedPath={selectedPath}
                     onPickFile={pickFile}
-                    onToggleFileViewed={toggleFileViewed}
-                    onMarkFiles={markFilesViewed}
-                    onClearFiles={clearFilesViewed}
+                    onToggleFileViewed={toggleLayerFile}
+                    onMarkFiles={(paths, layer) => markLayerFiles(paths, layer, true)}
+                    onClearFiles={(paths, layer) => markLayerFiles(paths, layer, false)}
                     onAskFile={(path) => {
                       revealFile(path)
                       setComposeFilePath(path)
@@ -1853,6 +1982,7 @@ function Review() {
                 onToggleFileViewed={toggleFileViewed}
                 onMarkFiles={markFilesViewed}
                 onClearFiles={clearFilesViewed}
+                parts={splitFileSteps}
                 onAskFile={(path) => {
                   // The composer renders inside the file body, so the file must be in
                   // the rendering window first.
@@ -1979,7 +2109,7 @@ function Review() {
                 ),
             }}
             viewed={viewed}
-            onToggleFileViewed={toggleFileViewed}
+            onToggleFileViewed={toggleViewedHere}
             selectedId={selectedId}
             onSelect={setSelectedId}
             viewMode={viewMode}

@@ -91,6 +91,23 @@ describe('Nav', () => {
     ).toEqual(['docs/index.md · new file', 'src/server/git.ts · edited', 'src/ui/App.tsx · edited'])
   })
 
+  it('a file with one part read and one not shows the mixed mark, and names its steps', () => {
+    const split = file('src/ui/App.tsx', 'modified', ['h1', 'h2'])
+    render(
+      <Nav
+        files={[split, file('docs/index.md', 'added')]}
+        viewed={new Set(['src/ui/App.tsx:h1'])}
+        parts={new Map([['src/ui/App.tsx', 'steps 1 · 3']])}
+      />,
+    )
+    const row = document.querySelector('.row[data-path="src/ui/App.tsx"]')!
+    expect(row.querySelector('[role="checkbox"]')?.getAttribute('aria-checked')).toBe('mixed')
+    expect(row.querySelector('.row-part')?.textContent).toBe('steps 1 · 3')
+    const other = document.querySelector('.row[data-path="docs/index.md"]')!
+    expect(other.querySelector('[role="checkbox"]')?.getAttribute('aria-checked')).toBe('false')
+    expect(other.querySelector('.row-part')).toBeNull()
+  })
+
   it('folds a folder on click and remembers deeper state elsewhere', () => {
     render(<Nav files={FILES} />)
     fireEvent.click(screen.getByText('src'))

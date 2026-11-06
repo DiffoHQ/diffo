@@ -1,5 +1,6 @@
 import { fileURLToPath } from 'node:url'
 import { findHunk as findHunkIn } from '../shared/anchors.js'
+import { formatSpan, hunkHeadSpan, type UncoveredRef, uncoveredLine } from '../shared/layers.js'
 import {
   type Anchor,
   type AnchoredLayer,
@@ -8,7 +9,7 @@ import {
   isPublic,
   type Layer,
   type Layers,
-  layerFilePath,
+  layerFileRef,
   type ReviewThread,
   startedByAgent,
   THREAD_INTENTS,
@@ -46,7 +47,7 @@ export function captureAnchor(
       anchoredLayer: {
         title: layer.title,
         ...(layer.summary ? { summary: layer.summary } : {}),
-        files: layer.files.map(layerFilePath),
+        files: layer.files.map(layerFileRef),
       },
     }
   }
@@ -244,6 +245,15 @@ export function ownPrAsk(
   ].join('\n')
 }
 
+/** The ack after a post that left hunks or files in no layer: what was
+ * missed, and that the fix is a re-post of the whole list with them placed. */
+export function layersUncoveredStep(uncovered: readonly UncoveredRef[]): string {
+  return (
+    `${ACK_NEXT_STEP.layersUncovered}${uncoveredLine(uncovered)}. ` +
+    `Every hunk belongs in some layer — re-post the whole list with \`${CLI_COMMANDS.layers}\` with these placed (a whole file by path, part of a file as path:from-to), then run \`${CLI_COMMANDS.poll}\`.`
+  )
+}
+
 export const ACK_NEXT_STEP = {
   reply: `When every thread is handled, run \`${CLI_COMMANDS.poll}\` again to keep listening (${POLL_STANCE}).`,
   replyMore:
@@ -254,6 +264,7 @@ export const ACK_NEXT_STEP = {
   layers: `The outline is live in the reviewer's Layers tab, resolved against the changeset as it moves. Files you touch later land in a trailing "Since your review" layer until you re-post the whole list. Continue with the review threads, then run \`${CLI_COMMANDS.poll}\`.`,
   layersSuggested: `The review now offers the outline to the reviewer. Mention it in your handoff too — "say layers and I'll outline it" — and post it with \`${CLI_COMMANDS.layers}\` when they ask. Then run \`${CLI_COMMANDS.poll}\`.`,
   layersAlready: `This review already carries layers, so there is nothing to suggest — re-post the whole list with \`${CLI_COMMANDS.layers}\` if the outline is stale. Then run \`${CLI_COMMANDS.poll}\`.`,
+  layersUncovered: `The outline is live, but part of the changeset is in no layer and reads under "Since your review" until it is: `,
   end: 'Detached. Do not reopen or re-poll this review unless the user asks — deliver anything remaining directly in the conversation.',
 } as const
 
@@ -392,9 +403,14 @@ export const LAYERS = {
    * must be something they could act on, never a retelling of the change. */
   decisions:
     'a layer may carry up to five "decisions", each one short line (under eight words) with a one-sentence "detail" and an "at" — where it lives: "path", "path:line" or "path:from-to", or a list of up to three such places when the decision spans hunks (the rule and the test that pins it). A decision is where you chose between real alternatives a reviewer might weigh differently (a cache, a data shape, a fallback), where the code now does something the diff does not make obvious (a 400 where there was an empty list, a sort every caller sees), or where something in the repo or the environment shaped the change (no clock on the model, tests you could not run). Only what a reviewer could want done differently or would be surprised by later; nothing about naming or style; no verdicts. Write each line the way you would answer "what did you decide here?" to a teammate who has not seen the code: a concrete statement in plain words ("Unknown ?due= values return 400, not an empty list", "Todos store a date, never a time"), understood in a second by someone who has not read the diff — no project nicknames, no clever phrasing, no mechanism named instead of its effect. Most layers have none — a plumbing step has nothing to decide, so leave the list out',
+  /** What a file entry is, and when to split one. A file is whole unless its
+   * hunks really read as different steps; then every step names its part, so
+   * "whole" never has to mean "the rest". */
+  files:
+    'a file is its path, the whole file, every hunk. When a file\'s hunks belong to different steps, give each step the part it owns as "path:from-to" — head-side lines, the ranges the ask lists per hunk — in every step that has a part of it, never whole in one step and by range in another. Most files stay whole; split only where the hunks really are different steps. Every hunk of the changeset belongs in some layer: the post reports any it leaves out, and you re-post with them placed',
   /** The payload, in one line. */
   shape:
-    '[{ "title": "…", "summary": "…", "kind": "mechanical" (optional), "files": ["src/a.ts", { "path": "src/b.ts", "note": "why this file is in this step" }], "decisions": [{ "text": "…", "detail": "…", "at": "src/a.ts:12-18" | ["src/a.ts:12-18", "test/a.test.ts:40"] }] (optional, at most five) }]',
+    '[{ "title": "…", "summary": "…", "kind": "mechanical" (optional), "files": ["src/a.ts", { "path": "src/b.ts", "note": "why this file is in this step" }, "src/c.ts:12-40"], "decisions": [{ "text": "…", "detail": "…", "at": "src/a.ts:12-18" | ["src/a.ts:12-18", "test/a.test.ts:40"] }] (optional, at most five) }]',
 } as const
 
 /**
@@ -1128,8 +1144,11 @@ export function buildLayersRequestPrompt(
     '',
     ...GUIDE_CLASSDEFS.map((line) => `    ${line}`),
     '',
-    `Order: ${D.layers.order}. ${D.layers.mechanical}. ${D.layers.stance}. Files are whole files, by path relative to the repo root; list every file of the changeset somewhere, or the leftovers land in "Since your review".`,
+    `Order: ${D.layers.order}. ${D.layers.mechanical}. ${D.layers.stance}.`,
     '',
+    `Files: ${D.layers.files}. Paths are relative to the repo root.`,
+    '',
+    ...(ctx.changeset ? [...hunkListLines(ctx.changeset), ''] : []),
     `Decisions: ${D.layers.decisions}.`,
     '',
     `Shape: ${LAYERS.shape}`,
@@ -1139,6 +1158,34 @@ export function buildLayersRequestPrompt(
     `Then run \`${CLI_COMMANDS.poll}\` again to keep listening (${POLL_STANCE}).`,
     '',
   ].join('\n')
+}
+
+/** The most files the ask lists hunk by hunk. Past it the list says how many
+ * more there are: an outline that long is written from the diff anyway. */
+const HUNK_LIST_CAP = 300
+
+/**
+ * The changeset file by file, each with its hunks' head-side line ranges, so
+ * splitting a file is copying a range rather than counting lines. The same
+ * spans the UI resolves a `path:from-to` against (`hunkHeadSpan`).
+ */
+export function hunkListLines(changeset: Changeset): string[] {
+  const files = changeset.files
+  if (files.length === 0) return []
+  const lines = [
+    "The changeset's files, each with its hunks as head-side line ranges — copy a range when a step holds only part of a file:",
+  ]
+  for (const file of files.slice(0, HUNK_LIST_CAP)) {
+    const spans =
+      file.hunks.length === 0
+        ? '(no hunks)'
+        : file.hunks.map((h) => formatSpan(hunkHeadSpan(h))).join(' · ')
+    lines.push(`  ${file.path}  ${spans}`)
+  }
+  if (files.length > HUNK_LIST_CAP) {
+    lines.push(`  … and ${files.length - HUNK_LIST_CAP} more files`)
+  }
+  return lines
 }
 
 export function buildClearedPrompt(ctx: PromptContext): string {

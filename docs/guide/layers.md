@@ -55,6 +55,39 @@ On a pull request, row 0 of the list is the **Overview**: the pull request's
 description, in the place a guide takes on a local review. See
 [Reviewing a pull request](/guide/pr-review).
 
+## A file in two steps
+
+Some files hold more than one step: the contract at the top, the call sites
+further down. The agent can give each step only the part that belongs to it,
+and the review says so wherever you look.
+
+In the pane, the file's header carries a chip, **3 of 7 hunks**, and the
+hunks that read in another step fold into one row where they sit:
+
+> ▸ 2 hunks in step 3 · Consumers
+
+Open the row to see them in place, dimmed, or click the step's name to go
+read them there. **Whole file** on the header opens everything: every hunk,
+with all the lines between. **Viewed** on that header marks the step's
+hunks, not the whole file, so reading step 1's half never ticks step 3's.
+
+In the rail, the layer's count says *2 files · 1 split*, and the file's row
+reads *3 of 7 hunks*; its mark is that part's. On the Files tab the file
+says *steps 1 · 3* after its name, and its mark is the whole file's, mixed
+while one part is read and the other is not.
+
+Rather read whole files? Beside the reading order on the card, **Files in
+several steps** switches between *this step's hunks* and *the whole file*.
+Off, the
+agent's ranges are ignored: a split file is a whole file in every step that
+lists it, marked once, the way a file in two layers always read. One pick for
+the whole review, remembered across reviews.
+
+Nothing can hide in the split. A hunk no step claims lands in *Since your
+review* like a file no step lists, and the agent hears about it the moment
+it posts: the ack names the hunks left out, and the next step is a re-post
+with them placed.
+
 ## Decisions
 
 Under a layer's summary the agent may list its **decisions**: what it chose,
@@ -84,8 +117,9 @@ never pre-reviews: it says what was done and why, never whether it is fine.
 ## The plan stays honest
 
 Layers are resolved against the live changeset on every refresh. A file the
-agent touches after posting, or one no layer names, gathers in a trailing
-**Since your review** layer, so nothing hides outside the plan. One line at the
+agent touches after posting, one no layer names, or the hunks of a split file
+that no step claims any more, gather in a trailing **Since your review**
+layer, so nothing hides outside the plan. One line at the
 foot of the tab asks the agent to re-outline, and a re-post keeps your place for
 every title that survives.
 

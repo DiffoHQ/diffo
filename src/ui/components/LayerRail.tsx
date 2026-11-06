@@ -1,8 +1,15 @@
 import { useMemo, useState } from 'react'
 import type { ReviewThread } from '../../shared/review.js'
+import type { FileChange } from '../../shared/types.js'
 import type { LayersRequest } from '../api.js'
-import { isFileViewed } from '../fileMarks.js'
-import { layerLineStats, layerProgress, type ResolvedLayer } from '../layers.js'
+import {
+  entryMarks,
+  entryViewed,
+  layerLineStats,
+  layerProgress,
+  type ResolvedLayer,
+  type ResolvedLayerFile,
+} from '../layers.js'
 import type { ThreadItem } from '../threads.js'
 import { Icon } from './Icon.js'
 import { MarkBox } from './MarkBox.js'
@@ -50,6 +57,10 @@ function SubLine({ layer, viewed }: { layer: ResolvedLayer; viewed: ReadonlySet<
   const done = p.doneFiles === p.files ? ' · read' : ''
   const mech = layer.kind === 'mechanical' ? ' · mechanical' : ''
   const off = hidden > 0 ? ` · ${hidden} hidden` : ''
+  // A file the step holds only part of: the count says so, and the row under
+  // it says which part.
+  const split = layer.files.filter((f) => f.partial).length
+  const parts = split > 0 ? ` · ${split} split` : ''
   return (
     <span>
       {plural(p.files, 'file')}
@@ -61,11 +72,18 @@ function SubLine({ layer, viewed }: { layer: ResolvedLayer; viewed: ReadonlySet<
           {deletions > 0 && <span className="stat-del">−{deletions}</span>}
         </>
       )}
+      {parts}
       {done}
       {mech}
       {off}
     </span>
   )
+}
+
+/** `2 of 5 hunks`: the part of a split file this layer reads. */
+export function partLabel(entry: ResolvedLayerFile): string | undefined {
+  if (!entry.partial) return undefined
+  return `${entry.hunks.length} of ${entry.file.hunks.length} hunks`
 }
 
 function LayerRow({
@@ -89,13 +107,13 @@ function LayerRow({
   viewed: ReadonlySet<string>
   threadCount: number
   onPick: (index: number) => void
-  onMarkFiles?: (paths: string[]) => void
-  onClearFiles?: (paths: string[]) => void
+  onMarkFiles?: (paths: string[], layer: ResolvedLayer) => void
+  onClearFiles?: (paths: string[], layer: ResolvedLayer) => void
 }) {
   const p = layerProgress(layer, viewed)
   const allDone = p.files > 0 && p.doneFiles === p.files
   const some = p.doneMarks > 0
-  const markable = layer.files.filter((f) => !isFileViewed(f.file, viewed)).map((f) => f.file.path)
+  const markable = layer.files.filter((f) => !entryViewed(f, viewed)).map((f) => f.file.path)
   const paths = layer.files.map((f) => f.file.path)
   return (
     // biome-ignore lint/a11y/noStaticElementInteractions: the row's own pick button is the keyboard path; this only widens the mouse target to the whole row
@@ -125,8 +143,8 @@ function LayerRow({
         disabled={paths.length === 0 || (allDone ? !onClearFiles : !onMarkFiles)}
         onClick={(e) => {
           e.stopPropagation()
-          if (allDone) onClearFiles?.(paths)
-          else onMarkFiles?.(markable)
+          if (allDone) onClearFiles?.(paths, layer)
+          else onMarkFiles?.(markable, layer)
         }}
       >
         <MarkBox state={allDone ? true : some ? 'mixed' : false} />
@@ -189,11 +207,29 @@ function LayerRow({
 }
 
 /** An opened layer's files, as the Files tab's tree. The layer's notes ride
- * along as the rows' tooltips. */
+ * along as the rows' tooltips; a file the layer holds part of says which part,
+ * and its mark is that part's. */
 function LayerFiles({
   layer,
+  onToggleFileViewed,
+  onMarkFiles,
+  onClearFiles,
   ...tree
-}: { layer: ResolvedLayer } & Omit<FileTreeProps, 'files' | 'notes' | 'forceOpen'>) {
+}: { layer: ResolvedLayer } & Omit<
+  FileTreeProps,
+  | 'files'
+  | 'notes'
+  | 'parts'
+  | 'marksFor'
+  | 'forceOpen'
+  | 'onToggleFileViewed'
+  | 'onMarkFiles'
+  | 'onClearFiles'
+> & {
+    onToggleFileViewed?: (path: string, layer: ResolvedLayer) => void
+    onMarkFiles?: (paths: string[], layer: ResolvedLayer) => void
+    onClearFiles?: (paths: string[], layer: ResolvedLayer) => void
+  }) {
   // `layer.files` is stable between resolutions of the outline, so the tree is
   // rebuilt only when the changeset (or the filter) moves under it.
   const files = useMemo(() => layer.files.map((f) => f.file), [layer.files])
@@ -201,7 +237,34 @@ function LayerFiles({
     () => new Map(layer.files.flatMap((f) => (f.note ? [[f.file.path, f.note] as const] : []))),
     [layer.files],
   )
-  return <FileTree files={files} notes={notes} {...tree} />
+  const parts = useMemo(
+    () =>
+      new Map(
+        layer.files.flatMap((f) => {
+          const label = partLabel(f)
+          return label ? [[f.file.path, label] as const] : []
+        }),
+      ),
+    [layer.files],
+  )
+  const marksFor = useMemo(() => {
+    const byPath = new Map(layer.files.map((f) => [f.file.path, entryMarks(f)]))
+    return (file: FileChange) => byPath.get(file.path) ?? []
+  }, [layer.files])
+  return (
+    <FileTree
+      files={files}
+      notes={notes}
+      parts={parts}
+      marksFor={marksFor}
+      onToggleFileViewed={
+        onToggleFileViewed ? (path) => onToggleFileViewed(path, layer) : undefined
+      }
+      onMarkFiles={onMarkFiles ? (paths) => onMarkFiles(paths, layer) : undefined}
+      onClearFiles={onClearFiles ? (paths) => onClearFiles(paths, layer) : undefined}
+      {...tree}
+    />
+  )
 }
 
 export function LayerRail({
@@ -244,9 +307,11 @@ export function LayerRail({
   changed?: ReadonlySet<string>
   selectedPath?: string | null
   onPickFile?: (path: string) => void
-  onToggleFileViewed?: (path: string) => void
-  onMarkFiles?: (paths: string[]) => void
-  onClearFiles?: (paths: string[]) => void
+  /** Marks take the layer too: under a layer that holds part of a file, the
+   * mark is that part's, not the whole file's. */
+  onToggleFileViewed?: (path: string, layer: ResolvedLayer) => void
+  onMarkFiles?: (paths: string[], layer: ResolvedLayer) => void
+  onClearFiles?: (paths: string[], layer: ResolvedLayer) => void
   onAskFile?: (path: string) => void
   /** Ask the agent to re-outline the change as it stands now. Absent when no
    * agent is attached: the line at the foot of the outline says so instead. */

@@ -4,7 +4,11 @@ import {
   type DecisionAt,
   type Layer,
   type LayerFile,
+  type LineRange,
+  layerFilePath,
+  layerFileRange,
 } from './review.js'
+import type { FileChange, Hunk } from './types.js'
 
 // Validation for a layers post, shared by the CLI (so the agent hears about a
 // bad payload before it leaves the machine) and the server (which trusts
@@ -46,15 +50,33 @@ function badPath(path: string): string | null {
   return null
 }
 
+/**
+ * A file entry's reference, checked and normalised: the path is repo-relative,
+ * and a `:from-to` range, when there is one, is 1-based with `from` first.
+ * Returns the reference to store, or what is wrong with it.
+ */
+function parseFileRef(raw: string): { ok: true; ref: string } | { ok: false; error: string } {
+  const ref = raw.trim()
+  const path = layerFilePath(ref)
+  const why = badPath(path)
+  if (why) return { ok: false, error: `path "${raw}" ${why}` }
+  const range = layerFileRange(ref)
+  if (range === null) return { ok: true, ref }
+  if (range.from < 1 || range.to < 1) {
+    return { ok: false, error: `line range in "${raw}" must start at 1 or more` }
+  }
+  const [from, to] = range.from <= range.to ? [range.from, range.to] : [range.to, range.from]
+  return { ok: true, ref: `${path}:${from}-${to}` }
+}
+
 function parseFile(
   raw: unknown,
   where: string,
 ): { ok: true; file: LayerFile } | { ok: false; error: string } {
   if (typeof raw === 'string') {
-    const path = raw.trim()
-    const why = badPath(path.replace(/:\d+-\d+$/, ''))
-    if (why) return { ok: false, error: `${where}: path "${raw}" ${why}` }
-    return { ok: true, file: path }
+    const parsed = parseFileRef(raw)
+    if (!parsed.ok) return { ok: false, error: `${where}: ${parsed.error}` }
+    return { ok: true, file: parsed.ref }
   }
   if (typeof raw !== 'object' || raw === null || Array.isArray(raw)) {
     return { ok: false, error: `${where}: each file is a path string or { path, note? }` }
@@ -62,9 +84,9 @@ function parseFile(
   const f = raw as Record<string, unknown>
   if (typeof f.path !== 'string')
     return { ok: false, error: `${where}: a file object needs a "path"` }
-  const path = f.path.trim()
-  const why = badPath(path.replace(/:\d+-\d+$/, ''))
-  if (why) return { ok: false, error: `${where}: path "${f.path}" ${why}` }
+  const parsed = parseFileRef(f.path)
+  if (!parsed.ok) return { ok: false, error: `${where}: ${parsed.error}` }
+  const path = parsed.ref
   if (f.note !== undefined && typeof f.note !== 'string') {
     return { ok: false, error: `${where}: "note" on ${path} must be a string` }
   }
@@ -185,6 +207,10 @@ export function parseLayersInput(raw: unknown): LayersParse {
   if (raw.length === 0) return { ok: false, error: 'layers must list at least one layer' }
   const items: LayerInput[] = []
   const titles = new Set<string>()
+  // Where each path was first listed whole, and first listed by range: the
+  // two cannot mix, or "whole" would have to mean "the rest".
+  const whole = new Map<string, string>()
+  const ranged = new Map<string, string>()
   for (const [i, entry] of raw.entries()) {
     const where = `layer ${i + 1}`
     if (typeof entry !== 'object' || entry === null || Array.isArray(entry)) {
@@ -208,6 +234,17 @@ export function parseLayersInput(raw: unknown): LayersParse {
       const parsed = parseFile(f, `${where} ("${title}")`)
       if (!parsed.ok) return parsed
       files.push(parsed.file)
+      const path = layerFilePath(parsed.file)
+      const isRange = layerFileRange(parsed.file) !== null
+      const other = (isRange ? whole : ranged).get(path)
+      if (other !== undefined) {
+        const here = `${where} ("${title}")`
+        return {
+          ok: false,
+          error: `${here}: "${path}" is listed ${isRange ? 'by range here and whole' : 'whole here and by range'} in ${other} — range it in every step that has a part of it, or list it whole once`,
+        }
+      }
+      ;(isRange ? ranged : whole).set(path, `${where} ("${title}")`)
     }
     if (l.summary !== undefined && typeof l.summary !== 'string') {
       return { ok: false, error: `${where} ("${title}"): "summary" must be a markdown string` }
@@ -246,4 +283,105 @@ export function parseLayersInput(raw: unknown): LayersParse {
     })
   }
   return { ok: true, items }
+}
+
+// ---------- ranges against hunks ----------
+//
+// A layer entry with a range names the hunks that range touches. Lines are
+// head-side, the side the reviewer reads, and the test is an overlap, not an
+// exact match: a range the agent copied from the ask still lands after a line
+// or two moved under it. Shared by the UI's resolver and the server's post-time
+// coverage report, so the two can never disagree about which hunk is whose.
+
+/**
+ * The head-side lines a hunk shows, inclusive. A hunk that only deletes shows
+ * no head line; git names the line before it, so that is its span — one line,
+ * never below 1.
+ */
+export function hunkHeadSpan(hunk: Hunk): LineRange {
+  let count = 0
+  for (const line of hunk.lines) if (line.kind !== 'del') count++
+  if (count === 0) {
+    const at = Math.max(1, hunk.newStart)
+    return { from: at, to: at }
+  }
+  return { from: hunk.newStart, to: hunk.newStart + count - 1 }
+}
+
+export function rangeTouchesHunk(range: LineRange, hunk: Hunk): boolean {
+  const span = hunkHeadSpan(hunk)
+  return range.from <= span.to && range.to >= span.from
+}
+
+/** `12-40`, the way the ask lists a hunk and the agent writes it back. */
+export function formatSpan(span: LineRange): string {
+  return span.from === span.to ? `${span.from}` : `${span.from}-${span.to}`
+}
+
+/**
+ * The hunks of a file the outline leaves in no layer, by path, plus the files
+ * it does not name at all. Against the live changeset, like everything about
+ * layers; a whole-file entry claims every hunk, a ranged one the hunks it
+ * touches. Empty when every hunk is somewhere. Hunkless files count as one
+ * unit: listed or not.
+ */
+export interface UncoveredFile {
+  path: string
+  /** The hunks no range claimed, in file order; empty when the file itself
+   * is not in the outline. */
+  hunks: Hunk[]
+  /** The file appears in no layer at all. */
+  unlisted: boolean
+}
+
+export function uncoveredByLayers(
+  layers: readonly Pick<Layer, 'files'>[],
+  files: readonly FileChange[],
+): UncoveredFile[] {
+  const wholePaths = new Set<string>()
+  const ranges = new Map<string, LineRange[]>()
+  for (const layer of layers) {
+    for (const entry of layer.files) {
+      const path = layerFilePath(entry)
+      const range = layerFileRange(entry)
+      if (range === null) wholePaths.add(path)
+      else {
+        const list = ranges.get(path)
+        if (list) list.push(range)
+        else ranges.set(path, [range])
+      }
+    }
+  }
+  const out: UncoveredFile[] = []
+  for (const file of files) {
+    if (wholePaths.has(file.path)) continue
+    const own = ranges.get(file.path)
+    if (!own) {
+      out.push({ path: file.path, hunks: [], unlisted: true })
+      continue
+    }
+    const rest = file.hunks.filter((h) => !own.some((r) => rangeTouchesHunk(r, h)))
+    if (rest.length > 0) out.push({ path: file.path, hunks: rest, unlisted: false })
+  }
+  return out
+}
+
+/** One uncovered file as the post's ack reports it: the whole file when the
+ * outline never names it, else the head-side ranges of the hunks it missed. */
+export interface UncoveredRef {
+  path: string
+  ranges?: string[]
+}
+
+export function describeUncovered(u: UncoveredFile): UncoveredRef {
+  return u.unlisted
+    ? { path: u.path }
+    : { path: u.path, ranges: u.hunks.map((h) => formatSpan(hunkHeadSpan(h))) }
+}
+
+/** `src/a.ts:88-95, src/a.ts:140-162, src/b.ts (whole)` — the ack's one line. */
+export function uncoveredLine(refs: readonly UncoveredRef[]): string {
+  return refs
+    .flatMap((u) => (u.ranges ? u.ranges.map((r) => `${u.path}:${r}`) : [`${u.path} (whole)`]))
+    .join(', ')
 }

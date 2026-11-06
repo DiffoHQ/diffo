@@ -857,6 +857,96 @@ describe('ReadingPane in layer mode', () => {
     expect(v.onJump).toHaveBeenCalledWith('src/b.ts', 9)
   })
 
+  describe('a file the layer holds part of', () => {
+    const consumers = { index: 2, title: 'Consumers', number: 3 }
+    const parts = new Map([
+      ['src/b.ts', { shown: new Set(['hunk-1']), elsewhere: new Map([['hunk-2', consumers]]) }],
+    ])
+    const cards = (c: Element) =>
+      [...c.querySelectorAll('.hunk')].map((h) => h.getAttribute('data-hunk-id'))
+
+    it('shows its hunks, folds the others into one row naming their step, and says how much', () => {
+      const onGoLayer = vi.fn()
+      const { container } = render(
+        <ReadingPane files={[FILES[0]!]} layer={view({ parts, onGoLayer })} />,
+      )
+      expect(container.querySelector('.file-section')?.className).toContain('file-section-part')
+      expect(container.querySelector('.file-header .file-part')?.textContent).toBe('1 of 2 hunks')
+      expect(cards(container)).toEqual(['hunk-1'])
+      const row = container.querySelector('.hunk-elsewhere')!
+      expect(row.querySelector('.elsewhere-toggle')?.textContent).toContain('1 hunk in')
+      expect(row.querySelector('.elsewhere-go')?.textContent).toBe('step 3 · Consumers')
+      // The step's name goes there.
+      fireEvent.click(row.querySelector('.elsewhere-go')!)
+      expect(onGoLayer).toHaveBeenCalledWith(2)
+      // The chevron opens the run in place, dimmed, and folds it again.
+      fireEvent.click(row.querySelector('.elsewhere-toggle')!)
+      expect(cards(container)).toEqual(['hunk-1', 'hunk-2'])
+      expect(
+        container.querySelector('.hunk-elsewhere-body .hunk')?.getAttribute('data-hunk-id'),
+      ).toBe('hunk-2')
+      fireEvent.click(container.querySelector('.elsewhere-toggle')!)
+      expect(cards(container)).toEqual(['hunk-1'])
+    })
+
+    it('Viewed is the step’s, Whole file opens everything, and a jump into a folded run opens it', () => {
+      const onToggleFileViewed = vi.fn()
+      const { container, rerender } = render(
+        <ReadingPane
+          files={[FILES[0]!]}
+          layer={view({ parts })}
+          viewed={new Set(['hunk-1'])}
+          onToggleFileViewed={onToggleFileViewed}
+        />,
+      )
+      const toggle = container.querySelector('.file-viewed-toggle')!
+      // The shown hunk is read, so the step's part is: pressed, whatever hunk-2 says.
+      expect(toggle.getAttribute('aria-pressed')).toBe('true')
+      expect(toggle.getAttribute('title')).toContain('step')
+      fireEvent.click(toggle)
+      expect(onToggleFileViewed).toHaveBeenCalledWith('src/b.ts')
+      const whole = container.querySelector('.file-whole')!
+      expect(whole.textContent).toContain('Whole file')
+      fireEvent.click(whole)
+      expect(cards(container)).toEqual(['hunk-1', 'hunk-2'])
+      expect(container.querySelector('.hunk-elsewhere')).toBeNull()
+      expect(container.querySelector('.elsewhere-tag')?.textContent).toBe('step 3 · Consumers')
+      fireEvent.click(container.querySelector('.file-whole')!)
+      expect(cards(container)).toEqual(['hunk-1'])
+      // A jump lands on hunk-2: the run opens on its own.
+      rerender(<ReadingPane files={[FILES[0]!]} layer={view({ parts })} selectedId="hunk-2" />)
+      expect(cards(container)).toEqual(['hunk-1', 'hunk-2'])
+    })
+
+    it('the card offers the split switch when the outline splits something', () => {
+      const onPick = vi.fn()
+      const { container } = render(
+        <ReadingPane files={[FILES[0]!]} layer={view({ split: { kind: 'parts', onPick } })} />,
+      )
+      const row = container.querySelector('.ch-head-split')!
+      expect(row.querySelector('.ch-head-order-cap')?.textContent).toBe('Files in several steps')
+      // Beside the reading order, on the same line — not a row of its own.
+      expect(row.parentElement?.className).toBe('ch-head-order')
+      const [parts, whole] = [...row.querySelectorAll('[role="radio"]')]
+      expect(parts!.getAttribute('aria-checked')).toBe('true')
+      expect(whole!.getAttribute('aria-checked')).toBe('false')
+      fireEvent.click(whole!)
+      expect(onPick).toHaveBeenCalledWith('whole')
+      // Nothing split, nothing offered.
+      const { container: c2 } = render(<ReadingPane files={[FILES[0]!]} layer={view()} />)
+      expect(c2.querySelector('.ch-head-split')).toBeNull()
+    })
+
+    it('a whole file under the same layer is untouched', () => {
+      const { container } = render(
+        <ReadingPane files={[FILES[0]!]} layer={view({ parts: new Map() })} />,
+      )
+      expect(cards(container)).toEqual(['hunk-1', 'hunk-2'])
+      expect(container.querySelector('.file-part')).toBeNull()
+      expect(container.querySelector('.file-whole')).toBeNull()
+    })
+  })
+
   it('the per-file note renders after the path in the file header', () => {
     const { container } = render(<ReadingPane files={[FILES[0]!]} layer={view()} />)
     expect(container.querySelector('.file-header .ch-file-note')?.textContent).toBe(

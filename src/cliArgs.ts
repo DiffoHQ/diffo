@@ -345,6 +345,7 @@ ${LAYERS.mechanical}.
 ${LAYERS.stance}.
 ${LAYERS.replace}. Paths are relative to the repo root; an unknown path is
 accepted (the file may land later) and simply shows nothing until it does.
+Files: ${LAYERS.files}. The ask lists every file with its hunks' ranges.
 Files you touch after posting land in a trailing "Since your review" layer
 until you re-post.
 
@@ -353,6 +354,7 @@ Decisions: ${LAYERS.decisions}.
 Shape: ${LAYERS.shape}
 
 Output: {"ok":true,"layers":4,"next_step":"…"}
+        {"ok":true,"layers":4,"uncovered":[{"path":"src/a.ts","ranges":["88-95"]},{"path":"src/b.ts"}],"next_step":"…"}
         {"ok":true,"suggested":true,"next_step":"…"}
 
 Examples:

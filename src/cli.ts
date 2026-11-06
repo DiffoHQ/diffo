@@ -36,6 +36,7 @@ import {
   guideInherit,
   guideNudge,
   layersNudge,
+  layersUncoveredStep,
   ownPrAsk,
   POLL_NOW,
   POLL_NOW_FOREGROUND,
@@ -59,7 +60,7 @@ import {
 } from './serverLifecycle.js'
 import { apiUrl, reviewUrl } from './serverUrl.js'
 import { postRegisterHint, refreshInstalledSkills, runSetup } from './setup.js'
-import { parseLayersInput } from './shared/layers.js'
+import { parseLayersInput, type UncoveredRef } from './shared/layers.js'
 import type { Layers, ReviewState } from './shared/review.js'
 import type { ChangesetSpec as CliSpec, PrInfo } from './shared/types.js'
 import { VERSION } from './version.js'
@@ -728,12 +729,13 @@ if (command.kind === 'layers') {
   const { status, body } = await postJson(port, '/api/review/layers', { items: parsed.items })
   if (status === 400) fail(`layers: ${(body as { error?: string } | null)?.error ?? 'rejected'}`)
   if (status !== 200) fail(`layers failed (${status})`)
-  const { layers } = body as { layers: Layers }
+  const { layers, uncovered = [] } = body as { layers: Layers; uncovered?: UncoveredRef[] }
   console.log(
     JSON.stringify({
       ok: true,
       layers: layers.items.length,
-      next_step: ACK_NEXT_STEP.layers,
+      ...(uncovered.length > 0 ? { uncovered } : {}),
+      next_step: uncovered.length > 0 ? layersUncoveredStep(uncovered) : ACK_NEXT_STEP.layers,
     }),
   )
   process.exit(0)

@@ -1,7 +1,7 @@
 import { type ReactElement, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { ReviewThread } from '../../shared/review.js'
 import type { FileChange, FileStatus } from '../../shared/types.js'
-import { isFileViewed } from '../fileMarks.js'
+import { fileMarks, isFileViewed } from '../fileMarks.js'
 import { fileAnchor, glideTo } from '../hooks.js'
 import { isTestFile } from '../reviewFilter.js'
 import type { ThreadItem } from '../threads.js'
@@ -83,11 +83,13 @@ export function FileRow({
   file,
   depth,
   done,
+  partly = false,
   current,
   threads,
   wantsYou = 0,
   changed = false,
   note,
+  part,
   onPick,
   onToggleViewed,
   onAsk,
@@ -95,12 +97,18 @@ export function FileRow({
   file: FileChange
   depth: number
   done: boolean
+  /** Some of its marks are read and some are not — a file split across steps
+   * with one part read. The box shows the folder roll-up's mixed state. */
+  partly?: boolean
   current: boolean
   threads?: ReviewThread[]
   wantsYou?: number
   changed?: boolean
   /** The agent's one line on why this file is in its layer — the row's tooltip. */
   note?: string
+  /** The file is split across steps: `2 of 5 hunks` under a layer, `steps 1 · 3`
+   * on the Files tab. Absent for a file that reads whole in one place. */
+  part?: string
   onPick?: () => void
   onToggleViewed?: () => void
   onAsk?: () => void
@@ -130,13 +138,15 @@ export function FileRow({
         type="button"
         className="row-box"
         role="checkbox"
-        aria-checked={done}
+        aria-checked={done ? true : partly ? 'mixed' : false}
         aria-label={`${done ? 'Mark not reviewed' : 'Mark reviewed'}: ${file.path}`}
-        data-tip={done ? 'Mark not reviewed' : 'Mark reviewed'}
+        data-tip={
+          done ? 'Mark not reviewed' : partly ? 'Part read · mark reviewed' : 'Mark reviewed'
+        }
         disabled={!onToggleViewed}
         onClick={onToggleViewed}
       >
-        <MarkBox state={done} />
+        <MarkBox state={done ? true : partly ? 'mixed' : false} />
       </button>
       <button
         type="button"
@@ -165,6 +175,11 @@ export function FileRow({
           <span className={`row-base${file.status === 'deleted' ? ' row-base-del' : ''}`}>
             {basename(file.path)}
           </span>
+          {part && (
+            <span className="row-part" title="this file is split across steps">
+              {part}
+            </span>
+          )}
         </span>
       </button>
       <span className="row-right">
@@ -225,6 +240,11 @@ export interface FileTreeProps {
   changed?: ReadonlySet<string>
   /** The agent's one line on a file, by path — a layer's notes, as row tooltips. */
   notes?: ReadonlyMap<string, string>
+  /** A short label after the name of a file split across steps, by path. */
+  parts?: ReadonlyMap<string, string>
+  /** What a file's read mark is made of here, when not its own hunks: under a
+   * layer that holds part of a file, that part alone. */
+  marksFor?: (file: FileChange) => readonly string[]
   /** Every folder open, whatever was folded: while a filter narrows the tree, a
    * shut folder would hide the very match the reviewer typed for. */
   forceOpen?: boolean
@@ -249,23 +269,43 @@ export function FileTree({
   attention,
   changed,
   notes,
+  parts,
+  marksFor,
   forceOpen = false,
 }: FileTreeProps) {
   const [shut, setShut] = useState<ReadonlySet<string>>(new Set())
-  const isDone = useCallback((file: FileChange) => isFileViewed(file, viewed), [viewed])
+  const isDone = useCallback(
+    (file: FileChange) =>
+      marksFor
+        ? viewed !== undefined && marksFor(file).every((m) => viewed.has(m))
+        : isFileViewed(file, viewed),
+    [viewed, marksFor],
+  )
   const tree = useMemo(() => buildTree(files), [files])
 
+  const isPartly = useCallback(
+    (file: FileChange) => {
+      if (viewed === undefined) return false
+      const marks = marksFor ? marksFor(file) : fileMarks(file)
+      let seen = 0
+      for (const m of marks) if (viewed.has(m)) seen++
+      return seen > 0 && seen < marks.length
+    },
+    [viewed, marksFor],
+  )
   const fileRow = (file: FileChange, depth: number) => (
     <FileRow
       key={file.path}
       file={file}
       depth={depth}
       done={isDone(file)}
+      partly={isPartly(file)}
       current={selectedPath === file.path}
       threads={threads?.get(file.path)}
       wantsYou={(attention?.get(file.path) ?? []).filter((i) => i.turn === 'yours').length}
       changed={changed?.has(file.path) ?? false}
       note={notes?.get(file.path)}
+      part={parts?.get(file.path)}
       onPick={onPickFile ? () => onPickFile(file.path) : undefined}
       onToggleViewed={onToggleFileViewed ? () => onToggleFileViewed(file.path) : undefined}
       onAsk={onAskFile ? () => onAskFile(file.path) : undefined}
@@ -359,6 +399,7 @@ export function Nav({
   threads,
   attention,
   changed,
+  parts,
   query: sharedQuery,
   onQuery,
   focusTick = 0,
@@ -368,7 +409,7 @@ export function Nav({
   onHideTests,
   onlyChanged = false,
   onOnlyChanged,
-}: Omit<FileTreeProps, 'notes' | 'forceOpen'> & {
+}: Omit<FileTreeProps, 'notes' | 'marksFor' | 'forceOpen'> & {
   /** The typed filter is review-wide state, not the rail's: the pane narrows by the
    * same word (`useReviewFilter`), so the tree stays a map of what the pane shows. */
   query?: string
@@ -466,6 +507,7 @@ export function Nav({
           threads={threads}
           attention={attention}
           changed={changed}
+          parts={parts}
           forceOpen={filtering}
         />
         {visible.length === 0 && hiddenByFilters === 0 && (

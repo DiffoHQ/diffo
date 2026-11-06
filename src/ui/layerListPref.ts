@@ -1,7 +1,7 @@
 import { useCallback, useState } from 'react'
 import type { FileChange } from '../shared/types.js'
 import { treeOrder } from './components/Nav.js'
-import type { ResolvedLayer } from './layers.js'
+import type { ResolvedLayer, ResolvedLayerFile } from './layers.js'
 
 /**
  * The order the reading pane walks a layer's files in: the agent's, as it
@@ -33,11 +33,17 @@ function storeLayerList(kind: LayerListKind) {
   }
 }
 
-/** A layer's files in the picked order. `order` is `layer.files` as posted;
+/** A layer's entries in the picked order. `order` is `layer.files` as posted;
  * `tree` is the rail's tree flattened, the order the Files tab reads in. */
+export function layerReadEntries(layer: ResolvedLayer, kind: LayerListKind): ResolvedLayerFile[] {
+  if (kind !== 'tree') return layer.files
+  const byPath = new Map(layer.files.map((e) => [e.file.path, e]))
+  return treeOrder(layer.files.map((f) => f.file)).map((f) => byPath.get(f.path)!)
+}
+
+/** The same, as files: what the pane renders. */
 export function layerReadOrder(layer: ResolvedLayer, kind: LayerListKind): FileChange[] {
-  const files = layer.files.map((f) => f.file)
-  return kind === 'tree' ? treeOrder(files) : files
+  return layerReadEntries(layer, kind).map((e) => e.file)
 }
 
 export function useLayerList(): [LayerListKind, (kind: LayerListKind) => void] {
