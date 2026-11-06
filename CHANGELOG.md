@@ -7,6 +7,10 @@ Until 1.0, minor versions may break things. When they do, the entry says how to 
 
 ## [Unreleased]
 
+Nothing yet.
+
+## [0.21.0] — 2026-11-06
+
 ### Added
 
 - **A file can be split across layers.** A layer file is still a path, the
@@ -910,7 +914,8 @@ shipped in it, written as a starting point rather than a history.
 - **Guided reading** — splitting a large change into an ordered sequence of small,
   reviewable sections — is designed but not built.
 
-[Unreleased]: https://github.com/DiffoHQ/diffo/compare/v0.20.0...HEAD
+[Unreleased]: https://github.com/DiffoHQ/diffo/compare/v0.21.0...HEAD
+[0.21.0]: https://github.com/DiffoHQ/diffo/compare/v0.20.0...v0.21.0
 [0.20.0]: https://github.com/DiffoHQ/diffo/compare/v0.19.0...v0.20.0
 [0.19.0]: https://github.com/DiffoHQ/diffo/compare/v0.18.2...v0.19.0
 [0.18.2]: https://github.com/DiffoHQ/diffo/compare/v0.18.1...v0.18.2
