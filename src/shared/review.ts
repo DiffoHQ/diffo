@@ -359,9 +359,10 @@ export interface DecisionAt {
 
 /**
  * A file in a layer: the path, or the path with a one-line note on why it is
- * in this step. Stored as the agent sent it. A `path:from-to` range is accepted
- * by the parser and ignored in v1 — reserved so a big file can be split later
- * without a protocol change; `layerFilePath` strips it.
+ * in this step. Stored as the agent sent it. The path may carry a head-side
+ * line range, `path:from-to` (or `path:line`): then the entry is the hunks
+ * that range touches, not the whole file, and the same path may appear in
+ * other layers with other ranges. A bare path is the whole file, every hunk.
  */
 export type LayerFile = string | { path: string; note?: string }
 
@@ -370,10 +371,32 @@ export interface Layers {
   postedAt: string
 }
 
-/** The path a layer file names, without the reserved `:from-to` range. */
+/** A head-side line range on a layer file, inclusive, 1-based. */
+export interface LineRange {
+  from: number
+  to: number
+}
+
+const RANGE_SUFFIX = /:(\d+)(?:-(\d+))?$/
+
+/** The entry as the agent wrote it: `path` or `path:from-to`. */
+export function layerFileRef(file: LayerFile): string {
+  return typeof file === 'string' ? file : file.path
+}
+
+/** The path a layer file names, without any `:from-to` range. */
 export function layerFilePath(file: LayerFile): string {
-  const raw = typeof file === 'string' ? file : file.path
-  return raw.replace(/:\d+-\d+$/, '')
+  return layerFileRef(file).replace(RANGE_SUFFIX, '')
+}
+
+/** The range a layer file carries, or null for a whole-file entry. A single
+ * `:line` is the one-line range. */
+export function layerFileRange(file: LayerFile): LineRange | null {
+  const m = RANGE_SUFFIX.exec(layerFileRef(file))
+  if (!m) return null
+  const from = Number.parseInt(m[1]!, 10)
+  const to = m[2] === undefined ? from : Number.parseInt(m[2], 10)
+  return { from, to }
 }
 
 export function layerFileNote(file: LayerFile): string | undefined {

@@ -3,16 +3,21 @@ import type { Layers, ReviewThread } from '../shared/review.js'
 import type { FileChange, Hunk } from '../shared/types.js'
 import { fileMark } from './fileMarks.js'
 import {
+  entryMarks,
+  entryViewed,
   findDescription,
   findGuide,
   hideLayerFiles,
+  layerByHunk,
   layerByPath,
   layerDone,
   layerKey,
   layerLineStats,
   layerLinkHref,
   layerProgress,
+  layersByPath,
   linkPaths,
+  outlineHasRanges,
   parseLayerLink,
   resolveLayers,
   SINCE_TITLE,
@@ -120,14 +125,139 @@ describe('resolveLayers', () => {
     expect(layerDone(out[0]!, new Set())).toBe(true)
   })
 
-  it('the reserved path:from-to form resolves to the whole file in v1', () => {
+  describe('a path:from-to entry holds the hunks its lines touch', () => {
+    // src/big.ts shows three hunks on the head side: 10-14, 40-42, 88-90.
+    const spanned = (path: string, n: number, newStart: number, count: number): Hunk => ({
+      id: `${path}#${n}`,
+      path,
+      oldStart: newStart,
+      newStart,
+      lines: Array.from({ length: count }, (_, i) => ({
+        kind: 'add' as const,
+        oldNo: null,
+        newNo: newStart + i,
+        text: '',
+      })),
+    })
+    const big: FileChange = {
+      ...file('src/big.ts'),
+      hunks: [
+        spanned('src/big.ts', 1, 10, 5),
+        spanned('src/big.ts', 2, 40, 3),
+        spanned('src/big.ts', 3, 88, 3),
+      ],
+    }
     const out = resolveLayers(
       layers([
-        { id: 'a', title: 'Slice', files: ['src/parse.ts:1-40', { path: 'src/cli.ts:2-3' }] },
+        { id: 'a', title: 'Contract', files: ['src/big.ts:10-14', 'src/cli.ts'] },
+        { id: 'b', title: 'Consumers', files: [{ path: 'src/big.ts:41-41', note: 'the call' }] },
       ]),
-      FILES,
+      [big, ...FILES],
     )
-    expect(paths(out[0]!.files)).toEqual(['src/parse.ts', 'src/cli.ts'])
+
+    it('each step shows its part, flagged partial, with the note; whole files are not partial', () => {
+      const [a, b] = out
+      expect(a!.files.map((f) => [f.file.path, f.hunks.map((h) => h.id), f.partial])).toEqual([
+        ['src/big.ts', ['src/big.ts#1'], true],
+        ['src/cli.ts', ['src/cli.ts#1'], false],
+      ])
+      expect(b!.files[0]).toMatchObject({ note: 'the call', partial: true })
+      expect(b!.files[0]!.hunks.map((h) => h.id)).toEqual(['src/big.ts#2'])
+    })
+
+    it('the hunks no range claimed land in the derived layer, as a partial entry', () => {
+      const since = out.at(-1)!
+      expect(since.derived).toBe(true)
+      const rest = since.files.find((f) => f.file.path === 'src/big.ts')!
+      expect(rest.partial).toBe(true)
+      expect(rest.hunks.map((h) => h.id)).toEqual(['src/big.ts#3'])
+      // Unlisted files are there whole, as before.
+      expect(since.files.find((f) => f.file.path === 'README.md')).toMatchObject({ partial: false })
+    })
+
+    it('progress and size count the entry’s hunks, not the file’s', () => {
+      const a = out[0]!
+      expect(layerProgress(a, new Set())).toEqual({
+        files: 2,
+        doneFiles: 0,
+        marks: 2,
+        doneMarks: 0,
+      })
+      const read = new Set(['src/big.ts#1'])
+      expect(layerProgress(a, read)).toMatchObject({ doneFiles: 1, doneMarks: 1 })
+      expect(layerDone(a, new Set(['src/big.ts#1', 'src/cli.ts#1']))).toBe(true)
+      // Reading the other steps' hunks does nothing here.
+      expect(layerProgress(a, new Set(['src/big.ts#2', 'src/big.ts#3']))).toMatchObject({
+        doneMarks: 0,
+      })
+      expect(layerLineStats(a)).toEqual({ additions: 5, deletions: 0 })
+      expect(entryMarks(a.files[0]!)).toEqual(['src/big.ts#1'])
+      expect(entryViewed(a.files[0]!, read)).toBe(true)
+    })
+
+    it('a range the code moved from under is reported missing, by its range', () => {
+      const drifted = resolveLayers(
+        layers([{ id: 'a', title: 'Contract', files: ['src/big.ts:500-520', 'src/big.ts:10-10'] }]),
+        [big],
+      )
+      // One of two ranges still lands: the entry stands and nothing is missing.
+      expect(drifted[0]!.files[0]!.hunks.map((h) => h.id)).toEqual(['src/big.ts#1'])
+      expect(drifted[0]!.missing).toEqual([])
+      const gone = resolveLayers(
+        layers([{ id: 'a', title: 'Contract', files: ['src/big.ts:500-520'] }]),
+        [big],
+      )
+      expect(gone[0]!.files).toEqual([])
+      expect(gone[0]!.missing).toEqual(['src/big.ts:500-520'])
+      // The whole file is then in the derived layer.
+      expect(gone[1]!.files[0]).toMatchObject({ partial: false })
+    })
+
+    it('a ranged entry whose ranges cover every hunk is simply the whole file', () => {
+      const all = resolveLayers(layers([{ id: 'a', title: 'All', files: ['src/big.ts:1-100'] }]), [
+        big,
+      ])
+      expect(all[0]!.files[0]!.partial).toBe(false)
+      expect(all).toHaveLength(1)
+    })
+
+    it('the split switch off: every range is ignored and the file is whole in each step', () => {
+      const whole = resolveLayers(
+        layers([
+          { id: 'a', title: 'Contract', files: ['src/big.ts:10-14', 'src/cli.ts'] },
+          { id: 'b', title: 'Consumers', files: [{ path: 'src/big.ts:41-41', note: 'the call' }] },
+        ]),
+        [big, ...FILES],
+        { wholeFiles: true },
+      )
+      expect(whole[0]!.files[0]).toMatchObject({ partial: false })
+      expect(whole[0]!.files[0]!.hunks).toHaveLength(3)
+      expect(whole[1]!.files[0]).toMatchObject({ partial: false, note: 'the call' })
+      // Nothing of big.ts is left for the derived layer.
+      expect(whole.at(-1)!.files.some((f) => f.file.path === 'src/big.ts')).toBe(false)
+      expect(outlineHasRanges(layers([{ id: 'a', title: 'A', files: ['src/big.ts:10-14'] }]))).toBe(
+        true,
+      )
+      expect(outlineHasRanges(layers([{ id: 'a', title: 'A', files: ['src/big.ts'] }]))).toBe(false)
+      expect(outlineHasRanges(undefined)).toBe(false)
+    })
+
+    it('layerByHunk and layersByPath know where each part reads', () => {
+      const byHunk = layerByHunk(out)
+      expect(byHunk.get('src/big.ts#1')!.title).toBe('Contract')
+      expect(byHunk.get('src/big.ts#2')!.title).toBe('Consumers')
+      expect(byHunk.get('src/big.ts#3')!.derived).toBe(true)
+      expect(
+        layersByPath(out)
+          .get('src/big.ts')!
+          .map((l) => l.title),
+      ).toEqual(['Contract', 'Consumers', SINCE_TITLE])
+      expect(
+        layersByPath(out)
+          .get('src/cli.ts')!
+          .map((l) => l.title),
+      ).toEqual(['Contract'])
+    })
   })
 
   it('a path listed twice in one layer counts once; across layers it appears in both', () => {

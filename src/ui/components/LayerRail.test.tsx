@@ -164,7 +164,7 @@ describe('LayerRail', () => {
     expect(rows()[2]!.querySelector('.ch-fold')).toBeNull()
     // The roll-up marks what is shown; a hidden file is excluded, not read.
     fireEvent.click(rows()[1]!.querySelector('[role="checkbox"]')!)
-    expect(onMarkFiles).toHaveBeenCalledWith(['src/weekday.ts'])
+    expect(onMarkFiles).toHaveBeenCalledWith(['src/weekday.ts'], expect.anything())
   })
 
   it('the leading mark is the directory control: mark what is unread, clear when all read', () => {
@@ -182,7 +182,7 @@ describe('LayerRail', () => {
       />,
     )
     fireEvent.click(screen.getByLabelText('Mark 1 file in Weekday resolution reviewed'))
-    expect(onMarkFiles).toHaveBeenCalledWith(['src/weekday.ts'])
+    expect(onMarkFiles).toHaveBeenCalledWith(['src/weekday.ts'], expect.anything())
     cleanup()
     render(
       <LayerRail
@@ -195,7 +195,7 @@ describe('LayerRail', () => {
       />,
     )
     fireEvent.click(screen.getByLabelText('Mark Weekday resolution not reviewed'))
-    expect(onClearFiles).toHaveBeenCalledWith(['src/dates.ts', 'src/weekday.ts'])
+    expect(onClearFiles).toHaveBeenCalledWith(['src/dates.ts', 'src/weekday.ts'], expect.anything())
   })
 
   it('files start folded, the active layer included; the chevron opens and shuts them', () => {
@@ -241,7 +241,7 @@ describe('LayerRail', () => {
     expect(names()).toEqual(['src', 'dates.ts', 'weekday.ts'])
     // The folder's box is the same roll-up the Files tab has.
     fireEvent.click(screen.getByLabelText('Mark 2 files in src reviewed'))
-    expect(onMarkFiles).toHaveBeenCalledWith(['src/dates.ts', 'src/weekday.ts'])
+    expect(onMarkFiles).toHaveBeenCalledWith(['src/dates.ts', 'src/weekday.ts'], expect.anything())
     // The trailing layer's root file needs no folder: it sits at the top level.
     fireEvent.click(screen.getByLabelText('Show the files in Since your review'))
     expect(names().slice(3)).toEqual(['README.md'])

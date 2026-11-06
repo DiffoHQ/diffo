@@ -2055,7 +2055,7 @@ body {
   align-items: center;
   justify-content: center;
   flex-wrap: wrap;
-  gap: var(--s-2) var(--s-5);
+  gap: var(--s-2) 20px;
   margin-top: var(--s-4);
   font-size: var(--t-125);
   color: var(--ink-2);
@@ -5873,7 +5873,7 @@ select.input {
 .fin-cov-status {
   display: flex;
   flex-wrap: wrap;
-  gap: var(--s-2) var(--s-5);
+  gap: var(--s-2) 20px;
   font-size: var(--t-125);
   color: var(--ink-2);
 }
@@ -7171,12 +7171,20 @@ i.q-now {
 .ch-head-order {
   display: flex;
   align-items: center;
-  gap: var(--s-3);
+  flex-wrap: wrap;
+  gap: var(--s-2) 20px;
   margin-top: 14px;
   padding-top: 12px;
   border-top: 1px solid var(--hair-2);
   font-size: var(--t-12);
   color: var(--ink-3);
+}
+
+/* One pick: its words and its chips, kept together when the line wraps. */
+.ch-head-pick {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s-3);
 }
 
 .ch-order-seg {
@@ -9295,4 +9303,114 @@ i.q-now {
 .voice-state {
   color: var(--ink-3);
   font-size: var(--t-12);
+}
+
+/* ---------- a file split across steps ----------
+   Under a layer that holds part of a file, the header says how much, the
+   hunks that read elsewhere fold into one row per run, and Whole file opens
+   everything. The row wears the gap band's clothes: the same idea, folded
+   code, with a reason in place of a line count. */
+.file-part {
+  flex: 0 0 auto;
+  padding: 3px var(--s-2);
+  border-radius: var(--r-pill);
+  background: var(--hair-2);
+  color: var(--ink-3);
+  font-size: var(--t-11);
+  font-family: var(--sans);
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.file-whole[aria-pressed="true"] {
+  color: var(--ink);
+  border-color: var(--ink-3);
+}
+
+.hunk-elsewhere {
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+  min-height: 27px;
+  padding: 0 var(--s-3) 0 var(--s-2);
+  border-top: 1px solid var(--hair);
+  background: var(--hair-2);
+  font-family: var(--mono);
+  font-size: var(--t-11);
+  color: var(--ink-3);
+}
+
+.hunk-elsewhere-open {
+  border-bottom: 1px dashed var(--hair);
+}
+
+.elsewhere-toggle,
+.elsewhere-go {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 4px;
+  border: 0;
+  border-radius: var(--r-sm);
+  background: none;
+  font: inherit;
+  color: inherit;
+  cursor: pointer;
+}
+
+.elsewhere-toggle:hover,
+.elsewhere-go:hover {
+  background: var(--paper);
+  color: var(--ink);
+}
+
+.elsewhere-toggle:focus-visible,
+.elsewhere-go:focus-visible {
+  outline: 2px solid var(--exp-ink);
+  outline-offset: 1px;
+}
+
+.elsewhere-go {
+  color: var(--ink-2);
+  text-decoration: underline;
+  text-decoration-color: var(--hair);
+  text-underline-offset: 3px;
+}
+
+span.elsewhere-go {
+  cursor: default;
+  text-decoration: none;
+}
+
+.hunk-elsewhere-body > .hunk {
+  opacity: 0.72;
+}
+
+.hunk-elsewhere-body > .hunk:hover,
+.hunk-elsewhere-body > .hunk.hunk-selected {
+  opacity: 1;
+}
+
+.elsewhere-tag {
+  display: flex;
+  align-items: center;
+  min-height: 24px;
+  padding: 0 var(--s-3) 0 var(--s-2);
+  border-top: 1px solid var(--hair);
+  background: var(--hair-2);
+  font-family: var(--mono);
+  font-size: var(--t-11);
+  color: var(--ink-3);
+}
+
+.row-part {
+  flex: 0 0 auto;
+  padding: 1px 5px;
+  border-radius: var(--r-pill);
+  background: var(--hair-2);
+  color: var(--ink-3);
+  font-family: var(--sans);
+  font-size: 10px;
+  font-weight: 600;
+  white-space: nowrap;
 }

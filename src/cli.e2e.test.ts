@@ -196,6 +196,23 @@ describe.skipIf(!existsSync(cliPath))('diffo binary (e2e smoke)', () => {
       ok: true,
       layers: 1,
     })
+    expect(posted.stdout).not.toContain('uncovered')
+    // A post that misses a hunk is accepted, and the ack says what to re-post.
+    const partial = await run([
+      'layers',
+      '--json',
+      JSON.stringify([{ title: 'The constant', files: ['app.ts:500-510'] }]),
+    ])
+    expect(partial.code).toBe(0)
+    const partialAck = JSON.parse(partial.stdout) as {
+      uncovered: { path: string; ranges?: string[] }[]
+      next_step: string
+    }
+    expect(partialAck.uncovered).toHaveLength(1)
+    expect(partialAck.uncovered[0]!.path).toBe('app.ts')
+    expect(partialAck.uncovered[0]!.ranges).toHaveLength(1)
+    expect(partialAck.next_step).toContain(`app.ts:${partialAck.uncovered[0]!.ranges![0]}`)
+    expect(partialAck.next_step).toContain('re-post')
     const piped = await run(
       ['layers', '--stdin'],
       JSON.stringify([

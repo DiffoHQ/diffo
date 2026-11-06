@@ -7,7 +7,22 @@ Until 1.0, minor versions may break things. When they do, the entry says how to 
 
 ## [Unreleased]
 
-Nothing yet.
+### Added
+
+- **A file can be split across layers.** A layer file is still a path, the
+  whole file — and now `path:from-to` (head-side lines) gives a step only the
+  hunks those lines touch, for a file whose hunks belong to different steps.
+  The ask lists every file with its hunks' ranges, so a split is a copied
+  range; a path listed whole in one layer and by range in another is refused.
+  In the pane the file's header says **3 of 7 hunks**, the other hunks fold
+  into one row per run naming the step they read in (open it in place, or go
+  there), **Whole file** opens everything, and **Viewed** marks the step's
+  hunks alone. The rail counts *1 split* and the row reads *3 of 7 hunks*; the
+  Files tab says *steps 1 · 3*. The card's last line switches the split off,
+  reading every such file whole in each of its steps; the pick is remembered. Hunks no step claims land in *Since your
+  review* like unlisted files, and the post's ack names them (`uncovered`)
+  with a next step that asks for a re-post. `diffo help layers` and
+  [Layers](https://diffohq.github.io/diffo/agents#layers) have the shape.
 
 ## [0.20.0] — 2026-11-03
 

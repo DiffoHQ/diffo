@@ -16,6 +16,7 @@ import {
 } from '../gaps.js'
 import { fileAnchor } from '../hooks.js'
 import type { LayerListKind } from '../layerListPref.js'
+import type { LayerSplitKind } from '../layerSplitPref.js'
 import { linkPaths, type RefLinks, type ResolvedDecision, refClickTarget } from '../layers.js'
 import { EMPTY_DELTA, type LiveDelta } from '../liveDelta.js'
 import { usePr } from '../prMode.js'
@@ -119,6 +120,89 @@ export interface LayerView {
    * card is where it shows because the card is where a layer starts. Absent
    * when there is nothing to order (one file or none). */
   reading?: { kind: LayerListKind; onPick: (kind: LayerListKind) => void }
+  /** Whether a file the agent split across steps reads as parts or whole,
+   * and the switch. Review-wide like `reading`; present only while the
+   * outline splits something, so the row never offers a choice with no
+   * effect. */
+  split?: { kind: LayerSplitKind; onPick: (kind: LayerSplitKind) => void }
+  /** The files this layer holds only part of, by path: which hunks read here,
+   * and where each of the others reads. Absent when every file is whole. */
+  parts?: ReadonlyMap<string, FilePart>
+  /** Go to another layer — the step a folded run of hunks belongs to. */
+  onGoLayer?: (index: number) => void
+}
+
+/** Where a hunk that is not this layer's reads instead. */
+export interface ElsewhereStep {
+  /** Index into the outline, for `onGoLayer`. */
+  index: number
+  title: string
+  /** 1-based, or null for the derived trailing layer. */
+  number: number | null
+}
+
+/**
+ * A file the active layer holds part of. The pane shows `shown` and folds the
+ * rest into one row per run, named for the step it reads in; the file's
+ * Viewed, and its dim, are `shown`'s alone.
+ */
+export interface FilePart {
+  shown: ReadonlySet<string>
+  elsewhere: ReadonlyMap<string, ElsewhereStep>
+}
+
+function stepName(step: ElsewhereStep): string {
+  return step.number === null ? step.title : `step ${step.number} · ${step.title}`
+}
+
+/**
+ * The row standing in for hunks that read in another step: one per run of
+ * them, where they sit in the file. The count opens them in place; the step
+ * name goes there. It wears the gap band's clothes because it is the same
+ * idea — code that is here, folded — with a reason instead of a line count.
+ */
+function ElsewhereRow({
+  count,
+  step,
+  open,
+  onToggle,
+  onGo,
+}: {
+  count: number
+  step: ElsewhereStep
+  open: boolean
+  onToggle: () => void
+  onGo?: () => void
+}) {
+  const where = stepName(step)
+  return (
+    <div className={`hunk-elsewhere${open ? ' hunk-elsewhere-open' : ''}`}>
+      <button
+        type="button"
+        className="elsewhere-toggle"
+        aria-expanded={open}
+        title={open ? 'Fold them again' : 'Show them here, dimmed'}
+        onClick={onToggle}
+      >
+        <span className={`chevron${open ? '' : ' chevron-shut'}`}>
+          <Icon name="chev" size="sm" />
+        </span>
+        {count} {count === 1 ? 'hunk' : 'hunks'} in
+      </button>
+      {onGo ? (
+        <button
+          type="button"
+          className="elsewhere-go"
+          title={`Read them in ${where}`}
+          onClick={onGo}
+        >
+          {where}
+        </button>
+      ) : (
+        <span className="elsewhere-go">{where}</span>
+      )}
+    </div>
+  )
 }
 
 function LayerHead({
@@ -247,43 +331,83 @@ function LayerHead({
           )}
         </div>
       )}
-      {/* The order the files below come in, as one phrase: the words, then
-          the two orders as chips with the live one lit — both states in view,
-          nothing to decode, and the label touching what it labels. The pick
-          is review-wide; here is where it is felt. */}
-      {layer.reading && !emptied && (
+      {/* The reviewer's two picks, one line: the order the files below come in,
+          and how a split file reads. Each is a phrase — the words, then the
+          choices as chips with the live one lit — so both states are in view
+          and nothing needs decoding. Both picks are review-wide; here is
+          where they are felt. The line wraps on a narrow pane. */}
+      {(layer.reading || layer.split) && !emptied && (
         <div className="ch-head-order">
-          <span className="ch-head-order-cap" id={`ch-order-${layer.id ?? 'since'}`}>
-            Read the files in
-          </span>
-          <span
-            className="src-seg ch-order-seg"
-            role="radiogroup"
-            aria-labelledby={`ch-order-${layer.id ?? 'since'}`}
-          >
-            {/* biome-ignore lint/a11y/useSemanticElements: styled chips; a native radio cannot carry this treatment */}
-            <button
-              type="button"
-              role="radio"
-              className="src-chip"
-              aria-checked={layer.reading.kind !== 'tree'}
-              data-tip="The order the agent outlined this layer in"
-              onClick={() => layer.reading!.onPick('order')}
-            >
-              the agent’s order
-            </button>
-            {/* biome-ignore lint/a11y/useSemanticElements: styled chips; a native radio cannot carry this treatment */}
-            <button
-              type="button"
-              role="radio"
-              className="src-chip"
-              aria-checked={layer.reading.kind === 'tree'}
-              data-tip="By folder, the way the Files tab lists them"
-              onClick={() => layer.reading!.onPick('tree')}
-            >
-              folder order
-            </button>
-          </span>
+          {layer.reading && (
+            <span className="ch-head-pick">
+              <span className="ch-head-order-cap" id={`ch-order-${layer.id ?? 'since'}`}>
+                Read the files in
+              </span>
+              <span
+                className="src-seg ch-order-seg"
+                role="radiogroup"
+                aria-labelledby={`ch-order-${layer.id ?? 'since'}`}
+              >
+                {/* biome-ignore lint/a11y/useSemanticElements: styled chips; a native radio cannot carry this treatment */}
+                <button
+                  type="button"
+                  role="radio"
+                  className="src-chip"
+                  aria-checked={layer.reading.kind !== 'tree'}
+                  data-tip="The order the agent outlined this layer in"
+                  onClick={() => layer.reading!.onPick('order')}
+                >
+                  the agent’s order
+                </button>
+                {/* biome-ignore lint/a11y/useSemanticElements: styled chips; a native radio cannot carry this treatment */}
+                <button
+                  type="button"
+                  role="radio"
+                  className="src-chip"
+                  aria-checked={layer.reading.kind === 'tree'}
+                  data-tip="By folder, the way the Files tab lists them"
+                  onClick={() => layer.reading!.onPick('tree')}
+                >
+                  folder order
+                </button>
+              </span>
+            </span>
+          )}
+          {layer.split && (
+            <span className="ch-head-pick ch-head-split">
+              <span className="ch-head-order-cap" id={`ch-split-${layer.id ?? 'since'}`}>
+                Files in several steps
+              </span>
+              <span
+                className="src-seg ch-order-seg"
+                role="radiogroup"
+                aria-labelledby={`ch-split-${layer.id ?? 'since'}`}
+              >
+                {/* biome-ignore lint/a11y/useSemanticElements: styled chips; a native radio cannot carry this treatment */}
+                <button
+                  type="button"
+                  role="radio"
+                  className="src-chip"
+                  aria-checked={layer.split.kind !== 'whole'}
+                  data-tip="A file split across steps shows only this step's hunks; the rest fold into a row naming their step"
+                  onClick={() => layer.split!.onPick('parts')}
+                >
+                  this step’s hunks
+                </button>
+                {/* biome-ignore lint/a11y/useSemanticElements: styled chips; a native radio cannot carry this treatment */}
+                <button
+                  type="button"
+                  role="radio"
+                  className="src-chip"
+                  aria-checked={layer.split.kind === 'whole'}
+                  data-tip="A file split across steps shows whole in every step that lists it, marked once"
+                  onClick={() => layer.split!.onPick('whole')}
+                >
+                  the whole file
+                </button>
+              </span>
+            </span>
+          )}
         </div>
       )}
       {/* The step's own conversation: only there when there is one, or one is
@@ -386,6 +510,9 @@ function FileHeader({
   commentCount = 0,
   sinceCount = 0,
   note,
+  part,
+  whole = false,
+  onToggleWhole,
   onComment,
   onToggleFileViewed,
 }: {
@@ -394,6 +521,11 @@ function FileHeader({
   collapsed?: boolean
   onToggle?: () => void
   commentCount?: number
+  /** The layer holds part of this file: the chip says how much, Viewed marks
+   * that part, and **Whole file** opens the rest. */
+  part?: FilePart
+  whole?: boolean
+  onToggleWhole?: () => void
   /** Hunks the agent changed since the last Finish and still unread — said once
    * here, as a count; the hunks themselves carry only the bar. */
   sinceCount?: number
@@ -416,7 +548,9 @@ function FileHeader({
       else if (line.kind === 'del') deletions++
     }
   }
-  const allViewed = isFileViewed(file, viewed)
+  const allViewed = part
+    ? viewed !== undefined && [...part.shown].every((id) => viewed.has(id))
+    : isFileViewed(file, viewed)
   const cut = file.path.lastIndexOf('/')
   const statusWord = STATUS_WORD[file.status]
   const stop = (e: React.MouseEvent) => e.stopPropagation()
@@ -457,6 +591,14 @@ function FileHeader({
             : `${sinceCount} ${sinceCount === 1 ? 'hunk' : 'hunks'}`}
         </span>
       )}
+      {part && (
+        <span
+          className="file-part"
+          title={`this step reads ${part.shown.size} of the file's ${file.hunks.length} hunks; the others belong to other steps`}
+        >
+          {part.shown.size} of {file.hunks.length} hunks
+        </span>
+      )}
       {note && (
         <span className="ch-file-note" title={note}>
           {note}
@@ -485,6 +627,25 @@ function FileHeader({
           {deletions > 0 && <span className="stat-del">−{deletions}</span>}
         </span>
       )}
+      {part && onToggleWhole && (
+        <button
+          type="button"
+          className="file-preview-btn file-whole"
+          aria-pressed={whole}
+          title={
+            whole
+              ? 'Back to this step’s hunks'
+              : 'Show the whole file: every hunk, with all the lines between'
+          }
+          onClick={(e) => {
+            stop(e)
+            onToggleWhole()
+          }}
+        >
+          <Icon name={whole ? 'fold' : 'unfold'} size="sm" />
+          Whole file
+        </button>
+      )}
       {canPreviewMarkdown(file) && (
         <button
           type="button"
@@ -505,7 +666,7 @@ function FileHeader({
           type="button"
           className="file-viewed-toggle"
           aria-pressed={allViewed}
-          title="mark this whole file read"
+          title={part ? 'mark this step’s hunks read' : 'mark this whole file read'}
           onClick={(e) => {
             stop(e)
             onToggleFileViewed()
@@ -674,6 +835,34 @@ function useGapExpansion(file: FileChange) {
       return { ...prev, exp, failed }
     })
 
+  // The whole file at once: one read of the head side, every gap fully open.
+  const expandAll = async () => {
+    if (gaps.length === 0) return
+    let headLines = live.headLines
+    if (headLines === null) {
+      try {
+        const rev = file.rev ? `&rev=${encodeURIComponent(file.rev)}` : ''
+        const res = await fetch(`/api/file?path=${encodeURIComponent(file.path)}&side=head${rev}`)
+        if (!res.ok) throw new Error(`/api/file → ${res.status}`)
+        const text = await res.text()
+        headLines = text.endsWith('\n') ? text.slice(0, -1).split('\n') : text.split('\n')
+      } catch {
+        return
+      }
+    }
+    const got = headLines
+    setState((prev) => {
+      if (prev.fingerprint !== fingerprint) return prev
+      const exp = new Map(prev.exp)
+      for (const gap of gaps) exp.set(gap.key, { fromTop: gapSize(gap), fromBottom: 0 })
+      return { ...prev, headLines: got, exp, failed: new Set() }
+    })
+  }
+  const collapseAll = () =>
+    setState((prev) =>
+      prev.fingerprint !== fingerprint ? prev : { ...prev, exp: new Map(), failed: new Set() },
+    )
+
   // Memoized against the state object: without this, every render would rebuild the
   // expanded-line arrays, and HunkCard's tokenizer effect would retrigger forever.
   const visible = useMemo(() => {
@@ -702,7 +891,38 @@ function useGapExpansion(file: FileChange) {
     }
   }
 
-  return { gaps, visible, controlsFor }
+  return { gaps, visible, controlsFor, expandAll, collapseAll }
+}
+
+/** One run of consecutive hunks that read in the same other step. */
+interface ForeignRun {
+  /** The first hunk's id: rotates with an edit, like every hunk-keyed state. */
+  key: string
+  step: ElsewhereStep
+  hunks: Hunk[]
+}
+
+/**
+ * The file's hunks that are not this layer's, grouped into runs: consecutive
+ * hunks that belong to the same step fold into one row, so a file with its
+ * middle in another step shows one row, not one per hunk.
+ */
+function foreignRuns(file: FileChange, part: FilePart): ForeignRun[] {
+  const runs: ForeignRun[] = []
+  let current: ForeignRun | null = null
+  for (const hunk of file.hunks) {
+    const step = part.elsewhere.get(hunk.id)
+    if (!step) {
+      current = null
+      continue
+    }
+    if (current && current.step.index === step.index) current.hunks.push(hunk)
+    else {
+      current = { key: hunk.id, step, hunks: [hunk] }
+      runs.push(current)
+    }
+  }
+  return runs
 }
 
 export function FileBody({
@@ -714,6 +934,9 @@ export function FileBody({
   onCloseComposer,
   stub = null,
   onLoadDiff,
+  part,
+  whole = false,
+  onGoLayer,
 }: {
   file: FileChange
   delta: LiveDelta
@@ -724,10 +947,36 @@ export function FileBody({
   /** Render a click-to-load stub instead of the diff (large / generated file). */
   stub?: StubReason | null
   onLoadDiff?: () => void
+  /** The layer holds part of this file: show those hunks, fold the rest. */
+  part?: FilePart
+  /** The reviewer asked for the whole file: every hunk, every gap open. */
+  whole?: boolean
+  onGoLayer?: (index: number) => void
 }) {
   // Deleted files have no head side to read context from; everything else expands.
   const expandable = file.status !== 'deleted' && file.kind === 'text'
-  const { gaps, visible, controlsFor } = useGapExpansion(file)
+  const { gaps, visible, controlsFor, expandAll, collapseAll } = useGapExpansion(file)
+  // Runs of other steps' hunks the reviewer opened in place, by the id of the
+  // first hunk in the run. An edit rotates the ids, and the run folds again.
+  const [openRuns, setOpenRuns] = useState<ReadonlySet<string>>(new Set())
+  const selectedId = handlers.selectedId
+  // A jump into a folded run — a thread, a decision, a `path:line` — opens it:
+  // the landing must be on screen.
+  useEffect(() => {
+    if (!part || selectedId == null || !part.elsewhere.has(selectedId)) return
+    const runs = foreignRuns(file, part)
+    const run = runs.find((r) => r.hunks.some((h) => h.id === selectedId))
+    if (run && !openRuns.has(run.key)) setOpenRuns((prev) => new Set(prev).add(run.key))
+  }, [part, selectedId, file, openRuns])
+  // Whole file: open every gap on the way in, fold them on the way out. Only
+  // on the change, so the reviewer's own expansions are left alone otherwise.
+  const wholeWas = useRef(whole)
+  useEffect(() => {
+    if (wholeWas.current === whole) return
+    wholeWas.current = whole
+    if (whole) void expandAll()
+    else collapseAll()
+  })
   const comments = handlers.comments
   const fileThreads = comments?.partition.byFile.get(file.path) ?? []
   const base = file.path.slice(file.path.lastIndexOf('/') + 1)
@@ -812,8 +1061,14 @@ export function FileBody({
   // The dim is a file-level verdict, not a hunk-level one. While anything in the
   // file is still unread — a fresh round from the agent, or a first pass mid-file —
   // the ticked hunks around it are the context the unread ones are judged by, so
-  // everything renders at full strength. Only a settled file fades.
-  const fileViewed = isFileViewed(file, handlers.viewed)
+  // everything renders at full strength. Only a settled file fades. Under a
+  // layer that holds part of the file, "the file" is that part.
+  const fileViewed = part
+    ? handlers.viewed !== undefined && [...part.shown].every((id) => handlers.viewed!.has(id))
+    : isFileViewed(file, handlers.viewed)
+  const runs = part ? foreignRuns(file, part) : []
+  const runByFirst = new Map(runs.map((r) => [r.hunks[0]!.id, r]))
+  const inRun = new Set(runs.flatMap((r) => r.hunks.slice(1).map((h) => h.id)))
   // A gap sits between two hunks: its band lives on the boundary of the hunk below
   // it, its expand-down lines glue to the tail of the hunk above it.
   const gapAboveHunk = new Map<number, Gap>()
@@ -830,14 +1085,33 @@ export function FileBody({
       {file.hunks.map((hunk: Hunk, i: number) => {
         const above = expandable ? gapAboveHunk.get(i) : undefined
         const below = expandable ? gapBelowHunk.get(i) : undefined
-        return (
+        // Another step's hunk: folded into its run's row, or shown dimmed
+        // under it once the row is open (always, for the whole file).
+        const foreign = part?.elsewhere.get(hunk.id)
+        const run = runByFirst.get(hunk.id)
+        const open = whole || (run !== undefined && openRuns.has(run.key))
+        if (foreign && !open) {
+          if (!run) return null
+          return (
+            <ElsewhereRow
+              key={`run:${run.key}`}
+              count={run.hunks.length}
+              step={run.step}
+              open={false}
+              onToggle={() => setOpenRuns((prev) => new Set(prev).add(run.key))}
+              onGo={onGoLayer ? () => onGoLayer(run.step.index) : undefined}
+            />
+          )
+        }
+        if (foreign && inRun.has(hunk.id) && !whole && !open) return null
+        const card = (
           <HunkCard
             key={hunk.id}
             hunk={hunk}
             fresh={delta.freshHunkIds.has(hunk.id)}
             changedSinceReview={sinceReview?.has(hunk.id) ?? false}
             changedSinceViewed={delta.changedViewedHunkIds.has(hunk.id)}
-            viewed={fileViewed}
+            viewed={foreign ? (handlers.viewed?.has(hunk.id) ?? false) : fileViewed}
             selected={handlers.selectedId === hunk.id}
             onSelect={handlers.onSelect}
             viewMode={handlers.viewMode ?? 'unified'}
@@ -852,6 +1126,49 @@ export function FileBody({
             composeRequested={comments?.composeHunkId === hunk.id}
             onComposeHandled={comments?.onComposeHandled}
           />
+        )
+        if (!foreign) return card
+        // The first hunk of an open run carries the row that folds it again;
+        // the rest of the run follows with its own tag.
+        const owner = run ?? runs.find((r) => r.hunks.some((h) => h.id === hunk.id))
+        return (
+          <div
+            key={`${hunk.id}:elsewhere`}
+            className="hunk-elsewhere-body"
+            data-step={foreign.index}
+          >
+            {run && !whole && owner && (
+              <ElsewhereRow
+                count={run.hunks.length}
+                step={run.step}
+                open
+                onToggle={() =>
+                  setOpenRuns((prev) => {
+                    const next = new Set(prev)
+                    next.delete(run.key)
+                    return next
+                  })
+                }
+                onGo={onGoLayer ? () => onGoLayer(run.step.index) : undefined}
+              />
+            )}
+            {(whole || !run) && (
+              <div className="elsewhere-tag" title="this hunk reads in another step">
+                {onGoLayer ? (
+                  <button
+                    type="button"
+                    className="elsewhere-go"
+                    onClick={() => onGoLayer(foreign.index)}
+                  >
+                    {stepName(foreign)}
+                  </button>
+                ) : (
+                  <span className="elsewhere-go">{stepName(foreign)}</span>
+                )}
+              </div>
+            )}
+            {card}
+          </div>
         )
       })}
       {expandable && tailGap && <GapBand gap={controlsFor(tailGap)} />}
@@ -890,6 +1207,12 @@ export function ReadingPane({
   // Files whose stubbed diff the reviewer asked to see. Selection also opens a
   // stub durably: keyboard navigation must never land on a hunk with no DOM.
   const [diffLoaded, setDiffLoaded] = useState<ReadonlySet<string>>(new Set())
+  // Files the reviewer opened whole under a layer that holds part of them.
+  // Session state: a layer change is a new place, and the fold is the default.
+  const [wholeFiles, setWholeFiles] = useState<ReadonlySet<string>>(new Set())
+  const layerId = layer?.id
+  // biome-ignore lint/correctness/useExhaustiveDependencies: the layer change is the trigger
+  useEffect(() => setWholeFiles(new Set()), [layerId])
   const selectedId = handlers.selectedId
   useEffect(() => {
     if (!selectedId) return
@@ -1259,11 +1582,13 @@ export function ReadingPane({
           sinceReview === undefined
             ? 0
             : file.hunks.reduce((n, h) => n + (sinceReview.has(h.id) ? 1 : 0), 0)
+        const part = layer?.parts?.get(file.path)
+        const whole = part !== undefined && wholeFiles.has(file.path)
         return (
           <section
             key={file.path}
             id={fileAnchor(file.path)}
-            className={`file-section${isCollapsed ? ' file-section-collapsed' : ''}`}
+            className={`file-section${isCollapsed ? ' file-section-collapsed' : ''}${part ? ' file-section-part' : ''}`}
           >
             <FileHeader
               file={file}
@@ -1273,6 +1598,19 @@ export function ReadingPane({
               commentCount={fileThreadCount + hunkThreadCount}
               sinceCount={sinceCount}
               note={layer?.notes.get(file.path)}
+              part={part}
+              whole={whole}
+              onToggleWhole={
+                part
+                  ? () =>
+                      setWholeFiles((prev) => {
+                        const next = new Set(prev)
+                        if (next.has(file.path)) next.delete(file.path)
+                        else next.add(file.path)
+                        return next
+                      })
+                  : undefined
+              }
               onToggleFileViewed={
                 handlers.onToggleFileViewed
                   ? () => handlers.onToggleFileViewed!(file.path)
@@ -1297,6 +1635,9 @@ export function ReadingPane({
                 onCloseComposer={() => setFileComposerFor(null)}
                 stub={stub}
                 onLoadDiff={() => setDiffLoaded((prev) => new Set(prev).add(file.path))}
+                part={part}
+                whole={whole}
+                onGoLayer={layer?.onGoLayer}
               />
             )}
           </section>

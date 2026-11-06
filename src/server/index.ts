@@ -7,7 +7,12 @@ import { stream, streamSSE } from 'hono/streaming'
 import { SRC_STAMP } from '../devStamp.js'
 import type { ForgeClient, PrRef, ReviewEvent } from '../forge/types.js'
 import { findHunk, translateHunkAnchor } from '../shared/anchors.js'
-import { parseLayersInput, parseSuggestReason } from '../shared/layers.js'
+import {
+  describeUncovered,
+  parseLayersInput,
+  parseSuggestReason,
+  uncoveredByLayers,
+} from '../shared/layers.js'
 import {
   type Anchor,
   type Coverage,
@@ -546,7 +551,11 @@ export function createApp(
     // The post answers a standing request, if there was one: "Outlining…" gives
     // way to the outline, and the agent is back in the re-poll grace.
     queue?.layersPosted()
-    return c.json({ layers })
+    // What the outline leaves in no layer, against the changeset as it stands:
+    // the agent hears it in the ack and re-posts, rather than the reviewer
+    // finding it under "Since your review".
+    const uncovered = store ? uncoveredByLayers(layers.items, store.get().files) : []
+    return c.json({ layers, uncovered: uncovered.map(describeUncovered) })
   })
 
   // The reviewer's click — Outline, or refresh over an outline that has gone

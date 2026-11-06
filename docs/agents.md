@@ -210,6 +210,7 @@ Two commands, one doctrine:
 | **Order** | The order you would explain it, not the order you wrote it: the file that explains the rest first, mechanical consequences last. For a feature, follow the request from entry point to effect; for a refactor, contract first, then consumers |
 | **Mechanical** | `"kind": "mechanical"` marks a layer that changes no behaviour (a rename, call sites following a signature); its files render folded. If unsure, don't tag |
 | **Summaries** | What the layer is about, and enough context to review it: the part its files cannot show on their own. No template: the agent writes it however the step reads best, kept short, without retelling the diff. The guide's line holds verbatim: orient reading, never pre-review |
+| **Files** | A file is its path: the whole file, every hunk. When a file's hunks belong to different steps, each step lists the part it owns as `path:from-to` (head-side lines; the ask lists every file with its hunks' ranges, so a split is a copied range), in every step that has a part of it, never whole in one step and by range in another. Most files stay whole. Every hunk of the changeset belongs in some layer: the post's ack reports any it leaves out, and the fix is a re-post with them placed |
 | **Diagrams** | When the step has a shape (a flow, a decision, a before/after), a small ```` ```mermaid ```` diagram usually beats prose. Nodes are tagged `:::new` / `:::changed` with the guide's two classDef lines |
 | **Decisions** | Up to five per layer, each one short line (under eight words) with a one-sentence `detail` and an `at`, where it lives: `path`, `path:line` or `path:from-to`, or a list of up to three such places when the decision spans hunks (the rule and the test that pins it). A decision is where the agent chose between real alternatives a reviewer might weigh differently (a cache, a data shape, a fallback), where the code now does something the diff does not make obvious (a 400 where there was an empty list, a sort every caller sees), or where something in the repo or the environment shaped the change (no clock on the model, tests that could not run). Only what a reviewer could want done differently or would be surprised by later; nothing about naming or style; no verdicts. Each line is a concrete statement in plain words, the answer to "what did you decide here?" for a teammate who has not seen the code, understood in a second: no project nicknames, no clever phrasing, the effect rather than the mechanism. Most layers have none — a plumbing step has nothing to decide, so the list is left out |
 
@@ -222,7 +223,8 @@ A layer:
   "kind": "mechanical",            // optional, only when nothing changes behaviour
   "files": [
     "src/weekday.ts",
-    { "path": "src/dates.ts", "note": "delegates to resolveWeekday; the old arithmetic goes" }
+    { "path": "src/dates.ts", "note": "delegates to resolveWeekday; the old arithmetic goes" },
+    "src/routes.ts:40-62"          // part of a file: the hunks these head-side lines touch
   ],
   "decisions": [                   // optional, at most five
     {
@@ -245,10 +247,18 @@ for each place that goes there, and `Comment`, which opens a comment on the
 layer with the decision quoted: a layer thread, in the payload like any other,
 opening with `> decision: …`.
 
-Files are whole files, by path relative to the repo root. A `path:from-to` form
-is accepted and reserved; in this version it means the whole file. Unknown paths
-are accepted too, since the file may land later, and simply show nothing until
-it does.
+Files are listed by path relative to the repo root. A bare path is the whole
+file; `path:from-to` is the hunks those head-side lines touch, for a file whose
+hunks belong to different steps — the same path then appears in each step with
+its own range, and the reviewer sees in each step only that part, with the rest
+folded under the name of the step it reads in. A path listed whole in one
+layer and by range in another is refused. Unknown paths are accepted, since
+the file may land later, and simply show nothing until they do.
+
+The ack names what the outline left out: `{ "ok": true, "layers": 4,
+"uncovered": [{ "path": "src/a.ts", "ranges": ["88-95"] }, { "path": "src/b.ts" }],
+"next_step": "…" }`. The outline is live regardless, with the leftovers under
+*Since your review*; the next step is a re-post with them placed.
 
 The rules that make a post safe to repeat:
 
@@ -258,7 +268,9 @@ The rules that make a post safe to repeat:
 - **Resolution happens at render.** Layers are re-resolved against the live
   changeset on every refresh. A file the agent touches after posting lands in a
   derived trailing layer, *Since your review*, which is never stored; the agent
-  absorbs it by re-posting. A renamed file lands there too, under its new name.
+  absorbs it by re-posting. A renamed file lands there too, under its new name,
+  and so do the hunks of a split file that no range touches any more — a
+  range is lines, and an edit above it moves them.
 - **Marks stay on hunks.** Progress per layer is the same coverage Finish review
   reports, so a re-post cannot lose a read mark.
 - A suggestion is cleared by the post that answers it, and refused once layers
