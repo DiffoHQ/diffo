@@ -7,7 +7,14 @@ Until 1.0, minor versions may break things. When they do, the entry says how to 
 
 ## [Unreleased]
 
-Nothing yet.
+### Added
+
+- **Patch files are highlighted in the language they patch.** In a `.patch` or
+  `.diff`, each line's code past its `+`/`-`/` ` marker is highlighted as the
+  file it targets — named by the `---`/`+++`, `diff --git` or `Index:` headers,
+  or, in a hunk with no header in view, by the patch's own name
+  (`foo.cc.patch` reads as C++). Headers and markers keep the diff colours; a
+  patch with no known target falls back to the diff grammar.
 
 ## [0.21.0] — 2026-11-06
 

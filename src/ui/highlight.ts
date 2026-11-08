@@ -1,4 +1,5 @@
 import type { HighlighterCore, ThemedToken } from 'shiki/core'
+import { patchRuns, targetFromPatchName } from './patch.js'
 
 const LANG_BY_EXT: Record<string, string> = {
   ts: 'typescript',
@@ -46,6 +47,8 @@ const LANG_BY_EXT: Record<string, string> = {
   php: 'php',
   xml: 'xml',
   dockerfile: 'docker',
+  patch: 'diff',
+  diff: 'diff',
 }
 
 type LangModule = { default: Parameters<HighlighterCore['loadLanguage']>[0] }
@@ -64,6 +67,7 @@ const LOADERS: Record<string, () => Promise<LangModule>> = {
   cpp: () => import('shiki/langs/cpp.mjs'),
   csharp: () => import('shiki/langs/csharp.mjs'),
   css: () => import('shiki/langs/css.mjs'),
+  diff: () => import('shiki/langs/diff.mjs'),
   docker: () => import('shiki/langs/docker.mjs'),
   gn: () => import('shiki/langs/gn.mjs'),
   go: () => import('shiki/langs/go.mjs'),
@@ -150,17 +154,84 @@ export async function tokenizeLines(
     const highlighter = await getHighlighter()
     await loadLang(highlighter, lang)
     if (!highlighter.getLoadedLanguages().includes(lang)) return null
-    const result = highlighter.codeToTokensBase(lines.join('\n'), {
-      lang: lang as never,
-      theme: dark ? 'github-dark' : 'github-light',
-      // Scope names ride along so the hover layer can tell a name from a comment,
-      // a string or a keyword without parsing anything itself.
-      includeExplanation: 'scopeName',
-    })
-    return result
+    if (lang === 'diff') return await tokenizePatch(highlighter, lines, path, dark)
+    return tokenize(highlighter, lines, lang, dark)
   } catch {
     return null
   }
+}
+
+function tokenize(
+  highlighter: HighlighterCore,
+  lines: string[],
+  lang: string,
+  dark: boolean,
+): LineTokens[] {
+  return highlighter.codeToTokensBase(lines.join('\n'), {
+    lang: lang as never,
+    theme: dark ? 'github-dark' : 'github-light',
+    // Scope names ride along so the hover layer can tell a name from a comment,
+    // a string or a keyword without parsing anything itself.
+    includeExplanation: 'scopeName',
+  })
+}
+
+/** A language for code inside a patch: a patch of a patch reads as plain diff. */
+function codeLangForPath(path: string): string | null {
+  const lang = langForPath(path)
+  return lang === 'diff' ? null : lang
+}
+
+/** A patch line's marker, in the diff grammar's colour, ahead of its code. */
+function withMarker(line: string, code: LineTokens, asDiff: LineTokens | undefined): LineTokens {
+  if (line === '') return code
+  const marker = line[0]!
+  const prefix: ThemedToken = {
+    content: marker,
+    offset: 0,
+    color: asDiff?.[0]?.color,
+    explanation: [
+      {
+        content: marker,
+        scopes: [{ scopeName: 'punctuation.definition.patch', themeMatches: [] }],
+      },
+    ],
+  }
+  return [prefix, ...code]
+}
+
+/**
+ * A patch reads in two grammars: headers and markers in the diff grammar, and
+ * each line's code — past its `+`/`-`/` ` — in the language of the file it
+ * targets.
+ */
+async function tokenizePatch(
+  highlighter: HighlighterCore,
+  lines: string[],
+  path: string,
+  dark: boolean,
+): Promise<LineTokens[]> {
+  const asDiff = tokenize(highlighter, lines, 'diff', dark)
+  const target = targetFromPatchName(path)
+  const runs = patchRuns(lines, target ? codeLangForPath(target) : null, codeLangForPath)
+  await Promise.all([...new Set(runs.map((r) => r.lang))].map((l) => loadLang(highlighter, l)))
+
+  const result = asDiff.slice()
+  for (const run of runs) {
+    if (!highlighter.getLoadedLanguages().includes(run.lang)) continue
+    // Old last, so context lines take the old side's tokens, as HunkCard does.
+    for (const side of [run.new, run.old]) {
+      const code = tokenize(
+        highlighter,
+        side.map((i) => lines[i]!.slice(1)),
+        run.lang,
+        dark,
+      )
+      for (const [k, i] of side.entries())
+        result[i] = withMarker(lines[i]!, code[k] ?? [], asDiff[i])
+    }
+  }
+  return result
 }
 
 /** Scopes whose text is never a hoverable name: prose, literals, syntax. A scope
