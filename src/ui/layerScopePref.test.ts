@@ -8,15 +8,17 @@ afterEach(() => {
 })
 
 describe('useLayerScope', () => {
-  it('is parts until chosen, and an unknown stored value is parts too', () => {
-    expect(renderHook(() => useLayerScope()).result.current[0]).toBe('parts')
+  it('is lines until chosen, and an unknown stored value is lines too', () => {
+    expect(renderHook(() => useLayerScope()).result.current[0]).toBe('highlights')
     localStorage.setItem('diffo:ui:layerSplit', 'sideways')
-    expect(renderHook(() => useLayerScope()).result.current[0]).toBe('parts')
+    expect(renderHook(() => useLayerScope()).result.current[0]).toBe('highlights')
   })
 
-  it('keeps a whole-file pick made with the two-way switch', () => {
+  it('keeps a pick made with the two-way switch, either way', () => {
     localStorage.setItem('diffo:ui:layerSplit', 'whole')
     expect(renderHook(() => useLayerScope()).result.current[0]).toBe('whole')
+    localStorage.setItem('diffo:ui:layerSplit', 'parts')
+    expect(renderHook(() => useLayerScope()).result.current[0]).toBe('parts')
   })
 
   it('remembers each pick across mounts', () => {

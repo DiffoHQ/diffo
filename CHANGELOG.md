@@ -17,10 +17,16 @@ Until 1.0, minor versions may break things. When they do, the entry says how to 
   layers is refused, naming the lines and layers — so a file listed whole in
   two layers must now be split between them.
 
-- **One Show pick on the layer card.** *Files in several steps* is now part of
-  **Show · only highlights | this step's hunks | the whole file**, which offers
-  only the options that change something in the step. A whole-file pick
-  carries over.
+- **One Show pick on the layer card.** *Files in several steps* is now
+  **Show this layer changed · lines | hunks | files**, narrowest first, one
+  for each way the agent can split a file. *Lines*, the default, is the
+  step's hunks with its highlighted lines lit and the rest dimmed; *hunks* is
+  the same hunks plain; *files* is every hunk of its files, other steps'
+  dimmed and tagged. The pick is a view only: **Viewed** marks the step's
+  part under all three, where *the whole file* used to mark a split file
+  once. All three are always on the card; one that would show just what
+  *hunks* does in this step is greyed, and its tooltip says why. A pick made
+  with the old switch carries over.
 
 - **Unrelated changes are no longer one hunk.** git joins two changes into one
   hunk whenever their three lines of context overlap; Diffo now splits them
@@ -37,10 +43,10 @@ Until 1.0, minor versions may break things. When they do, the entry says how to 
   file, and the ask now has the agent highlight by default. A highlighted
   entry holds only the hunks its highlight lights, so a hunk several steps
   share is listed in each with its own lines lit, and an unrelated hunk leaves
-  the step. The pane lights those lines and dims the rest; *only highlights* on the
-  layer card's **Show** folds the rest away, keeping two lines of context
-  around each highlight. A file listed without a highlight is the step's
-  throughout and lights in full.
+  the step. Under *lines* on the layer card's **Show**, the default, the
+  pane keeps those lines in full colour and greys the rest of the hunk. A
+  file listed without a highlight is the step's throughout and lights in
+  full.
   **Viewed** on a highlighted file marks its highlighted lines rather than
   its hunks, so finishing one step no longer ticks another step that shares
   the hunk; a hunk is read once all its changed lines are.

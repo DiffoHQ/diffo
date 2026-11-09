@@ -76,11 +76,16 @@ reads *3 of 7 hunks*; its mark is that part's. On the Files tab the file
 says *steps 1 · 3* after its name, and its mark is the whole file's, mixed
 while one part is read and the other is not.
 
-Rather read whole files? Beside the reading order on the card, **Show**
-offers *the whole file* next to *this step's hunks*. There the agent's ranges
-and highlights stop splitting anything: a split file is a whole file in every
-step that lists it, marked once. One pick for the whole review, remembered
-across reviews.
+How much of each file you see is yours to pick. Beside the reading order on
+the card, **Show this layer changed** offers *lines | hunks | files*,
+narrowest first, one for each way the agent can split a file. *Hunks* is
+what's above: the step's hunks, plain. *Files* shows every hunk of each file,
+other steps' hunks too, dimmed and tagged with their step, in place of the
+folded rows. *Lines*, the default, is the step's hunks with the lines the
+agent highlighted lit and the rest dimmed (next section). It changes only
+what you see — **Viewed** still marks this step's part. A pick that would
+show the same as *hunks* in a step is greyed, and its tooltip says why. One
+pick for the whole review, remembered across reviews.
 
 Nothing can hide in the split. Every changed line belongs to exactly one
 step. A line no step claims lands in *Since your review*, lit, like a file no
@@ -90,19 +95,16 @@ outline that claims a line in two steps is refused.
 
 ## Highlighted lines
 
-The agent points at the lines each step is about. In the pane those lines
-carry an amber bar in the gutter and the rest of the file's lines step back,
-so a hunk several steps share reads differently in each. A hunk the step
-highlights nothing in is not part of it: it folds under the name of the step
-that does highlight it, like a split file's other hunks. A file the step
-lists without a highlight is the step's throughout, and lights in full.
-
-On a step that highlights something, **Show** on the layer card adds a
-narrower option: *only highlights | this step's hunks | the whole file*.
-*Only highlights* keeps two lines of context around each highlight, dimmed,
-and folds the rest into a row that counts what it hides. Comments on folded
-lines stay in view. A changed line no step claims is still read, lit, under
-*Since your review*. *The whole file* brings every hunk back, still lit.
+The agent points at the lines each step is about. Under **Show this layer
+changed · lines**, the default, those lines keep the diff's full colour and
+the rest of the hunk steps back, grey — every line still there, so a hunk
+several steps share reads differently in each. A hunk the step highlights
+nothing in is not part of it: it folds under the name of the step that does
+highlight it, like a split file's other hunks. A file the step lists without
+a highlight is the step's throughout, and lights in full. *Hunks* and *files*
+show the same hunks plain; in a step the agent highlighted nothing in,
+*lines* is greyed. A changed line no step claims is still read, lit, under
+*Since your review*.
 
 **Viewed** under a step that highlights a file marks its highlighted lines,
 not its hunks: reading one step's lines of a shared hunk leaves the other

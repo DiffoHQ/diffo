@@ -258,8 +258,8 @@ layer and by range in another is refused. Unknown paths are accepted, since
 the file may land later, and simply show nothing until they do.
 
 A `highlight` on a file object lights those head-side lines in the pane and
-dims the rest of the file's lines; the reviewer can fold everything outside
-the highlight away with *Show · only highlights* on the layer card. The entry
+dims the rest of the hunk (*Show this layer changed · lines* on the layer
+card, the default; *hunks* shows the hunk plain). The entry
 then holds only the hunks its highlight lights a changed line in, within its
 range if it has one, and claims those changed lines; a file or hunk listed
 without a highlight claims all of its changed lines. Each changed line belongs

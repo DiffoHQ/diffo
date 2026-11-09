@@ -120,13 +120,13 @@ export interface LayerView {
    * card is where it shows because the card is where a layer starts. Absent
    * when there is nothing to order (one file or none). */
   reading?: { kind: LayerListKind; onPick: (kind: LayerListKind) => void }
-  /** How much of the step's files shows, and the switch. Review-wide like
-   * `reading`. `offers` holds only the scopes that change something here —
-   * highlights when the step has some, the whole file when the outline splits
-   * one — and the row is absent when that leaves only this step's hunks. */
+  /** How much of the step's files shows — its lines, its hunks, or its
+   * files whole — and the switch. Review-wide like `reading`, and a view
+   * only. `unavailable` greys the picks that would show just what hunks does
+   * in this step; the pane reads them as hunks. */
   scope?: {
     kind: LayerScopeKind
-    offers: readonly LayerScopeKind[]
+    unavailable: readonly LayerScopeKind[]
     onPick: (kind: LayerScopeKind) => void
   }
   /** The files this layer holds only part of, by path: which hunks read here,
@@ -137,7 +137,9 @@ export interface LayerView {
   /** The read marks of each file this layer reads only part of — some hunks,
    * or highlighted lines (`entryMarks`). The file's Viewed and dim are these. */
   marks?: ReadonlyMap<string, readonly string[]>
-  /** The lines the agent highlighted in this step, by path. Absent when none. */
+  /** The lines this layer is about, by path: the agent's highlights, or every
+   * changed line of a file it highlighted nothing in. Lit only under the
+   * "lines" pick. Absent when the layer highlights nothing. */
   highlights?: ReadonlyMap<string, readonly LineRange[]>
 }
 
@@ -173,41 +175,63 @@ function stepViewed(
 
 const SCOPE_CHIPS: Record<LayerScopeKind, { label: string; tip: string }> = {
   highlights: {
-    label: 'only highlights',
-    tip: 'The lines the agent highlighted for this step, with two lines around each; the rest fold into a counted row',
+    label: 'lines',
+    tip: "This layer's hunks with the lines the agent highlighted lit and the rest dimmed; a file it highlighted nothing in lights throughout",
   },
   parts: {
-    label: 'this step’s hunks',
-    tip: "Every line of the hunks this step claims, the highlighted ones lit; a split file's other hunks fold into a row naming their step",
+    label: 'hunks',
+    tip: "The hunks this layer changed, plain; a shared file's other hunks fold into a row naming their layer",
   },
   whole: {
-    label: 'the whole file',
-    tip: 'A file split across steps shows whole in every step that lists it, marked once',
+    label: 'files',
+    tip: "Every hunk of each file in this layer, other layers' hunks too, dimmed and tagged with their layer",
   },
 }
 
+/** Why a pick is greyed in this layer: it would show just what hunks does. */
+const SCOPE_UNAVAILABLE: Partial<Record<LayerScopeKind, string>> = {
+  highlights:
+    'Not available in this layer: the agent highlighted no lines here, so there is nothing to light within its hunks',
+  whole:
+    'Not available in this layer: no file here has changes in other layers, so files shows the same as hunks',
+}
+
+const SCOPE_ORDER: readonly LayerScopeKind[] = ['highlights', 'parts', 'whole']
+
+/** The pick the pane acts on: the reviewer's, unless this step greys it. */
+function shownScope(scope: LayerView['scope']): LayerScopeKind {
+  if (!scope) return 'parts'
+  return scope.unavailable.includes(scope.kind) ? 'parts' : scope.kind
+}
+
 function ScopePick({ id, scope }: { id: string; scope: NonNullable<LayerView['scope']> }) {
-  const live = scope.offers.includes(scope.kind) ? scope.kind : 'parts'
+  const live = shownScope(scope)
   return (
     <span className="ch-head-pick ch-head-scope">
       <span className="ch-head-order-cap" id={`ch-scope-${id}`}>
-        Show
+        Show this layer changed
       </span>
       <span className="src-seg ch-order-seg" role="radiogroup" aria-labelledby={`ch-scope-${id}`}>
-        {scope.offers.map((kind) => (
-          // biome-ignore lint/a11y/useSemanticElements: styled chips; a native radio cannot carry this treatment
-          <button
-            key={kind}
-            type="button"
-            role="radio"
-            className="src-chip"
-            aria-checked={kind === live}
-            data-tip={SCOPE_CHIPS[kind].tip}
-            onClick={() => scope.onPick(kind)}
-          >
-            {SCOPE_CHIPS[kind].label}
-          </button>
-        ))}
+        {SCOPE_ORDER.map((kind) => {
+          // aria-disabled, not disabled: a disabled button gets no hover, and
+          // the tooltip saying why is the point.
+          const off = scope.unavailable.includes(kind)
+          return (
+            // biome-ignore lint/a11y/useSemanticElements: styled chips; a native radio cannot carry this treatment
+            <button
+              key={kind}
+              type="button"
+              role="radio"
+              className="src-chip"
+              aria-checked={kind === live}
+              aria-disabled={off || undefined}
+              data-tip={off ? SCOPE_UNAVAILABLE[kind] : SCOPE_CHIPS[kind].tip}
+              onClick={off ? undefined : () => scope.onPick(kind)}
+            >
+              {SCOPE_CHIPS[kind].label}
+            </button>
+          )
+        })}
       </span>
     </span>
   )
@@ -965,9 +989,9 @@ export function FileBody({
   part,
   marks,
   whole = false,
+  allHunks = false,
   onGoLayer,
   highlight,
-  onlyHighlighted = false,
 }: {
   file: FileChange
   delta: LiveDelta
@@ -983,9 +1007,11 @@ export function FileBody({
   marks?: readonly string[]
   /** The reviewer asked for the whole file: every hunk, every gap open. */
   whole?: boolean
+  /** Every hunk, other layers' too, shown in place and tagged; gaps stay as
+   * they are. The layer card's "files". */
+  allHunks?: boolean
   onGoLayer?: (index: number) => void
   highlight?: readonly LineRange[]
-  onlyHighlighted?: boolean
 }) {
   // Deleted files have no head side to read context from; everything else expands.
   const expandable = file.status !== 'deleted' && file.kind === 'text'
@@ -1121,7 +1147,7 @@ export function FileBody({
         // under it once the row is open (always, for the whole file).
         const foreign = part?.elsewhere.get(hunk.id)
         const run = runByFirst.get(hunk.id)
-        const open = whole || (run !== undefined && openRuns.has(run.key))
+        const open = whole || allHunks || (run !== undefined && openRuns.has(run.key))
         if (foreign && !open) {
           if (!run) return null
           return (
@@ -1158,7 +1184,6 @@ export function FileBody({
             composeRequested={comments?.composeHunkId === hunk.id}
             onComposeHandled={comments?.onComposeHandled}
             highlight={foreign ? undefined : highlight}
-            onlyHighlighted={onlyHighlighted}
           />
         )
         if (!foreign) return card
@@ -1171,7 +1196,7 @@ export function FileBody({
             className="hunk-elsewhere-body"
             data-step={foreign.index}
           >
-            {run && !whole && owner && (
+            {run && !whole && !allHunks && owner && (
               <ElsewhereRow
                 count={run.hunks.length}
                 step={run.step}
@@ -1186,7 +1211,7 @@ export function FileBody({
                 onGo={onGoLayer ? () => onGoLayer(run.step.index) : undefined}
               />
             )}
-            {(whole || !run) && (
+            {(whole || allHunks || !run) && (
               <div className="elsewhere-tag" title="this hunk reads in another step">
                 {onGoLayer ? (
                   <button
@@ -1559,6 +1584,10 @@ export function ReadingPane({
     />
   )
 
+  // The layer card's Show pick, as this layer can honour it: "lines" lights
+  // each file's highlighted lines, "files" shows every hunk of the file,
+  // other layers' too, in place.
+  const scope = shownScope(layer?.scope)
   const body = overview ? null : emptyChangeset ? (
     landed ? (
       <ReviewLanded {...landed} shape="full" />
@@ -1674,9 +1703,9 @@ export function ReadingPane({
                 part={part}
                 marks={marks}
                 whole={whole}
+                allHunks={scope === 'whole'}
                 onGoLayer={layer?.onGoLayer}
-                highlight={layer?.highlights?.get(file.path)}
-                onlyHighlighted={layer?.scope?.kind === 'highlights'}
+                highlight={scope === 'highlights' ? layer?.highlights?.get(file.path) : undefined}
               />
             )}
           </section>

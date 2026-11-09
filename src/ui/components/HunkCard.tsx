@@ -296,10 +296,9 @@ interface LineExtras {
   /** First row of each range thread — hosts the gutter glyph. */
   rangeStarts?: ReadonlySet<number>
   ranges?: (Range[] | null)[]
-  /** The rows the step's highlight lights; absent when the file has none, so
-   * nothing dims. */
+  /** The rows the layer's lines light (the card's "lines" view); absent when
+   * nothing lights, so nothing dims. */
   litRows?: ReadonlySet<number>
-  onlyLit?: boolean
 }
 
 /** The at-rest shape saying "a range conversation starts on this line" — a glyph
@@ -334,33 +333,6 @@ function isLit(litRows: ReadonlySet<number>, ...idxs: (number | undefined)[]): b
 function litClass(litRows: ReadonlySet<number> | undefined, ...idxs: (number | undefined)[]) {
   if (!litRows) return ''
   return isLit(litRows, ...idxs) ? ' line-lit' : ' line-unlit'
-}
-
-/** Unhighlighted rows kept on each side of a highlight when only highlights
- * show, so a lit line is never read without what surrounds it. */
-const HIGHLIGHT_CONTEXT = 2
-
-function nearShown(i: number, total: number, shown: (row: number) => boolean): boolean {
-  const from = Math.max(0, i - HIGHLIGHT_CONTEXT)
-  const to = Math.min(total - 1, i + HIGHLIGHT_CONTEXT)
-  for (let row = from; row <= to; row++) if (shown(row)) return true
-  return false
-}
-
-function darkRun(start: number, total: number, dark: (i: number) => boolean): number {
-  let end = start
-  while (end < total && dark(end)) end++
-  return end - start
-}
-
-function UnlitFold({ count }: { count: number }) {
-  return (
-    <tr className="line-unlit-fold">
-      <td colSpan={4}>
-        {count} {count === 1 ? 'line' : 'lines'} outside the highlight
-      </td>
-    </tr>
-  )
 }
 
 /** Left-button gutter presses start a drag; preventDefault keeps the browser from
@@ -411,12 +383,8 @@ function UnifiedLines({
   rangeRows,
   rangeStarts,
   litRows,
-  onlyLit = false,
   boundary,
 }: { lines: DiffLine[]; tokens: (LineTokens | null)[]; boundary?: ReactNode } & LineExtras) {
-  const shown = (i: number) => !!litRows?.has(i)
-  const folded = (i: number) =>
-    onlyLit && litRows !== undefined && !nearShown(i, lines.length, shown)
   return (
     <table className="hunk-lines">
       <tbody>
@@ -424,21 +392,6 @@ function UnifiedLines({
         {lines.map((line, i) => {
           const extra = extraFor?.(i)
           const down = gutterDown(onGutterDown, i)
-          if (folded(i)) {
-            return (
-              // biome-ignore lint/suspicious/noArrayIndexKey: the hunk is keyed by content, so its rows never reorder
-              <Fragment key={i}>
-                {(i === 0 || !folded(i - 1)) && (
-                  <UnlitFold count={darkRun(i, lines.length, folded)} />
-                )}
-                {extra && (
-                  <tr className={`thread-row${extraClass?.(i) ?? ''}`}>
-                    <td colSpan={4}>{extra}</td>
-                  </tr>
-                )}
-              </Fragment>
-            )
-          }
           return (
             // biome-ignore lint/suspicious/noArrayIndexKey: the hunk is keyed by content, so its rows never reorder
             <Fragment key={i}>
@@ -491,17 +444,9 @@ function SplitLines({
   rangeRows,
   rangeStarts,
   litRows,
-  onlyLit = false,
   boundary,
 }: { lines: DiffLine[]; tokens: (LineTokens | null)[]; boundary?: ReactNode } & LineExtras) {
   const rows = toSplitRows(lines)
-  const shown = (i: number) => {
-    const row = rows[i]
-    if (litRows === undefined || !row) return false
-    return isLit(litRows, row.left?.idx, row.right?.idx)
-  }
-  const folded = (i: number) =>
-    onlyLit && litRows !== undefined && !nearShown(i, rows.length, shown)
   // Each half is its own line, so a click focuses the half it landed on.
   const click = (idx: number | undefined) =>
     onRowClick && idx !== undefined ? () => onRowClick(idx) : undefined
@@ -540,17 +485,6 @@ function SplitLines({
               </td>
             </tr>
           )
-          if (folded(i)) {
-            return (
-              // biome-ignore lint/suspicious/noArrayIndexKey: the hunk is keyed by content, so its rows never reorder
-              <Fragment key={i}>
-                {(i === 0 || !folded(i - 1)) && (
-                  <UnlitFold count={darkRun(i, rows.length, folded)} />
-                )}
-                {threadRow}
-              </Fragment>
-            )
-          }
           return (
             // biome-ignore lint/suspicious/noArrayIndexKey: the hunk is keyed by content, so its rows never reorder
             <Fragment key={i}>
@@ -643,7 +577,6 @@ export function HunkCard({
   composeRequested = false,
   onComposeHandled,
   highlight,
-  onlyHighlighted = false,
 }: {
   hunk: Hunk
   fresh?: boolean
@@ -668,9 +601,8 @@ export function HunkCard({
   queuedOn?: ReadonlyMap<string, number>
   composeRequested?: boolean
   onComposeHandled?: () => void
-  /** The head-side lines the step is about: lit, and the rest dimmed. */
+  /** The head-side lines this layer is about: lit, and the rest dimmed. */
   highlight?: readonly LineRange[]
-  onlyHighlighted?: boolean
 }) {
   // The open composer's range (anchor + free edge) and a drag still in flight.
   // The drag's press-point becomes the anchor, so the steppers and shift-click
@@ -914,7 +846,6 @@ export function HunkCard({
           rangeRows={rangeRows}
           rangeStarts={rangeStarts}
           litRows={litRows}
-          onlyLit={onlyHighlighted}
           boundary={boundary}
         />
       ) : (
@@ -933,7 +864,6 @@ export function HunkCard({
           rangeRows={rangeRows}
           rangeStarts={rangeStarts}
           litRows={litRows}
-          onlyLit={onlyHighlighted}
           boundary={boundary}
         />
       )}

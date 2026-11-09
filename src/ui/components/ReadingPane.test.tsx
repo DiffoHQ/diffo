@@ -5,6 +5,7 @@ import { fixturePr } from '../../forge/fixture.js'
 import type { ReviewThread } from '../../shared/review.js'
 import type { FileChange, Hunk } from '../../shared/types.js'
 import { fileMark } from '../fileMarks.js'
+import type { LayerScopeKind } from '../layerScopePref.js'
 import { PrContext } from '../prMode.js'
 import { type LayerView, ReadingPane } from './ReadingPane.js'
 
@@ -918,41 +919,68 @@ describe('ReadingPane in layer mode', () => {
       expect(cards(container)).toEqual(['hunk-1', 'hunk-2'])
     })
 
-    it('the card offers the whole file when the outline splits something', () => {
-      const onPick = vi.fn()
-      const { container } = render(
-        <ReadingPane
-          files={[FILES[0]!]}
-          layer={view({ scope: { kind: 'parts', offers: ['parts', 'whole'], onPick } })}
-        />,
-      )
-      const row = container.querySelector('.ch-head-scope')!
-      expect(row.querySelector('.ch-head-order-cap')?.textContent).toBe('Show')
-      // Beside the reading order, on the same line — not a row of its own.
-      expect(row.parentElement?.className).toBe('ch-head-order')
-      const [parts, whole] = [...row.querySelectorAll('[role="radio"]')]
-      expect(parts!.textContent).toBe('this step’s hunks')
-      expect(whole!.textContent).toBe('the whole file')
-      expect(parts!.getAttribute('aria-checked')).toBe('true')
-      expect(whole!.getAttribute('aria-checked')).toBe('false')
-      fireEvent.click(whole!)
-      expect(onPick).toHaveBeenCalledWith('whole')
-      // Nothing to choose between, nothing offered.
-      const { container: c2 } = render(<ReadingPane files={[FILES[0]!]} layer={view()} />)
-      expect(c2.querySelector('.ch-head-scope')).toBeNull()
-    })
-
-    it('a pick the step cannot show reads as this step’s hunks', () => {
+    it('files shows every hunk, other layers’ too, in place — gaps stay folded', () => {
       const { container } = render(
         <ReadingPane
           files={[FILES[0]!]}
           layer={view({
-            scope: { kind: 'highlights', offers: ['parts', 'whole'], onPick: vi.fn() },
+            parts,
+            scope: { kind: 'whole', unavailable: ['highlights'], onPick: vi.fn() },
+          })}
+        />,
+      )
+      // The other step's hunk shows in place, tagged with its step, not folded.
+      expect(cards(container)).toEqual(['hunk-1', 'hunk-2'])
+      expect(container.querySelector('.hunk-elsewhere')).toBeNull()
+      expect(container.querySelector('.elsewhere-tag')?.textContent).toBe('step 3 · Consumers')
+      // Every line is still the header's Whole file, one file at a time.
+      expect(container.querySelector('.file-whole')?.getAttribute('aria-pressed')).toBe('false')
+      // Still the step's part that Viewed counts.
+      expect(container.querySelector('.file-header .file-part')?.textContent).toBe('1 of 2 hunks')
+    })
+
+    it('the card always shows all three picks, greying the ones this step can’t make', () => {
+      const onPick = vi.fn()
+      const { container } = render(
+        <ReadingPane
+          files={[FILES[0]!]}
+          layer={view({ scope: { kind: 'parts', unavailable: ['highlights'], onPick } })}
+        />,
+      )
+      const row = container.querySelector('.ch-head-scope')!
+      expect(row.querySelector('.ch-head-order-cap')?.textContent).toBe('Show this layer changed')
+      // Beside the reading order, on the same line — not a row of its own.
+      expect(row.parentElement?.className).toBe('ch-head-order')
+      const [lines, parts, whole] = [...row.querySelectorAll('[role="radio"]')]
+      expect([lines, parts, whole].map((c) => c!.textContent)).toEqual(['lines', 'hunks', 'files'])
+      expect(parts!.getAttribute('aria-checked')).toBe('true')
+      // Greyed, still hoverable, and the tooltip says why.
+      expect(lines!.getAttribute('aria-disabled')).toBe('true')
+      expect(lines!.getAttribute('data-tip')).toContain('Not available in this layer')
+      fireEvent.click(lines!)
+      expect(onPick).not.toHaveBeenCalled()
+      expect(whole!.getAttribute('aria-disabled')).toBeNull()
+      fireEvent.click(whole!)
+      expect(onPick).toHaveBeenCalledWith('whole')
+    })
+
+    it('a pick the step greys reads as hunks', () => {
+      const { container } = render(
+        <ReadingPane
+          files={[FILES[0]!]}
+          layer={view({
+            parts,
+            scope: { kind: 'whole', unavailable: ['highlights', 'whole'], onPick: vi.fn() },
           })}
         />,
       )
       const chips = [...container.querySelectorAll('.ch-head-scope [role="radio"]')]
-      expect(chips.map((c) => c.getAttribute('aria-checked'))).toEqual(['true', 'false'])
+      expect(chips.map((c) => c.getAttribute('aria-checked'))).toEqual(['false', 'true', 'false'])
+      expect(chips[2]!.getAttribute('data-tip')).toContain(
+        'no file here has changes in other layers',
+      )
+      // Read as hunks: the other step's hunk stays folded.
+      expect(cards(container)).toEqual(['hunk-1'])
     })
 
     it('a whole file under the same layer is untouched', () => {
@@ -966,24 +994,51 @@ describe('ReadingPane in layer mode', () => {
   })
 
   describe('highlighted lines', () => {
-    const ALL_SCOPES = ['highlights', 'parts', 'whole'] as const
     const highlights = new Map([['src/b.ts', [{ from: 2, to: 2 }]]])
+    const lines = (kind: LayerScopeKind) => ({ kind, unavailable: [], onPick: vi.fn() })
     const rows = (c: Element, cls: string) =>
       [...c.querySelectorAll(`.hunk[data-hunk-id="hunk-1"] tr.${cls} .line-code`)].map(
         (td) => td.textContent,
       )
 
-    it('lights the highlighted lines and dims the rest of the file', () => {
-      const { container } = render(<ReadingPane files={[FILES[0]!]} layer={view({ highlights })} />)
+    it('lines lights the highlighted lines and dims the rest; every line stays', () => {
+      const { container } = render(
+        <ReadingPane
+          files={[FILES[0]!]}
+          layer={view({ highlights, scope: lines('highlights') })}
+        />,
+      )
       // The deletion the added line replaced goes with it.
       expect(rows(container, 'line-lit')).toEqual(['const removed = 1', 'const added = 2'])
       expect(rows(container, 'line-unlit')).toEqual(['const keep = true'])
+      expect(rows(container, 'line')).toHaveLength(3)
       expect(container.querySelector('.hunk[data-hunk-id="hunk-2"] tr.line-unlit')).toBeTruthy()
     })
 
-    it('a file without a highlight dims nothing', () => {
-      const { container } = render(<ReadingPane files={[FILES[0]!]} layer={view()} />)
+    it('hunks and files show the same hunks plain — the highlight is the lines view’s', () => {
+      for (const kind of ['parts', 'whole'] as const) {
+        const { container, unmount } = render(
+          <ReadingPane files={[FILES[0]!]} layer={view({ highlights, scope: lines(kind) })} />,
+        )
+        expect(container.querySelector('tr.line-lit, tr.line-unlit')).toBeNull()
+        expect(rows(container, 'line')).toHaveLength(3)
+        unmount()
+      }
+    })
+
+    it('a layer without a highlight dims nothing, and its lines pick is greyed', () => {
+      const { container } = render(
+        <ReadingPane
+          files={[FILES[0]!]}
+          layer={view({
+            scope: { kind: 'highlights', unavailable: ['highlights'], onPick: vi.fn() },
+          })}
+        />,
+      )
       expect(container.querySelector('tr.line-lit, tr.line-unlit')).toBeNull()
+      const [only] = [...container.querySelectorAll('.ch-head-scope [role="radio"]')]
+      expect(only!.getAttribute('aria-disabled')).toBe('true')
+      expect(only!.getAttribute('data-tip')).toContain('highlighted no lines')
     })
 
     it('the card offers the three scopes, narrowest first', () => {
@@ -991,85 +1046,35 @@ describe('ReadingPane in layer mode', () => {
       const { container, rerender } = render(
         <ReadingPane
           files={[FILES[0]!]}
-          layer={view({ highlights, scope: { kind: 'parts', offers: ALL_SCOPES, onPick } })}
+          layer={view({ highlights, scope: { kind: 'parts', unavailable: [], onPick } })}
         />,
       )
       const pick = container.querySelector('.ch-head-scope')!
       expect(pick.parentElement?.className).toBe('ch-head-order')
-      expect(pick.querySelector('.ch-head-order-cap')?.textContent).toBe('Show')
+      expect(pick.querySelector('.ch-head-order-cap')?.textContent).toBe('Show this layer changed')
       const group = pick.querySelector('[role="radiogroup"]')!
       expect(group.getAttribute('aria-labelledby')).toBe(
         pick.querySelector('.ch-head-order-cap')?.id,
       )
       const [only, hunks, whole] = [...group.querySelectorAll('[role="radio"]')]
-      expect(only!.textContent).toBe('only highlights')
-      expect(hunks!.textContent).toBe('this step’s hunks')
-      expect(whole!.textContent).toBe('the whole file')
+      expect(only!.textContent).toBe('lines')
+      expect(hunks!.textContent).toBe('hunks')
+      expect(whole!.textContent).toBe('files')
       expect(only!.getAttribute('aria-checked')).toBe('false')
       expect(hunks!.getAttribute('aria-checked')).toBe('true')
-      expect(container.querySelector('tr.line-unlit-fold')).toBeNull()
       fireEvent.click(only!)
       expect(onPick).toHaveBeenCalledWith('highlights')
       rerender(
         <ReadingPane
           files={[FILES[0]!]}
-          layer={view({ highlights, scope: { kind: 'highlights', offers: ALL_SCOPES, onPick } })}
+          layer={view({ highlights, scope: { kind: 'highlights', unavailable: [], onPick } })}
         />,
       )
-      // hunk-1 is short enough that its context keeps every line; hunk-2 has
-      // nothing lit, so it folds whole.
-      expect(rows(container, 'line')).toEqual([
-        'const keep = true',
-        'const removed = 1',
-        'const added = 2',
-      ])
-      const folds = [...container.querySelectorAll('tr.line-unlit-fold')].map((r) => r.textContent)
-      expect(folds).toEqual(['1 line outside the highlight'])
+      expect(rows(container, 'line-lit')).toHaveLength(2)
       const chips = [...container.querySelectorAll('.ch-head-scope [role="radio"]')]
       expect(chips.map((c) => c.getAttribute('aria-checked'))).toEqual(['true', 'false', 'false'])
       fireEvent.click(chips[1]!)
       expect(onPick).toHaveBeenLastCalledWith('parts')
-    })
-
-    it('only highlights keeps two lines of context around each highlight', () => {
-      const long: FileChange = {
-        ...FILES[0]!,
-        path: 'src/long.ts',
-        hunks: [
-          hunk('src/long.ts', 'long-1', [
-            ...[1, 2, 3].map((n) => ({
-              kind: 'context' as const,
-              oldNo: n,
-              newNo: n,
-              text: `c${n}`,
-            })),
-            { kind: 'add', oldNo: null, newNo: 4, text: 'lit' },
-            ...[5, 6, 7, 8].map((n) => ({
-              kind: 'context' as const,
-              oldNo: n - 1,
-              newNo: n,
-              text: `c${n}`,
-            })),
-          ]),
-        ],
-      }
-      const { container } = render(
-        <ReadingPane
-          files={[long]}
-          layer={view({
-            highlights: new Map([['src/long.ts', [{ from: 4, to: 4 }]]]),
-            scope: { kind: 'highlights', offers: ALL_SCOPES, onPick: vi.fn() },
-          })}
-        />,
-      )
-      const shown = [...container.querySelectorAll('tr.line .line-code')].map(
-        (td) => td.textContent,
-      )
-      expect(shown).toEqual(['c2', 'c3', 'lit', 'c5', 'c6'])
-      const folds = [...container.querySelectorAll('tr.line-unlit-fold')].map((r) => r.textContent)
-      expect(folds).toEqual(['1 line outside the highlight', '2 lines outside the highlight'])
-      // The context reads as context: dimmed, not lit.
-      expect(container.querySelectorAll('tr.line-lit')).toHaveLength(1)
     })
   })
 

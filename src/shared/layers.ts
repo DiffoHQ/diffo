@@ -390,12 +390,6 @@ export function claimsOf(layer: Pick<Layer, 'files'>): PathClaim[] {
   return [...claims.values()]
 }
 
-/** How a claim reads: by the agent's ranges and highlights, or whole — the
- * reviewer's split switch, which ignores both. */
-export interface ClaimOptions {
-  wholeFiles?: boolean
-}
-
 /**
  * The hunks a claim holds, in file order. A range keeps the hunks it touches;
  * a highlight then keeps, of those, the hunks it lights a changed line in — a
@@ -403,12 +397,7 @@ export interface ClaimOptions {
  * lights none of them has drifted off the code, and is ignored rather than
  * empty the file.
  */
-export function claimedHunks(
-  hunks: readonly Hunk[],
-  claim: PathClaim,
-  options: ClaimOptions = {},
-): Hunk[] {
-  if (options.wholeFiles) return [...hunks]
+export function claimedHunks(hunks: readonly Hunk[], claim: PathClaim): Hunk[] {
   const ranged = claim.whole
     ? [...hunks]
     : hunks.filter((h) => claim.ranges.some((r) => rangeTouchesHunk(r, h)))
@@ -457,18 +446,17 @@ interface RowClaim {
 function rowClaims(
   layers: readonly Pick<Layer, 'files'>[],
   files: readonly FileChange[],
-  options: ClaimOptions,
 ): RowClaim[] {
   const byPath = new Map(files.map((f) => [f.path, f]))
   return layers.flatMap((layer, i) =>
     claimsOf(layer).flatMap((claim) => {
       const file = byPath.get(claim.path)
       if (!file) return []
-      return claimedHunks(file.hunks, claim, options).map((hunk) => ({
+      return claimedHunks(file.hunks, claim).map((hunk) => ({
         layer: i,
         path: claim.path,
         hunk,
-        rows: options.wholeFiles ? changedRows(hunk) : claimedRows(hunk, claim.highlight),
+        rows: claimedRows(hunk, claim.highlight),
       }))
     }),
   )
@@ -493,11 +481,10 @@ export interface UncoveredFile {
 export function uncoveredByLayers(
   layers: readonly Pick<Layer, 'files'>[],
   files: readonly FileChange[],
-  options: ClaimOptions = {},
 ): UncoveredFile[] {
   const listed = new Set(layers.flatMap((layer) => claimsOf(layer).map((c) => c.path)))
   const claimed = new Map<string, Set<number>>()
-  for (const { hunk, rows } of rowClaims(layers, files, options)) {
+  for (const { hunk, rows } of rowClaims(layers, files)) {
     const known = claimed.get(hunk.id) ?? new Set()
     for (const row of rows) known.add(row)
     claimed.set(hunk.id, known)
@@ -541,7 +528,7 @@ export function sharedByLayers(
   files: readonly FileChange[],
 ): SharedLines[] {
   const owners = new Map<string, { path: string; hunk: Hunk; row: number; layers: Set<number> }>()
-  for (const { layer, path, hunk, rows } of rowClaims(layers, files, {})) {
+  for (const { layer, path, hunk, rows } of rowClaims(layers, files)) {
     for (const row of rows) {
       const key = `${hunk.id}:${row}`
       const owner = owners.get(key) ?? { path, hunk, row, layers: new Set<number>() }

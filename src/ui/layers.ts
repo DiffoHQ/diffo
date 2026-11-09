@@ -1,5 +1,4 @@
 import {
-  type ClaimOptions,
   claimedHunks,
   claimsOf,
   highlightedRows,
@@ -131,14 +130,6 @@ export function resolveDecisions(
   }))
 }
 
-/** The outline names a part of some file, by range or by highlight — the
- * split switch has something to switch. */
-export function outlineSplitsFiles(layers: Layers | undefined): boolean {
-  return (layers?.items ?? []).some((l) =>
-    l.files.some((f) => layerFileRange(f) !== null || layerFileHighlight(f).length > 0),
-  )
-}
-
 /**
  * Layers against the live changeset. Empty when there are no layers — the UI is
  * exactly today's then. Otherwise every layer in order, plus, when something
@@ -157,7 +148,6 @@ export function outlineSplitsFiles(layers: Layers | undefined): boolean {
 export function resolveLayers(
   layers: Layers | undefined,
   files: readonly FileChange[],
-  options: ClaimOptions = {},
 ): ResolvedLayer[] {
   if (!layers || layers.items.length === 0) return []
   const byPath = new Map(files.map((f) => [f.path, f]))
@@ -170,8 +160,8 @@ export function resolveLayers(
         missing.push(claim.path)
         continue
       }
-      const hunks = claimedHunks(file.hunks, claim, options)
-      if (!options.wholeFiles && !claim.whole && hunks.length === 0) {
+      const hunks = claimedHunks(file.hunks, claim)
+      if (!claim.whole && hunks.length === 0) {
         // The file is here, the lines are not: say which part drifted away.
         missing.push(...claim.refs)
         continue
@@ -198,7 +188,7 @@ export function resolveLayers(
       ...(decisions ? { decisions } : {}),
     }
   })
-  const rest = uncoveredByLayers(layers.items, files, options)
+  const rest = uncoveredByLayers(layers.items, files)
   if (rest.length > 0) {
     resolved.push({
       id: null,

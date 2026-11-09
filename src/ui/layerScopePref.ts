@@ -1,14 +1,15 @@
 import { useCallback, useState } from 'react'
 
 /**
- * How much of a step's files the pane shows, narrowest first: only the
- * highlighted lines with two around each (`highlights`), the hunks the step's
- * ranges and highlights claim (`parts`, the default), or every file whole in
- * each step that lists it (`whole`) — which also stops a split file being
- * read, and marked, a part at a time. One choice for the whole review, kept
- * in localStorage beside the reading-order pick; absent means never chosen.
- * The key is the one the two-way parts/whole switch used, so a pick of the
- * whole file carries over.
+ * How much of a layer's files the pane shows, narrowest first — the card's
+ * "Show this layer changed lines | hunks | files": its hunks with the lines
+ * the agent highlighted lit and the rest dimmed (`highlights`, the default),
+ * its hunks plain (`parts`), or every hunk of each file it lists, other
+ * layers' dimmed and tagged (`whole`). A view only: what a layer owns, and
+ * what its Viewed marks, is the same under all three. One choice for the
+ * whole review, kept in localStorage beside the reading-order pick; absent
+ * means never chosen. The key is the one the two-way parts/whole switch used,
+ * so a pick made with it carries over.
  */
 
 export type LayerScopeKind = 'highlights' | 'parts' | 'whole'
@@ -18,9 +19,9 @@ const KEY = 'diffo:ui:layerSplit'
 function loadLayerScope(): LayerScopeKind {
   try {
     const stored = localStorage.getItem(KEY)
-    return stored === 'whole' || stored === 'highlights' ? stored : 'parts'
+    return stored === 'whole' || stored === 'parts' ? stored : 'highlights'
   } catch {
-    return 'parts'
+    return 'highlights'
   }
 }
 

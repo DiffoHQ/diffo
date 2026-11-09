@@ -370,11 +370,6 @@ describe('ranges against hunks', () => {
         ],
       },
     ])
-    expect(
-      uncoveredByLayers([{ files: [{ path: 'src/a.ts', highlight: ['13'] }] }], [a], {
-        wholeFiles: true,
-      }),
-    ).toEqual([])
   })
 })
 

@@ -80,7 +80,6 @@ import {
   layerLineStats,
   layerProgress,
   layersByPath,
-  outlineSplitsFiles,
   type RefLinks,
   type ResolvedLayer,
   resolveLayers,
@@ -394,14 +393,12 @@ function Review() {
   // Resolved against the live changeset on every render, never stored (see
   // ui/layers.ts). With none, `layerMode` is off and the pane is exactly the
   // flat list it always was.
-  // The reviewer's switch on a split file: parts (the agent's ranges), or
-  // whole in every step that lists it. Off, the ranges are ignored here and
-  // nothing downstream knows they were posted.
+  // How much of a step's files the pane shows (lines, hunks or files). A view
+  // only: what each step owns, and what its Viewed marks, never changes.
   const [layerScope, setLayerScope] = useLayerScope()
-  const splitOffered = useMemo(() => outlineSplitsFiles(review?.layers), [review?.layers])
   const resolvedLayers = useMemo(
-    () => resolveLayers(review?.layers, allFiles, { wholeFiles: layerScope === 'whole' }),
-    [review?.layers, allFiles, layerScope],
+    () => resolveLayers(review?.layers, allFiles),
+    [review?.layers, allFiles],
   )
   const layerMode = resolvedLayers.length > 0
   const layersByPathFirst = useMemo(() => layerByPath(resolvedLayers), [resolvedLayers])
@@ -1726,8 +1723,9 @@ function Review() {
       }
       parts.set(entry.file.path, { shown, elsewhere })
     }
-    // A file held without a highlight owns every changed line, so it lights
-    // throughout rather than dim beside the step's highlighted files.
+    // The layer's lines in each file, for the "lines" view: its highlight, or
+    // every changed line of its hunks when it highlighted none (it owns them
+    // all, so the file lights throughout rather than dim beside the others).
     const highlights = new Map<string, readonly LineRange[]>()
     if (activeLayer.files.some((e) => e.highlight)) {
       for (const { file, highlight, hunks } of activeLayer.files) {
@@ -1737,10 +1735,12 @@ function Review() {
     const marks = new Map(
       activeLayer.files.filter(entryMarksLines).map((e) => [e.file.path, entryMarks(e)]),
     )
-    const scopeOffers: LayerScopeKind[] = [
-      ...(highlights.size > 0 ? (['highlights'] as const) : []),
-      'parts',
-      ...(splitOffered && !activeLayer.derived ? (['whole'] as const) : []),
+    // A pick that would show just what hunks shows is greyed: lines when the
+    // agent highlighted nothing in this layer, files when no file here has
+    // another layer's hunks to add.
+    const scopeUnavailable: LayerScopeKind[] = [
+      ...(highlights.size > 0 ? [] : (['highlights'] as const)),
+      ...(parts.size > 0 ? [] : (['whole'] as const)),
     ]
     return {
       id: activeLayer.id,
@@ -1776,9 +1776,7 @@ function Review() {
       ...(activeLayer.files.length > 1
         ? { reading: { kind: layerList, onPick: setLayerList } }
         : {}),
-      ...(scopeOffers.length > 1
-        ? { scope: { kind: layerScope, offers: scopeOffers, onPick: setLayerScope } }
-        : {}),
+      scope: { kind: layerScope, unavailable: scopeUnavailable, onPick: setLayerScope },
       ...(highlights.size > 0 ? { highlights } : {}),
     }
   }, [
@@ -1792,7 +1790,6 @@ function Review() {
     hunkLayers,
     resolvedLayers,
     goLayer,
-    splitOffered,
     layerScope,
     setLayerScope,
   ])
