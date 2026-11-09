@@ -9,9 +9,11 @@ import {
   useRef,
   useState,
 } from 'react'
+import { changedLineSpans } from '../shared/layers.js'
 import {
   type Coverage,
   isDraft,
+  type LineRange,
   type ReviewThread,
   threadsInChangeset,
   untouchedAgentVoice,
@@ -60,13 +62,14 @@ import { ThreadRail } from './components/ThreadRail.js'
 import type { ReviewActions } from './components/Threads.js'
 import { Voice } from './components/Voice.js'
 import { useCritter } from './critterPref.js'
-import { fileMarks, isFileViewed } from './fileMarks.js'
+import { expandMarks, fileMarks, isFileViewed } from './fileMarks.js'
 import { fileAnchor, glideTo } from './hooks.js'
 import { actionForKey, isTypingTarget } from './keyboard.js'
 import { layerReadEntries, layerReadOrder, useLayerList } from './layerListPref.js'
-import { useLayerSplit } from './layerSplitPref.js'
+import { type LayerScopeKind, useLayerScope } from './layerScopePref.js'
 import {
   entryMarks,
+  entryMarksLines,
   entryViewed,
   findDescription,
   findGuide,
@@ -77,7 +80,7 @@ import {
   layerLineStats,
   layerProgress,
   layersByPath,
-  outlineHasRanges,
+  outlineSplitsFiles,
   type RefLinks,
   type ResolvedLayer,
   resolveLayers,
@@ -394,11 +397,11 @@ function Review() {
   // The reviewer's switch on a split file: parts (the agent's ranges), or
   // whole in every step that lists it. Off, the ranges are ignored here and
   // nothing downstream knows they were posted.
-  const [layerSplit, setLayerSplit] = useLayerSplit()
-  const splitOffered = useMemo(() => outlineHasRanges(review?.layers), [review?.layers])
+  const [layerScope, setLayerScope] = useLayerScope()
+  const splitOffered = useMemo(() => outlineSplitsFiles(review?.layers), [review?.layers])
   const resolvedLayers = useMemo(
-    () => resolveLayers(review?.layers, allFiles, { wholeFiles: layerSplit === 'whole' }),
-    [review?.layers, allFiles, layerSplit],
+    () => resolveLayers(review?.layers, allFiles, { wholeFiles: layerScope === 'whole' }),
+    [review?.layers, allFiles, layerScope],
   )
   const layerMode = resolvedLayers.length > 0
   const layersByPathFirst = useMemo(() => layerByPath(resolvedLayers), [resolvedLayers])
@@ -1237,14 +1240,14 @@ function Review() {
   )
 
   // The same marks under a layer: a file the layer holds whole is marked whole;
-  // a file it holds part of is marked by that part's hunks, so reading step 1's
-  // half of a file never ticks step 3's half.
+  // a file it holds part of, or highlights lines in, is marked by that part's
+  // hunks or lines, so reading step 3's lines of a hunk never ticks step 4's.
   const markLayerFiles = useCallback(
     (paths: string[], layer: ResolvedLayer, on: boolean) => {
       const wanted = new Set(paths)
       const entries = layer.files.filter((e) => wanted.has(e.file.path))
-      const whole = entries.filter((e) => !e.partial).map((e) => e.file.path)
-      const parts = entries.filter((e) => e.partial)
+      const whole = entries.filter((e) => !entryMarksLines(e)).map((e) => e.file.path)
+      const parts = entries.filter(entryMarksLines)
       if (whole.length > 0) (on ? markFilesViewed : clearFilesViewed)(whole)
       if (parts.length > 0) {
         const marks = parts.flatMap(entryMarks)
@@ -1252,11 +1255,12 @@ function Review() {
         // Folding is for a settled file. A part read is not that: the file's
         // other hunks are still unread in their own steps, and the fold is
         // shared across steps, so it would hide them there.
-        const marked = new Set(marks)
+        const after = new Set([...viewed, ...marks])
         setCollapsed((prev) => {
           const next = new Set(prev)
           for (const e of parts) {
-            const settled = on && e.file.hunks.every((h) => viewed.has(h.id) || marked.has(h.id))
+            const read = expandMarks(after, [e.file])
+            const settled = on && e.file.hunks.every((h) => read.has(h.id))
             if (settled) next.add(e.file.path)
             else next.delete(e.file.path)
           }
@@ -1269,7 +1273,7 @@ function Review() {
   const toggleLayerFile = useCallback(
     (path: string, layer: ResolvedLayer) => {
       const entry = layer.files.find((e) => e.file.path === path)
-      if (!entry?.partial) return toggleFileViewed(path)
+      if (!entry || !entryMarksLines(entry)) return toggleFileViewed(path)
       markLayerFiles([path], layer, !entryViewed(entry, viewed))
     },
     [toggleFileViewed, markLayerFiles, viewed],
@@ -1457,7 +1461,7 @@ function Review() {
     if (!data) return EMPTY_DELTA
     const prev = prevRef.current
     if (prev && prev.version === data.version) return EMPTY_DELTA
-    return computeDelta(prev, data, loadViewed(storageKey(data)))
+    return computeDelta(prev, data, expandMarks(loadViewed(storageKey(data)), prev?.files ?? []))
   }, [data])
   // Advance the "previous version" pointer AFTER commit, not inside the memo — a
   // render-phase mutation is dropped by StrictMode's double invoke and is unsafe
@@ -1722,9 +1726,26 @@ function Review() {
       }
       parts.set(entry.file.path, { shown, elsewhere })
     }
+    // A file held without a highlight owns every changed line, so it lights
+    // throughout rather than dim beside the step's highlighted files.
+    const highlights = new Map<string, readonly LineRange[]>()
+    if (activeLayer.files.some((e) => e.highlight)) {
+      for (const { file, highlight, hunks } of activeLayer.files) {
+        if (hunks.length > 0) highlights.set(file.path, highlight ?? changedLineSpans(hunks))
+      }
+    }
+    const marks = new Map(
+      activeLayer.files.filter(entryMarksLines).map((e) => [e.file.path, entryMarks(e)]),
+    )
+    const scopeOffers: LayerScopeKind[] = [
+      ...(highlights.size > 0 ? (['highlights'] as const) : []),
+      'parts',
+      ...(splitOffered && !activeLayer.derived ? (['whole'] as const) : []),
+    ]
     return {
       id: activeLayer.id,
       ...(parts.size > 0 ? { parts, onGoLayer: goLayer } : {}),
+      ...(marks.size > 0 ? { marks } : {}),
       ...(activeLayer.decisions
         ? {
             decisions: activeLayer.decisions,
@@ -1755,9 +1776,10 @@ function Review() {
       ...(activeLayer.files.length > 1
         ? { reading: { kind: layerList, onPick: setLayerList } }
         : {}),
-      ...(splitOffered && !activeLayer.derived
-        ? { split: { kind: layerSplit, onPick: setLayerSplit } }
+      ...(scopeOffers.length > 1
+        ? { scope: { kind: layerScope, offers: scopeOffers, onPick: setLayerScope } }
         : {}),
+      ...(highlights.size > 0 ? { highlights } : {}),
     }
   }, [
     paneLayerActive,
@@ -1771,8 +1793,8 @@ function Review() {
     resolvedLayers,
     goLayer,
     splitOffered,
-    layerSplit,
-    setLayerSplit,
+    layerScope,
+    setLayerScope,
   ])
   const paneLayer = useMemo(() => {
     const step = (dir: 1 | -1) => stepLayer(shownLayers, activeIndex, dir, layerEmptied)

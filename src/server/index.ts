@@ -11,6 +11,7 @@ import {
   describeUncovered,
   parseLayersInput,
   parseSuggestReason,
+  sharedByLayers,
   uncoveredByLayers,
 } from '../shared/layers.js'
 import {
@@ -72,6 +73,7 @@ import {
   buildThreadPrompt,
   captureAnchor,
   IS_DEV,
+  layersSharedError,
   nextStepFor,
   type PromptContext,
 } from './prompt.js'
@@ -547,15 +549,20 @@ export function createApp(
     }
     const parsed = parseLayersInput(body?.items)
     if (!parsed.ok) return c.json({ error: parsed.error }, 400)
+    const files = store?.get().files ?? []
+    const shared = sharedByLayers(parsed.items, files)
+    if (shared.length > 0) return c.json({ error: layersSharedError(shared) }, 400)
     const layers = review.setLayers(parsed.items)
     // The post answers a standing request, if there was one: "Outlining…" gives
     // way to the outline, and the agent is back in the re-poll grace.
     queue?.layersPosted()
-    // What the outline leaves in no layer, against the changeset as it stands:
-    // the agent hears it in the ack and re-posts, rather than the reviewer
-    // finding it under "Since your review".
-    const uncovered = store ? uncoveredByLayers(layers.items, store.get().files) : []
-    return c.json({ layers, uncovered: uncovered.map(describeUncovered) })
+    // Gaps don't refuse the post: the changeset can move while the agent
+    // outlines. The agent hears them in the ack and re-posts; until then the
+    // reviewer reads them in the trailing layer.
+    return c.json({
+      layers,
+      uncovered: uncoveredByLayers(layers.items, files).map(describeUncovered),
+    })
   })
 
   // The reviewer's click — Outline, or refresh over an outline that has gone

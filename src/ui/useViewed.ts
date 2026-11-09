@@ -1,9 +1,10 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import type { Changeset } from '../shared/types.js'
-import { fileMarks, isFileViewed } from './fileMarks.js'
+import type { Changeset, Hunk } from '../shared/types.js'
+import { applyMark, expandMarks, fileMarks, isFileViewed } from './fileMarks.js'
 import { legacyStorageKey, loadViewed, saveViewed, storageKey } from './viewedStore.js'
 
 export interface ViewedState {
+  /** Hunk, line and file marks, each grain implied by the others (`expandMarks`). */
   viewed: ReadonlySet<string>
   /** The persisted marks have been read from storage. Until this flips, `viewed` is
    * an empty placeholder — anything derived from it must wait, or it bakes in the
@@ -16,7 +17,8 @@ export interface ViewedState {
   markFiles: (paths: readonly string[]) => void
   clearFiles: (paths: readonly string[]) => void
   /** Mark or clear raw marks — a commit's files, whose hunks need not be in the
-   * cumulative diff. A hunk the two share is one mark, read in both. */
+   * cumulative diff, or a layer's highlighted lines. A hunk the two share is one
+   * mark, read in both. */
   setMarks: (marks: readonly string[], on: boolean) => void
   progress: { viewed: number; total: number }
   fileProgress: { viewed: number; total: number }
@@ -27,8 +29,14 @@ export function useViewed(changeset: Changeset | undefined): ViewedState {
   // The pre-fix bucket, read once if the current one is empty. Never written, so the
   // two can't diverge.
   const legacyKey = changeset ? legacyStorageKey(changeset) : null
-  const [viewed, setViewed] = useState<ReadonlySet<string>>(new Set())
+  const [stored, setStored] = useState<ReadonlySet<string>>(new Set())
   const [loaded, setLoaded] = useState(false)
+  const files = changeset?.files
+  const viewed = useMemo(() => expandMarks(stored, files ?? []), [stored, files])
+  const hunks = useMemo(
+    () => new Map<string, Hunk>((files ?? []).flatMap((f) => f.hunks.map((h) => [h.id, h]))),
+    [files],
+  )
 
   useEffect(() => {
     if (!key) return
@@ -39,12 +47,12 @@ export function useViewed(changeset: Changeset | undefined): ViewedState {
       // the next save would strand it otherwise.
       if (legacy.size > 0) {
         saveViewed(key, legacy)
-        setViewed(legacy)
+        setStored(legacy)
         setLoaded(true)
         return
       }
     }
-    setViewed(marks)
+    setStored(marks)
     setLoaded(true)
   }, [key, legacyKey])
 
@@ -52,53 +60,44 @@ export function useViewed(changeset: Changeset | undefined): ViewedState {
     (path: string) => {
       const file = changeset?.files.find((f) => f.path === path)
       if (!file) return
-      setViewed((prev) => {
+      setStored((prev) => {
         const next = new Set(prev)
         const marks = fileMarks(file)
-        const complete = marks.every((m) => next.has(m))
-        for (const mark of marks) {
-          if (complete) next.delete(mark)
-          else next.add(mark)
-        }
+        const complete = isFileViewed(file, expandMarks(prev, [file]))
+        for (const mark of marks) applyMark(next, mark, !complete, hunks)
         if (key) saveViewed(key, next)
         return next
       })
     },
-    [changeset, key],
+    [changeset, key, hunks],
   )
 
   const setFiles = useCallback(
     (paths: readonly string[], mark: boolean) => {
       const wanted = new Set(paths)
-      setViewed((prev) => {
+      setStored((prev) => {
         const next = new Set(prev)
         for (const file of changeset?.files ?? []) {
           if (!wanted.has(file.path)) continue
-          for (const id of fileMarks(file)) {
-            if (mark) next.add(id)
-            else next.delete(id)
-          }
+          for (const id of fileMarks(file)) applyMark(next, id, mark, hunks)
         }
         if (key) saveViewed(key, next)
         return next
       })
     },
-    [changeset, key],
+    [changeset, key, hunks],
   )
 
   const setMarks = useCallback(
     (marks: readonly string[], on: boolean) => {
-      setViewed((prev) => {
+      setStored((prev) => {
         const next = new Set(prev)
-        for (const mark of marks) {
-          if (on) next.add(mark)
-          else next.delete(mark)
-        }
+        for (const mark of marks) applyMark(next, mark, on, hunks)
         if (key) saveViewed(key, next)
         return next
       })
     },
-    [key],
+    [key, hunks],
   )
 
   const markFiles = useCallback((paths: readonly string[]) => setFiles(paths, true), [setFiles])

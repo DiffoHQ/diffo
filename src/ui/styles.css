@@ -3010,6 +3010,33 @@ body {
   opacity: 0.45;
 }
 
+/*
+ * The agent's highlight: the lines this step is about inside a hunk other
+ * steps may share. Amber, the agent pointing, on the gutter only so the diff's
+ * own tints read through; the rest of the file's lines step back.
+ */
+.hunk-lines tr.line-lit > td.line-no {
+  background: var(--attn-wash);
+}
+
+.hunk-lines tr.line-lit > td:first-child {
+  box-shadow: inset 3px 0 0 var(--attn);
+}
+
+.hunk-lines > tbody > tr.line-unlit {
+  opacity: 0.5;
+}
+
+.hunk-lines tr.line-unlit-fold > td {
+  padding: 2px 0.8em;
+  font-family: var(--sans);
+  font-size: var(--t-11);
+  color: var(--ink-3);
+  background: var(--fill);
+  border-top: 1px solid var(--hair-2);
+  border-bottom: 1px solid var(--hair-2);
+}
+
 /* The cursor: a rail down the whole card plus a hairline ring, so `j`/`k`'s
  * position is findable after a scroll and not only at the top-left corner. */
 .hunk-selected {

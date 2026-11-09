@@ -1556,13 +1556,14 @@ describe('POST /api/review/layers', () => {
 
   it('reports the hunks and files the outline leaves in no layer, against the live changeset', async () => {
     const { app } = setup()
-    // app.ts has one hunk; a range that misses it leaves the hunk uncovered.
+    // app.ts has one hunk, its change on line 2; a range that misses the hunk
+    // leaves that line uncovered.
     const missed = await post(app, '/api/review/layers', {
       items: [{ title: 'Contract', files: ['app.ts:900-950'] }],
     })
     expect(missed.status).toBe(200)
     const { uncovered } = (await missed.json()) as { uncovered: unknown }
-    expect(uncovered).toEqual([{ path: 'app.ts', ranges: ['1-2'] }])
+    expect(uncovered).toEqual([{ path: 'app.ts', ranges: ['2'] }])
     // A file the outline never names is reported whole; a whole-file entry
     // covers everything.
     const whole = await post(app, '/api/review/layers', {
@@ -1573,6 +1574,21 @@ describe('POST /api/review/layers', () => {
       items: [{ title: 'Contract', files: ['other.ts'] }],
     })
     expect(((await none.json()) as { uncovered: unknown }).uncovered).toEqual([{ path: 'app.ts' }])
+  })
+
+  it('refuses an outline that claims a changed line in two layers', async () => {
+    const { app, review } = setup()
+    // app.ts changes line 2: highlighted in one layer, and claimed whole by the
+    // other because it lists the file without a highlight.
+    const res = await post(app, '/api/review/layers', {
+      items: [
+        { title: 'Contract', files: [{ path: 'app.ts', highlight: '2' }] },
+        { title: 'Callers', files: ['app.ts'] },
+      ],
+    })
+    expect(res.status).toBe(400)
+    expect(((await res.json()) as { error: string }).error).toContain('app.ts:2 (layers 1, 2)')
+    expect(review.get().layers).toBeUndefined()
   })
 
   it('refuses a file listed whole in one layer and by range in another', async () => {

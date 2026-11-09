@@ -918,23 +918,41 @@ describe('ReadingPane in layer mode', () => {
       expect(cards(container)).toEqual(['hunk-1', 'hunk-2'])
     })
 
-    it('the card offers the split switch when the outline splits something', () => {
+    it('the card offers the whole file when the outline splits something', () => {
       const onPick = vi.fn()
       const { container } = render(
-        <ReadingPane files={[FILES[0]!]} layer={view({ split: { kind: 'parts', onPick } })} />,
+        <ReadingPane
+          files={[FILES[0]!]}
+          layer={view({ scope: { kind: 'parts', offers: ['parts', 'whole'], onPick } })}
+        />,
       )
-      const row = container.querySelector('.ch-head-split')!
-      expect(row.querySelector('.ch-head-order-cap')?.textContent).toBe('Files in several steps')
+      const row = container.querySelector('.ch-head-scope')!
+      expect(row.querySelector('.ch-head-order-cap')?.textContent).toBe('Show')
       // Beside the reading order, on the same line — not a row of its own.
       expect(row.parentElement?.className).toBe('ch-head-order')
       const [parts, whole] = [...row.querySelectorAll('[role="radio"]')]
+      expect(parts!.textContent).toBe('this step’s hunks')
+      expect(whole!.textContent).toBe('the whole file')
       expect(parts!.getAttribute('aria-checked')).toBe('true')
       expect(whole!.getAttribute('aria-checked')).toBe('false')
       fireEvent.click(whole!)
       expect(onPick).toHaveBeenCalledWith('whole')
-      // Nothing split, nothing offered.
+      // Nothing to choose between, nothing offered.
       const { container: c2 } = render(<ReadingPane files={[FILES[0]!]} layer={view()} />)
-      expect(c2.querySelector('.ch-head-split')).toBeNull()
+      expect(c2.querySelector('.ch-head-scope')).toBeNull()
+    })
+
+    it('a pick the step cannot show reads as this step’s hunks', () => {
+      const { container } = render(
+        <ReadingPane
+          files={[FILES[0]!]}
+          layer={view({
+            scope: { kind: 'highlights', offers: ['parts', 'whole'], onPick: vi.fn() },
+          })}
+        />,
+      )
+      const chips = [...container.querySelectorAll('.ch-head-scope [role="radio"]')]
+      expect(chips.map((c) => c.getAttribute('aria-checked'))).toEqual(['true', 'false'])
     })
 
     it('a whole file under the same layer is untouched', () => {
@@ -944,6 +962,114 @@ describe('ReadingPane in layer mode', () => {
       expect(cards(container)).toEqual(['hunk-1', 'hunk-2'])
       expect(container.querySelector('.file-part')).toBeNull()
       expect(container.querySelector('.file-whole')).toBeNull()
+    })
+  })
+
+  describe('highlighted lines', () => {
+    const ALL_SCOPES = ['highlights', 'parts', 'whole'] as const
+    const highlights = new Map([['src/b.ts', [{ from: 2, to: 2 }]]])
+    const rows = (c: Element, cls: string) =>
+      [...c.querySelectorAll(`.hunk[data-hunk-id="hunk-1"] tr.${cls} .line-code`)].map(
+        (td) => td.textContent,
+      )
+
+    it('lights the highlighted lines and dims the rest of the file', () => {
+      const { container } = render(<ReadingPane files={[FILES[0]!]} layer={view({ highlights })} />)
+      // The deletion the added line replaced goes with it.
+      expect(rows(container, 'line-lit')).toEqual(['const removed = 1', 'const added = 2'])
+      expect(rows(container, 'line-unlit')).toEqual(['const keep = true'])
+      expect(container.querySelector('.hunk[data-hunk-id="hunk-2"] tr.line-unlit')).toBeTruthy()
+    })
+
+    it('a file without a highlight dims nothing', () => {
+      const { container } = render(<ReadingPane files={[FILES[0]!]} layer={view()} />)
+      expect(container.querySelector('tr.line-lit, tr.line-unlit')).toBeNull()
+    })
+
+    it('the card offers the three scopes, narrowest first', () => {
+      const onPick = vi.fn()
+      const { container, rerender } = render(
+        <ReadingPane
+          files={[FILES[0]!]}
+          layer={view({ highlights, scope: { kind: 'parts', offers: ALL_SCOPES, onPick } })}
+        />,
+      )
+      const pick = container.querySelector('.ch-head-scope')!
+      expect(pick.parentElement?.className).toBe('ch-head-order')
+      expect(pick.querySelector('.ch-head-order-cap')?.textContent).toBe('Show')
+      const group = pick.querySelector('[role="radiogroup"]')!
+      expect(group.getAttribute('aria-labelledby')).toBe(
+        pick.querySelector('.ch-head-order-cap')?.id,
+      )
+      const [only, hunks, whole] = [...group.querySelectorAll('[role="radio"]')]
+      expect(only!.textContent).toBe('only highlights')
+      expect(hunks!.textContent).toBe('this step’s hunks')
+      expect(whole!.textContent).toBe('the whole file')
+      expect(only!.getAttribute('aria-checked')).toBe('false')
+      expect(hunks!.getAttribute('aria-checked')).toBe('true')
+      expect(container.querySelector('tr.line-unlit-fold')).toBeNull()
+      fireEvent.click(only!)
+      expect(onPick).toHaveBeenCalledWith('highlights')
+      rerender(
+        <ReadingPane
+          files={[FILES[0]!]}
+          layer={view({ highlights, scope: { kind: 'highlights', offers: ALL_SCOPES, onPick } })}
+        />,
+      )
+      // hunk-1 is short enough that its context keeps every line; hunk-2 has
+      // nothing lit, so it folds whole.
+      expect(rows(container, 'line')).toEqual([
+        'const keep = true',
+        'const removed = 1',
+        'const added = 2',
+      ])
+      const folds = [...container.querySelectorAll('tr.line-unlit-fold')].map((r) => r.textContent)
+      expect(folds).toEqual(['1 line outside the highlight'])
+      const chips = [...container.querySelectorAll('.ch-head-scope [role="radio"]')]
+      expect(chips.map((c) => c.getAttribute('aria-checked'))).toEqual(['true', 'false', 'false'])
+      fireEvent.click(chips[1]!)
+      expect(onPick).toHaveBeenLastCalledWith('parts')
+    })
+
+    it('only highlights keeps two lines of context around each highlight', () => {
+      const long: FileChange = {
+        ...FILES[0]!,
+        path: 'src/long.ts',
+        hunks: [
+          hunk('src/long.ts', 'long-1', [
+            ...[1, 2, 3].map((n) => ({
+              kind: 'context' as const,
+              oldNo: n,
+              newNo: n,
+              text: `c${n}`,
+            })),
+            { kind: 'add', oldNo: null, newNo: 4, text: 'lit' },
+            ...[5, 6, 7, 8].map((n) => ({
+              kind: 'context' as const,
+              oldNo: n - 1,
+              newNo: n,
+              text: `c${n}`,
+            })),
+          ]),
+        ],
+      }
+      const { container } = render(
+        <ReadingPane
+          files={[long]}
+          layer={view({
+            highlights: new Map([['src/long.ts', [{ from: 4, to: 4 }]]]),
+            scope: { kind: 'highlights', offers: ALL_SCOPES, onPick: vi.fn() },
+          })}
+        />,
+      )
+      const shown = [...container.querySelectorAll('tr.line .line-code')].map(
+        (td) => td.textContent,
+      )
+      expect(shown).toEqual(['c2', 'c3', 'lit', 'c5', 'c6'])
+      const folds = [...container.querySelectorAll('tr.line-unlit-fold')].map((r) => r.textContent)
+      expect(folds).toEqual(['1 line outside the highlight', '2 lines outside the highlight'])
+      // The context reads as context: dimmed, not lit.
+      expect(container.querySelectorAll('tr.line-lit')).toHaveLength(1)
     })
   })
 

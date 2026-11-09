@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import type { Layers, ReviewThread } from '../shared/review.js'
 import type { FileChange, Hunk } from '../shared/types.js'
-import { fileMark } from './fileMarks.js'
+import { expandMarks, fileMark } from './fileMarks.js'
 import {
   entryMarks,
   entryViewed,
@@ -17,7 +17,7 @@ import {
   layerProgress,
   layersByPath,
   linkPaths,
-  outlineHasRanges,
+  outlineSplitsFiles,
   parseLayerLink,
   resolveLayers,
   SINCE_TITLE,
@@ -213,6 +213,56 @@ describe('resolveLayers', () => {
       expect(gone[1]!.files[0]).toMatchObject({ partial: false })
     })
 
+    it('a highlight keeps only the hunks it lights; the rest read where another step lights them', () => {
+      const outline = layers([
+        { id: 'a', title: 'Contract', files: [{ path: 'src/big.ts', highlight: ['10-14'] }] },
+        {
+          id: 'b',
+          title: 'Consumers',
+          files: [{ path: 'src/big.ts', highlight: ['40-42', '88-90'] }],
+        },
+      ])
+      const [a, b, since] = resolveLayers(outline, [big])
+      expect(a!.files[0]!.hunks.map((h) => h.id)).toEqual(['src/big.ts#1'])
+      expect(a!.files[0]!.partial).toBe(true)
+      expect(b!.files[0]!.hunks.map((h) => h.id)).toEqual(['src/big.ts#2', 'src/big.ts#3'])
+      expect(since).toBeUndefined()
+    })
+
+    it('changed lines no step claims land in the derived layer, lit; the whole-file switch claims them back', () => {
+      const outline = layers([
+        { id: 'a', title: 'Contract', files: [{ path: 'src/big.ts', highlight: ['11'] }] },
+      ])
+      const rest = resolveLayers(outline, [big]).at(-1)!.files[0]!
+      expect(rest.hunks.map((h) => h.id)).toEqual(['src/big.ts#1', 'src/big.ts#2', 'src/big.ts#3'])
+      expect(rest.highlight).toEqual([
+        { from: 10, to: 10 },
+        { from: 12, to: 14 },
+        { from: 40, to: 42 },
+        { from: 88, to: 90 },
+      ])
+      const whole = resolveLayers(outline, [big], { wholeFiles: true })
+      expect(whole).toHaveLength(1)
+      expect(whole[0]!.files[0]).toMatchObject({
+        partial: false,
+        highlight: [{ from: 11, to: 11 }],
+      })
+    })
+
+    it('a highlight within a range narrows it, and one that lights nothing is ignored', () => {
+      const narrowed = resolveLayers(
+        layers([{ id: 'a', title: 'A', files: [{ path: 'src/big.ts:10-42', highlight: ['40'] }] }]),
+        [big],
+      )
+      expect(narrowed[0]!.files[0]!.hunks.map((h) => h.id)).toEqual(['src/big.ts#2'])
+      const drifted = resolveLayers(
+        layers([{ id: 'a', title: 'A', files: [{ path: 'src/big.ts', highlight: ['300'] }] }]),
+        [big],
+      )
+      expect(drifted[0]!.files[0]!.partial).toBe(false)
+      expect(drifted).toHaveLength(1)
+    })
+
     it('a ranged entry whose ranges cover every hunk is simply the whole file', () => {
       const all = resolveLayers(layers([{ id: 'a', title: 'All', files: ['src/big.ts:1-100'] }]), [
         big,
@@ -235,11 +285,13 @@ describe('resolveLayers', () => {
       expect(whole[1]!.files[0]).toMatchObject({ partial: false, note: 'the call' })
       // Nothing of big.ts is left for the derived layer.
       expect(whole.at(-1)!.files.some((f) => f.file.path === 'src/big.ts')).toBe(false)
-      expect(outlineHasRanges(layers([{ id: 'a', title: 'A', files: ['src/big.ts:10-14'] }]))).toBe(
-        true,
+      expect(
+        outlineSplitsFiles(layers([{ id: 'a', title: 'A', files: ['src/big.ts:10-14'] }])),
+      ).toBe(true)
+      expect(outlineSplitsFiles(layers([{ id: 'a', title: 'A', files: ['src/big.ts'] }]))).toBe(
+        false,
       )
-      expect(outlineHasRanges(layers([{ id: 'a', title: 'A', files: ['src/big.ts'] }]))).toBe(false)
-      expect(outlineHasRanges(undefined)).toBe(false)
+      expect(outlineSplitsFiles(undefined)).toBe(false)
     })
 
     it('layerByHunk and layersByPath know where each part reads', () => {
@@ -288,6 +340,102 @@ describe('resolveLayers', () => {
     expect(out).toHaveLength(1)
     expect(out[0]!.files).toEqual([])
     expect(out[0]!.missing).toEqual(['src/cli.ts'])
+  })
+})
+
+describe('highlights', () => {
+  it('resolve onto the entry, folded across entries of one path, and survive the whole-file switch', () => {
+    const outline = layers([
+      {
+        id: 'a',
+        title: 'A',
+        files: [
+          { path: 'src/parse.ts:1-1', highlight: ['3-4'] },
+          { path: 'src/parse.ts:1-1', highlight: ['9'] },
+          'src/cli.ts',
+        ],
+      },
+    ])
+    const parse: FileChange = {
+      ...file('src/parse.ts'),
+      hunks: [
+        {
+          ...hunk('src/parse.ts', 1),
+          lines: Array.from({ length: 10 }, (_, i) => ({
+            kind: 'add' as const,
+            oldNo: null,
+            newNo: i + 1,
+            text: '',
+          })),
+        },
+      ],
+    }
+    const files = [parse, ...FILES.slice(1)]
+    const [a] = resolveLayers(outline, files)
+    expect(a!.files[0]!.highlight).toEqual([
+      { from: 3, to: 4 },
+      { from: 9, to: 9 },
+    ])
+    expect(a!.files[1]!.highlight).toBeUndefined()
+    const [whole] = resolveLayers(outline, files, { wholeFiles: true })
+    expect(whole!.files[0]!.highlight).toHaveLength(2)
+  })
+})
+
+describe('highlight read marks', () => {
+  const SHARED = '0123456789abcdef'
+  const added = (newNo: number) => ({ kind: 'add' as const, oldNo: null, newNo, text: 'x' })
+  const promises: FileChange = {
+    ...file('src/promises.rs'),
+    hunks: [
+      {
+        id: SHARED,
+        path: 'src/promises.rs',
+        oldStart: 10,
+        newStart: 10,
+        lines: [added(10), added(11), added(12), added(13)],
+      },
+      {
+        id: 'fedcba9876543210',
+        path: 'src/promises.rs',
+        oldStart: 40,
+        newStart: 40,
+        lines: [added(40)],
+      },
+    ],
+  }
+  const outline = layers([
+    {
+      id: 'contract',
+      title: 'Contract',
+      files: [{ path: 'src/promises.rs', highlight: ['10-11'] }],
+    },
+    {
+      id: 'callers',
+      title: 'Callers',
+      files: [{ path: 'src/promises.rs', highlight: ['12-13', '40'] }],
+    },
+  ])
+
+  it('reading one step reads its lines of a shared hunk, not the other step’s', () => {
+    const [contract, callers] = resolveLayers(outline, [promises])
+    expect(entryMarks(contract!.files[0]!)).toEqual([`${SHARED}:0`, `${SHARED}:1`])
+    const viewed = expandMarks(new Set(entryMarks(contract!.files[0]!)), [promises])
+    expect(entryViewed(contract!.files[0]!, viewed)).toBe(true)
+    expect(entryViewed(callers!.files[0]!, viewed)).toBe(false)
+    expect(viewed.has(SHARED)).toBe(false)
+
+    const both = expandMarks(new Set([...viewed, ...entryMarks(callers!.files[0]!)]), [promises])
+    expect(both.has(SHARED)).toBe(true)
+  })
+
+  it('a hunk the step holds with no line lit reads whole', () => {
+    const [contract] = resolveLayers(outline, [promises], { wholeFiles: true })
+    expect(entryMarks(contract!.files[0]!)).toEqual([
+      `${SHARED}:0`,
+      `${SHARED}:1`,
+      'fedcba9876543210',
+    ])
   })
 })
 

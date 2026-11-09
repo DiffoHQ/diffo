@@ -260,8 +260,12 @@ Exactly one of:
 | `--stdin` | The same payload, piped |
 
 A layer is `{ title, summary?, kind?, files, decisions? }`. `files` holds
-repo-relative paths, as strings or as `{ "path", "note" }` where the note is one
-line on why the file is in this step. `kind` may only be `"mechanical"`: the
+repo-relative paths, as strings or as `{ "path", "note"?, "highlight"? }` where
+the note is one line on why the file is in this step, and `highlight` the
+head-side lines the step is about within the file (`"40"`, `"12-18"`, or a list
+of up to thirty), lit in the pane with the rest dimmed. A highlighted entry holds
+only the hunks its highlight touches; a highlight that touches none is
+ignored. `kind` may only be `"mechanical"`: the
 layer changes no behaviour, and its files render folded. A bare path is the
 whole file; `path:from-to` (head-side lines) is the hunks that range touches,
 for a file whose hunks belong to different steps — list it with its own range
@@ -283,10 +287,10 @@ names the layer at fault (`layer 2 ("Callers"): needs a non-empty "files" list`)
 Nothing is stored on a failed post.
 
 Prints `{ "ok": true, "layers": 4, "next_step": "…" }` after a post — with an
-`uncovered` list when the outline leaves hunks or files in no layer
-(`[{ "path": "src/a.ts", "ranges": ["88-95"] }, { "path": "src/b.ts" }]`; a path
-alone is a file the outline never names), and a `next_step` that asks for a
-re-post with them placed — and
+`uncovered` list when the outline leaves changed lines or files in no layer
+(`[{ "path": "src/a.ts", "ranges": ["88-95"] }, { "path": "src/b.ts" }]`: the
+head-side lines no layer claims, or a path alone for a file the outline never
+names), and a `next_step` that asks for a re-post with them placed — and
 `{ "ok": true, "suggested": true, "next_step": "…" }` after a suggestion.
 `suggested` is `false` when layers already exist: there is nothing left to
 suggest, and the next step says to re-post instead.

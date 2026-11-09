@@ -35,8 +35,8 @@ import {
   doctrineFor,
   guideInherit,
   guideNudge,
+  layersIncompleteStep,
   layersNudge,
-  layersUncoveredStep,
   ownPrAsk,
   POLL_NOW,
   POLL_NOW_FOREGROUND,
@@ -735,7 +735,7 @@ if (command.kind === 'layers') {
       ok: true,
       layers: layers.items.length,
       ...(uncovered.length > 0 ? { uncovered } : {}),
-      next_step: uncovered.length > 0 ? layersUncoveredStep(uncovered) : ACK_NEXT_STEP.layers,
+      next_step: uncovered.length === 0 ? ACK_NEXT_STEP.layers : layersIncompleteStep(uncovered),
     }),
   )
   process.exit(0)

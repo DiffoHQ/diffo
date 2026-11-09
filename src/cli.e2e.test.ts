@@ -213,6 +213,17 @@ describe.skipIf(!existsSync(cliPath))('diffo binary (e2e smoke)', () => {
     expect(partialAck.uncovered[0]!.ranges).toHaveLength(1)
     expect(partialAck.next_step).toContain(`app.ts:${partialAck.uncovered[0]!.ranges![0]}`)
     expect(partialAck.next_step).toContain('re-post')
+    // An outline that claims a changed line in two layers is refused, naming it.
+    const shared = await run([
+      'layers',
+      '--json',
+      JSON.stringify([
+        { title: 'The constant', files: [{ path: 'app.ts', highlight: '1' }] },
+        { title: 'Everything', files: ['app.ts'] },
+      ]),
+    ])
+    expect(shared.code).toBe(1)
+    expect(shared.stderr).toContain('app.ts:1 (layers 1, 2)')
     const piped = await run(
       ['layers', '--stdin'],
       JSON.stringify([

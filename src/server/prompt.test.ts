@@ -23,8 +23,9 @@ import {
   guideNudge,
   hunkListLines,
   LAYERS,
+  layersIncompleteStep,
   layersNudge,
-  layersUncoveredStep,
+  layersSharedError,
   nextStepFor,
   ownPrAsk,
   PR_COMMENT_DOCTRINE,
@@ -952,7 +953,7 @@ describe('the layers payload (reviewer pressed Outline)', () => {
   })
 
   it('a post that left part of the changeset out says what, and asks for a re-post', () => {
-    const step = layersUncoveredStep([
+    const step = layersIncompleteStep([
       { path: 'src/a.ts', ranges: ['88-95', '140-162'] },
       { path: 'src/b.ts' },
     ])
@@ -960,6 +961,14 @@ describe('the layers payload (reviewer pressed Outline)', () => {
     expect(step).toContain('Since your review')
     expect(step).toContain(CLI_COMMANDS.layers)
     expect(step).toContain(CLI_COMMANDS.poll)
+  })
+
+  it('an outline claiming a line in two layers is refused with the lines and layers', () => {
+    const error = layersSharedError([
+      { path: 'src/a.ts', layers: [1, 3], lines: [{ from: 31, to: 33 }] },
+    ])
+    expect(error).toContain('src/a.ts:31-33 (layers 2, 4)')
+    expect(error).toContain('exactly one layer')
   })
 
   it('a refresh names the outline they have and asks for the whole list again', () => {

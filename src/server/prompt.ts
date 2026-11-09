@@ -1,6 +1,13 @@
 import { fileURLToPath } from 'node:url'
 import { findHunk as findHunkIn } from '../shared/anchors.js'
-import { formatSpan, hunkHeadSpan, type UncoveredRef, uncoveredLine } from '../shared/layers.js'
+import {
+  formatSpan,
+  hunkHeadSpan,
+  type SharedLines,
+  sharedLine,
+  type UncoveredRef,
+  uncoveredLine,
+} from '../shared/layers.js'
 import {
   type Anchor,
   type AnchoredLayer,
@@ -245,13 +252,19 @@ export function ownPrAsk(
   ].join('\n')
 }
 
-/** The ack after a post that left hunks or files in no layer: what was
- * missed, and that the fix is a re-post of the whole list with them placed. */
-export function layersUncoveredStep(uncovered: readonly UncoveredRef[]): string {
+/** The ack after a post with gaps: files and changed lines in no layer. Says
+ * what was missed, and that the fix is a re-post of the whole list with it
+ * placed. */
+export function layersIncompleteStep(uncovered: readonly UncoveredRef[]): string {
   return (
     `${ACK_NEXT_STEP.layersUncovered}${uncoveredLine(uncovered)}. ` +
-    `Every hunk belongs in some layer — re-post the whole list with \`${CLI_COMMANDS.layers}\` with these placed (a whole file by path, part of a file as path:from-to), then run \`${CLI_COMMANDS.poll}\`.`
+    `Every changed line belongs to one layer — re-post the whole list with \`${CLI_COMMANDS.layers}\` with these placed (a whole file by path, part of a file as path:from-to, and lines within a hunk by highlighting them), then run \`${CLI_COMMANDS.poll}\`.`
   )
+}
+
+/** The refusal of an outline that claims a changed line in two layers. */
+export function layersSharedError(shared: readonly SharedLines[]): string {
+  return `each changed line belongs to exactly one layer, and these are claimed by more than one: ${sharedLine(shared)}. A file or hunk listed without a highlight claims all of its changed lines; split it between the layers with highlights or path:from-to ranges, then re-post the whole list`
 }
 
 export const ACK_NEXT_STEP = {
@@ -407,10 +420,15 @@ export const LAYERS = {
    * hunks really read as different steps; then every step names its part, so
    * "whole" never has to mean "the rest". */
   files:
-    'a file is its path, the whole file, every hunk. When a file\'s hunks belong to different steps, give each step the part it owns as "path:from-to" — head-side lines, the ranges the ask lists per hunk — in every step that has a part of it, never whole in one step and by range in another. Most files stay whole; split only where the hunks really are different steps. Every hunk of the changeset belongs in some layer: the post reports any it leaves out, and you re-post with them placed',
+    'a file is its path, the whole file, every hunk. When a file\'s hunks belong to different steps, give each step the part it owns as "path:from-to" — head-side lines, the ranges the ask lists per hunk — in every step that has a part of it, never whole in one step and by range in another. Most files stay whole; split only where the hunks really are different steps. Every changed line of the changeset belongs to exactly one layer: the post reports any it leaves out, and you re-post with them placed',
+  /** Highlights by default: they say which lines carry the step, and they
+   * decide which changed lines the step owns, so a hunk two steps share
+   * points somewhere different in each. */
+  highlight:
+    'highlight by default — on each file object, "highlight" the head-side lines this step is about: "40", "12-18", or a list of up to thirty. The reviewer sees them lit, the rest dimmed, and can fold the rest away. A highlight claims the changed lines it lights for this step, and a hunk it lights nothing in is another step\'s; a file or hunk listed without a highlight claims all of its changed lines. Each changed line belongs to exactly one layer: a hunk two steps share is listed in both, each highlighting its own lines, and the post refuses an outline that claims a line in two layers. A deleted line goes with the head line right after it. Leave "highlight" out only when every changed line of the file is this step\'s — a new file read top to bottom, a mechanical step',
   /** The payload, in one line. */
   shape:
-    '[{ "title": "…", "summary": "…", "kind": "mechanical" (optional), "files": ["src/a.ts", { "path": "src/b.ts", "note": "why this file is in this step" }, "src/c.ts:12-40"], "decisions": [{ "text": "…", "detail": "…", "at": "src/a.ts:12-18" | ["src/a.ts:12-18", "test/a.test.ts:40"] }] (optional, at most five) }]',
+    '[{ "title": "…", "summary": "…", "kind": "mechanical" (optional), "files": ["src/a.ts", { "path": "src/b.ts", "note": "why this file is in this step", "highlight": ["12-18", "40"] }, "src/c.ts:12-40"], "decisions": [{ "text": "…", "detail": "…", "at": "src/a.ts:12-18" | ["src/a.ts:12-18", "test/a.test.ts:40"] }] (optional, at most five) }]',
 } as const
 
 /**
@@ -1147,6 +1165,8 @@ export function buildLayersRequestPrompt(
     `Order: ${D.layers.order}. ${D.layers.mechanical}. ${D.layers.stance}.`,
     '',
     `Files: ${D.layers.files}. Paths are relative to the repo root.`,
+    '',
+    `Highlights: ${D.layers.highlight}.`,
     '',
     ...(ctx.changeset ? [...hunkListLines(ctx.changeset), ''] : []),
     `Decisions: ${D.layers.decisions}.`,
