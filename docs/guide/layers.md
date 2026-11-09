@@ -76,17 +76,40 @@ reads *3 of 7 hunks*; its mark is that part's. On the Files tab the file
 says *steps 1 · 3* after its name, and its mark is the whole file's, mixed
 while one part is read and the other is not.
 
-Rather read whole files? Beside the reading order on the card, **Files in
-several steps** switches between *this step's hunks* and *the whole file*.
-Off, the
-agent's ranges are ignored: a split file is a whole file in every step that
-lists it, marked once, the way a file in two layers always read. One pick for
-the whole review, remembered across reviews.
+How much of each file you see is yours to pick. Beside the reading order on
+the card, **Show this layer changed** offers *lines | hunks | files*,
+narrowest first, one for each way the agent can split a file. *Hunks* is
+what's above: the step's hunks, plain. *Files* shows every hunk of each file,
+other steps' hunks too, dimmed and tagged with their step, in place of the
+folded rows. *Lines*, the default, is the step's hunks with the lines the
+agent highlighted lit and the rest dimmed (next section). It changes only
+what you see — **Viewed** still marks this step's part. A pick that would
+show the same as *hunks* in a step is greyed, and its tooltip says why. One
+pick for the whole review, remembered across reviews.
 
-Nothing can hide in the split. A hunk no step claims lands in *Since your
-review* like a file no step lists, and the agent hears about it the moment
-it posts: the ack names the hunks left out, and the next step is a re-post
-with them placed.
+Nothing can hide in the split. Every changed line belongs to exactly one
+step. A line no step claims lands in *Since your review*, lit, like a file no
+step lists, and the agent hears about it the moment it posts: the ack names
+the lines left out, and the next step is a re-post with them placed. An
+outline that claims a line in two steps is refused.
+
+## Highlighted lines
+
+The agent points at the lines each step is about. Under **Show this layer
+changed · lines**, the default, those lines keep the diff's full colour and
+the rest of the hunk steps back, grey — every line still there, so a hunk
+several steps share reads differently in each. A hunk the step highlights
+nothing in is not part of it: it folds under the name of the step that does
+highlight it, like a split file's other hunks. A file the step lists without
+a highlight is the step's throughout, and lights in full. *Hunks* and *files*
+show the same hunks plain; in a step the agent highlighted nothing in,
+*lines* is greyed. A changed line no step claims is still read, lit, under
+*Since your review*.
+
+**Viewed** under a step that highlights a file marks its highlighted lines,
+not its hunks: reading one step's lines of a shared hunk leaves the other
+step's unread. A hunk counts as read once all its changed lines are, by
+whichever steps.
 
 ## Decisions
 
@@ -123,7 +146,8 @@ layer, so nothing hides outside the plan. One line at the
 foot of the tab asks the agent to re-outline, and a re-post keeps your place for
 every title that survives.
 
-Read marks live on hunks, not on layers, so a re-post can never lose one.
+Read marks live on hunks and their lines, not on layers, so a re-post can
+never lose one.
 
 ## Commenting on a layer
 

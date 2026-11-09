@@ -5,10 +5,14 @@ import {
   type Layer,
   type LayerFile,
   type LineRange,
+  layerFileHighlight,
+  layerFileNote,
   layerFilePath,
   layerFileRange,
+  layerFileRef,
+  parseLineSpan,
 } from './review.js'
-import type { FileChange, Hunk } from './types.js'
+import type { DiffLine, FileChange, Hunk } from './types.js'
 
 // Validation for a layers post, shared by the CLI (so the agent hears about a
 // bad payload before it leaves the machine) and the server (which trusts
@@ -34,6 +38,10 @@ const NOTE_CAP = 200
 export const DECISIONS_PER_LAYER = 5
 const DECISION_TEXT_CAP = 120
 const DECISION_DETAIL_CAP = 400
+
+/** Highlights must cover every changed line of the hunks they hold, so a
+ * file with many hunks needs many; the cap is only the backstop. */
+export const HIGHLIGHTS_PER_FILE = 30
 
 const REPO_PATH = /^[^\0]+$/
 
@@ -79,7 +87,10 @@ function parseFile(
     return { ok: true, file: parsed.ref }
   }
   if (typeof raw !== 'object' || raw === null || Array.isArray(raw)) {
-    return { ok: false, error: `${where}: each file is a path string or { path, note? }` }
+    return {
+      ok: false,
+      error: `${where}: each file is a path string or { path, note?, highlight? }`,
+    }
   }
   const f = raw as Record<string, unknown>
   if (typeof f.path !== 'string')
@@ -91,7 +102,34 @@ function parseFile(
     return { ok: false, error: `${where}: "note" on ${path} must be a string` }
   }
   const note = typeof f.note === 'string' ? oneLine(f.note, NOTE_CAP) : undefined
-  return { ok: true, file: note ? { path, note } : { path } }
+  const highlight = parseHighlight(f.highlight, `${where}: "highlight" on ${path}`)
+  if (typeof highlight === 'string') return { ok: false, error: highlight }
+  return {
+    ok: true,
+    file: {
+      path,
+      ...(note ? { note } : {}),
+      ...(highlight.length > 0 ? { highlight } : {}),
+    },
+  }
+}
+
+function parseHighlight(raw: unknown, where: string): string[] | string {
+  if (raw === undefined) return []
+  const raws = Array.isArray(raw) ? raw : [raw]
+  if (raws.length > HIGHLIGHTS_PER_FILE) {
+    return `${where} names ${raws.length} ranges; keep it to ${HIGHLIGHTS_PER_FILE}`
+  }
+  const spans: string[] = []
+  for (const entry of raws) {
+    const span = typeof entry === 'string' ? parseLineSpan(entry) : null
+    if (span === null) {
+      return `${where} is a head-side line or range, "40" or "12-18", or a list of them`
+    }
+    if (span.from < 1 || span.to < 1) return `${where}: lines start at 1`
+    spans.push(formatSpan({ from: Math.min(span.from, span.to), to: Math.max(span.from, span.to) }))
+  }
+  return spans
 }
 
 /** First line, trimmed, capped. Empty when nothing survives. */
@@ -318,65 +356,254 @@ export function formatSpan(span: LineRange): string {
   return span.from === span.to ? `${span.from}` : `${span.from}-${span.to}`
 }
 
+/** One path's entries within a layer, folded together: whole, or the union
+ * of its ranges, with the first note and every highlight. */
+export interface PathClaim {
+  path: string
+  whole: boolean
+  ranges: LineRange[]
+  /** Every `path:from-to` as written, for the missing list. */
+  refs: string[]
+  note?: string
+  highlight: LineRange[]
+}
+
+export function claimsOf(layer: Pick<Layer, 'files'>): PathClaim[] {
+  const claims = new Map<string, PathClaim>()
+  for (const entry of layer.files) {
+    const path = layerFilePath(entry)
+    const range = layerFileRange(entry)
+    const note = layerFileNote(entry)
+    let claim = claims.get(path)
+    if (!claim) {
+      claim = { path, whole: false, ranges: [], refs: [], highlight: [] }
+      claims.set(path, claim)
+    }
+    if (range === null) claim.whole = true
+    else {
+      claim.ranges.push(range)
+      claim.refs.push(layerFileRef(entry))
+    }
+    if (note && !claim.note) claim.note = note
+    claim.highlight.push(...layerFileHighlight(entry))
+  }
+  return [...claims.values()]
+}
+
 /**
- * The hunks of a file the outline leaves in no layer, by path, plus the files
- * it does not name at all. Against the live changeset, like everything about
- * layers; a whole-file entry claims every hunk, a ranged one the hunks it
- * touches. Empty when every hunk is somewhere. Hunkless files count as one
- * unit: listed or not.
+ * The hunks a claim holds, in file order. A range keeps the hunks it touches;
+ * a highlight then keeps, of those, the hunks it lights a changed line in — a
+ * hunk the step highlights nothing in is another step's. A highlight that
+ * lights none of them has drifted off the code, and is ignored rather than
+ * empty the file.
+ */
+export function claimedHunks(hunks: readonly Hunk[], claim: PathClaim): Hunk[] {
+  const ranged = claim.whole
+    ? [...hunks]
+    : hunks.filter((h) => claim.ranges.some((r) => rangeTouchesHunk(r, h)))
+  const lit = ranged.filter((h) => litChangedRows(h, claim.highlight).size > 0)
+  return lit.length > 0 ? lit : ranged
+}
+
+/**
+ * The changed rows (indices into `hunk.lines`) a claim holding the hunk owns:
+ * the ones its highlight lights, or every changed row when it lights none — a
+ * hunk held without a highlight reads as highlighted throughout.
+ */
+export function claimedRows(hunk: Hunk, highlight: readonly LineRange[]): Set<number> {
+  const lit = litChangedRows(hunk, highlight)
+  return lit.size > 0 ? lit : changedRows(hunk)
+}
+
+function changedRows(hunk: Hunk): Set<number> {
+  return new Set(hunk.lines.flatMap((line, i) => (line.kind === 'context' ? [] : [i])))
+}
+
+export function litChangedRows(hunk: Hunk, highlight: readonly LineRange[]): Set<number> {
+  const changed = changedRows(hunk)
+  return new Set([...highlightedRows(hunk.lines, highlight)].filter((i) => changed.has(i)))
+}
+
+/** The head-side spans of a hunk's changed lines, a deleted line by the head
+ * line it goes with: what a highlight lighting all of them names. */
+export function changedLineSpans(hunks: readonly Hunk[]): LineRange[] {
+  return toSpans(hunks.flatMap((hunk) => [...changedRows(hunk)].flatMap((i) => headLines(hunk, i))))
+}
+
+function headLines(hunk: Hunk, row: number): number[] {
+  const line = hunk.lines[row]!
+  const at = line.kind === 'del' ? headLineBeside(hunk.lines, row) : line.newNo
+  return [at ?? hunkHeadSpan(hunk).from]
+}
+
+interface RowClaim {
+  layer: number
+  path: string
+  hunk: Hunk
+  rows: ReadonlySet<number>
+}
+
+function rowClaims(
+  layers: readonly Pick<Layer, 'files'>[],
+  files: readonly FileChange[],
+): RowClaim[] {
+  const byPath = new Map(files.map((f) => [f.path, f]))
+  return layers.flatMap((layer, i) =>
+    claimsOf(layer).flatMap((claim) => {
+      const file = byPath.get(claim.path)
+      if (!file) return []
+      return claimedHunks(file.hunks, claim).map((hunk) => ({
+        layer: i,
+        path: claim.path,
+        hunk,
+        rows: claimedRows(hunk, claim.highlight),
+      }))
+    }),
+  )
+}
+
+/**
+ * What the outline leaves in no layer, by path: a file it never names, whole,
+ * and otherwise the changed lines no layer claims (`claimedRows`). Against
+ * the live changeset, like everything about layers. Empty when every changed
+ * line is somewhere; a hunkless file counts as one unit, listed or not.
  */
 export interface UncoveredFile {
   path: string
-  /** The hunks no range claimed, in file order; empty when the file itself
-   * is not in the outline. */
-  hunks: Hunk[]
   /** The file appears in no layer at all. */
   unlisted: boolean
+  /** The hunks with an unclaimed changed line, in file order. */
+  hunks: Hunk[]
+  /** Those lines as head-side spans; empty when the file is unlisted. */
+  lines: LineRange[]
 }
 
 export function uncoveredByLayers(
   layers: readonly Pick<Layer, 'files'>[],
   files: readonly FileChange[],
 ): UncoveredFile[] {
-  const wholePaths = new Set<string>()
-  const ranges = new Map<string, LineRange[]>()
-  for (const layer of layers) {
-    for (const entry of layer.files) {
-      const path = layerFilePath(entry)
-      const range = layerFileRange(entry)
-      if (range === null) wholePaths.add(path)
-      else {
-        const list = ranges.get(path)
-        if (list) list.push(range)
-        else ranges.set(path, [range])
-      }
-    }
+  const listed = new Set(layers.flatMap((layer) => claimsOf(layer).map((c) => c.path)))
+  const claimed = new Map<string, Set<number>>()
+  for (const { hunk, rows } of rowClaims(layers, files)) {
+    const known = claimed.get(hunk.id) ?? new Set()
+    for (const row of rows) known.add(row)
+    claimed.set(hunk.id, known)
   }
   const out: UncoveredFile[] = []
   for (const file of files) {
-    if (wholePaths.has(file.path)) continue
-    const own = ranges.get(file.path)
-    if (!own) {
-      out.push({ path: file.path, hunks: [], unlisted: true })
+    if (!listed.has(file.path)) {
+      out.push({ path: file.path, unlisted: true, hunks: [], lines: [] })
       continue
     }
-    const rest = file.hunks.filter((h) => !own.some((r) => rangeTouchesHunk(r, h)))
-    if (rest.length > 0) out.push({ path: file.path, hunks: rest, unlisted: false })
+    const gaps = file.hunks.map((hunk) => {
+      const held = claimed.get(hunk.id)
+      return { hunk, rows: [...changedRows(hunk)].filter((i) => !held?.has(i)) }
+    })
+    const open = gaps.filter((gap) => gap.rows.length > 0)
+    if (open.length === 0) continue
+    out.push({
+      path: file.path,
+      unlisted: false,
+      hunks: open.map((gap) => gap.hunk),
+      lines: toSpans(open.flatMap((gap) => gap.rows.flatMap((i) => headLines(gap.hunk, i)))),
+    })
   }
   return out
 }
 
+/** Changed lines two or more layers claim, by path and the layers (0-based,
+ * in outline order) that claim them. */
+export interface SharedLines {
+  path: string
+  layers: number[]
+  lines: LineRange[]
+}
+
+/**
+ * Where the outline claims a changed line in more than one layer. Each line
+ * reads in exactly one step, so the post refuses an outline with any.
+ */
+export function sharedByLayers(
+  layers: readonly Pick<Layer, 'files'>[],
+  files: readonly FileChange[],
+): SharedLines[] {
+  const owners = new Map<string, { path: string; hunk: Hunk; row: number; layers: Set<number> }>()
+  for (const { layer, path, hunk, rows } of rowClaims(layers, files)) {
+    for (const row of rows) {
+      const key = `${hunk.id}:${row}`
+      const owner = owners.get(key) ?? { path, hunk, row, layers: new Set<number>() }
+      owner.layers.add(layer)
+      owners.set(key, owner)
+    }
+  }
+  const groups = new Map<string, SharedLines & { heads: number[] }>()
+  for (const owner of owners.values()) {
+    if (owner.layers.size < 2) continue
+    const sharing = [...owner.layers].sort((a, b) => a - b)
+    const key = `${owner.path}\0${sharing.join(',')}`
+    const group = groups.get(key) ?? { path: owner.path, layers: sharing, lines: [], heads: [] }
+    group.heads.push(...headLines(owner.hunk, owner.row))
+    groups.set(key, group)
+  }
+  return [...groups.values()].map(({ heads, ...group }) => ({ ...group, lines: toSpans(heads) }))
+}
+
+/** `src/a.ts:31-33 (layers 2, 4)` — the refusal's one line. */
+export function sharedLine(shared: readonly SharedLines[]): string {
+  return shared
+    .flatMap((group) => {
+      const where = `(layers ${group.layers.map((i) => i + 1).join(', ')})`
+      return group.lines.map((span) => `${group.path}:${formatSpan(span)} ${where}`)
+    })
+    .join(', ')
+}
+
+/**
+ * The rows of `lines` a highlight lights. Deleted lines have no head-side
+ * number, so a run of them goes with the head line right after it — the line
+ * that replaced them — or, at the end of the lines, the one before.
+ */
+export function highlightedRows(
+  lines: readonly DiffLine[],
+  highlight: readonly LineRange[],
+): Set<number> {
+  const rows = new Set<number>()
+  if (highlight.length === 0) return rows
+  const lit = (line: number | null | undefined) =>
+    line != null && highlight.some((r) => line >= r.from && line <= r.to)
+  for (const [i, line] of lines.entries()) {
+    const at = line.kind === 'del' ? headLineBeside(lines, i) : line.newNo
+    if (lit(at)) rows.add(i)
+  }
+  return rows
+}
+
+function headLineBeside(lines: readonly DiffLine[], i: number): number | null | undefined {
+  const after = lines.slice(i + 1).find((l) => l.kind !== 'del')
+  if (after) return after.newNo
+  return lines.slice(0, i).findLast((l) => l.kind !== 'del')?.newNo
+}
+
+function toSpans(lines: readonly number[]): LineRange[] {
+  const spans: LineRange[] = []
+  for (const line of [...new Set(lines)].sort((a, b) => a - b)) {
+    const last = spans.at(-1)
+    if (last && line === last.to + 1) last.to = line
+    else spans.push({ from: line, to: line })
+  }
+  return spans
+}
+
 /** One uncovered file as the post's ack reports it: the whole file when the
- * outline never names it, else the head-side ranges of the hunks it missed. */
+ * outline never names it, else the head-side spans of the changed lines no
+ * layer claims. */
 export interface UncoveredRef {
   path: string
   ranges?: string[]
 }
 
 export function describeUncovered(u: UncoveredFile): UncoveredRef {
-  return u.unlisted
-    ? { path: u.path }
-    : { path: u.path, ranges: u.hunks.map((h) => formatSpan(hunkHeadSpan(h))) }
+  return u.unlisted ? { path: u.path } : { path: u.path, ranges: u.lines.map(formatSpan) }
 }
 
 /** `src/a.ts:88-95, src/a.ts:140-162, src/b.ts (whole)` — the ack's one line. */

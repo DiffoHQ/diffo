@@ -127,6 +127,49 @@ function parseHunkBody(
   return { lines: out, next: i }
 }
 
+/**
+ * git joins two changes into one hunk when their context overlaps, which at
+ * its default three lines takes up to six unchanged lines between them. Diffo
+ * groups as `-U1` would: changes this many unchanged lines apart are separate
+ * hunks. The diff is still read at three lines, so every line it showed is
+ * still shown, split between the two hunks.
+ */
+const UNRELATED_GAP = 3
+
+function splitUnrelated(hunk: RawHunk): RawHunk[] {
+  const pieces: RawHunk[] = []
+  let start = 0
+  let unchanged = 0
+  let changed = false
+  for (const [i, line] of hunk.lines.entries()) {
+    if (line.kind === 'context') {
+      unchanged++
+      continue
+    }
+    if (changed && unchanged >= UNRELATED_GAP) {
+      const cut = i - Math.floor(unchanged / 2)
+      pieces.push(hunkPiece(hunk, start, cut))
+      start = cut
+    }
+    changed = true
+    unchanged = 0
+  }
+  pieces.push(hunkPiece(hunk, start, hunk.lines.length))
+  return pieces
+}
+
+function hunkPiece(hunk: RawHunk, from: number, to: number): RawHunk {
+  const lines = hunk.lines.slice(from, to)
+  if (from === 0) return { ...hunk, lines }
+  const first = lines[0]!
+  return {
+    oldStart: first.oldNo ?? hunk.oldStart,
+    newStart: first.newNo ?? hunk.newStart,
+    context: null,
+    lines,
+  }
+}
+
 function parseHunks(lines: string[]): RawHunk[] {
   const hunks: RawHunk[] = []
   let i = 0
@@ -147,7 +190,14 @@ function parseHunks(lines: string[]): RawHunk[] {
       header[4] === undefined ? 1 : Number(header[4]),
     )
     const context = (header[5] ?? '').trim()
-    hunks.push({ oldStart, newStart, context: context === '' ? null : context, lines: body.lines })
+    hunks.push(
+      ...splitUnrelated({
+        oldStart,
+        newStart,
+        context: context === '' ? null : context,
+        lines: body.lines,
+      }),
+    )
     i = body.next
   }
   return hunks

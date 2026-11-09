@@ -211,6 +211,7 @@ Two commands, one doctrine:
 | **Mechanical** | `"kind": "mechanical"` marks a layer that changes no behaviour (a rename, call sites following a signature); its files render folded. If unsure, don't tag |
 | **Summaries** | What the layer is about, and enough context to review it: the part its files cannot show on their own. No template: the agent writes it however the step reads best, kept short, without retelling the diff. The guide's line holds verbatim: orient reading, never pre-review |
 | **Files** | A file is its path: the whole file, every hunk. When a file's hunks belong to different steps, each step lists the part it owns as `path:from-to` (head-side lines; the ask lists every file with its hunks' ranges, so a split is a copied range), in every step that has a part of it, never whole in one step and by range in another. Most files stay whole. Every hunk of the changeset belongs in some layer: the post's ack reports any it leaves out, and the fix is a re-post with them placed |
+| **Highlight** | On by default: a file object's `"highlight"` names the head-side lines (`"40"`, `"12-18"`, or a list of up to thirty) the step is about within the file. It also decides which changed lines the step owns: a hunk with no highlighted line is not in the step, and a hunk several steps share is listed in each with its own lines lit. A file or hunk listed without a highlight owns all of its changed lines, and a highlight that lights none of the entry's changed lines is ignored. Each changed line belongs to exactly one layer: the post refuses an outline that claims one twice, and reports any no layer claims. A deleted line goes with the head line right after it. Left out only when every changed line of the file is the step's (a new file read top to bottom, a mechanical step) |
 | **Diagrams** | When the step has a shape (a flow, a decision, a before/after), a small ```` ```mermaid ```` diagram usually beats prose. Nodes are tagged `:::new` / `:::changed` with the guide's two classDef lines |
 | **Decisions** | Up to five per layer, each one short line (under eight words) with a one-sentence `detail` and an `at`, where it lives: `path`, `path:line` or `path:from-to`, or a list of up to three such places when the decision spans hunks (the rule and the test that pins it). A decision is where the agent chose between real alternatives a reviewer might weigh differently (a cache, a data shape, a fallback), where the code now does something the diff does not make obvious (a 400 where there was an empty list, a sort every caller sees), or where something in the repo or the environment shaped the change (no clock on the model, tests that could not run). Only what a reviewer could want done differently or would be surprised by later; nothing about naming or style; no verdicts. Each line is a concrete statement in plain words, the answer to "what did you decide here?" for a teammate who has not seen the code, understood in a second: no project nicknames, no clever phrasing, the effect rather than the mechanism. Most layers have none — a plumbing step has nothing to decide, so the list is left out |
 
@@ -224,7 +225,8 @@ A layer:
   "files": [
     "src/weekday.ts",
     { "path": "src/dates.ts", "note": "delegates to resolveWeekday; the old arithmetic goes" },
-    "src/routes.ts:40-62"          // part of a file: the hunks these head-side lines touch
+    "src/routes.ts:40-62",         // part of a file: the hunks these head-side lines touch
+    { "path": "src/parse.ts", "highlight": ["14-19", "33"] }   // the lines this step is about
   ],
   "decisions": [                   // optional, at most five
     {
@@ -255,10 +257,22 @@ folded under the name of the step it reads in. A path listed whole in one
 layer and by range in another is refused. Unknown paths are accepted, since
 the file may land later, and simply show nothing until they do.
 
+A `highlight` on a file object lights those head-side lines in the pane and
+dims the rest of the hunk (*Show this layer changed · lines* on the layer
+card, the default; *hunks* shows the hunk plain). The entry
+then holds only the hunks its highlight lights a changed line in, within its
+range if it has one, and claims those changed lines; a file or hunk listed
+without a highlight claims all of its changed lines. Each changed line belongs
+to exactly one layer: a post that claims a line in two is refused with exit 1,
+naming the lines and layers (`src/a.ts:31-33 (layers 2, 4)`).
+
 The ack names what the outline left out: `{ "ok": true, "layers": 4,
 "uncovered": [{ "path": "src/a.ts", "ranges": ["88-95"] }, { "path": "src/b.ts" }],
 "next_step": "…" }`. The outline is live regardless, with the leftovers under
-*Since your review*; the next step is a re-post with them placed.
+*Since your review*, lit; the next step is a re-post with them placed. A
+range is the head-side lines of changed lines no layer claims, a deleted line
+named by the head line it goes with; a path alone is a file the outline never
+names.
 
 The rules that make a post safe to repeat:
 

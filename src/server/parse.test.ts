@@ -250,6 +250,62 @@ describe('parsePatch', () => {
   })
 })
 
+describe('hunks are grouped as at one line of context', () => {
+  // Line 1 and line 5 change, three unchanged lines apart: git's three lines of
+  // context join them, one line would not. Lines 9 and 11, one apart, stay one.
+  const joined = [
+    '@@ -1,11 +1,11 @@',
+    '-one',
+    '+ONE',
+    ' 2',
+    ' 3',
+    ' 4',
+    '-five',
+    '+FIVE',
+    ' 6',
+    ' 7',
+    ' 8',
+    '-nine',
+    '+NINE',
+    ' 10',
+    '-eleven',
+    '+ELEVEN',
+  ]
+
+  it('splits changes three or more unchanged lines apart, keeping every line', () => {
+    const [file] = parsePatch(patch('src/a.ts', joined))
+    const hunks = file!.hunks
+    expect(hunks.map((h) => h.lines.map((l) => l.newNo ?? `-${l.oldNo}`))).toEqual([
+      ['-1', 1, 2, 3],
+      [4, '-5', 5, 6, 7],
+      [8, '-9', 9, 10, '-11', 11],
+    ])
+    expect(hunks.map((h) => [h.oldStart, h.newStart])).toEqual([
+      [1, 1],
+      [4, 4],
+      [8, 8],
+    ])
+    expect(new Set(hunks.map((h) => h.id)).size).toBe(3)
+  })
+
+  it('a later piece has no scope of its own; the first keeps git’s', () => {
+    const [file] = parsePatch(
+      patch('src/a.ts', [
+        joined[0]!.replace('@@ -1,11 +1,11 @@', '@@ -1,11 +1,11 @@ fn a'),
+        ...joined.slice(1),
+      ]),
+    )
+    expect(file!.hunks.map((h) => h.context)).toEqual(['fn a', undefined, undefined])
+  })
+
+  it('leaves changes two unchanged lines apart together', () => {
+    const [file] = parsePatch(
+      patch('src/a.ts', ['@@ -1,4 +1,4 @@', '-one', '+ONE', ' 2', ' 3', '-four', '+FOUR']),
+    )
+    expect(file!.hunks).toHaveLength(1)
+  })
+})
+
 describe('unified diff format', () => {
   it('reads the scope git prints after the position', () => {
     const files = parsePatch(

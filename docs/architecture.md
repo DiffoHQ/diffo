@@ -37,6 +37,11 @@ details are load-bearing:
 - File names are read only from the section *before* the first `@@`, because an added line
   beginning with `++` is spelled `+++ …` and scanning the whole section reads file content
   as a header.
+- Hunks are grouped as `git diff -U1` would group them, while the diff is still read at
+  git's default three lines of context. Two changes three or more unchanged lines apart
+  are separate hunks, with the unchanged lines between them split across the two, so the
+  reviewer sees the same lines as before. Asking git for `-U1` directly would group the
+  same way but hide the extra context.
 
 **Hunk identity** is the keystone of the whole design:
 

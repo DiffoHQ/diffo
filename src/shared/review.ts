@@ -363,8 +363,10 @@ export interface DecisionAt {
  * line range, `path:from-to` (or `path:line`): then the entry is the hunks
  * that range touches, not the whole file, and the same path may appear in
  * other layers with other ranges. A bare path is the whole file, every hunk.
+ * `highlight` names the head-side lines, `from-to` or `line`, this step is
+ * about within the file, for a hunk several steps share.
  */
-export type LayerFile = string | { path: string; note?: string }
+export type LayerFile = string | { path: string; note?: string; highlight?: string[] }
 
 export interface Layers {
   items: Layer[]
@@ -401,6 +403,21 @@ export function layerFileRange(file: LayerFile): LineRange | null {
 
 export function layerFileNote(file: LayerFile): string | undefined {
   return typeof file === 'string' ? undefined : file.note
+}
+
+const LINE_SPAN = /^(\d+)(?:-(\d+))?$/
+
+export function parseLineSpan(raw: string): LineRange | null {
+  const m = LINE_SPAN.exec(raw.trim())
+  if (!m) return null
+  const from = Number.parseInt(m[1]!, 10)
+  const to = m[2] === undefined ? from : Number.parseInt(m[2], 10)
+  return { from, to }
+}
+
+export function layerFileHighlight(file: LayerFile): LineRange[] {
+  if (typeof file === 'string') return []
+  return (file.highlight ?? []).flatMap((raw) => parseLineSpan(raw) ?? [])
 }
 
 export interface ReviewState {

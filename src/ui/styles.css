@@ -3010,6 +3010,30 @@ body {
   opacity: 0.45;
 }
 
+/*
+ * The agent's highlight: the lines this step is about inside a hunk other
+ * steps may share. Focus by contrast, never a new hue — amber already means
+ * "changed since you read it". Highlighted lines keep the diff exactly as it
+ * is; the rest lose their colour (a changed line still reads as changed, by
+ * its grey row and marker, just not this step's) and step back.
+ */
+.hunk-lines > tbody > tr.line-lit > td.line-no {
+  color: var(--ink);
+}
+
+.hunk-lines > tbody > tr.line-unlit {
+  opacity: 0.6;
+}
+
+.hunk-lines > tbody > tr.line-unlit.line-add,
+.hunk-lines > tbody > tr.line-unlit.line-del {
+  background: var(--fill);
+}
+
+.hunk-lines > tbody > tr.line-unlit > td {
+  filter: grayscale(1);
+}
+
 /* The cursor: a rail down the whole card plus a hairline ring, so `j`/`k`'s
  * position is findable after a scroll and not only at the top-left corner. */
 .hunk-selected {
@@ -7194,6 +7218,14 @@ i.q-now {
 
 .ch-order-seg .src-chip {
   flex: none;
+}
+
+/* A pick this step can't make: greyed, still hoverable so its tooltip says why. */
+.src-chip[aria-disabled="true"],
+.src-chip[aria-disabled="true"]:hover {
+  color: var(--ink-3);
+  opacity: 0.45;
+  cursor: not-allowed;
 }
 
 /* The step's own conversation, closing the card: full width so the thread

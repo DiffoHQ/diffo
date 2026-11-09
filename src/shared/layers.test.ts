@@ -1,11 +1,14 @@
 import { describe, expect, it } from 'vitest'
 import {
   formatSpan,
+  highlightedRows,
   hunkHeadSpan,
   parseDecisionAt,
   parseLayersInput,
   parseSuggestReason,
   rangeTouchesHunk,
+  sharedByLayers,
+  sharedLine,
   uncoveredByLayers,
 } from './layers.js'
 import type { FileChange, Hunk } from './types.js'
@@ -104,9 +107,46 @@ describe('parseLayersInput', () => {
     expect(err([{ title: 'A', files: ['/etc/passwd'] }])).toContain('absolute')
     expect(err([{ title: 'A', files: ['C:\\x\\y.ts'] }])).toContain('absolute')
     expect(err([{ title: 'A', files: ['../secrets.ts'] }])).toContain('escapes the repo')
-    expect(err([{ title: 'A', files: [42] }])).toContain('path string or { path, note? }')
+    expect(err([{ title: 'A', files: [42] }])).toContain(
+      'path string or { path, note?, highlight? }',
+    )
     expect(err([{ title: 'A', files: [{ note: 'no path' }] }])).toContain('needs a "path"')
     expect(err([{ title: 'A', files: [{ path: 'a.ts', note: 7 }] }])).toContain('must be a string')
+  })
+
+  it('normalises a highlight to head-side spans, from first', () => {
+    const [layer] = ok([
+      {
+        title: 'A',
+        files: [
+          { path: 'a.ts', highlight: ['18-12', ' 40 '] },
+          { path: 'b.ts', highlight: '7' },
+        ],
+      },
+    ])
+    expect(layer!.files).toEqual([
+      { path: 'a.ts', highlight: ['12-18', '40'] },
+      { path: 'b.ts', highlight: ['7'] },
+    ])
+    expect(ok([{ title: 'A', files: [{ path: 'a.ts', highlight: [] }] }])[0]!.files).toEqual([
+      { path: 'a.ts' },
+    ])
+  })
+
+  it('refuses a highlight that is not lines, starts at 0, or names too many', () => {
+    expect(err([{ title: 'A', files: [{ path: 'a.ts', highlight: 'a.ts:3' }] }])).toContain(
+      '"highlight" on a.ts is a head-side line or range',
+    )
+    expect(err([{ title: 'A', files: [{ path: 'a.ts', highlight: [3] }] }])).toContain(
+      'head-side line or range',
+    )
+    expect(err([{ title: 'A', files: [{ path: 'a.ts', highlight: '0-4' }] }])).toContain(
+      'lines start at 1',
+    )
+    const many = Array.from({ length: 31 }, (_, i) => `${i + 1}`)
+    expect(err([{ title: 'A', files: [{ path: 'a.ts', highlight: many }] }])).toContain(
+      'keep it to 30',
+    )
   })
 
   it('accepts unknown paths — the file may land later', () => {
@@ -298,9 +338,9 @@ describe('ranges against hunks', () => {
       [a, b, img],
     )
     expect(out).toEqual([
-      { path: 'src/a.ts', hunks: [a.hunks[1]], unlisted: false },
-      { path: 'src/b.ts', hunks: [], unlisted: true },
-      { path: 'logo.png', hunks: [], unlisted: true },
+      { path: 'src/a.ts', unlisted: false, hunks: [a.hunks[1]], lines: [{ from: 40, to: 40 }] },
+      { path: 'src/b.ts', unlisted: true, hunks: [], lines: [] },
+      { path: 'logo.png', unlisted: true, hunks: [], lines: [] },
     ])
   })
 
@@ -311,5 +351,123 @@ describe('ranges against hunks', () => {
         [a, b, img],
       ),
     ).toEqual([])
+  })
+
+  it('a highlight claims only the changed lines it lights, and the post hears of the rest', () => {
+    const out = uncoveredByLayers(
+      [{ files: [{ path: 'src/a.ts', highlight: ['13'] }, 'src/b.ts', 'logo.png'] }],
+      [a, b, img],
+    )
+    expect(out).toEqual([
+      {
+        path: 'src/a.ts',
+        unlisted: false,
+        hunks: a.hunks,
+        lines: [
+          { from: 14, to: 14 },
+          { from: 40, to: 40 },
+          { from: 89, to: 89 },
+        ],
+      },
+    ])
+  })
+})
+
+describe('highlighted lines', () => {
+  const line = (kind: 'add' | 'del' | 'context', oldNo: number | null, newNo: number | null) => ({
+    kind,
+    oldNo,
+    newNo,
+    text: '',
+  })
+
+  it('light head-side lines, and a deleted run goes with the head line after it', () => {
+    const lines = [
+      line('context', 9, 9),
+      line('del', 10, null),
+      line('del', 11, null),
+      line('add', null, 10),
+      line('context', 12, 11),
+      line('del', 13, null),
+    ]
+    expect([...highlightedRows(lines, [{ from: 10, to: 10 }])]).toEqual([1, 2, 3])
+    expect([...highlightedRows(lines, [{ from: 9, to: 9 }])]).toEqual([0])
+    // A trailing deletion has no head line after it: it goes with the one before.
+    expect([...highlightedRows(lines, [{ from: 11, to: 11 }])]).toEqual([4, 5])
+    expect(highlightedRows(lines, []).size).toBe(0)
+  })
+
+  // b.ts: two changes in one hunk, lines 2 and 5 (with line 4 deleted before 5).
+  const b: FileChange = {
+    path: 'src/b.ts',
+    oldPath: null,
+    status: 'modified',
+    kind: 'text',
+    staged: false,
+    hunks: [
+      {
+        id: 'b1',
+        path: 'src/b.ts',
+        oldStart: 1,
+        newStart: 1,
+        lines: [
+          line('context', 1, 1),
+          line('add', null, 2),
+          line('context', 2, 3),
+          line('del', 3, null),
+          line('add', null, 4),
+          line('add', null, 5),
+          line('context', 4, 6),
+        ],
+      },
+    ],
+  }
+
+  it('names the changed lines no layer claims, a deletion by the head line it goes with', () => {
+    expect(uncoveredByLayers([{ files: [{ path: 'src/b.ts', highlight: ['2'] }] }], [b])).toEqual([
+      { path: 'src/b.ts', unlisted: false, hunks: b.hunks, lines: [{ from: 4, to: 5 }] },
+    ])
+  })
+
+  it('covers a hunk across layers, each claiming its own lines', () => {
+    const split = [
+      { files: [{ path: 'src/b.ts', highlight: ['2'] }] },
+      { files: [{ path: 'src/b.ts', highlight: ['4-5'] }] },
+    ]
+    expect(uncoveredByLayers(split, [b])).toEqual([])
+    expect(sharedByLayers(split, [b])).toEqual([])
+  })
+
+  it('a hunk held without a highlight claims every changed line in it', () => {
+    const outline = [{ files: [{ path: 'src/b.ts', highlight: ['2'] }] }, { files: ['src/b.ts'] }]
+    expect(uncoveredByLayers(outline, [b])).toEqual([])
+    const shared = sharedByLayers(outline, [b])
+    expect(shared).toEqual([{ path: 'src/b.ts', layers: [0, 1], lines: [{ from: 2, to: 2 }] }])
+    expect(sharedLine(shared)).toBe('src/b.ts:2 (layers 1, 2)')
+  })
+
+  it('a highlight that lights only context is ignored, so the hunk is claimed whole', () => {
+    expect(uncoveredByLayers([{ files: [{ path: 'src/b.ts', highlight: ['3'] }] }], [b])).toEqual(
+      [],
+    )
+  })
+
+  it('two highlights of one line in different layers are shared; in one layer they are not', () => {
+    const twice = [
+      { files: [{ path: 'src/b.ts', highlight: ['2', '4-5'] }] },
+      { files: [{ path: 'src/b.ts', highlight: ['5'] }] },
+    ]
+    expect(sharedByLayers(twice, [b])).toEqual([
+      { path: 'src/b.ts', layers: [0, 1], lines: [{ from: 5, to: 5 }] },
+    ])
+    const once = [
+      {
+        files: [
+          { path: 'src/b.ts', highlight: ['2', '5'] },
+          { path: 'src/b.ts', highlight: ['5'] },
+        ],
+      },
+    ]
+    expect(sharedByLayers(once, [b])).toEqual([])
   })
 })

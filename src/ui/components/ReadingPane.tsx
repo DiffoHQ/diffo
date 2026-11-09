@@ -1,5 +1,5 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
-import { isPublic, type ReviewThread } from '../../shared/review.js'
+import { isPublic, type LineRange, type ReviewThread } from '../../shared/review.js'
 import type { DiffLine, FileChange, Hunk } from '../../shared/types.js'
 import { copyText } from '../clipboard.js'
 import { changedLineCount, type StubReason, stubReason } from '../diffStub.js'
@@ -16,7 +16,7 @@ import {
 } from '../gaps.js'
 import { fileAnchor } from '../hooks.js'
 import type { LayerListKind } from '../layerListPref.js'
-import type { LayerSplitKind } from '../layerSplitPref.js'
+import type { LayerScopeKind } from '../layerScopePref.js'
 import { linkPaths, type RefLinks, type ResolvedDecision, refClickTarget } from '../layers.js'
 import { EMPTY_DELTA, type LiveDelta } from '../liveDelta.js'
 import { usePr } from '../prMode.js'
@@ -120,16 +120,27 @@ export interface LayerView {
    * card is where it shows because the card is where a layer starts. Absent
    * when there is nothing to order (one file or none). */
   reading?: { kind: LayerListKind; onPick: (kind: LayerListKind) => void }
-  /** Whether a file the agent split across steps reads as parts or whole,
-   * and the switch. Review-wide like `reading`; present only while the
-   * outline splits something, so the row never offers a choice with no
-   * effect. */
-  split?: { kind: LayerSplitKind; onPick: (kind: LayerSplitKind) => void }
+  /** How much of the step's files shows — its lines, its hunks, or its
+   * files whole — and the switch. Review-wide like `reading`, and a view
+   * only. `unavailable` greys the picks that would show just what hunks does
+   * in this step; the pane reads them as hunks. */
+  scope?: {
+    kind: LayerScopeKind
+    unavailable: readonly LayerScopeKind[]
+    onPick: (kind: LayerScopeKind) => void
+  }
   /** The files this layer holds only part of, by path: which hunks read here,
    * and where each of the others reads. Absent when every file is whole. */
   parts?: ReadonlyMap<string, FilePart>
   /** Go to another layer — the step a folded run of hunks belongs to. */
   onGoLayer?: (index: number) => void
+  /** The read marks of each file this layer reads only part of — some hunks,
+   * or highlighted lines (`entryMarks`). The file's Viewed and dim are these. */
+  marks?: ReadonlyMap<string, readonly string[]>
+  /** The lines this layer is about, by path: the agent's highlights, or every
+   * changed line of a file it highlighted nothing in. Lit only under the
+   * "lines" pick. Absent when the layer highlights nothing. */
+  highlights?: ReadonlyMap<string, readonly LineRange[]>
 }
 
 /** Where a hunk that is not this layer's reads instead. */
@@ -149,6 +160,81 @@ export interface ElsewhereStep {
 export interface FilePart {
   shown: ReadonlySet<string>
   elsewhere: ReadonlyMap<string, ElsewhereStep>
+}
+
+function stepViewed(
+  file: FileChange,
+  part: FilePart | undefined,
+  marks: readonly string[] | undefined,
+  viewed: ReadonlySet<string> | undefined,
+): boolean {
+  const own = marks ?? (part ? [...part.shown] : undefined)
+  if (own === undefined) return isFileViewed(file, viewed)
+  return viewed !== undefined && own.every((m) => viewed.has(m))
+}
+
+const SCOPE_CHIPS: Record<LayerScopeKind, { label: string; tip: string }> = {
+  highlights: {
+    label: 'lines',
+    tip: "This layer's hunks with the lines the agent highlighted lit and the rest dimmed; a file it highlighted nothing in lights throughout",
+  },
+  parts: {
+    label: 'hunks',
+    tip: "The hunks this layer changed, plain; a shared file's other hunks fold into a row naming their layer",
+  },
+  whole: {
+    label: 'files',
+    tip: "Every hunk of each file in this layer, other layers' hunks too, dimmed and tagged with their layer",
+  },
+}
+
+/** Why a pick is greyed in this layer: it would show just what hunks does. */
+const SCOPE_UNAVAILABLE: Partial<Record<LayerScopeKind, string>> = {
+  highlights:
+    'Not available in this layer: the agent highlighted no lines here, so there is nothing to light within its hunks',
+  whole:
+    'Not available in this layer: no file here has changes in other layers, so files shows the same as hunks',
+}
+
+const SCOPE_ORDER: readonly LayerScopeKind[] = ['highlights', 'parts', 'whole']
+
+/** The pick the pane acts on: the reviewer's, unless this step greys it. */
+function shownScope(scope: LayerView['scope']): LayerScopeKind {
+  if (!scope) return 'parts'
+  return scope.unavailable.includes(scope.kind) ? 'parts' : scope.kind
+}
+
+function ScopePick({ id, scope }: { id: string; scope: NonNullable<LayerView['scope']> }) {
+  const live = shownScope(scope)
+  return (
+    <span className="ch-head-pick ch-head-scope">
+      <span className="ch-head-order-cap" id={`ch-scope-${id}`}>
+        Show this layer changed
+      </span>
+      <span className="src-seg ch-order-seg" role="radiogroup" aria-labelledby={`ch-scope-${id}`}>
+        {SCOPE_ORDER.map((kind) => {
+          // aria-disabled, not disabled: a disabled button gets no hover, and
+          // the tooltip saying why is the point.
+          const off = scope.unavailable.includes(kind)
+          return (
+            // biome-ignore lint/a11y/useSemanticElements: styled chips; a native radio cannot carry this treatment
+            <button
+              key={kind}
+              type="button"
+              role="radio"
+              className="src-chip"
+              aria-checked={kind === live}
+              aria-disabled={off || undefined}
+              data-tip={off ? SCOPE_UNAVAILABLE[kind] : SCOPE_CHIPS[kind].tip}
+              onClick={off ? undefined : () => scope.onPick(kind)}
+            >
+              {SCOPE_CHIPS[kind].label}
+            </button>
+          )
+        })}
+      </span>
+    </span>
+  )
 }
 
 function stepName(step: ElsewhereStep): string {
@@ -332,11 +418,11 @@ function LayerHead({
         </div>
       )}
       {/* The reviewer's two picks, one line: the order the files below come in,
-          and how a split file reads. Each is a phrase — the words, then the
+          and how much of them shows. Each is a phrase — the words, then the
           choices as chips with the live one lit — so both states are in view
           and nothing needs decoding. Both picks are review-wide; here is
           where they are felt. The line wraps on a narrow pane. */}
-      {(layer.reading || layer.split) && !emptied && (
+      {(layer.reading || layer.scope) && !emptied && (
         <div className="ch-head-order">
           {layer.reading && (
             <span className="ch-head-pick">
@@ -373,41 +459,7 @@ function LayerHead({
               </span>
             </span>
           )}
-          {layer.split && (
-            <span className="ch-head-pick ch-head-split">
-              <span className="ch-head-order-cap" id={`ch-split-${layer.id ?? 'since'}`}>
-                Files in several steps
-              </span>
-              <span
-                className="src-seg ch-order-seg"
-                role="radiogroup"
-                aria-labelledby={`ch-split-${layer.id ?? 'since'}`}
-              >
-                {/* biome-ignore lint/a11y/useSemanticElements: styled chips; a native radio cannot carry this treatment */}
-                <button
-                  type="button"
-                  role="radio"
-                  className="src-chip"
-                  aria-checked={layer.split.kind !== 'whole'}
-                  data-tip="A file split across steps shows only this step's hunks; the rest fold into a row naming their step"
-                  onClick={() => layer.split!.onPick('parts')}
-                >
-                  this step’s hunks
-                </button>
-                {/* biome-ignore lint/a11y/useSemanticElements: styled chips; a native radio cannot carry this treatment */}
-                <button
-                  type="button"
-                  role="radio"
-                  className="src-chip"
-                  aria-checked={layer.split.kind === 'whole'}
-                  data-tip="A file split across steps shows whole in every step that lists it, marked once"
-                  onClick={() => layer.split!.onPick('whole')}
-                >
-                  the whole file
-                </button>
-              </span>
-            </span>
-          )}
+          {layer.scope && <ScopePick id={layer.id ?? 'since'} scope={layer.scope} />}
         </div>
       )}
       {/* The step's own conversation: only there when there is one, or one is
@@ -511,6 +563,7 @@ function FileHeader({
   sinceCount = 0,
   note,
   part,
+  marks,
   whole = false,
   onToggleWhole,
   onComment,
@@ -524,6 +577,7 @@ function FileHeader({
   /** The layer holds part of this file: the chip says how much, Viewed marks
    * that part, and **Whole file** opens the rest. */
   part?: FilePart
+  marks?: readonly string[]
   whole?: boolean
   onToggleWhole?: () => void
   /** Hunks the agent changed since the last Finish and still unread — said once
@@ -548,9 +602,7 @@ function FileHeader({
       else if (line.kind === 'del') deletions++
     }
   }
-  const allViewed = part
-    ? viewed !== undefined && [...part.shown].every((id) => viewed.has(id))
-    : isFileViewed(file, viewed)
+  const allViewed = stepViewed(file, part, marks, viewed)
   const cut = file.path.lastIndexOf('/')
   const statusWord = STATUS_WORD[file.status]
   const stop = (e: React.MouseEvent) => e.stopPropagation()
@@ -935,8 +987,11 @@ export function FileBody({
   stub = null,
   onLoadDiff,
   part,
+  marks,
   whole = false,
+  allHunks = false,
   onGoLayer,
+  highlight,
 }: {
   file: FileChange
   delta: LiveDelta
@@ -949,9 +1004,14 @@ export function FileBody({
   onLoadDiff?: () => void
   /** The layer holds part of this file: show those hunks, fold the rest. */
   part?: FilePart
+  marks?: readonly string[]
   /** The reviewer asked for the whole file: every hunk, every gap open. */
   whole?: boolean
+  /** Every hunk, other layers' too, shown in place and tagged; gaps stay as
+   * they are. The layer card's "files". */
+  allHunks?: boolean
   onGoLayer?: (index: number) => void
+  highlight?: readonly LineRange[]
 }) {
   // Deleted files have no head side to read context from; everything else expands.
   const expandable = file.status !== 'deleted' && file.kind === 'text'
@@ -1063,9 +1123,7 @@ export function FileBody({
   // the ticked hunks around it are the context the unread ones are judged by, so
   // everything renders at full strength. Only a settled file fades. Under a
   // layer that holds part of the file, "the file" is that part.
-  const fileViewed = part
-    ? handlers.viewed !== undefined && [...part.shown].every((id) => handlers.viewed!.has(id))
-    : isFileViewed(file, handlers.viewed)
+  const fileViewed = stepViewed(file, part, marks, handlers.viewed)
   const runs = part ? foreignRuns(file, part) : []
   const runByFirst = new Map(runs.map((r) => [r.hunks[0]!.id, r]))
   const inRun = new Set(runs.flatMap((r) => r.hunks.slice(1).map((h) => h.id)))
@@ -1089,7 +1147,7 @@ export function FileBody({
         // under it once the row is open (always, for the whole file).
         const foreign = part?.elsewhere.get(hunk.id)
         const run = runByFirst.get(hunk.id)
-        const open = whole || (run !== undefined && openRuns.has(run.key))
+        const open = whole || allHunks || (run !== undefined && openRuns.has(run.key))
         if (foreign && !open) {
           if (!run) return null
           return (
@@ -1125,6 +1183,7 @@ export function FileBody({
             queuedOn={comments?.queuedOn}
             composeRequested={comments?.composeHunkId === hunk.id}
             onComposeHandled={comments?.onComposeHandled}
+            highlight={foreign ? undefined : highlight}
           />
         )
         if (!foreign) return card
@@ -1137,7 +1196,7 @@ export function FileBody({
             className="hunk-elsewhere-body"
             data-step={foreign.index}
           >
-            {run && !whole && owner && (
+            {run && !whole && !allHunks && owner && (
               <ElsewhereRow
                 count={run.hunks.length}
                 step={run.step}
@@ -1152,7 +1211,7 @@ export function FileBody({
                 onGo={onGoLayer ? () => onGoLayer(run.step.index) : undefined}
               />
             )}
-            {(whole || !run) && (
+            {(whole || allHunks || !run) && (
               <div className="elsewhere-tag" title="this hunk reads in another step">
                 {onGoLayer ? (
                   <button
@@ -1525,6 +1584,10 @@ export function ReadingPane({
     />
   )
 
+  // The layer card's Show pick, as this layer can honour it: "lines" lights
+  // each file's highlighted lines, "files" shows every hunk of the file,
+  // other layers' too, in place.
+  const scope = shownScope(layer?.scope)
   const body = overview ? null : emptyChangeset ? (
     landed ? (
       <ReviewLanded {...landed} shape="full" />
@@ -1583,6 +1646,7 @@ export function ReadingPane({
             ? 0
             : file.hunks.reduce((n, h) => n + (sinceReview.has(h.id) ? 1 : 0), 0)
         const part = layer?.parts?.get(file.path)
+        const marks = layer?.marks?.get(file.path)
         const whole = part !== undefined && wholeFiles.has(file.path)
         return (
           <section
@@ -1599,6 +1663,7 @@ export function ReadingPane({
               sinceCount={sinceCount}
               note={layer?.notes.get(file.path)}
               part={part}
+              marks={marks}
               whole={whole}
               onToggleWhole={
                 part
@@ -1636,8 +1701,11 @@ export function ReadingPane({
                 stub={stub}
                 onLoadDiff={() => setDiffLoaded((prev) => new Set(prev).add(file.path))}
                 part={part}
+                marks={marks}
                 whole={whole}
+                allHunks={scope === 'whole'}
                 onGoLayer={layer?.onGoLayer}
+                highlight={scope === 'highlights' ? layer?.highlights?.get(file.path) : undefined}
               />
             )}
           </section>
