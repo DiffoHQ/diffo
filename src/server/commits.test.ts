@@ -198,6 +198,63 @@ describe('a comment made on a commit', () => {
   })
 })
 
+describe('a comment on a commit message', () => {
+  function appOn(repo: string) {
+    const dbDir = `${repo}-db`
+    cleanups.push(dbDir)
+    const store = new ChangesetStore(repo, BRANCH)
+    const review = new ReviewStore(repo, new DiffoDb(join(dbDir, 'diffo.db')), BRANCH)
+    const app = createApp({ root: repo, spec: BRANCH, clientDir: '/nope' }, store, review)
+    return (body: object) =>
+      app.request('/api/review/threads', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text: 'say why, not what', ...body }),
+      })
+  }
+
+  it('freezes the message from git, not the subject the client sent', async () => {
+    const repo = featureRepo()
+    const create = appOn(repo)
+    const { commits } = await listCommits(repo, BRANCH)
+    const sha = commits[0]!.sha
+
+    const res = await create({ anchor: { kind: 'commit', sha, subject: 'made up' } })
+    const thread = (await res.json()) as ReviewThread
+    expect(thread.anchor).toEqual({ kind: 'commit', sha, subject: 'shout two' })
+    expect(thread.anchoredCommit).toEqual({ subject: 'shout two', body: 'Because it matters.' })
+    expect(thread.codeContext).toBeNull()
+  })
+
+  it('keeps a line range inside the message, and refuses one past its end', async () => {
+    const repo = featureRepo()
+    const create = appOn(repo)
+    const { commits } = await listCommits(repo, BRANCH)
+    const sha = commits[0]!.sha
+    const on = (line: number, endLine?: number) =>
+      create({ anchor: { kind: 'commit', sha, subject: 'shout two', line, endLine } })
+
+    const thread = (await (await on(1, 3)).json()) as ReviewThread
+    expect(thread.anchor).toEqual({
+      kind: 'commit',
+      sha,
+      subject: 'shout two',
+      line: 1,
+      endLine: 3,
+    })
+    expect((await on(4)).status).toBe(400)
+  })
+
+  it('refuses a commit outside the changeset', async () => {
+    const repo = featureRepo()
+    const create = appOn(repo)
+    const base = git(repo, 'rev-parse', 'main').trim()
+
+    const res = await create({ anchor: { kind: 'commit', sha: base, subject: 'base' } })
+    expect(res.status).toBe(400)
+  })
+})
+
 describe('a commit’s files', () => {
   it('carry the sha, and /api/file reads the file as that commit had it', async () => {
     const repo = featureRepo()

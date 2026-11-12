@@ -3,6 +3,7 @@ import {
   type Audience,
   type Author,
   anchorSpan,
+  commitLabel,
   isPublic,
   liveSuggestion,
   type ReviewMessage,
@@ -1269,6 +1270,9 @@ function anchorLabel(thread: ReviewThread, gone = false): string {
   if (anchor.kind === 'layer') {
     // Gone: the outline no longer has this step, so the card names it.
     return gone ? `Layer “${anchor.title}”` : `${word} on this layer`
+  }
+  if (anchor.kind === 'commit') {
+    return gone ? `Message of ${commitLabel(anchor)}` : `${word} on this commit message`
   }
   if (gone) return anchor.kind === 'hunk' ? `${anchor.path}:${anchorSpan(anchor)}` : anchor.path
   if (anchor.kind === 'hunk') {

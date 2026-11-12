@@ -1,5 +1,11 @@
 import { useState } from 'react'
-import { type Anchor, anchorSpan, type Coverage, type OutgoingThread } from '../../shared/review.js'
+import {
+  type Anchor,
+  anchorSpan,
+  type Coverage,
+  commitLabel,
+  type OutgoingThread,
+} from '../../shared/review.js'
 import { type Presence, type ReviewEvent, useFinishPreview } from '../api.js'
 import { copyText } from '../clipboard.js'
 import type { ThreadItem } from '../threads.js'
@@ -12,6 +18,7 @@ function rowAnchor(anchor: Anchor): string {
   if (anchor.kind === 'changeset') return 'the whole changeset'
   if (anchor.kind === 'file') return anchor.path
   if (anchor.kind === 'layer') return `layer “${anchor.title}”`
+  if (anchor.kind === 'commit') return commitLabel(anchor)
   return `${anchor.path}:${anchorSpan(anchor)}${anchor.side === 'old' ? ' (old side)' : ''}`
 }
 

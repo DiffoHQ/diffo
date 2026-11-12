@@ -31,6 +31,15 @@ A comment keeps the code it was made on. On the Files tab it sits on the same
 line, renumbered if a later commit grew the file above it, or on its file if
 that line is gone from the final diff.
 
+The commit's message heads the commit, its body rendered as Markdown. Click the
+message and it turns into numbered lines, the subject first, that take comments
+like a diff does: the `+` on a line, or drag down the gutter for a range.
+**Show formatted**, in the card's corner, turns it back, until a line has a
+comment; then the lines stay. The agent gets the message with your
+lines marked. On a pull request the comment goes to the agent only: GitHub has
+no comments on commit messages. If a rebase or an amend replaces the commit,
+the thread moves to the ones the changeset left behind.
+
 ## Not covered
 
 - **Merge commits** are not listed; their diff is the base branch coming in.

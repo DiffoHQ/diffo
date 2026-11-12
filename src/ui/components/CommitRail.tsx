@@ -179,6 +179,7 @@ export function CommitRail({
   onPick,
   viewed,
   threads,
+  messageThreads,
   onMarkCommitFiles,
   onClearCommitFiles,
   loading = false,
@@ -192,6 +193,8 @@ export function CommitRail({
   viewed: ReadonlySet<string>
   /** Threads by the path they are on; a row counts the ones on its files. */
   threads?: Map<string, ReviewThread[]>
+  /** Threads on a commit's message, by sha; counted on that commit's row. */
+  messageThreads?: ReadonlyMap<string, ReviewThread[]>
   onMarkCommitFiles?: (files: readonly FileChange[]) => void
   onClearCommitFiles?: (files: readonly FileChange[]) => void
   loading?: boolean
@@ -205,8 +208,11 @@ export function CommitRail({
       else next.add(sha)
       return next
     })
-  const threadCount = (files: readonly FileChange[] | undefined) =>
-    (files ?? []).reduce((n, f) => n + (threads?.get(f.path)?.length ?? 0), 0)
+  const threadCount = (sha: string, files: readonly FileChange[] | undefined) =>
+    (files ?? []).reduce(
+      (n, f) => n + (threads?.get(f.path)?.length ?? 0),
+      messageThreads?.get(sha)?.length ?? 0,
+    )
 
   if (error) return <div className="rail-empty">{error}</div>
   if (commits.length === 0) {
@@ -236,7 +242,7 @@ export function CommitRail({
               open={open}
               onToggleOpen={() => toggle(commit.sha)}
               viewed={viewed}
-              threadCount={threadCount(files)}
+              threadCount={threadCount(commit.sha, files)}
               onPick={() => onPick(commit.sha)}
               onMarkFiles={onMarkCommitFiles}
               onClearFiles={onClearCommitFiles}

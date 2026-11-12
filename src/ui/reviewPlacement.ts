@@ -11,6 +11,8 @@ export interface ThreadPartition {
   byFile: Map<string, ReviewThread[]>
   /** Keyed by layer id; rendered under that layer's summary card. */
   byLayer: Map<string, ReviewThread[]>
+  /** Keyed by sha; rendered under that commit's message card. */
+  byCommit: Map<string, ReviewThread[]>
   changeset: ReviewThread[]
 }
 
@@ -20,6 +22,7 @@ export function partitionThreads(files: FileChange[], threads: ReviewThread[]): 
   const byHunk = new Map<string, ReviewThread[]>()
   const byFile = new Map<string, ReviewThread[]>()
   const byLayer = new Map<string, ReviewThread[]>()
+  const byCommit = new Map<string, ReviewThread[]>()
   const changeset: ReviewThread[] = []
 
   const push = <K>(map: Map<K, ReviewThread[]>, key: K, thread: ReviewThread) => {
@@ -34,6 +37,7 @@ export function partitionThreads(files: FileChange[], threads: ReviewThread[]): 
     // A layer thread whose layer is gone never reaches here: `threadsInChangeset`
     // files it with the past, so there is no fallback to pick.
     else if (anchor.kind === 'layer') push(byLayer, anchor.layerId, thread)
+    else if (anchor.kind === 'commit') push(byCommit, anchor.sha, thread)
     else if (anchor.kind === 'file') {
       if (paths.has(anchor.path)) push(byFile, anchor.path, thread)
       else changeset.push(thread)
@@ -46,7 +50,7 @@ export function partitionThreads(files: FileChange[], threads: ReviewThread[]): 
       else changeset.push(thread)
     }
   }
-  return { byHunk, byFile, byLayer, changeset }
+  return { byHunk, byFile, byLayer, byCommit, changeset }
 }
 
 /**
@@ -71,7 +75,7 @@ function rehome(files: FileChange[], anchor: Extract<Anchor, { kind: 'hunk' }>):
  * hunk anchor renamed from the full diff's numbering into the commit's where
  * the two share the hunk, so the card sits under the line it is about. A
  * thread on a file the commit did not touch is not placed; it is read on the
- * Files tab.
+ * Files tab. Commit-message threads are all placed, each under its own commit.
  */
 export function partitionForCommit(
   commitFiles: FileChange[],
@@ -82,7 +86,7 @@ export function partitionForCommit(
   const placed: ReviewThread[] = []
   for (const thread of threads) {
     const anchor = thread.anchor
-    if (anchor.kind === 'changeset') placed.push(thread)
+    if (anchor.kind === 'changeset' || anchor.kind === 'commit') placed.push(thread)
     else if (anchor.kind === 'file') {
       if (paths.has(anchor.path)) placed.push(thread)
     } else if (anchor.kind === 'hunk' && paths.has(anchor.path)) {

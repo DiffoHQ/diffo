@@ -10,14 +10,17 @@ import {
 } from '../shared/layers.js'
 import {
   type Anchor,
+  type AnchoredCommit,
   type AnchoredLayer,
   type Coverage,
+  commitMessageLines,
   describeAnchor,
   isPublic,
   type Layer,
   type Layers,
   layerFileRef,
   type ReviewThread,
+  shortSha,
   startedByAgent,
   THREAD_INTENTS,
   type ThreadCapture,
@@ -947,10 +950,39 @@ function layerBlock(layer: AnchoredLayer): string[] {
   ]
 }
 
+function commitBlock(
+  anchor: Extract<Anchor, { kind: 'commit' }>,
+  commit: AnchoredCommit,
+): string[] {
+  const lines = commitMessageLines(commit)
+  if (anchor.line === undefined) {
+    return [
+      `The message of commit \`${shortSha(anchor.sha)}\` this comments on:`,
+      '```text',
+      ...lines,
+      '```',
+    ]
+  }
+  const first = anchor.line
+  const last = anchor.endLine ?? anchor.line
+  const marked = lines.map((line, i) =>
+    i + 1 >= first && i + 1 <= last ? `> ${line}` : `  ${line}`,
+  )
+  return [
+    `The message of commit \`${shortSha(anchor.sha)}\` (\`>\` marks the commented lines):`,
+    '```text',
+    ...marked,
+    '```',
+  ]
+}
+
 function snapshotBlock(thread: ReviewThread): string[] {
   const { codeContext, anchored } = thread
   if (thread.anchor.kind === 'layer') {
     return thread.anchoredLayer ? layerBlock(thread.anchoredLayer) : []
+  }
+  if (thread.anchor.kind === 'commit') {
+    return thread.anchoredCommit ? commitBlock(thread.anchor, thread.anchoredCommit) : []
   }
   if (!codeContext) {
     // The snapshot is gone (dropped on resolve) but the anchored text survives —

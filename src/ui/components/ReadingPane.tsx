@@ -1,5 +1,5 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
-import { isPublic, type LineRange, type ReviewThread } from '../../shared/review.js'
+import { type Anchor, isPublic, type LineRange, type ReviewThread } from '../../shared/review.js'
 import type { DiffLine, FileChange, Hunk } from '../../shared/types.js'
 import { copyText } from '../clipboard.js'
 import { changedLineCount, type StubReason, stubReason } from '../diffStub.js'
@@ -22,6 +22,7 @@ import { EMPTY_DELTA, type LiveDelta } from '../liveDelta.js'
 import { usePr } from '../prMode.js'
 import type { ThreadPartition } from '../reviewPlacement.js'
 import { involves } from '../threads.js'
+import { CommitMessage } from './CommitMessage.js'
 import { Decisions } from './Decisions.js'
 import { GapBand, type GapControls, HunkCard } from './HunkCard.js'
 import { Icon } from './Icon.js'
@@ -90,6 +91,9 @@ export interface LayerView {
   /** The stored layer id; null on the derived trailing layer, which has no
    * identity to comment on. */
   id: string | null
+  /** Set on a commit's card: the commit whose message the card can turn into
+   * commentable lines, `title` being its subject. */
+  commit?: { sha: string; body: string }
   /** `Layer 3 of 6`, or the derived layer's own kicker. */
   kicker: string
   title: string
@@ -291,6 +295,24 @@ function ElsewhereRow({
   )
 }
 
+type CardAnchor = Extract<Anchor, { kind: 'layer' } | { kind: 'commit' }>
+
+function cardAnchor(layer: LayerView): CardAnchor | null {
+  if (layer.commit !== undefined) {
+    return { kind: 'commit', sha: layer.commit.sha, subject: layer.title }
+  }
+  if (layer.id === null) return null
+  return { kind: 'layer', layerId: layer.id, title: layer.title }
+}
+
+function cardThreads(anchor: CardAnchor, partition: ThreadPartition | undefined): ReviewThread[] {
+  const threads =
+    anchor.kind === 'commit'
+      ? partition?.byCommit.get(anchor.sha)
+      : partition?.byLayer.get(anchor.layerId)
+  return threads ?? []
+}
+
 function LayerHead({
   layer,
   filesShown,
@@ -310,38 +332,71 @@ function LayerHead({
   // above the words and sent ahead of them, so the agent knows which one is
   // meant. Nothing otherwise.
   const [cite, setCite] = useState<{ label: string; text: string } | null>(null)
-  const layerThreads = layer.id !== null ? (comments?.partition.byLayer.get(layer.id) ?? []) : []
-  const layerAnchor =
-    layer.id !== null ? ({ kind: 'layer', layerId: layer.id, title: layer.title } as const) : null
+  const headAnchor = cardAnchor(layer)
+  const ownThreads = headAnchor ? cardThreads(headAnchor, comments?.partition) : []
+  const onLine = (t: ReviewThread) => t.anchor.kind === 'commit' && t.anchor.line !== undefined
+  const headThreads = ownThreads.filter((t) => !onLine(t))
+  const lineThreads = ownThreads.filter(onLine)
+  // A commit's message reads as Markdown until the reviewer reaches for its
+  // lines. Once a thread is on a line the lines stay, or it would render nowhere.
+  const [asLines, setAsLines] = useState(false)
+  const linesOffered = layer.commit !== undefined && comments !== undefined
+  const showLines = linesOffered && (asLines || lineThreads.length > 0)
+  const toLines = (e: React.MouseEvent) => {
+    if (!linesOffered || (e.target as Element).closest('a')) return
+    if (window.getSelection()?.toString()) return
+    setAsLines(true)
+  }
   const onClick = (e: React.MouseEvent) => {
     const ref = refClickTarget(e.target as Element)
-    if (!ref) return
+    if (!ref) {
+      toLines(e)
+      return
+    }
     e.preventDefault()
     layer.onJump(ref.path, ref.line)
   }
   const emptied = filesShown === 0
   const hasDecisions = !!(layer.decisions && layer.decisions.length > 0 && layer.onOpenDecision)
-  const hasAbout = summary !== null || layer.missing.length > 0 || emptied
-  const canComment = comments !== undefined && layerAnchor !== null
+  const hasAbout = (summary !== null && !showLines) || layer.missing.length > 0 || emptied
+  const canComment = comments !== undefined && headAnchor !== null
   return (
     <section className="ch-head" aria-label={`${layer.kicker}: ${layer.title}`}>
       <div className="ch-head-top">
         <div className="ch-head-kicker">{layer.kicker}</div>
         {/* The one action on the card, in its corner: a comment on the step
-            itself. It steps aside while the box is open below. */}
-        {canComment && !composerOpen && (
+            itself, which steps aside while the box is open below. A commit's
+            message takes comments on its lines instead, and the corner turns
+            them back into the formatted message. */}
+        {showLines && lineThreads.length === 0 ? (
           <button
             type="button"
             className="btn btn-ghost btn-sm ch-head-ask"
-            onClick={() => setComposerOpen(true)}
+            onClick={() => setAsLines(false)}
           >
-            <Icon name="chat" size="sm" />
-            Comment on this layer
+            Show formatted
           </button>
+        ) : (
+          canComment &&
+          !layer.commit &&
+          !composerOpen && (
+            <button
+              type="button"
+              className="btn btn-ghost btn-sm ch-head-ask"
+              onClick={() => setComposerOpen(true)}
+            >
+              <Icon name="chat" size="sm" />
+              Comment on this layer
+            </button>
+          )
         )}
       </div>
       {/* The title is the card: what this step IS, before anything about it. */}
-      <h2>
+      {/* biome-ignore lint/a11y/useKeyWithClickEvents: commenting on a message's lines starts with the mouse, like a range drag in the gutter */}
+      <h2
+        className={linesOffered && !showLines ? 'ch-head-to-lines' : undefined}
+        onClick={showLines ? undefined : toLines}
+      >
         {layer.title}
         {layer.mechanical && (
           <span
@@ -352,14 +407,26 @@ function LayerHead({
           </span>
         )}
       </h2>
+      {showLines && layer.commit && headAnchor?.kind === 'commit' && (
+        <CommitMessage
+          anchor={headAnchor}
+          body={layer.commit.body}
+          threads={ownThreads.filter(onLine)}
+          comments={comments}
+        />
+      )}
       {(hasAbout || hasDecisions) && (
         <div className="ch-head-body">
           {hasAbout && (
             <div className="ch-head-about">
-              {summary && (
+              {summary && !showLines && (
                 // biome-ignore lint/a11y/noStaticElementInteractions: click delegation for the links inside rendered markdown
                 // biome-ignore lint/a11y/useKeyWithClickEvents: the links themselves are focusable and keyboard-activated
-                <div onClick={onClick}>
+                <div
+                  className={linesOffered ? 'ch-head-to-lines' : undefined}
+                  data-tip={linesOffered ? 'Click to comment on its lines' : undefined}
+                  onClick={onClick}
+                >
                   <Markdown
                     text={summary}
                     className="cmt-body markdown ch-summary"
@@ -464,11 +531,11 @@ function LayerHead({
       )}
       {/* The step's own conversation: only there when there is one, or one is
           being written — an empty footer would be a rule under nothing. */}
-      {canComment && (layerThreads.length > 0 || composerOpen) && (
+      {canComment && (headThreads.length > 0 || composerOpen) && (
         <div className="ch-head-threads">
-          {layerThreads.length > 0 && (
+          {headThreads.length > 0 && (
             <ThreadList
-              threads={layerThreads}
+              threads={headThreads}
               actions={comments.actions}
               showContext
               agentConnected={comments.agentConnected}
@@ -487,13 +554,13 @@ function LayerHead({
               fixedAudience="agent"
               agentConnected={comments.agentConnected}
               onSubmit={(text, _wide, intent) => {
-                void comments.actions.create(layerAnchor, text, intent)
+                void comments.actions.create(headAnchor, text, intent)
                 setComposerOpen(false)
                 setCite(null)
               }}
               onSend={(text, _wide, intent) => {
                 void comments.actions
-                  .create(layerAnchor, text, intent)
+                  .create(headAnchor, text, intent)
                   .then((t) => comments.actions.send(t.id))
                 setComposerOpen(false)
                 setCite(null)
@@ -1604,7 +1671,7 @@ export function ReadingPane({
   ) : layer && files.length === 0 ? (
     // A layer whose files all left the changeset says so on its own card, and
     // next/prev skip it — the generic empty state would lose the reader's place.
-    <LayerHead layer={layer} filesShown={0} comments={comments} />
+    <LayerHead key={layer.commit?.sha} layer={layer} filesShown={0} comments={comments} />
   ) : allHidden && scopeDone ? (
     done
   ) : allHidden && controls ? (
@@ -1628,7 +1695,14 @@ export function ReadingPane({
     </div>
   ) : (
     <>
-      {layer && <LayerHead layer={layer} filesShown={files.length} comments={comments} />}
+      {layer && (
+        <LayerHead
+          key={layer.commit?.sha}
+          layer={layer}
+          filesShown={files.length}
+          comments={comments}
+        />
+      )}
       {files.map((file) => {
         const isCollapsed = handlers.collapsed?.has(file.path) ?? false
         const fileThreadCount = comments?.partition.byFile.get(file.path)?.length ?? 0

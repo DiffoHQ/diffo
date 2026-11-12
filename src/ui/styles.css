@@ -7101,6 +7101,10 @@ i.q-now {
 
 /* Flush with the card's edge optically: the ghost button's own padding
    would otherwise read as an indent. */
+.ch-head-to-lines {
+  cursor: pointer;
+}
+
 .ch-head-ask {
   margin-right: calc(-1 * var(--s-3));
   color: var(--ink-3);
@@ -7122,6 +7126,10 @@ i.q-now {
 /* Under the title: the summary and its notes, then the decisions. The prose
    keeps a measure; the ledger under it runs the width of the card, like the
    file headers below. */
+.ch-message {
+  margin-top: var(--s-3);
+}
+
 .ch-head-body {
   display: grid;
   grid-template-columns: minmax(0, 1fr);

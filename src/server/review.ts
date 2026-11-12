@@ -3,6 +3,7 @@ import { resolve } from 'node:path'
 import { type LayerInput, parseLayersInput, parseSuggestReason } from '../shared/layers.js'
 import {
   type Anchor,
+  type AnchoredCommit,
   type AnchoredLayer,
   type AnchoredLines,
   type Audience,
@@ -108,6 +109,7 @@ export class ReviewStore {
       codeContext: capture?.codeContext ?? null,
       ...(capture?.anchored ? { anchored: capture.anchored } : {}),
       ...(capture?.anchoredLayer ? { anchoredLayer: capture.anchoredLayer } : {}),
+      ...(capture?.anchoredCommit ? { anchoredCommit: capture.anchoredCommit } : {}),
       codeChanged: false,
       messages: [
         {
@@ -934,6 +936,28 @@ export function parseAnchor(value: unknown): Anchor | null {
     if (typeof anchor.title !== 'string' || anchor.title.trim() === '') return null
     return { kind: 'layer', layerId: anchor.layerId, title: anchor.title.trim() }
   }
+  if (anchor.kind === 'commit') {
+    if (typeof anchor.sha !== 'string' || !/^[0-9a-f]{40}$/.test(anchor.sha)) return null
+    const subject = typeof anchor.subject === 'string' ? anchor.subject.trim() : ''
+    const line =
+      typeof anchor.line === 'number' && Number.isInteger(anchor.line) && anchor.line >= 1
+        ? anchor.line
+        : undefined
+    const endLine =
+      line !== undefined &&
+      typeof anchor.endLine === 'number' &&
+      Number.isInteger(anchor.endLine) &&
+      anchor.endLine > line
+        ? anchor.endLine
+        : undefined
+    return {
+      kind: 'commit',
+      sha: anchor.sha,
+      subject,
+      ...(line !== undefined ? { line } : {}),
+      ...(endLine !== undefined ? { endLine } : {}),
+    }
+  }
   if (anchor.kind === 'hunk') {
     if (typeof anchor.hunkId !== 'string' || typeof anchor.path !== 'string') return null
     if (anchor.side !== 'old' && anchor.side !== 'new') return null
@@ -977,6 +1001,17 @@ function normalizeAnchored(value: unknown): AnchoredLines | null {
     return null
   }
   return { start: a.start, end: a.end, text: a.text }
+}
+
+/** Dropped when malformed — the thread keeps its anchor's subject regardless. */
+function normalizeAnchoredCommit(value: unknown): AnchoredCommit | null {
+  if (typeof value !== 'object' || value === null) return null
+  const a = value as Record<string, unknown>
+  if (typeof a.subject !== 'string') return null
+  return {
+    subject: a.subject,
+    ...(typeof a.body === 'string' && a.body !== '' ? { body: a.body } : {}),
+  }
 }
 
 /** Dropped when malformed — the thread keeps its anchor's title regardless. */
@@ -1024,6 +1059,7 @@ function normalizeThread(value: unknown, now: string): ReviewThread | null {
   if (!anchor) return null
   const anchored = normalizeAnchored(t.anchored)
   const anchoredLayer = normalizeAnchoredLayer(t.anchoredLayer)
+  const anchoredCommit = normalizeAnchoredCommit(t.anchoredCommit)
   if (!Array.isArray(t.messages)) return null
   const messages: ReviewMessage[] = []
   for (const m of t.messages) {
@@ -1069,6 +1105,7 @@ function normalizeThread(value: unknown, now: string): ReviewThread | null {
     codeContext: typeof t.codeContext === 'string' ? t.codeContext : null,
     ...(anchored ? { anchored } : {}),
     ...(anchoredLayer ? { anchoredLayer } : {}),
+    ...(anchoredCommit ? { anchoredCommit } : {}),
     codeChanged: t.codeChanged === true,
     ...(t.unanswered === true ? { unanswered: true } : {}),
     // Mutually exclusive with `unanswered` — a hand-edited file carrying both

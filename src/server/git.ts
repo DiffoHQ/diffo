@@ -484,6 +484,15 @@ export async function listCommitsAsync(root: string, spec: ChangesetSpec): Promi
     })
 }
 
+export async function getCommitMessageAsync(
+  root: string,
+  sha: string,
+): Promise<{ subject: string; body: string }> {
+  const out = await gitAsync(root, ['log', '-1', '--no-color', '--format=%s%x1f%b', sha])
+  const [subject = '', body = ''] = out.split('\x1f')
+  return { subject: subject.trim(), body: body.trim() }
+}
+
 /** One commit's own patch, against its first parent — or against nothing, for
  * a root commit, which `git show` handles where `sha^` would not resolve. */
 export async function getCommitDiffAsync(root: string, sha: string): Promise<string> {

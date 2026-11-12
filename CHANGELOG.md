@@ -7,7 +7,13 @@ Until 1.0, minor versions may break things. When they do, the entry says how to 
 
 ## [Unreleased]
 
-Nothing yet.
+### Added
+
+- **Comments on a commit's message.** Reading by commit, click the message to
+  turn it into numbered lines, the subject first, and comment on a line or a
+  range of them as in a diff; **Show formatted** turns it back into Markdown.
+  The agent gets the message with the commented lines marked. On a pull
+  request these comments are for the agent only.
 
 ## [0.23.0] — 2026-11-09
 

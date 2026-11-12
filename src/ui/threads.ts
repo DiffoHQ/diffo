@@ -1,4 +1,10 @@
-import { anchorSpan, isPublic, type ReviewThread, untouchedAgentVoice } from '../shared/review.js'
+import {
+  anchorSpan,
+  commitLabel,
+  isPublic,
+  type ReviewThread,
+  untouchedAgentVoice,
+} from '../shared/review.js'
 
 export type Turn = 'yours' | 'unanswered' | 'proposed' | 'agent' | 'note' | 'posted' | 'resolved'
 
@@ -146,6 +152,7 @@ function describe(thread: ReviewThread): { anchor: string | null; path: string |
   if (a.kind === 'changeset') return { anchor: null, path: null }
   if (a.kind === 'file') return { anchor: a.path, path: a.path }
   if (a.kind === 'layer') return { anchor: `layer “${a.title}”`, path: null }
+  if (a.kind === 'commit') return { anchor: commitLabel(a), path: null }
   return { anchor: `${a.path}:${anchorSpan(a)}`, path: a.path }
 }
 

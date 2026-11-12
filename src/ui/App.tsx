@@ -706,16 +706,21 @@ function Review() {
 
   const { active: activeThreads, past: pastThreads } = useMemo(() => {
     const split = threadsInChangeset(data?.files ?? [], review?.threads ?? [], review?.layers)
+    const listed = commitsQuery.data && new Set(commitsQuery.data.commits.map((c) => c.sha))
     // A GitHub thread whose line left the diff is outdated by GitHub's word or
     // ours: it has no line to sit under, so it reads with the threads the
-    // changeset left behind rather than at the top of its file.
-    const outdated = split.active.filter((t) => t.github?.outdated === true)
-    if (outdated.length === 0) return split
+    // changeset left behind rather than at the top of its file. So does a
+    // thread on the message of a commit a rebase or an amend replaced.
+    const leftBehind = (t: ReviewThread) =>
+      t.github?.outdated === true ||
+      (listed !== undefined && t.anchor.kind === 'commit' && !listed.has(t.anchor.sha))
+    const gone = split.active.filter(leftBehind)
+    if (gone.length === 0) return split
     return {
-      active: split.active.filter((t) => t.github?.outdated !== true),
-      past: [...split.past, ...outdated],
+      active: split.active.filter((t) => !leftBehind(t)),
+      past: [...split.past, ...gone],
     }
-  }, [data, review])
+  }, [data, review, commitsQuery.data])
   // In a commit the pane holds that commit's files only: the threads it places
   // are the ones about those files, plus the changeset-wide ones. A thread on a
   // hunk the commit's diff does not have re-homes by line, as it would after an
@@ -1350,12 +1355,24 @@ function Review() {
   ])
 
   const openThread = useCallback(
-    (item: { threadId: string; path: string | null; layerId?: string; gone?: boolean }) => {
+    (item: {
+      threadId: string
+      path: string | null
+      layerId?: string
+      commitSha?: string
+      gone?: boolean
+    }) => {
       setOpenThreadId(item.threadId)
       // A thread whose file left the changeset has no file body to scroll to — it
       // renders in the pane's own section for the ones the diff left behind.
       if (item.gone) {
         setRevealPastTick((t) => t + 1)
+      } else if (item.commitSha !== undefined) {
+        // Like a layer thread: its card is on the commit's message card, which
+        // only the Layers tab read by commit draws.
+        setPanel('layers')
+        setSourcePick('commits')
+        if (item.commitSha !== activeCommit?.sha) goCommit(item.commitSha)
       } else if (item.layerId !== undefined) {
         // A layer thread's card lives on its layer's summary card, which only
         // the Layers view draws: go there, and to that layer.
@@ -1417,6 +1434,8 @@ function Review() {
       goOverview,
       inCommits,
       activeCommitFiles,
+      activeCommit?.sha,
+      goCommit,
       review?.threads,
     ],
   )
@@ -1426,6 +1445,7 @@ function Review() {
       threadId: item.thread.id,
       path: item.path,
       ...(item.thread.anchor.kind === 'layer' ? { layerId: item.thread.anchor.layerId } : {}),
+      ...(item.thread.anchor.kind === 'commit' ? { commitSha: item.thread.anchor.sha } : {}),
       ...(gone ? { gone } : {}),
     }),
     [],
@@ -1627,8 +1647,8 @@ function Review() {
       .filter(Boolean)
       .join(' · ')
     return {
-      // No identity to hang a layer thread on: comments go on the lines.
       id: null,
+      ...(pending ? {} : { commit: { sha: activeCommit.sha, body: activeCommit.body } }),
       kicker: pending ? 'Not committed yet' : `Commit ${number} of ${realCommits.length} · ${who}`,
       title: activeCommit.subject,
       mechanical: false,
@@ -1950,6 +1970,7 @@ function Review() {
                     onPick={goCommit}
                     viewed={viewed}
                     threads={threadsByPath}
+                    messageThreads={partition.byCommit}
                     loading={commitsQuery.isLoading}
                     error={commitsQuery.error ? (commitsQuery.error as Error).message : undefined}
                     selectedPath={selectedPath}
