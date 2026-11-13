@@ -4254,13 +4254,29 @@ tr:hover .line-range-glyph {
 }
 
 .cbox-title {
+  flex: none;
   font-size: var(--t-125);
   color: var(--ink-2);
+  white-space: nowrap;
 }
 
 .cbox-head .scope-chip,
 .cbox-head .cbox-widen {
   flex: 0 0 auto;
+}
+
+/* A long scope (a commit's subject) gives way first: the chip shrinks and
+   its label ends in an ellipsis, rather than the title breaking a word a line. */
+.cbox-head .scope-chip {
+  flex-shrink: 1;
+  min-width: 0;
+}
+
+.scope-chip-label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .cbox-close {
@@ -4540,8 +4556,11 @@ tr:hover .line-range-glyph {
   outline-offset: 1px;
 }
 
+/* A narrow box (a layer or commit card) wraps its buttons onto a second row
+   rather than squeezing a label onto two lines. */
 .cbox-foot {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: var(--s-3);
   padding: 9px var(--s-5);
@@ -4608,6 +4627,7 @@ tr:hover .line-range-glyph {
   cursor: pointer;
   font: inherit;
   font-size: var(--t-12);
+  white-space: nowrap;
 }
 
 .cbox-intent-chip:hover {
