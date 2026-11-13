@@ -577,7 +577,6 @@ export function HunkCard({
   composeRequested = false,
   onComposeHandled,
   highlight,
-  prose,
 }: {
   hunk: Hunk
   fresh?: boolean
@@ -604,10 +603,6 @@ export function HunkCard({
   onComposeHandled?: () => void
   /** The head-side lines this layer is about: lit, and the rest dimmed. */
   highlight?: readonly LineRange[]
-  /** The lines are text that is not a file's diff, such as a commit message: no
-   * `@@` header, the composer names them `label`, and a comment on them is the
-   * agent's alone, since GitHub has nowhere to put it. */
-  prose?: { label: string }
 }) {
   // The open composer's range (anchor + free edge) and a drag still in flight.
   // The drag's press-point becomes the anchor, so the steppers and shift-click
@@ -709,17 +704,16 @@ export function HunkCard({
     if (!reviewActions) return null
     const anchor = anchorForRange(hunk.id, hunk.path, lines, span.at, span.edge)
     if (!anchor) return null
-    const base = prose?.label ?? hunk.path.slice(hunk.path.lastIndexOf('/') + 1)
+    const base = hunk.path.slice(hunk.path.lastIndexOf('/') + 1)
     const label = `${base}:${anchorSpan(anchor)}`
     const anchorFor = (wide: boolean) => (wide ? ({ kind: 'changeset' } as const) : anchor)
     return (
       <CommentBox
         title={`Comment on ${label}`}
         placeholder="Leave a comment…"
-        {...(prose ? { fixedAudience: 'agent' as const } : {})}
         scope={{
           label,
-          canWiden: prose === undefined,
+          canWiden: true,
           adjust: {
             up: span.edge > 0 ? () => setCompose({ at: span.at, edge: span.edge - 1 }) : undefined,
             down:
@@ -804,7 +798,7 @@ export function HunkCard({
   )
   // A fully opened gap reads as continuous code: the band gives up its background,
   // borders and `@@` header, leaving a hairline with just the re-fold control.
-  const boundary = prose ? null : (
+  const boundary = (
     <tr
       className={`hunk-boundary${merged ? ' hunk-boundary-merged' : ''}`}
       title={sinceReview ? 'the agent changed this since your last review' : undefined}

@@ -909,6 +909,11 @@ function anchorQuote(thread: ReviewThread): string {
  * anchor never matches it, and a rotated hunk means the code moved under the
  * numbers. At most one note — removed code can't also have "moved". */
 function anchorNote(thread: ReviewThread): string[] {
+  if (thread.anchor.kind === 'commit' && thread.codeChanged) {
+    return [
+      'This commit is no longer on the branch under that message: it was reworded, squashed or dropped after the comment was written.',
+    ]
+  }
   if (thread.anchor.kind !== 'hunk') return []
   if (thread.anchor.side === 'old') {
     return [
@@ -954,24 +959,10 @@ function commitBlock(
   anchor: Extract<Anchor, { kind: 'commit' }>,
   commit: AnchoredCommit,
 ): string[] {
-  const lines = commitMessageLines(commit)
-  if (anchor.line === undefined) {
-    return [
-      `The message of commit \`${shortSha(anchor.sha)}\` this comments on:`,
-      '```text',
-      ...lines,
-      '```',
-    ]
-  }
-  const first = anchor.line
-  const last = anchor.endLine ?? anchor.line
-  const marked = lines.map((line, i) =>
-    i + 1 >= first && i + 1 <= last ? `> ${line}` : `  ${line}`,
-  )
   return [
-    `The message of commit \`${shortSha(anchor.sha)}\` (\`>\` marks the commented lines):`,
+    `The message of commit \`${shortSha(anchor.sha)}\` as it read when this comment was made:`,
     '```text',
-    ...marked,
+    ...commitMessageLines(commit),
     '```',
   ]
 }

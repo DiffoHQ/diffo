@@ -1248,30 +1248,30 @@ describe('ReadingPane in layer mode', () => {
     })
   })
 
-  describe('a comment on a commit message', () => {
+  describe('a comment on a commit', () => {
     const sha = 'a'.repeat(40)
     const at = '2026-09-20T00:00:00Z'
-    const onMessage: ReviewThread = {
+    const onCommit: ReviewThread = {
       id: 'ct',
       anchor: { kind: 'commit', sha, subject: 'shout two' },
-      state: 'sent',
+      state: 'open',
       codeContext: null,
-      anchoredCommit: { subject: 'shout two' },
+      anchoredCommit: { subject: 'shout two', body: 'Because it matters.' },
       codeChanged: false,
       messages: [{ id: 'm', author: 'reviewer', text: 'say why, not what', at }],
       createdAt: at,
       updatedAt: at,
     }
-    const comments = () => ({
+    const comments = (threads: ReviewThread[] = []) => ({
       partition: {
         byHunk: new Map(),
         byFile: new Map(),
         byLayer: new Map(),
-        byCommit: new Map([[sha, [onMessage]]]),
+        byCommit: new Map(threads.length ? [[sha, threads]] : []),
         changeset: [],
       },
       actions: {
-        create: vi.fn(async () => onMessage),
+        create: vi.fn(async () => onCommit),
         reply: vi.fn(),
         send: vi.fn(),
         resolve: vi.fn(),
@@ -1281,119 +1281,43 @@ describe('ReadingPane in layer mode', () => {
     })
     const commitView = view({
       id: null,
-      commit: { sha, body: 'Because it matters.\nAnd it is loud.' },
-      summary: 'Because it matters.\nAnd it is loud.',
+      commit: { sha },
+      summary: 'Because it matters.',
       missing: [],
       kicker: 'Commit 1 of 2',
       title: 'shout two',
     })
 
-    it('the corner offers no comment on the message as a whole', () => {
-      render(<ReadingPane files={[FILES[0]!]} layer={commitView} comments={comments()} />)
-      expect(screen.queryByRole('button', { name: /^Comment on/ })).toBeNull()
-      expect(screen.queryByRole('button', { name: 'Show formatted' })).toBeNull()
-    })
-
-    it('a thread on the whole message still reads on the card', () => {
-      const { container } = render(
-        <ReadingPane files={[FILES[0]!]} layer={commitView} comments={comments()} />,
-      )
-      const card = container.querySelector('.ch-head-threads [data-thread-id="ct"]')!
-      expect(card.querySelector('.thread-where')!.textContent).toBe(
-        'Comment on this commit message',
-      )
-    })
-
-    it('the body reads as Markdown until a click on it turns the message into lines', () => {
-      const { container } = render(
-        <ReadingPane files={[FILES[0]!]} layer={commitView} comments={comments()} />,
-      )
-      expect(container.querySelector('.ch-message')).toBeNull()
-      const body = container.querySelector('.ch-summary')!
-      expect(body.textContent).toContain('Because it matters.')
-      fireEvent.click(body)
-      expect(container.querySelector('.ch-summary')).toBeNull()
-      expect(container.querySelector('.ch-message')).toBeTruthy()
-    })
-
-    it('Show formatted turns the lines back into Markdown', () => {
-      const { container } = render(
-        <ReadingPane files={[FILES[0]!]} layer={commitView} comments={comments()} />,
-      )
-      fireEvent.click(container.querySelector('h2')!)
-      expect(container.querySelector('.ch-message')).toBeTruthy()
-      fireEvent.click(screen.getByRole('button', { name: 'Show formatted' }))
-      expect(container.querySelector('.ch-message')).toBeNull()
-      expect(container.querySelector('.ch-summary')).toBeTruthy()
-    })
-
-    it('a click that ends a text selection leaves the Markdown alone', () => {
-      const { container } = render(
-        <ReadingPane files={[FILES[0]!]} layer={commitView} comments={comments()} />,
-      )
-      const selection = vi.spyOn(window, 'getSelection').mockReturnValue({
-        toString: () => 'matters',
-      } as Selection)
-      fireEvent.click(container.querySelector('.ch-summary')!)
-      selection.mockRestore()
-      expect(container.querySelector('.ch-message')).toBeNull()
-    })
-
-    it('the message reads as numbered lines, one comment button per line', () => {
-      const { container } = render(
-        <ReadingPane files={[FILES[0]!]} layer={commitView} comments={comments()} />,
-      )
-      fireEvent.click(container.querySelector('.ch-summary')!)
-      const rows = [...container.querySelectorAll('.ch-message tr.line')]
-      expect(rows.map((r) => r.querySelector('.line-code')!.textContent)).toEqual([
-        'shout two',
-        '',
-        'Because it matters.',
-        'And it is loud.',
-      ])
-      expect(rows[2]!.textContent).toContain('3')
-      expect(container.querySelector('.ch-message .hunk-at')).toBeNull()
-    })
-
-    it('a comment on a line of the message anchors to that line of the commit', () => {
-      const c = comments()
+    it('the card carries its threads and a way to add one, anchored to the commit', () => {
+      const c = comments([onCommit])
       const { container } = render(
         <ReadingPane files={[FILES[0]!]} layer={commitView} comments={c} />,
       )
-      fireEvent.click(container.querySelector('.ch-summary')!)
-      const row = container.querySelectorAll('.ch-message tr.line')[2]!
-      fireEvent.click(row.querySelector('.line-comment-btn')!)
-      fireEvent.change(screen.getByPlaceholderText('Leave a comment…'), {
-        target: { value: 'this says what, not why' },
-      })
+      const head = container.querySelector('.ch-head')!
+      const card = head.querySelector('[data-thread-id="ct"]')!
+      expect(card.querySelector('.thread-where')!.textContent).toBe('Comment on this commit')
+      fireEvent.click(screen.getByRole('button', { name: 'Comment on this commit' }))
+      const box = screen.getByPlaceholderText(/Ask about this commit/) as HTMLTextAreaElement
+      expect(head.contains(box)).toBe(true)
+      fireEvent.change(box, { target: { value: 'the subject says what, not why' } })
       fireEvent.click(screen.getByText('Add comment'))
       expect(c.actions.create).toHaveBeenCalledWith(
-        { kind: 'commit', sha, subject: 'shout two', line: 3 },
-        'this says what, not why',
-        undefined,
+        { kind: 'commit', sha, subject: 'shout two' },
+        'the subject says what, not why',
         undefined,
       )
     })
 
-    it('a line thread sits under its line, not in the card footer', () => {
-      const onLine: ReviewThread = {
-        ...onMessage,
-        id: 'cl',
-        anchor: { kind: 'commit', sha, subject: 'shout two', line: 3, endLine: 4 },
-      }
-      const c = comments()
-      c.partition.byCommit.set(sha, [onLine])
+    it('the message stays Markdown: a click on it opens nothing', () => {
       const { container } = render(
-        <ReadingPane files={[FILES[0]!]} layer={commitView} comments={c} />,
+        <ReadingPane files={[FILES[0]!]} layer={commitView} comments={comments()} />,
       )
-      const card = container.querySelector('.ch-message [data-thread-id="cl"]')!
-      expect(card.querySelector('.thread-where')!.textContent).toBe('Comment on lines 3-4')
-      expect(container.querySelector('.ch-head-threads')).toBeNull()
-      // The thread would render nowhere under the Markdown: no switching back.
-      expect(screen.queryByRole('button', { name: 'Show formatted' })).toBeNull()
+      fireEvent.click(container.querySelector('.ch-summary')!)
+      expect(screen.queryByPlaceholderText(/Ask about this commit/)).toBeNull()
+      expect(container.querySelector('.ch-summary')!.textContent).toContain('Because it matters.')
     })
 
-    it('the uncommitted edits have no message to comment on', () => {
+    it('the uncommitted edits have no commit to comment on', () => {
       render(
         <ReadingPane
           files={[FILES[0]!]}

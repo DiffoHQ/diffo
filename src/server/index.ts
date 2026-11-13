@@ -17,7 +17,6 @@ import {
 import {
   type Anchor,
   type Coverage,
-  commitMessageLines,
   type DraftOrigin,
   isPublic,
   type Layer,
@@ -39,7 +38,13 @@ import {
 import type { ChangesetSpec, PrInfo } from '../shared/types.js'
 import { normalizeVoice, VOICE_MAX } from '../shared/voice.js'
 import { VERSION } from '../version.js'
-import { getCommitChangeset, getCommitMessage, isListedCommit, listCommits } from './commits.js'
+import {
+  getCommitChangeset,
+  getCommitMessage,
+  isListedCommit,
+  listCommitMessages,
+  listCommits,
+} from './commits.js'
 import { DiffoDb, type ServerRecord } from './db.js'
 import { DeliveryQueue, type Snapshot } from './delivery.js'
 import {
@@ -439,10 +444,6 @@ export function createApp(
     if (anchor.kind === 'commit') {
       if (!commitMessage) return c.json({ error: 'that commit is not in the changeset' }, 400)
       anchor.subject = commitMessage.subject
-      const last = anchor.endLine ?? anchor.line ?? 0
-      if (last > commitMessageLines(commitMessage).length) {
-        return c.json({ error: 'the commit message has no such line' }, 400)
-      }
     }
     const intent = THREAD_INTENTS.includes(body?.intent) ? (body.intent as ThreadIntent) : undefined
     // Public drafts exist only on a pull request; without one the flag is a mistake.
@@ -451,7 +452,7 @@ export function createApp(
       return c.json({ error: 'public comments need a pull request under review' }, 400)
     }
     if (audience && anchor.kind === 'commit') {
-      return c.json({ error: 'a comment on a commit message is for the agent' }, 400)
+      return c.json({ error: 'a comment on a commit is for the agent' }, 400)
     }
     // GitHub has no layers: a comment on one is for the agent, unless it is the
     // agent's suggestion taken from a layer thread — then it moves to the code.
@@ -1526,6 +1527,15 @@ export function startServer(options: ServerContext & { port: number }) {
   const prContext: PrContext | undefined = options.pr
     ? { ...options.pr, refresh: () => puller!.tick() }
     : undefined
+  // Commit threads follow their commit across a rebase or a reword. Only git
+  // knows the branch's commits, so this runs after the hunk pass, and only when
+  // there is a commit thread to move.
+  const reconcileCommits = () => {
+    if (!review.get().threads.some((t) => t.anchor.kind === 'commit')) return
+    void listCommitMessages(options.root, options.spec)
+      .then((listed) => review.reconcileCommits(listed))
+      .catch((err: Error) => log(`commit threads not reconciled: ${err.message}`))
+  }
   const unsubscribeReconcile = store.subscribe((changeset) => {
     // A checkout under a running server is a change of work: swap to that branch's
     // review before reconciling, or new hunks meet the old branch's threads.
@@ -1536,10 +1546,12 @@ export function startServer(options: ServerContext & { port: number }) {
       log(`branch ${before || 'detached'} → ${changeset.repo.branch || 'detached'}`)
     const hunkIds = new Set(changeset.files.flatMap((f) => f.hunks.map((h) => h.id)))
     review.reconcile(hunkIds)
+    reconcileCommits()
     checkLanded(changeset.files.length > 0, hunkIds)
   })
   const startupHunkIds = new Set(store.get().files.flatMap((f) => f.hunks.map((h) => h.id)))
   review.reconcile(startupHunkIds)
+  reconcileCommits()
   // Startup runs the same check: the commit that landed this review may have
   // happened while no server was watching (the idle reap makes that ordinary).
   checkLanded(store.get().files.length > 0, startupHunkIds)

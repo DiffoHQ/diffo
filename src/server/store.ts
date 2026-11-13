@@ -6,6 +6,8 @@ import {
   getBranchNameAsync,
   getFullDiff,
   getFullDiffAsync,
+  getHeadSha,
+  getHeadShaAsync,
   getStagedPaths,
   getStagedPathsAsync,
 } from './git.js'
@@ -38,12 +40,13 @@ export class ChangesetStore {
   private inFlight: Promise<boolean> | null = null
 
   private async compute(): Promise<boolean> {
-    const [raw, staged, branch] = await Promise.all([
+    const [raw, staged, branch, head] = await Promise.all([
       getFullDiffAsync(this.root, this.spec),
       getStagedPathsAsync(this.root),
       getBranchNameAsync(this.root),
+      getHeadShaAsync(this.root),
     ])
-    return this.apply(raw, staged, branch)
+    return this.apply(raw, staged, branch, head)
   }
 
   refreshSync(): boolean {
@@ -51,10 +54,11 @@ export class ChangesetStore {
       getFullDiff(this.root, this.spec),
       getStagedPaths(this.root),
       getBranchName(this.root),
+      getHeadSha(this.root),
     )
   }
 
-  private apply(raw: string, staged: Set<string>, branch: string): boolean {
+  private apply(raw: string, staged: Set<string>, branch: string, head: string | null): boolean {
     // Staged-ness is part of the model but invisible in `git diff HEAD`, so it must
     // be part of the change hash too.
     const stagedKey = [...staged].sort().join('\n')
@@ -66,6 +70,10 @@ export class ChangesetStore {
       .update(stagedKey)
       .update('\0')
       .update(branch)
+      .update('\0')
+      // And the commit: a reword, an amend or a rebase that leaves the diff as
+      // it was still changes the commits a branch review lists.
+      .update(head ?? '')
       .digest('hex')
     if (newHash === this.hash) return false
     this.hash = newHash

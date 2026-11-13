@@ -15,6 +15,7 @@ import {
   listCommitsAsync,
 } from './git.js'
 import { parsePatch } from './parse.js'
+import type { CommitMessage } from './review.js'
 
 function stats(files: FileChange[]) {
   let additions = 0
@@ -135,4 +136,15 @@ export async function getCommitMessage(
   if (!(await isListedCommit(root, spec, sha))) return null
   const { subject, body } = await withGitSlot(() => getCommitMessageAsync(root, sha))
   return { subject, ...(body ? { body } : {}) }
+}
+
+/** Each listed commit's sha and message, for following commit threads across
+ * a rebase. Empty where the changeset is not made of commits. */
+export async function listCommitMessages(
+  root: string,
+  spec: ChangesetSpec,
+): Promise<CommitMessage[]> {
+  if (spec.kind !== 'branch') return []
+  const raw = await withGitSlot(() => listCommitsAsync(root, spec))
+  return raw.map(({ sha, subject, body }) => ({ sha, subject, body }))
 }

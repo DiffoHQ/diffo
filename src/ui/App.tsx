@@ -706,21 +706,16 @@ function Review() {
 
   const { active: activeThreads, past: pastThreads } = useMemo(() => {
     const split = threadsInChangeset(data?.files ?? [], review?.threads ?? [], review?.layers)
-    const listed = commitsQuery.data && new Set(commitsQuery.data.commits.map((c) => c.sha))
     // A GitHub thread whose line left the diff is outdated by GitHub's word or
     // ours: it has no line to sit under, so it reads with the threads the
-    // changeset left behind rather than at the top of its file. So does a
-    // thread on the message of a commit a rebase or an amend replaced.
-    const leftBehind = (t: ReviewThread) =>
-      t.github?.outdated === true ||
-      (listed !== undefined && t.anchor.kind === 'commit' && !listed.has(t.anchor.sha))
-    const gone = split.active.filter(leftBehind)
-    if (gone.length === 0) return split
+    // changeset left behind rather than at the top of its file.
+    const outdated = split.active.filter((t) => t.github?.outdated === true)
+    if (outdated.length === 0) return split
     return {
-      active: split.active.filter((t) => !leftBehind(t)),
-      past: [...split.past, ...gone],
+      active: split.active.filter((t) => t.github?.outdated !== true),
+      past: [...split.past, ...outdated],
     }
-  }, [data, review, commitsQuery.data])
+  }, [data, review])
   // In a commit the pane holds that commit's files only: the threads it places
   // are the ones about those files, plus the changeset-wide ones. A thread on a
   // hunk the commit's diff does not have re-homes by line, as it would after an
@@ -1368,8 +1363,8 @@ function Review() {
       if (item.gone) {
         setRevealPastTick((t) => t + 1)
       } else if (item.commitSha !== undefined) {
-        // Like a layer thread: its card is on the commit's message card, which
-        // only the Layers tab read by commit draws.
+        // Like a layer thread: it sits on the commit's card, which only the
+        // Layers tab read by commit draws.
         setPanel('layers')
         setSourcePick('commits')
         if (item.commitSha !== activeCommit?.sha) goCommit(item.commitSha)
@@ -1648,7 +1643,7 @@ function Review() {
       .join(' · ')
     return {
       id: null,
-      ...(pending ? {} : { commit: { sha: activeCommit.sha, body: activeCommit.body } }),
+      ...(pending ? {} : { commit: { sha: activeCommit.sha } }),
       kicker: pending ? 'Not committed yet' : `Commit ${number} of ${realCommits.length} · ${who}`,
       title: activeCommit.subject,
       mechanical: false,

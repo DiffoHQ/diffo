@@ -569,6 +569,46 @@ export class ReviewStore {
   }
 
   /**
+   * The branch's commits moved — a rebase, an amend, a reword. A commit thread
+   * follows its commit's message, the way a hunk thread follows its content: on
+   * a commit still listed by its sha it stays; on a new sha with the very same
+   * message (a rebase, an amend that kept the words) it moves there. With
+   * neither the commit was reworded, squashed or dropped: `sent` + gone →
+   * `addressed`, `open` + gone → `codeChanged`, cleared if it comes back.
+   */
+  reconcileCommits(listed: readonly CommitMessage[]): void {
+    const shas = new Set(listed.map((c) => c.sha))
+    const byMessage = new Map<string, CommitMessage>()
+    for (const c of listed) {
+      const key = messageKey(c.subject, c.body)
+      if (!byMessage.has(key)) byMessage.set(key, c)
+    }
+    let changed = false
+    const threads = this.state.threads.map((thread) => {
+      if (thread.anchor.kind !== 'commit') return thread
+      const frozen = thread.anchoredCommit
+      const moved =
+        shas.has(thread.anchor.sha) || !frozen
+          ? undefined
+          : byMessage.get(messageKey(frozen.subject, frozen.body ?? ''))
+      const anchor = moved ? { ...thread.anchor, sha: moved.sha } : thread.anchor
+      const exists = shas.has(anchor.sha)
+      if (thread.state === 'sent' && !exists) {
+        changed = true
+        return { ...thread, state: 'addressed' as const, updatedAt: new Date().toISOString() }
+      }
+      const live = thread.state === 'open' || thread.state === 'sent'
+      const codeChanged = live ? !exists : thread.codeChanged
+      if (anchor === thread.anchor && codeChanged === thread.codeChanged) return thread
+      changed = true
+      return { ...thread, anchor, codeChanged }
+    })
+    if (!changed) return
+    this.state = { ...this.state, threads }
+    this.commit()
+  }
+
+  /**
    * The pull request's conversation, as the forge sees it now. An upsert: a
    * thread already here (by id, or by the GitHub thread a local draft became)
    * takes the incoming messages it lacks and GitHub's resolution; a new one is
@@ -939,24 +979,7 @@ export function parseAnchor(value: unknown): Anchor | null {
   if (anchor.kind === 'commit') {
     if (typeof anchor.sha !== 'string' || !/^[0-9a-f]{40}$/.test(anchor.sha)) return null
     const subject = typeof anchor.subject === 'string' ? anchor.subject.trim() : ''
-    const line =
-      typeof anchor.line === 'number' && Number.isInteger(anchor.line) && anchor.line >= 1
-        ? anchor.line
-        : undefined
-    const endLine =
-      line !== undefined &&
-      typeof anchor.endLine === 'number' &&
-      Number.isInteger(anchor.endLine) &&
-      anchor.endLine > line
-        ? anchor.endLine
-        : undefined
-    return {
-      kind: 'commit',
-      sha: anchor.sha,
-      subject,
-      ...(line !== undefined ? { line } : {}),
-      ...(endLine !== undefined ? { endLine } : {}),
-    }
+    return { kind: 'commit', sha: anchor.sha, subject }
   }
   if (anchor.kind === 'hunk') {
     if (typeof anchor.hunkId !== 'string' || typeof anchor.path !== 'string') return null
@@ -1002,6 +1025,15 @@ function normalizeAnchored(value: unknown): AnchoredLines | null {
   }
   return { start: a.start, end: a.end, text: a.text }
 }
+
+/** A listed commit, as `reconcileCommits` matches threads against it. */
+export interface CommitMessage {
+  sha: string
+  subject: string
+  body: string
+}
+
+const messageKey = (subject: string, body: string): string => `${subject}\n\n${body}`
 
 /** Dropped when malformed — the thread keeps its anchor's subject regardless. */
 function normalizeAnchoredCommit(value: unknown): AnchoredCommit | null {

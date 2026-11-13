@@ -551,7 +551,7 @@ describe('a thread on a layer', () => {
   })
 })
 
-describe('a thread on a commit message', () => {
+describe('a thread on a commit', () => {
   const sha = 'a'.repeat(40)
   const onCommit = thread({
     anchor: { kind: 'commit', sha, subject: 'shout two' },
@@ -564,16 +564,15 @@ describe('a thread on a commit message', () => {
 
   it('heads with the commit and quotes its message instead of a diff', () => {
     const prompt = buildThreadPrompt(onCommit, ctx)
-    expect(prompt).toContain('### Thread 1 — the message of commit aaaaaaa')
+    expect(prompt).toContain('### Thread 1 — commit aaaaaaa "shout two"')
     expect(prompt).toContain('```text\nshout two\n\nBecause it matters.\n```')
     expect(prompt).not.toContain('```diff')
+    expect(prompt).not.toContain('no longer on the branch')
   })
 
-  it('marks the commented lines of the message', () => {
-    const onLine = { ...onCommit, anchor: { ...onCommit.anchor, line: 3 } }
-    const prompt = buildThreadPrompt(onLine, ctx)
-    expect(prompt).toContain('— line 3 of the message of commit aaaaaaa')
-    expect(prompt).toContain('```text\n  shout two\n  \n> Because it matters.\n```')
+  it('says so when the commit left the branch', () => {
+    const prompt = buildThreadPrompt({ ...onCommit, codeChanged: true }, ctx)
+    expect(prompt).toContain('This commit is no longer on the branch under that message')
   })
 })
 

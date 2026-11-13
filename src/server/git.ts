@@ -135,6 +135,14 @@ export function getHeadSha(root: string): string | null {
   }
 }
 
+export async function getHeadShaAsync(root: string): Promise<string | null> {
+  try {
+    return (await gitAsync(root, ['rev-parse', 'HEAD'])).trim()
+  } catch {
+    return null // e.g. repo with no commits
+  }
+}
+
 /**
  * Is `ancestor` in `descendant`'s history? Null when git couldn't answer (a sha
  * it no longer knows, a transient failure) — the callers lean opposite ways on

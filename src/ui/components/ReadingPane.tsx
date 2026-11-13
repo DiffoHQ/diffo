@@ -22,7 +22,6 @@ import { EMPTY_DELTA, type LiveDelta } from '../liveDelta.js'
 import { usePr } from '../prMode.js'
 import type { ThreadPartition } from '../reviewPlacement.js'
 import { involves } from '../threads.js'
-import { CommitMessage } from './CommitMessage.js'
 import { Decisions } from './Decisions.js'
 import { GapBand, type GapControls, HunkCard } from './HunkCard.js'
 import { Icon } from './Icon.js'
@@ -91,9 +90,9 @@ export interface LayerView {
   /** The stored layer id; null on the derived trailing layer, which has no
    * identity to comment on. */
   id: string | null
-  /** Set on a commit's card: the commit whose message the card can turn into
-   * commentable lines, `title` being its subject. */
-  commit?: { sha: string; body: string }
+  /** Set on a commit's card, read by commit: the commit the card's comment is
+   * on, `title` being its subject. */
+  commit?: { sha: string }
   /** `Layer 3 of 6`, or the derived layer's own kicker. */
   kicker: string
   title: string
@@ -333,70 +332,37 @@ function LayerHead({
   // meant. Nothing otherwise.
   const [cite, setCite] = useState<{ label: string; text: string } | null>(null)
   const headAnchor = cardAnchor(layer)
-  const ownThreads = headAnchor ? cardThreads(headAnchor, comments?.partition) : []
-  const onLine = (t: ReviewThread) => t.anchor.kind === 'commit' && t.anchor.line !== undefined
-  const headThreads = ownThreads.filter((t) => !onLine(t))
-  const lineThreads = ownThreads.filter(onLine)
-  // A commit's message reads as Markdown until the reviewer reaches for its
-  // lines. Once a thread is on a line the lines stay, or it would render nowhere.
-  const [asLines, setAsLines] = useState(false)
-  const linesOffered = layer.commit !== undefined && comments !== undefined
-  const showLines = linesOffered && (asLines || lineThreads.length > 0)
-  const toLines = (e: React.MouseEvent) => {
-    if (!linesOffered || (e.target as Element).closest('a')) return
-    if (window.getSelection()?.toString()) return
-    setAsLines(true)
-  }
+  const headThreads = headAnchor ? cardThreads(headAnchor, comments?.partition) : []
   const onClick = (e: React.MouseEvent) => {
     const ref = refClickTarget(e.target as Element)
-    if (!ref) {
-      toLines(e)
-      return
-    }
+    if (!ref) return
     e.preventDefault()
     layer.onJump(ref.path, ref.line)
   }
   const emptied = filesShown === 0
   const hasDecisions = !!(layer.decisions && layer.decisions.length > 0 && layer.onOpenDecision)
-  const hasAbout = (summary !== null && !showLines) || layer.missing.length > 0 || emptied
+  const hasAbout = summary !== null || layer.missing.length > 0 || emptied
   const canComment = comments !== undefined && headAnchor !== null
   return (
     <section className="ch-head" aria-label={`${layer.kicker}: ${layer.title}`}>
       <div className="ch-head-top">
         <div className="ch-head-kicker">{layer.kicker}</div>
         {/* The one action on the card, in its corner: a comment on the step
-            itself, which steps aside while the box is open below. A commit's
-            message takes comments on its lines instead, and the corner turns
-            them back into the formatted message. */}
-        {showLines && lineThreads.length === 0 ? (
+            itself, or on the commit read by commit. It steps aside while the
+            box is open below. */}
+        {canComment && !composerOpen && (
           <button
             type="button"
             className="btn btn-ghost btn-sm ch-head-ask"
-            onClick={() => setAsLines(false)}
+            onClick={() => setComposerOpen(true)}
           >
-            Show formatted
+            <Icon name="chat" size="sm" />
+            {headAnchor.kind === 'commit' ? 'Comment on this commit' : 'Comment on this layer'}
           </button>
-        ) : (
-          canComment &&
-          !layer.commit &&
-          !composerOpen && (
-            <button
-              type="button"
-              className="btn btn-ghost btn-sm ch-head-ask"
-              onClick={() => setComposerOpen(true)}
-            >
-              <Icon name="chat" size="sm" />
-              Comment on this layer
-            </button>
-          )
         )}
       </div>
       {/* The title is the card: what this step IS, before anything about it. */}
-      {/* biome-ignore lint/a11y/useKeyWithClickEvents: commenting on a message's lines starts with the mouse, like a range drag in the gutter */}
-      <h2
-        className={linesOffered && !showLines ? 'ch-head-to-lines' : undefined}
-        onClick={showLines ? undefined : toLines}
-      >
+      <h2>
         {layer.title}
         {layer.mechanical && (
           <span
@@ -407,26 +373,14 @@ function LayerHead({
           </span>
         )}
       </h2>
-      {showLines && layer.commit && headAnchor?.kind === 'commit' && (
-        <CommitMessage
-          anchor={headAnchor}
-          body={layer.commit.body}
-          threads={ownThreads.filter(onLine)}
-          comments={comments}
-        />
-      )}
       {(hasAbout || hasDecisions) && (
         <div className="ch-head-body">
           {hasAbout && (
             <div className="ch-head-about">
-              {summary && !showLines && (
+              {summary && (
                 // biome-ignore lint/a11y/noStaticElementInteractions: click delegation for the links inside rendered markdown
                 // biome-ignore lint/a11y/useKeyWithClickEvents: the links themselves are focusable and keyboard-activated
-                <div
-                  className={linesOffered ? 'ch-head-to-lines' : undefined}
-                  data-tip={linesOffered ? 'Click to comment on its lines' : undefined}
-                  onClick={onClick}
-                >
+                <div onClick={onClick}>
                   <Markdown
                     text={summary}
                     className="cmt-body markdown ch-summary"
@@ -547,10 +501,19 @@ function LayerHead({
           {composerOpen && (
             <CommentBox
               citing={cite ?? undefined}
-              title="Comment on this layer"
-              placeholder="Ask about this step, or say what should change in it…"
-              scope={{ label: `layer “${layer.title}”`, canWiden: false }}
-              // GitHub has no layers: on a pull request this is a private ask.
+              {...(headAnchor.kind === 'commit'
+                ? {
+                    title: 'Comment on this commit',
+                    placeholder: 'Ask about this commit, or say what its message should say…',
+                    scope: { label: `commit “${layer.title}”`, canWiden: false },
+                  }
+                : {
+                    title: 'Comment on this layer',
+                    placeholder: 'Ask about this step, or say what should change in it…',
+                    scope: { label: `layer “${layer.title}”`, canWiden: false },
+                  })}
+              // GitHub has no layers and no comments on a commit: on a pull
+              // request this is a private ask.
               fixedAudience="agent"
               agentConnected={comments.agentConnected}
               onSubmit={(text, _wide, intent) => {
@@ -1577,14 +1540,17 @@ export function ReadingPane({
   // line outdated while the file stayed. The hint says which, or both.
   const outdated = past.filter((t) => t.github?.outdated === true).length
   const onLayers = past.filter((t) => t.anchor.kind === 'layer').length
+  const onCommits = past.filter((t) => t.anchor.kind === 'commit').length
   const pastWhy =
     onLayers === past.length
       ? `The layer ${past.length === 1 ? 'this hangs' : 'these hang'} off left the outline: the agent re-posted without ${past.length === 1 ? 'its' : 'their'} title.`
-      : outdated === past.length
-        ? `${past.length === 1 ? 'This one is' : 'These are'} outdated on GitHub: the line ${past.length === 1 ? 'it hangs' : 'they hang'} off left the diff, though the file is still in it.`
-        : outdated > 0
-          ? `The file or change these hang off is no longer in the diff: reverted, deleted, or stashed; ${outdated} ${outdated === 1 ? 'is' : 'are'} outdated on GitHub instead, the line left the diff.`
-          : 'The file or change these hang off is no longer in the diff: reverted, deleted, or stashed.'
+      : onCommits === past.length
+        ? `The commit ${past.length === 1 ? 'this hangs' : 'these hang'} off left the branch: reworded, squashed, or dropped.`
+        : outdated === past.length
+          ? `${past.length === 1 ? 'This one is' : 'These are'} outdated on GitHub: the line ${past.length === 1 ? 'it hangs' : 'they hang'} off left the diff, though the file is still in it.`
+          : outdated > 0
+            ? `The file or change these hang off is no longer in the diff: reverted, deleted, or stashed; ${outdated} ${outdated === 1 ? 'is' : 'are'} outdated on GitHub instead, the line left the diff.`
+            : 'The file or change these hang off is no longer in the diff: reverted, deleted, or stashed.'
   const pastSection = comments && past.length > 0 && (
     <section className="file-section past-threads">
       <button
@@ -1598,7 +1564,11 @@ export function ReadingPane({
         </span>
         <span className="file-path">
           {past.length === 1 ? '1 thread' : `${past.length} threads`} whose{' '}
-          {onLayers === past.length ? 'layer left the outline' : 'code left the changeset'}
+          {onLayers === past.length
+            ? 'layer left the outline'
+            : onCommits === past.length
+              ? 'commit left the branch'
+              : 'code left the changeset'}
         </span>
       </button>
       {pastOpen && (
@@ -1607,7 +1577,9 @@ export function ReadingPane({
             {pastWhy} The conversation is intact
             {onLayers === past.length
               ? '.'
-              : ', and the snapshot inside each one is the code you commented on.'}
+              : onCommits === past.length
+                ? ', and the agent still gets the message as you commented on it.'
+                : ', and the snapshot inside each one is the code you commented on.'}
           </div>
           <ThreadList
             threads={past}

@@ -3,12 +3,12 @@ import {
   type Audience,
   type Author,
   anchorSpan,
-  commitLabel,
   isPublic,
   liveSuggestion,
   type ReviewMessage,
   type ReviewThread,
   seenByAgent,
+  shortSha,
   startedByAgent,
   type ThreadIntent,
   type ThreadState,
@@ -662,7 +662,10 @@ export function ThreadCard({
       )}
       {thread.codeChanged && (
         <span className="thread-badge">
-          <Icon name="alert" size="sm" /> code changed since this comment
+          <Icon name="alert" size="sm" />{' '}
+          {thread.anchor.kind === 'commit'
+            ? 'commit reworded or dropped since this comment'
+            : 'code changed since this comment'}
         </span>
       )}
       {copied && <span className="thread-badge">prompt copied, paste it to your agent</span>}
@@ -1272,7 +1275,7 @@ function anchorLabel(thread: ReviewThread, gone = false): string {
     return gone ? `Layer “${anchor.title}”` : `${word} on this layer`
   }
   if (anchor.kind === 'commit') {
-    return gone ? `Message of ${commitLabel(anchor)}` : `${word} on this commit message`
+    return gone ? `Commit ${shortSha(anchor.sha)} “${anchor.subject}”` : `${word} on this commit`
   }
   if (gone) return anchor.kind === 'hunk' ? `${anchor.path}:${anchorSpan(anchor)}` : anchor.path
   if (anchor.kind === 'hunk') {
