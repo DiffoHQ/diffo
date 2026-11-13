@@ -1530,10 +1530,15 @@ export function startServer(options: ServerContext & { port: number }) {
   // Commit threads follow their commit across a rebase or a reword. Only git
   // knows the branch's commits, so this runs after the hunk pass, and only when
   // there is a commit thread to move.
+  // A later change's listing wins: an earlier one that lands after it is stale.
+  let commitPass = 0
   const reconcileCommits = () => {
     if (!review.get().threads.some((t) => t.anchor.kind === 'commit')) return
+    const pass = ++commitPass
     void listCommitMessages(options.root, options.spec)
-      .then((listed) => review.reconcileCommits(listed))
+      .then((listed) => {
+        if (pass === commitPass) review.reconcileCommits(listed)
+      })
       .catch((err: Error) => log(`commit threads not reconciled: ${err.message}`))
   }
   const unsubscribeReconcile = store.subscribe((changeset) => {

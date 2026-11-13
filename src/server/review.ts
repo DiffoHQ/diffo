@@ -573,8 +573,8 @@ export class ReviewStore {
    * follows its commit's message, the way a hunk thread follows its content: on
    * a commit still listed by its sha it stays; on a new sha with the very same
    * message (a rebase, an amend that kept the words) it moves there. With
-   * neither the commit was reworded, squashed or dropped: `sent` + gone →
-   * `addressed`, `open` + gone → `codeChanged`, cleared if it comes back.
+   * neither the commit was reworded, squashed or dropped: the thread is flagged
+   * `codeChanged` (cleared if it comes back), and a `sent` one becomes `addressed`.
    */
   reconcileCommits(listed: readonly CommitMessage[]): void {
     const shas = new Set(listed.map((c) => c.sha))
@@ -593,12 +593,20 @@ export class ReviewStore {
           : byMessage.get(messageKey(frozen.subject, frozen.body ?? ''))
       const anchor = moved ? { ...thread.anchor, sha: moved.sha } : thread.anchor
       const exists = shas.has(anchor.sha)
+      // Unlike a hunk thread's, a commit thread's liveness is this flag alone
+      // (`threadsInChangeset`), so it is set whatever the state: an addressed or
+      // resolved thread on a dropped commit reads with the past too.
+      const codeChanged = !exists
       if (thread.state === 'sent' && !exists) {
         changed = true
-        return { ...thread, state: 'addressed' as const, updatedAt: new Date().toISOString() }
+        return {
+          ...thread,
+          anchor,
+          state: 'addressed' as const,
+          codeChanged,
+          updatedAt: new Date().toISOString(),
+        }
       }
-      const live = thread.state === 'open' || thread.state === 'sent'
-      const codeChanged = live ? !exists : thread.codeChanged
       if (anchor === thread.anchor && codeChanged === thread.codeChanged) return thread
       changed = true
       return { ...thread, anchor, codeChanged }

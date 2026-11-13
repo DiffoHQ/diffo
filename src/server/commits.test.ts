@@ -316,6 +316,9 @@ describe('a commit thread across a rebase or a reword', () => {
 
     await reconcile()
     expect(now().state).toBe('addressed')
+    // Addressed, it still reads with the past: no card shows a dropped commit.
+    const files = [{ path: 'a.ts', hunks: [] }] as never
+    expect(threadsInChangeset(files, [now()]).past).toEqual([now()])
   })
 })
 

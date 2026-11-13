@@ -207,8 +207,8 @@ export interface ReviewThread {
   anchoredCommit?: AnchoredCommit
   /** The anchored hunk no longer exists in the current changeset (its
    * content-addressed ID rotated), or — on a commit thread — no commit on the
-   * branch has the anchored sha or message any more. `sent` threads become
-   * `addressed` instead. */
+   * branch has the anchored sha or message any more. A `sent` hunk thread
+   * becomes `addressed` instead; a `sent` commit thread becomes both. */
   codeChanged: boolean
   /** The agent concluded the batch this thread went out in without replying —
    * not "slow", so the UI must stop waiting on it. */
