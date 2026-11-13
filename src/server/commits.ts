@@ -1,3 +1,4 @@
+import type { AnchoredCommit } from '../shared/review.js'
 import type {
   ChangesetSpec,
   CommitChangeset,
@@ -8,11 +9,13 @@ import type {
 import { UNCOMMITTED } from '../shared/types.js'
 import {
   getCommitDiffAsync,
+  getCommitMessageAsync,
   getFullDiffAsync,
   listCommitShasAsync,
   listCommitsAsync,
 } from './git.js'
 import { parsePatch } from './parse.js'
+import type { CommitMessage } from './review.js'
 
 function stats(files: FileChange[]) {
   let additions = 0
@@ -121,4 +124,27 @@ export async function getCommitChangeset(
   if (!(await isListedCommit(root, spec, sha))) return null
   const raw = await withGitSlot(() => getCommitDiffAsync(root, sha))
   return { sha, files: commitFiles(raw, sha) }
+}
+
+/** A listed commit's message, or null when the sha is not one of the
+ * changeset's commits — the same guard as its diff. */
+export async function getCommitMessage(
+  root: string,
+  spec: ChangesetSpec,
+  sha: string,
+): Promise<AnchoredCommit | null> {
+  if (!(await isListedCommit(root, spec, sha))) return null
+  const { subject, body } = await withGitSlot(() => getCommitMessageAsync(root, sha))
+  return { subject, ...(body ? { body } : {}) }
+}
+
+/** Each listed commit's sha and message, for following commit threads across
+ * a rebase. Empty where the changeset is not made of commits. */
+export async function listCommitMessages(
+  root: string,
+  spec: ChangesetSpec,
+): Promise<CommitMessage[]> {
+  if (spec.kind !== 'branch') return []
+  const raw = await withGitSlot(() => listCommitsAsync(root, spec))
+  return raw.map(({ sha, subject, body }) => ({ sha, subject, body }))
 }

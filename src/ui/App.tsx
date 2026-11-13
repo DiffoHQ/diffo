@@ -1350,12 +1350,24 @@ function Review() {
   ])
 
   const openThread = useCallback(
-    (item: { threadId: string; path: string | null; layerId?: string; gone?: boolean }) => {
+    (item: {
+      threadId: string
+      path: string | null
+      layerId?: string
+      commitSha?: string
+      gone?: boolean
+    }) => {
       setOpenThreadId(item.threadId)
       // A thread whose file left the changeset has no file body to scroll to — it
       // renders in the pane's own section for the ones the diff left behind.
       if (item.gone) {
         setRevealPastTick((t) => t + 1)
+      } else if (item.commitSha !== undefined) {
+        // Like a layer thread: it sits on the commit's card, which only the
+        // Layers tab read by commit draws.
+        setPanel('layers')
+        setSourcePick('commits')
+        if (item.commitSha !== activeCommit?.sha) goCommit(item.commitSha)
       } else if (item.layerId !== undefined) {
         // A layer thread's card lives on its layer's summary card, which only
         // the Layers view draws: go there, and to that layer.
@@ -1417,6 +1429,8 @@ function Review() {
       goOverview,
       inCommits,
       activeCommitFiles,
+      activeCommit?.sha,
+      goCommit,
       review?.threads,
     ],
   )
@@ -1426,6 +1440,7 @@ function Review() {
       threadId: item.thread.id,
       path: item.path,
       ...(item.thread.anchor.kind === 'layer' ? { layerId: item.thread.anchor.layerId } : {}),
+      ...(item.thread.anchor.kind === 'commit' ? { commitSha: item.thread.anchor.sha } : {}),
       ...(gone ? { gone } : {}),
     }),
     [],
@@ -1627,8 +1642,8 @@ function Review() {
       .filter(Boolean)
       .join(' · ')
     return {
-      // No identity to hang a layer thread on: comments go on the lines.
       id: null,
+      ...(pending ? {} : { commit: { sha: activeCommit.sha } }),
       kicker: pending ? 'Not committed yet' : `Commit ${number} of ${realCommits.length} · ${who}`,
       title: activeCommit.subject,
       mechanical: false,
@@ -1950,6 +1965,7 @@ function Review() {
                     onPick={goCommit}
                     viewed={viewed}
                     threads={threadsByPath}
+                    messageThreads={partition.byCommit}
                     loading={commitsQuery.isLoading}
                     error={commitsQuery.error ? (commitsQuery.error as Error).message : undefined}
                     selectedPath={selectedPath}

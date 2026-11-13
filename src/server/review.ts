@@ -3,6 +3,7 @@ import { resolve } from 'node:path'
 import { type LayerInput, parseLayersInput, parseSuggestReason } from '../shared/layers.js'
 import {
   type Anchor,
+  type AnchoredCommit,
   type AnchoredLayer,
   type AnchoredLines,
   type Audience,
@@ -108,6 +109,7 @@ export class ReviewStore {
       codeContext: capture?.codeContext ?? null,
       ...(capture?.anchored ? { anchored: capture.anchored } : {}),
       ...(capture?.anchoredLayer ? { anchoredLayer: capture.anchoredLayer } : {}),
+      ...(capture?.anchoredCommit ? { anchoredCommit: capture.anchoredCommit } : {}),
       codeChanged: false,
       messages: [
         {
@@ -567,6 +569,54 @@ export class ReviewStore {
   }
 
   /**
+   * The branch's commits moved — a rebase, an amend, a reword. A commit thread
+   * follows its commit's message, the way a hunk thread follows its content: on
+   * a commit still listed by its sha it stays; on a new sha with the very same
+   * message (a rebase, an amend that kept the words) it moves there. With
+   * neither the commit was reworded, squashed or dropped: the thread is flagged
+   * `codeChanged` (cleared if it comes back), and a `sent` one becomes `addressed`.
+   */
+  reconcileCommits(listed: readonly CommitMessage[]): void {
+    const shas = new Set(listed.map((c) => c.sha))
+    const byMessage = new Map<string, CommitMessage>()
+    for (const c of listed) {
+      const key = messageKey(c.subject, c.body)
+      if (!byMessage.has(key)) byMessage.set(key, c)
+    }
+    let changed = false
+    const threads = this.state.threads.map((thread) => {
+      if (thread.anchor.kind !== 'commit') return thread
+      const frozen = thread.anchoredCommit
+      const moved =
+        shas.has(thread.anchor.sha) || !frozen
+          ? undefined
+          : byMessage.get(messageKey(frozen.subject, frozen.body ?? ''))
+      const anchor = moved ? { ...thread.anchor, sha: moved.sha } : thread.anchor
+      const exists = shas.has(anchor.sha)
+      // Unlike a hunk thread's, a commit thread's liveness is this flag alone
+      // (`threadsInChangeset`), so it is set whatever the state: an addressed or
+      // resolved thread on a dropped commit reads with the past too.
+      const codeChanged = !exists
+      if (thread.state === 'sent' && !exists) {
+        changed = true
+        return {
+          ...thread,
+          anchor,
+          state: 'addressed' as const,
+          codeChanged,
+          updatedAt: new Date().toISOString(),
+        }
+      }
+      if (anchor === thread.anchor && codeChanged === thread.codeChanged) return thread
+      changed = true
+      return { ...thread, anchor, codeChanged }
+    })
+    if (!changed) return
+    this.state = { ...this.state, threads }
+    this.commit()
+  }
+
+  /**
    * The pull request's conversation, as the forge sees it now. An upsert: a
    * thread already here (by id, or by the GitHub thread a local draft became)
    * takes the incoming messages it lacks and GitHub's resolution; a new one is
@@ -934,6 +984,11 @@ export function parseAnchor(value: unknown): Anchor | null {
     if (typeof anchor.title !== 'string' || anchor.title.trim() === '') return null
     return { kind: 'layer', layerId: anchor.layerId, title: anchor.title.trim() }
   }
+  if (anchor.kind === 'commit') {
+    if (typeof anchor.sha !== 'string' || !/^[0-9a-f]{40}$/.test(anchor.sha)) return null
+    const subject = typeof anchor.subject === 'string' ? anchor.subject.trim() : ''
+    return { kind: 'commit', sha: anchor.sha, subject }
+  }
   if (anchor.kind === 'hunk') {
     if (typeof anchor.hunkId !== 'string' || typeof anchor.path !== 'string') return null
     if (anchor.side !== 'old' && anchor.side !== 'new') return null
@@ -977,6 +1032,26 @@ function normalizeAnchored(value: unknown): AnchoredLines | null {
     return null
   }
   return { start: a.start, end: a.end, text: a.text }
+}
+
+/** A listed commit, as `reconcileCommits` matches threads against it. */
+export interface CommitMessage {
+  sha: string
+  subject: string
+  body: string
+}
+
+const messageKey = (subject: string, body: string): string => `${subject}\n\n${body}`
+
+/** Dropped when malformed — the thread keeps its anchor's subject regardless. */
+function normalizeAnchoredCommit(value: unknown): AnchoredCommit | null {
+  if (typeof value !== 'object' || value === null) return null
+  const a = value as Record<string, unknown>
+  if (typeof a.subject !== 'string') return null
+  return {
+    subject: a.subject,
+    ...(typeof a.body === 'string' && a.body !== '' ? { body: a.body } : {}),
+  }
 }
 
 /** Dropped when malformed — the thread keeps its anchor's title regardless. */
@@ -1024,6 +1099,7 @@ function normalizeThread(value: unknown, now: string): ReviewThread | null {
   if (!anchor) return null
   const anchored = normalizeAnchored(t.anchored)
   const anchoredLayer = normalizeAnchoredLayer(t.anchoredLayer)
+  const anchoredCommit = normalizeAnchoredCommit(t.anchoredCommit)
   if (!Array.isArray(t.messages)) return null
   const messages: ReviewMessage[] = []
   for (const m of t.messages) {
@@ -1069,6 +1145,7 @@ function normalizeThread(value: unknown, now: string): ReviewThread | null {
     codeContext: typeof t.codeContext === 'string' ? t.codeContext : null,
     ...(anchored ? { anchored } : {}),
     ...(anchoredLayer ? { anchoredLayer } : {}),
+    ...(anchoredCommit ? { anchoredCommit } : {}),
     codeChanged: t.codeChanged === true,
     ...(t.unanswered === true ? { unanswered: true } : {}),
     // Mutually exclusive with `unanswered` — a hand-edited file carrying both

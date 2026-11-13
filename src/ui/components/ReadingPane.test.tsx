@@ -113,7 +113,13 @@ describe('ReadingPane', () => {
       <ReadingPane
         files={[FILES[0]!]}
         comments={{
-          partition: { byHunk: new Map(), byFile: new Map(), byLayer: new Map(), changeset: [] },
+          partition: {
+            byHunk: new Map(),
+            byFile: new Map(),
+            byLayer: new Map(),
+            byCommit: new Map(),
+            changeset: [],
+          },
           actions: {
             create: async () => {
               throw new Error('unused')
@@ -321,7 +327,13 @@ describe('ReadingPane', () => {
         collapsed={new Set(['src/b.ts'])}
         onToggleCollapsed={(p) => collapse.push(p)}
         comments={{
-          partition: { byHunk: new Map(), byFile: new Map(), byLayer: new Map(), changeset: [] },
+          partition: {
+            byHunk: new Map(),
+            byFile: new Map(),
+            byLayer: new Map(),
+            byCommit: new Map(),
+            changeset: [],
+          },
           actions: {
             create: async () => {
               throw new Error('unused')
@@ -1105,7 +1117,13 @@ describe('ReadingPane in layer mode', () => {
       updatedAt: at,
     }
     const comments = {
-      partition: { byHunk: new Map(), byFile: new Map(), byLayer: new Map(), changeset: [guide] },
+      partition: {
+        byHunk: new Map(),
+        byFile: new Map(),
+        byLayer: new Map(),
+        byCommit: new Map(),
+        changeset: [guide],
+      },
       actions: {
         create: vi.fn(),
         reply: vi.fn(),
@@ -1148,6 +1166,7 @@ describe('ReadingPane in layer mode', () => {
         byHunk: new Map(),
         byFile: new Map(),
         byLayer: new Map(threads.length ? [['L3', threads]] : []),
+        byCommit: new Map(),
         changeset: [],
       },
       actions: {
@@ -1226,6 +1245,87 @@ describe('ReadingPane in layer mode', () => {
         'private ask',
         undefined,
       )
+    })
+  })
+
+  describe('a comment on a commit', () => {
+    const sha = 'a'.repeat(40)
+    const at = '2026-09-20T00:00:00Z'
+    const onCommit: ReviewThread = {
+      id: 'ct',
+      anchor: { kind: 'commit', sha, subject: 'shout two' },
+      state: 'open',
+      codeContext: null,
+      anchoredCommit: { subject: 'shout two', body: 'Because it matters.' },
+      codeChanged: false,
+      messages: [{ id: 'm', author: 'reviewer', text: 'say why, not what', at }],
+      createdAt: at,
+      updatedAt: at,
+    }
+    const comments = (threads: ReviewThread[] = []) => ({
+      partition: {
+        byHunk: new Map(),
+        byFile: new Map(),
+        byLayer: new Map(),
+        byCommit: new Map(threads.length ? [[sha, threads]] : []),
+        changeset: [],
+      },
+      actions: {
+        create: vi.fn(async () => onCommit),
+        reply: vi.fn(),
+        send: vi.fn(),
+        resolve: vi.fn(),
+        reopen: vi.fn(),
+        remove: vi.fn(),
+      },
+    })
+    const commitView = view({
+      id: null,
+      commit: { sha },
+      summary: 'Because it matters.',
+      missing: [],
+      kicker: 'Commit 1 of 2',
+      title: 'shout two',
+    })
+
+    it('the card carries its threads and a way to add one, anchored to the commit', () => {
+      const c = comments([onCommit])
+      const { container } = render(
+        <ReadingPane files={[FILES[0]!]} layer={commitView} comments={c} />,
+      )
+      const head = container.querySelector('.ch-head')!
+      const card = head.querySelector('[data-thread-id="ct"]')!
+      expect(card.querySelector('.thread-where')!.textContent).toBe('Comment on this commit')
+      fireEvent.click(screen.getByRole('button', { name: 'Comment on this commit' }))
+      const box = screen.getByPlaceholderText(/Ask about this commit/) as HTMLTextAreaElement
+      expect(head.contains(box)).toBe(true)
+      fireEvent.change(box, { target: { value: 'the subject says what, not why' } })
+      fireEvent.click(screen.getByText('Add comment'))
+      expect(c.actions.create).toHaveBeenCalledWith(
+        { kind: 'commit', sha, subject: 'shout two' },
+        'the subject says what, not why',
+        undefined,
+      )
+    })
+
+    it('the message stays Markdown: a click on it opens nothing', () => {
+      const { container } = render(
+        <ReadingPane files={[FILES[0]!]} layer={commitView} comments={comments()} />,
+      )
+      fireEvent.click(container.querySelector('.ch-summary')!)
+      expect(screen.queryByPlaceholderText(/Ask about this commit/)).toBeNull()
+      expect(container.querySelector('.ch-summary')!.textContent).toContain('Because it matters.')
+    })
+
+    it('the uncommitted edits have no commit to comment on', () => {
+      render(
+        <ReadingPane
+          files={[FILES[0]!]}
+          layer={view({ id: null, kicker: 'Not committed yet', title: 'Uncommitted changes' })}
+          comments={comments()}
+        />,
+      )
+      expect(screen.queryByRole('button', { name: /^Comment on this/ })).toBeNull()
     })
   })
 

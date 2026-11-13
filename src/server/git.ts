@@ -135,6 +135,14 @@ export function getHeadSha(root: string): string | null {
   }
 }
 
+export async function getHeadShaAsync(root: string): Promise<string | null> {
+  try {
+    return (await gitAsync(root, ['rev-parse', 'HEAD'])).trim()
+  } catch {
+    return null // e.g. repo with no commits
+  }
+}
+
 /**
  * Is `ancestor` in `descendant`'s history? Null when git couldn't answer (a sha
  * it no longer knows, a transient failure) — the callers lean opposite ways on
@@ -482,6 +490,15 @@ export async function listCommitsAsync(root: string, spec: ChangesetSpec): Promi
         chunk.split('\x1f')
       return { sha, short, author, at, subject, body: body.trim(), stats: parseShortstat(stat) }
     })
+}
+
+export async function getCommitMessageAsync(
+  root: string,
+  sha: string,
+): Promise<{ subject: string; body: string }> {
+  const out = await gitAsync(root, ['log', '-1', '--no-color', '--format=%s%x1f%b', sha])
+  const [subject = '', body = ''] = out.split('\x1f')
+  return { subject: subject.trim(), body: body.trim() }
 }
 
 /** One commit's own patch, against its first parent — or against nothing, for

@@ -1,5 +1,5 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
-import { isPublic, type LineRange, type ReviewThread } from '../../shared/review.js'
+import { type Anchor, isPublic, type LineRange, type ReviewThread } from '../../shared/review.js'
 import type { DiffLine, FileChange, Hunk } from '../../shared/types.js'
 import { copyText } from '../clipboard.js'
 import { changedLineCount, type StubReason, stubReason } from '../diffStub.js'
@@ -90,6 +90,9 @@ export interface LayerView {
   /** The stored layer id; null on the derived trailing layer, which has no
    * identity to comment on. */
   id: string | null
+  /** Set on a commit's card, read by commit: the commit the card's comment is
+   * on, `title` being its subject. */
+  commit?: { sha: string }
   /** `Layer 3 of 6`, or the derived layer's own kicker. */
   kicker: string
   title: string
@@ -291,6 +294,24 @@ function ElsewhereRow({
   )
 }
 
+type CardAnchor = Extract<Anchor, { kind: 'layer' } | { kind: 'commit' }>
+
+function cardAnchor(layer: LayerView): CardAnchor | null {
+  if (layer.commit !== undefined) {
+    return { kind: 'commit', sha: layer.commit.sha, subject: layer.title }
+  }
+  if (layer.id === null) return null
+  return { kind: 'layer', layerId: layer.id, title: layer.title }
+}
+
+function cardThreads(anchor: CardAnchor, partition: ThreadPartition | undefined): ReviewThread[] {
+  const threads =
+    anchor.kind === 'commit'
+      ? partition?.byCommit.get(anchor.sha)
+      : partition?.byLayer.get(anchor.layerId)
+  return threads ?? []
+}
+
 function LayerHead({
   layer,
   filesShown,
@@ -310,9 +331,8 @@ function LayerHead({
   // above the words and sent ahead of them, so the agent knows which one is
   // meant. Nothing otherwise.
   const [cite, setCite] = useState<{ label: string; text: string } | null>(null)
-  const layerThreads = layer.id !== null ? (comments?.partition.byLayer.get(layer.id) ?? []) : []
-  const layerAnchor =
-    layer.id !== null ? ({ kind: 'layer', layerId: layer.id, title: layer.title } as const) : null
+  const headAnchor = cardAnchor(layer)
+  const headThreads = headAnchor ? cardThreads(headAnchor, comments?.partition) : []
   const onClick = (e: React.MouseEvent) => {
     const ref = refClickTarget(e.target as Element)
     if (!ref) return
@@ -322,13 +342,14 @@ function LayerHead({
   const emptied = filesShown === 0
   const hasDecisions = !!(layer.decisions && layer.decisions.length > 0 && layer.onOpenDecision)
   const hasAbout = summary !== null || layer.missing.length > 0 || emptied
-  const canComment = comments !== undefined && layerAnchor !== null
+  const canComment = comments !== undefined && headAnchor !== null
   return (
     <section className="ch-head" aria-label={`${layer.kicker}: ${layer.title}`}>
       <div className="ch-head-top">
         <div className="ch-head-kicker">{layer.kicker}</div>
         {/* The one action on the card, in its corner: a comment on the step
-            itself. It steps aside while the box is open below. */}
+            itself, or on the commit read by commit. It steps aside while the
+            box is open below. */}
         {canComment && !composerOpen && (
           <button
             type="button"
@@ -336,7 +357,7 @@ function LayerHead({
             onClick={() => setComposerOpen(true)}
           >
             <Icon name="chat" size="sm" />
-            Comment on this layer
+            {headAnchor.kind === 'commit' ? 'Comment on this commit' : 'Comment on this layer'}
           </button>
         )}
       </div>
@@ -464,11 +485,11 @@ function LayerHead({
       )}
       {/* The step's own conversation: only there when there is one, or one is
           being written — an empty footer would be a rule under nothing. */}
-      {canComment && (layerThreads.length > 0 || composerOpen) && (
+      {canComment && (headThreads.length > 0 || composerOpen) && (
         <div className="ch-head-threads">
-          {layerThreads.length > 0 && (
+          {headThreads.length > 0 && (
             <ThreadList
-              threads={layerThreads}
+              threads={headThreads}
               actions={comments.actions}
               showContext
               agentConnected={comments.agentConnected}
@@ -480,20 +501,29 @@ function LayerHead({
           {composerOpen && (
             <CommentBox
               citing={cite ?? undefined}
-              title="Comment on this layer"
-              placeholder="Ask about this step, or say what should change in it…"
-              scope={{ label: `layer “${layer.title}”`, canWiden: false }}
-              // GitHub has no layers: on a pull request this is a private ask.
+              {...(headAnchor.kind === 'commit'
+                ? {
+                    title: 'Comment on this commit',
+                    placeholder: 'Ask about this commit, or say what its message should say…',
+                    scope: { label: `commit “${layer.title}”`, canWiden: false },
+                  }
+                : {
+                    title: 'Comment on this layer',
+                    placeholder: 'Ask about this step, or say what should change in it…',
+                    scope: { label: `layer “${layer.title}”`, canWiden: false },
+                  })}
+              // GitHub has no layers and no comments on a commit: on a pull
+              // request this is a private ask.
               fixedAudience="agent"
               agentConnected={comments.agentConnected}
               onSubmit={(text, _wide, intent) => {
-                void comments.actions.create(layerAnchor, text, intent)
+                void comments.actions.create(headAnchor, text, intent)
                 setComposerOpen(false)
                 setCite(null)
               }}
               onSend={(text, _wide, intent) => {
                 void comments.actions
-                  .create(layerAnchor, text, intent)
+                  .create(headAnchor, text, intent)
                   .then((t) => comments.actions.send(t.id))
                 setComposerOpen(false)
                 setCite(null)
@@ -1510,14 +1540,17 @@ export function ReadingPane({
   // line outdated while the file stayed. The hint says which, or both.
   const outdated = past.filter((t) => t.github?.outdated === true).length
   const onLayers = past.filter((t) => t.anchor.kind === 'layer').length
+  const onCommits = past.filter((t) => t.anchor.kind === 'commit').length
   const pastWhy =
     onLayers === past.length
       ? `The layer ${past.length === 1 ? 'this hangs' : 'these hang'} off left the outline: the agent re-posted without ${past.length === 1 ? 'its' : 'their'} title.`
-      : outdated === past.length
-        ? `${past.length === 1 ? 'This one is' : 'These are'} outdated on GitHub: the line ${past.length === 1 ? 'it hangs' : 'they hang'} off left the diff, though the file is still in it.`
-        : outdated > 0
-          ? `The file or change these hang off is no longer in the diff: reverted, deleted, or stashed; ${outdated} ${outdated === 1 ? 'is' : 'are'} outdated on GitHub instead, the line left the diff.`
-          : 'The file or change these hang off is no longer in the diff: reverted, deleted, or stashed.'
+      : onCommits === past.length
+        ? `The commit ${past.length === 1 ? 'this hangs' : 'these hang'} off left the branch: reworded, squashed, or dropped.`
+        : outdated === past.length
+          ? `${past.length === 1 ? 'This one is' : 'These are'} outdated on GitHub: the line ${past.length === 1 ? 'it hangs' : 'they hang'} off left the diff, though the file is still in it.`
+          : outdated > 0
+            ? `The file or change these hang off is no longer in the diff: reverted, deleted, or stashed; ${outdated} ${outdated === 1 ? 'is' : 'are'} outdated on GitHub instead, the line left the diff.`
+            : 'The file or change these hang off is no longer in the diff: reverted, deleted, or stashed.'
   const pastSection = comments && past.length > 0 && (
     <section className="file-section past-threads">
       <button
@@ -1531,7 +1564,11 @@ export function ReadingPane({
         </span>
         <span className="file-path">
           {past.length === 1 ? '1 thread' : `${past.length} threads`} whose{' '}
-          {onLayers === past.length ? 'layer left the outline' : 'code left the changeset'}
+          {onLayers === past.length
+            ? 'layer left the outline'
+            : onCommits === past.length
+              ? 'commit left the branch'
+              : 'code left the changeset'}
         </span>
       </button>
       {pastOpen && (
@@ -1540,7 +1577,9 @@ export function ReadingPane({
             {pastWhy} The conversation is intact
             {onLayers === past.length
               ? '.'
-              : ', and the snapshot inside each one is the code you commented on.'}
+              : onCommits === past.length
+                ? ', and the agent still gets the message as you commented on it.'
+                : ', and the snapshot inside each one is the code you commented on.'}
           </div>
           <ThreadList
             threads={past}
@@ -1604,7 +1643,7 @@ export function ReadingPane({
   ) : layer && files.length === 0 ? (
     // A layer whose files all left the changeset says so on its own card, and
     // next/prev skip it — the generic empty state would lose the reader's place.
-    <LayerHead layer={layer} filesShown={0} comments={comments} />
+    <LayerHead key={layer.commit?.sha} layer={layer} filesShown={0} comments={comments} />
   ) : allHidden && scopeDone ? (
     done
   ) : allHidden && controls ? (
@@ -1628,7 +1667,14 @@ export function ReadingPane({
     </div>
   ) : (
     <>
-      {layer && <LayerHead layer={layer} filesShown={files.length} comments={comments} />}
+      {layer && (
+        <LayerHead
+          key={layer.commit?.sha}
+          layer={layer}
+          filesShown={files.length}
+          comments={comments}
+        />
+      )}
       {files.map((file) => {
         const isCollapsed = handlers.collapsed?.has(file.path) ?? false
         const fileThreadCount = comments?.partition.byFile.get(file.path)?.length ?? 0

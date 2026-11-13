@@ -3,9 +3,9 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
-import type { ReviewThread } from '../shared/review.js'
+import { type ReviewThread, threadsInChangeset } from '../shared/review.js'
 import { UNCOMMITTED } from '../shared/types.js'
-import { getCommitChangeset, listCommits } from './commits.js'
+import { getCommitChangeset, listCommitMessages, listCommits } from './commits.js'
 import { DiffoDb } from './db.js'
 import { MissingBaseError } from './git.js'
 import { createApp } from './index.js'
@@ -195,6 +195,130 @@ describe('a comment made on a commit', () => {
     expect(thread.anchor).toMatchObject({ kind: 'hunk', hunkId: hunk.id, line: 17 })
     expect(thread.anchor).not.toHaveProperty('commit')
     expect(thread.codeContext).toContain('+LINE 15')
+  })
+})
+
+describe('a comment on a commit', () => {
+  function appOn(repo: string) {
+    const dbDir = `${repo}-db`
+    cleanups.push(dbDir)
+    const store = new ChangesetStore(repo, BRANCH)
+    const review = new ReviewStore(repo, new DiffoDb(join(dbDir, 'diffo.db')), BRANCH)
+    const app = createApp({ root: repo, spec: BRANCH, clientDir: '/nope' }, store, review)
+    return (body: object) =>
+      app.request('/api/review/threads', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text: 'say why, not what', ...body }),
+      })
+  }
+
+  it('freezes the message from git, not the subject the client sent', async () => {
+    const repo = featureRepo()
+    const create = appOn(repo)
+    const { commits } = await listCommits(repo, BRANCH)
+    const sha = commits[0]!.sha
+
+    const res = await create({ anchor: { kind: 'commit', sha, subject: 'made up' } })
+    const thread = (await res.json()) as ReviewThread
+    expect(thread.anchor).toEqual({ kind: 'commit', sha, subject: 'shout two' })
+    expect(thread.anchoredCommit).toEqual({ subject: 'shout two', body: 'Because it matters.' })
+    expect(thread.codeContext).toBeNull()
+  })
+
+  it('takes no line: a comment is on the commit as a whole', async () => {
+    const repo = featureRepo()
+    const create = appOn(repo)
+    const { commits } = await listCommits(repo, BRANCH)
+    const sha = commits[0]!.sha
+
+    const res = await create({ anchor: { kind: 'commit', sha, subject: 'shout two', line: 3 } })
+    const thread = (await res.json()) as ReviewThread
+    expect(thread.anchor).toEqual({ kind: 'commit', sha, subject: 'shout two' })
+  })
+
+  it('refuses a commit outside the changeset', async () => {
+    const repo = featureRepo()
+    const create = appOn(repo)
+    const base = git(repo, 'rev-parse', 'main').trim()
+
+    const res = await create({ anchor: { kind: 'commit', sha: base, subject: 'base' } })
+    expect(res.status).toBe(400)
+  })
+})
+
+describe('a commit thread across a rebase or a reword', () => {
+  async function onFirstCommit(repo: string) {
+    const dbDir = `${repo}-db`
+    cleanups.push(dbDir)
+    const review = new ReviewStore(repo, new DiffoDb(join(dbDir, 'diffo.db')), BRANCH)
+    const { commits } = await listCommits(repo, BRANCH)
+    const sha = commits[0]!.sha
+    const thread = review.createThread(
+      { kind: 'commit', sha, subject: 'shout two' },
+      'say why, not what',
+      { codeContext: null, anchoredCommit: { subject: 'shout two', body: 'Because it matters.' } },
+    )
+    const reconcile = async () => review.reconcileCommits(await listCommitMessages(repo, BRANCH))
+    const now = () => review.get().threads.find((t) => t.id === thread.id)!
+    return { review, sha, reconcile, now }
+  }
+
+  it('a reword that leaves the diff as it was still refreshes the changeset', async () => {
+    const repo = featureRepo()
+    const store = new ChangesetStore(repo, BRANCH)
+    const before = store.get().version
+    expect(await store.refresh()).toBe(false)
+    git(repo, 'commit', '-q', '--amend', '-m', 'add b\n\nBecause b was missing.')
+    expect(await store.refresh()).toBe(true)
+    expect(store.get().version).toBe(before + 1)
+  })
+
+  it('follows the commit to its new sha when a rebase keeps the message', async () => {
+    const repo = featureRepo()
+    const { sha, reconcile, now } = await onFirstCommit(repo)
+    git(repo, 'checkout', '-q', 'main')
+    write(repo, 'c.ts', 'main moved on\n')
+    commitAll(repo, 'main moves')
+    git(repo, 'checkout', '-q', 'feature')
+    git(repo, 'rebase', '-q', 'main')
+
+    await reconcile()
+    const { commits } = await listCommits(repo, BRANCH)
+    expect(commits[0]!.sha).not.toBe(sha)
+    expect(now().anchor).toEqual({ kind: 'commit', sha: commits[0]!.sha, subject: 'shout two' })
+    expect(now().codeChanged).toBe(false)
+  })
+
+  it('a reword leaves an open thread behind, on the server as in the UI', async () => {
+    const repo = featureRepo()
+    const { reconcile, now } = await onFirstCommit(repo)
+    git(repo, 'checkout', '-q', 'HEAD~1')
+    git(repo, 'commit', '-q', '--amend', '-m', 'shout two\n\nCallers need it loud.')
+    git(repo, 'cherry-pick', 'feature')
+    git(repo, 'checkout', '-q', '-B', 'feature')
+
+    await reconcile()
+    expect(now().codeChanged).toBe(true)
+    expect(now().state).toBe('open')
+    const files = [{ path: 'a.ts', hunks: [] }] as never
+    expect(threadsInChangeset(files, [now()]).past).toEqual([now()])
+  })
+
+  it('a reword after the thread was sent reads as addressed', async () => {
+    const repo = featureRepo()
+    const { review, reconcile, now } = await onFirstCommit(repo)
+    review.send(now().id)
+    git(repo, 'checkout', '-q', 'HEAD~1')
+    git(repo, 'commit', '-q', '--amend', '-m', 'shout two\n\nCallers need it loud.')
+    git(repo, 'cherry-pick', 'feature')
+    git(repo, 'checkout', '-q', '-B', 'feature')
+
+    await reconcile()
+    expect(now().state).toBe('addressed')
+    // Addressed, it still reads with the past: no card shows a dropped commit.
+    const files = [{ path: 'a.ts', hunks: [] }] as never
+    expect(threadsInChangeset(files, [now()]).past).toEqual([now()])
   })
 })
 

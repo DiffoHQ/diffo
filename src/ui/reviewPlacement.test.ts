@@ -112,6 +112,13 @@ describe('partitionThreads', () => {
     expect(p.byFile.size).toBe(0)
     expect(p.changeset).toEqual([])
   })
+
+  it('commit-message threads group under their sha, in any commit’s partition', () => {
+    const sha = 'a'.repeat(40)
+    const onMessage = thread('m', { kind: 'commit', sha, subject: 'shout two' })
+    expect(partitionThreads(files, [onMessage]).byCommit.get(sha)).toEqual([onMessage])
+    expect(partitionForCommit([], files, [onMessage]).byCommit.get(sha)).toEqual([onMessage])
+  })
 })
 
 describe('anchorForLine / anchorForHunk', () => {

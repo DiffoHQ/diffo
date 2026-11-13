@@ -38,7 +38,13 @@ import {
 import type { ChangesetSpec, PrInfo } from '../shared/types.js'
 import { normalizeVoice, VOICE_MAX } from '../shared/voice.js'
 import { VERSION } from '../version.js'
-import { getCommitChangeset, isListedCommit, listCommits } from './commits.js'
+import {
+  getCommitChangeset,
+  getCommitMessage,
+  isListedCommit,
+  listCommitMessages,
+  listCommits,
+} from './commits.js'
 import { DiffoDb, type ServerRecord } from './db.js'
 import { DeliveryQueue, type Snapshot } from './delivery.js'
 import {
@@ -429,11 +435,24 @@ export function createApp(
       if (!layer) return c.json({ error: 'that layer is not in the outline' }, 400)
       anchor.title = layer.title
     }
+    // Likewise a commit thread needs a commit the changeset lists, and its
+    // message is git's, frozen here, not the client's.
+    const commitMessage =
+      anchor.kind === 'commit'
+        ? await getCommitMessage(ctx.root, ctx.spec, anchor.sha).catch(() => null)
+        : null
+    if (anchor.kind === 'commit') {
+      if (!commitMessage) return c.json({ error: 'that commit is not in the changeset' }, 400)
+      anchor.subject = commitMessage.subject
+    }
     const intent = THREAD_INTENTS.includes(body?.intent) ? (body.intent as ThreadIntent) : undefined
     // Public drafts exist only on a pull request; without one the flag is a mistake.
     const audience = body?.audience === 'pr' ? ('pr' as const) : undefined
     if (audience && !ctx.pr) {
       return c.json({ error: 'public comments need a pull request under review' }, 400)
+    }
+    if (audience && anchor.kind === 'commit') {
+      return c.json({ error: 'a comment on a commit is for the agent' }, 400)
     }
     // GitHub has no layers: a comment on one is for the agent, unless it is the
     // agent's suggestion taken from a layer thread — then it moves to the code.
@@ -492,7 +511,11 @@ export function createApp(
             // says whose, so nothing later reads it as the full diff's.
             { ...anchor, commit: body.commit as string }
         : anchor
-    let capture = store ? captureAnchor(store.get(), placed, review.get().layers) : null
+    let capture = commitMessage
+      ? { codeContext: null, anchoredCommit: commitMessage }
+      : store
+        ? captureAnchor(store.get(), placed, review.get().layers)
+        : null
     if (store && !capture && commitFiles) {
       capture = captureAnchor({ ...store.get(), files: commitFiles }, anchor)
     }
@@ -1504,6 +1527,20 @@ export function startServer(options: ServerContext & { port: number }) {
   const prContext: PrContext | undefined = options.pr
     ? { ...options.pr, refresh: () => puller!.tick() }
     : undefined
+  // Commit threads follow their commit across a rebase or a reword. Only git
+  // knows the branch's commits, so this runs after the hunk pass, and only when
+  // there is a commit thread to move.
+  // A later change's listing wins: an earlier one that lands after it is stale.
+  let commitPass = 0
+  const reconcileCommits = () => {
+    if (!review.get().threads.some((t) => t.anchor.kind === 'commit')) return
+    const pass = ++commitPass
+    void listCommitMessages(options.root, options.spec)
+      .then((listed) => {
+        if (pass === commitPass) review.reconcileCommits(listed)
+      })
+      .catch((err: Error) => log(`commit threads not reconciled: ${err.message}`))
+  }
   const unsubscribeReconcile = store.subscribe((changeset) => {
     // A checkout under a running server is a change of work: swap to that branch's
     // review before reconciling, or new hunks meet the old branch's threads.
@@ -1514,10 +1551,12 @@ export function startServer(options: ServerContext & { port: number }) {
       log(`branch ${before || 'detached'} → ${changeset.repo.branch || 'detached'}`)
     const hunkIds = new Set(changeset.files.flatMap((f) => f.hunks.map((h) => h.id)))
     review.reconcile(hunkIds)
+    reconcileCommits()
     checkLanded(changeset.files.length > 0, hunkIds)
   })
   const startupHunkIds = new Set(store.get().files.flatMap((f) => f.hunks.map((h) => h.id)))
   review.reconcile(startupHunkIds)
+  reconcileCommits()
   // Startup runs the same check: the commit that landed this review may have
   // happened while no server was watching (the idle reap makes that ordinary).
   checkLanded(store.get().files.length > 0, startupHunkIds)

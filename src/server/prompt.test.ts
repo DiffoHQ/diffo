@@ -551,6 +551,31 @@ describe('a thread on a layer', () => {
   })
 })
 
+describe('a thread on a commit', () => {
+  const sha = 'a'.repeat(40)
+  const onCommit = thread({
+    anchor: { kind: 'commit', sha, subject: 'shout two' },
+    codeContext: null,
+    anchoredCommit: { subject: 'shout two', body: 'Because it matters.' },
+    messages: [
+      { id: 'm1', author: 'reviewer', text: 'say why, not what', at: '2026-08-03T00:00:00Z' },
+    ],
+  })
+
+  it('heads with the commit and quotes its message instead of a diff', () => {
+    const prompt = buildThreadPrompt(onCommit, ctx)
+    expect(prompt).toContain('### Thread 1 — commit aaaaaaa "shout two"')
+    expect(prompt).toContain('```text\nshout two\n\nBecause it matters.\n```')
+    expect(prompt).not.toContain('```diff')
+    expect(prompt).not.toContain('no longer on the branch')
+  })
+
+  it('says so when the commit left the branch', () => {
+    const prompt = buildThreadPrompt({ ...onCommit, codeChanged: true }, ctx)
+    expect(prompt).toContain('This commit is no longer on the branch under that message')
+  })
+})
+
 describe('captureAnchor (what a new thread freezes)', () => {
   const hunk = {
     id: 'h1',

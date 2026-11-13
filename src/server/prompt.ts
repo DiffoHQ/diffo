@@ -10,14 +10,17 @@ import {
 } from '../shared/layers.js'
 import {
   type Anchor,
+  type AnchoredCommit,
   type AnchoredLayer,
   type Coverage,
+  commitMessageLines,
   describeAnchor,
   isPublic,
   type Layer,
   type Layers,
   layerFileRef,
   type ReviewThread,
+  shortSha,
   startedByAgent,
   THREAD_INTENTS,
   type ThreadCapture,
@@ -906,6 +909,11 @@ function anchorQuote(thread: ReviewThread): string {
  * anchor never matches it, and a rotated hunk means the code moved under the
  * numbers. At most one note — removed code can't also have "moved". */
 function anchorNote(thread: ReviewThread): string[] {
+  if (thread.anchor.kind === 'commit' && thread.codeChanged) {
+    return [
+      'This commit is no longer on the branch under that message: it was reworded, squashed or dropped after the comment was written.',
+    ]
+  }
   if (thread.anchor.kind !== 'hunk') return []
   if (thread.anchor.side === 'old') {
     return [
@@ -947,10 +955,25 @@ function layerBlock(layer: AnchoredLayer): string[] {
   ]
 }
 
+function commitBlock(
+  anchor: Extract<Anchor, { kind: 'commit' }>,
+  commit: AnchoredCommit,
+): string[] {
+  return [
+    `The message of commit \`${shortSha(anchor.sha)}\` as it read when this comment was made:`,
+    '```text',
+    ...commitMessageLines(commit),
+    '```',
+  ]
+}
+
 function snapshotBlock(thread: ReviewThread): string[] {
   const { codeContext, anchored } = thread
   if (thread.anchor.kind === 'layer') {
     return thread.anchoredLayer ? layerBlock(thread.anchoredLayer) : []
+  }
+  if (thread.anchor.kind === 'commit') {
+    return thread.anchoredCommit ? commitBlock(thread.anchor, thread.anchoredCommit) : []
   }
   if (!codeContext) {
     // The snapshot is gone (dropped on resolve) but the anchored text survives —

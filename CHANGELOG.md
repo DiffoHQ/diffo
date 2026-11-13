@@ -7,7 +7,19 @@ Until 1.0, minor versions may break things. When they do, the entry says how to 
 
 ## [Unreleased]
 
-Nothing yet.
+### Added
+
+- **Comments on a commit.** Reading by commit, **Comment on this commit** in
+  the card's corner asks the agent about the commit, its message most of all,
+  the way **Comment on this layer** does for a step. The agent gets the message
+  as it read. A rebase that keeps the message carries the comment to the new
+  commit; a reword or a drop files it with the threads the changeset left
+  behind. On a pull request these comments are for the agent only.
+
+### Fixed
+
+- **A reword refreshes the review.** Amending or rebasing commits without
+  changing the diff now updates the commit list in an open review.
 
 ## [0.23.0] — 2026-11-09
 

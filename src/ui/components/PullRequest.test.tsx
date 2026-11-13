@@ -765,6 +765,7 @@ describe('the pane on a pull request', () => {
       byHunk: new Map(),
       byFile: new Map(),
       byLayer: new Map(),
+      byCommit: new Map(),
       changeset: [description, bot1, mine, bot2, mention],
     },
     actions: actions(),

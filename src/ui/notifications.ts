@@ -1,4 +1,4 @@
-import { type ReviewThread, untouchedAgentVoice } from '../shared/review.js'
+import { commitLabel, type ReviewThread, untouchedAgentVoice } from '../shared/review.js'
 
 /**
  * What's worth telling a reviewer who isn't looking: the agent answered a thread
@@ -38,6 +38,7 @@ function anchorLabel(thread: ReviewThread): string | null {
   if (a.kind === 'changeset') return null
   if (a.kind === 'file') return a.path
   if (a.kind === 'layer') return `layer “${a.title}”`
+  if (a.kind === 'commit') return commitLabel(a)
   return `${a.path}:${a.line}`
 }
 

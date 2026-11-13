@@ -8,6 +8,7 @@ import {
   type ReviewMessage,
   type ReviewThread,
   seenByAgent,
+  shortSha,
   startedByAgent,
   type ThreadIntent,
   type ThreadState,
@@ -661,7 +662,10 @@ export function ThreadCard({
       )}
       {thread.codeChanged && (
         <span className="thread-badge">
-          <Icon name="alert" size="sm" /> code changed since this comment
+          <Icon name="alert" size="sm" />{' '}
+          {thread.anchor.kind === 'commit'
+            ? 'commit reworded or dropped since this comment'
+            : 'code changed since this comment'}
         </span>
       )}
       {copied && <span className="thread-badge">prompt copied, paste it to your agent</span>}
@@ -1269,6 +1273,9 @@ function anchorLabel(thread: ReviewThread, gone = false): string {
   if (anchor.kind === 'layer') {
     // Gone: the outline no longer has this step, so the card names it.
     return gone ? `Layer “${anchor.title}”` : `${word} on this layer`
+  }
+  if (anchor.kind === 'commit') {
+    return gone ? `Commit ${shortSha(anchor.sha)} “${anchor.subject}”` : `${word} on this commit`
   }
   if (gone) return anchor.kind === 'hunk' ? `${anchor.path}:${anchorSpan(anchor)}` : anchor.path
   if (anchor.kind === 'hunk') {

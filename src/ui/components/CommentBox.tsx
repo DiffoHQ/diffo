@@ -266,7 +266,9 @@ export function CommentBox({
         <>
           <span className="scope-chip">
             <Icon name={wide ? 'cmp' : 'unified'} size="sm" />
-            {wide ? 'the whole changeset' : scope.label}
+            <span className="scope-chip-label" title={wide ? undefined : scope.label}>
+              {wide ? 'the whole changeset' : scope.label}
+            </span>
             {!wide && scope.adjust && (
               <span className="scope-chip-steppers">
                 <button

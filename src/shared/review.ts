@@ -28,6 +28,12 @@ export type Anchor =
    * title. `title` is carried so a thread whose layer left the outline can
    * still say which step it was about. Agent-only: GitHub has no layers. */
   | { kind: 'layer'; layerId: string; title: string }
+  /** A commit, read commit by commit: a comment on the commit as a whole, its
+   * message most of all. `subject` is carried so the thread can still name the
+   * commit once it leaves the branch. A rebase that keeps the message moves the
+   * thread to the new sha (the server's `reconcileCommits`). Agent-only: GitHub
+   * has no review comments on a commit. */
+  | { kind: 'commit'; sha: string; subject: string }
 
 /** `github` is a person on the pull request — the author, another reviewer, a
  * bot — carried on the message's `github` block. The reviewer's own words posted
@@ -59,6 +65,14 @@ export interface AnchoredLayer {
   files: string[]
 }
 
+/** The commit message as it was when a commit thread was opened. A reword may
+ * change it; this is what the comment was about, and what a rebased commit is
+ * matched by. */
+export interface AnchoredCommit {
+  subject: string
+  body?: string
+}
+
 /** What a new thread freezes about the code it anchors to. `anchored` is absent
  * for pre-range snapshots and for anchors whose lines fell outside the hunk.
  * A layer thread freezes the layer instead and carries no snapshot. */
@@ -66,6 +80,7 @@ export interface ThreadCapture {
   codeContext: string | null
   anchored?: AnchoredLines
   anchoredLayer?: AnchoredLayer
+  anchoredCommit?: AnchoredCommit
 }
 
 export interface ReviewMessage {
@@ -188,8 +203,12 @@ export interface ReviewThread {
   anchored?: AnchoredLines
   /** See {@link AnchoredLayer}. Present on every layer thread. */
   anchoredLayer?: AnchoredLayer
+  /** See {@link AnchoredCommit}. Present on every commit thread. */
+  anchoredCommit?: AnchoredCommit
   /** The anchored hunk no longer exists in the current changeset (its
-   * content-addressed ID rotated). `sent` threads become `addressed` instead. */
+   * content-addressed ID rotated), or — on a commit thread — no commit on the
+   * branch has the anchored sha or message any more. A `sent` hunk thread
+   * becomes `addressed` instead; a `sent` commit thread becomes both. */
   codeChanged: boolean
   /** The agent concluded the batch this thread went out in without replying —
    * not "slow", so the UI must stop waiting on it. */
@@ -554,6 +573,9 @@ export function threadsInChangeset(
   const lives = (thread: ReviewThread): boolean => {
     const anchor = thread.anchor
     if (anchor.kind === 'changeset') return files.length > 0
+    // Whether the commit is still on the branch only git can say: the server
+    // flags one a reword or a drop took away (`reconcileCommits`).
+    if (anchor.kind === 'commit') return files.length > 0 && !thread.codeChanged
     if (anchor.kind === 'file') return paths.has(anchor.path)
     if (anchor.kind === 'layer') return layerIds.has(anchor.layerId)
     return hunkIds.has(anchor.hunkId) || paths.has(anchor.path)
@@ -562,6 +584,18 @@ export function threadsInChangeset(
   const past: ReviewThread[] = []
   for (const thread of threads) (lives(thread) ? active : past).push(thread)
   return { active, past }
+}
+
+export const shortSha = (sha: string): string => sha.slice(0, 7)
+
+export function commitLabel(anchor: Extract<Anchor, { kind: 'commit' }>): string {
+  return `commit ${shortSha(anchor.sha)} “${anchor.subject}”`
+}
+
+/** The message as `git log` prints it, one entry per line: the subject, then a
+ * blank line and the body when there is one. */
+export function commitMessageLines(message: AnchoredCommit): string[] {
+  return message.body ? [message.subject, '', ...message.body.split('\n')] : [message.subject]
 }
 
 /** The line part of a hunk anchor's label: `12`, or `12-20` for a range. */
@@ -573,5 +607,6 @@ export function describeAnchor(anchor: Anchor): string {
   if (anchor.kind === 'changeset') return 'the whole changeset'
   if (anchor.kind === 'file') return anchor.path
   if (anchor.kind === 'layer') return `layer "${anchor.title}"`
+  if (anchor.kind === 'commit') return `commit ${shortSha(anchor.sha)} "${anchor.subject}"`
   return `${anchor.path}:${anchorSpan(anchor)} (${anchor.side} side)`
 }
