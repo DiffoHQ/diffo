@@ -7,6 +7,10 @@ Until 1.0, minor versions may break things. When they do, the entry says how to 
 
 ## [Unreleased]
 
+Nothing yet.
+
+## [0.24.0] — 2026-11-13
+
 ### Added
 
 - **Comments on a commit.** Reading by commit, **Comment on this commit** in
@@ -983,7 +987,8 @@ shipped in it, written as a starting point rather than a history.
 - **Guided reading** — splitting a large change into an ordered sequence of small,
   reviewable sections — is designed but not built.
 
-[Unreleased]: https://github.com/DiffoHQ/diffo/compare/v0.23.0...HEAD
+[Unreleased]: https://github.com/DiffoHQ/diffo/compare/v0.24.0...HEAD
+[0.24.0]: https://github.com/DiffoHQ/diffo/compare/v0.23.0...v0.24.0
 [0.23.0]: https://github.com/DiffoHQ/diffo/compare/v0.22.0...v0.23.0
 [0.22.0]: https://github.com/DiffoHQ/diffo/compare/v0.21.0...v0.22.0
 [0.21.0]: https://github.com/DiffoHQ/diffo/compare/v0.20.0...v0.21.0
