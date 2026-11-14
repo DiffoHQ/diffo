@@ -10,8 +10,10 @@ import { VERSION } from '../version.js'
 /**
  * Anonymous usage data, Homebrew-style: on by default, announced in the review
  * page before the first event leaves, one command or variable to turn off. Two
- * events per review, `review_opened` and `review_finished`, and one last
- * `telemetry_disabled` when a machine that has reported turns it off; `send`
+ * events per review, `review_opened` and `review_finished`, `layers_requested`
+ * when the reviewer asks for layers, `review_failed` for an open that never
+ * became a review, and one last `telemetry_disabled` when a
+ * machine that has reported turns it off; `send`
  * below is the authoritative list of what they carry, and the docs page links here. Never
  * paths, repo or branch names, code, comment text, or anything IP-derived. The
  * one identifier is a random UUID per machine, in a file of its own
@@ -176,6 +178,35 @@ export interface FinishedProps {
   event?: string
 }
 
+/**
+ * Where an open stopped before there was a review to show. One fixed word, never
+ * the error's text: that can name a path, a branch, or a pull request.
+ */
+export type FailedStep =
+  | 'not_repo'
+  | 'target'
+  | 'gh_auth'
+  | 'pr_fetch'
+  | 'pr_checkout'
+  | 'base'
+  | 'port'
+  | 'server_start'
+
+export interface LayersRequestedProps {
+  kind: ReviewKind
+  /** The agent had flagged this read as one that benefits from layers. */
+  suggested: boolean
+  /** Layers were already there: the reviewer asked for a fresh outline. */
+  refresh: boolean
+}
+
+export interface FailedProps {
+  step: FailedStep
+  agent: AgentName
+  /** Unknown when the open failed before it could tell, e.g. outside a repository. */
+  kind?: ReviewKind
+}
+
 export class Telemetry {
   private readonly store: TelemetryStore
   private readonly ids: MachineIdStore
@@ -189,6 +220,8 @@ export class Telemetry {
    * notice reports nothing at all. Undefined until the first open. */
   private armedReview: boolean | undefined
   private openedAt: number | undefined
+  /** Between an open and its finish: a second `diffo` on it resumes, not opens. */
+  private reviewOpen = false
   private inFlight: Promise<void>[] = []
   /** The id this process settled on when the disk refused to keep one. */
   private fallbackId: string | undefined
@@ -254,8 +287,14 @@ export class Telemetry {
     this.store.set(KEY.notice, 'acknowledged')
   }
 
-  /** A `diffo` open landed. Decides whether this review reports, and says so. */
+  /**
+   * A `diffo` open landed. Decides whether this review reports, and says so.
+   * One review, one event: an agent re-running `diffo` on the review already
+   * open resumes it, keeping its start time and whether it reports.
+   */
   reviewOpened(props: OpenedProps): boolean {
+    if (this.reviewOpen) return this.armedReview === true
+    this.reviewOpen = true
     const armed = this.armed()
     this.armedReview = armed
     this.openedAt = this.now()
@@ -263,8 +302,31 @@ export class Telemetry {
     return armed
   }
 
+  /** The reviewer asked the agent for layers. Like a finish: only for a review
+   * that was opened reporting, and is still on. */
+  layersRequested(props: LayersRequestedProps): void {
+    if (this.armedReview !== true || !this.armed()) return
+    this.send('layers_requested', {
+      kind: props.kind,
+      suggested: props.suggested,
+      refresh: props.refresh,
+    })
+  }
+
+  /** An open that never became a review. Sent only under the same gate as an open. */
+  reviewFailed(props: FailedProps): void {
+    if (!this.armed()) return
+    this.send('review_failed', {
+      step: props.step,
+      agent: props.agent,
+      ...(props.kind ? { kind: props.kind } : {}),
+    })
+  }
+
   /** Only for a review that was opened reporting, and is still on. */
   reviewFinished(props: FinishedProps): void {
+    // The next `diffo` after a finish is a new review.
+    this.reviewOpen = false
     if (this.armedReview !== true || !this.armed()) return
     this.send('review_finished', {
       kind: props.kind,

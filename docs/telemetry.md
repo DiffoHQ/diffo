@@ -1,7 +1,7 @@
 # Usage data
 
-Diffo reports anonymous usage data: two small events per review, plus one when
-you turn it off, on by default, announced in the review page before the first
+Diffo reports anonymous usage data: two small events per review, one when you
+ask for layers, one when opening a review fails, and one when you turn it off, on by default, announced in the review page before the first
 one is sent, and off with one command. This page is the plain-language list. The authoritative one is the
 source: [`src/server/telemetry.ts`](https://github.com/DiffoHQ/diffo/blob/main/src/server/telemetry.ts)
 is every field that can leave, and when this page and that file differ, the file
@@ -12,18 +12,21 @@ is what runs.
 Diffo is a local tool with no account and no server of ours, so without this
 there is no way to know whether anyone reviews with it, on what, or whether a
 release broke the loop for a kind of review nobody on the team uses. The data
-answers four questions: how many machines review with Diffo, how often, what
-kind of review (working tree, branch, pull request), and whether reviews get
-finished. It is never used to build a history of a person.
+answers six questions: how many machines review with Diffo, how often, what
+kind of review (working tree, branch, pull request), whether reviews get
+finished, whether reviewers ask for layers, and at which step opening a review
+fails. It is never used to build a history of a person.
 
 ## What is sent
 
-Three events, each one HTTPS `POST` of a few hundred bytes of JSON.
+Five events, each one HTTPS `POST` of a few hundred bytes of JSON.
 
 | Event | When | Fields |
 | --- | --- | --- |
-| `review_opened` | `diffo` opens or resumes a review | `kind` (`tree`, `branch`, `pr`) · `agent` (which coding agent ran the CLI: `claude`, `cursor`, `codex`, `copilot`, `windsurf`, `zed`, `aider`, `goose`, `cline`, `amp`, `unknown` for a terminal, `other`) |
+| `review_opened` | `diffo` opens a review. Running `diffo` again on the review already open resumes it and sends nothing; the next one after you press Finish review is a new review | `kind` (`tree`, `branch`, `pr`) · `agent` (which coding agent ran the CLI: `claude`, `cursor`, `codex`, `copilot`, `windsurf`, `zed`, `aider`, `goose`, `cline`, `amp`, `unknown` for a terminal, `other`) |
 | `review_finished` | you press Finish review | `kind` · `threads` (in the finish batch) · `comments` (your messages across them) · `layers` (true if the review had layers) · `duration` (one of `<5m`, `5-15m`, `15-30m`, `30-60m`, `1h+`) · `event` (a pull request's `APPROVE`, `COMMENT`, or `REQUEST_CHANGES`, when one was submitted) |
+| `layers_requested` | you ask the agent for layers (clicking again while that ask is on its way does not count again) | `kind` · `suggested` (true if the agent had suggested layers for this review) · `refresh` (true if layers were already there and you asked for a fresh outline) |
+| `review_failed` | `diffo` stops before there is a review to show | `step`, one fixed word for where it stopped: `not_repo` (not inside a git repository), `target` (the review target could not be read), `gh_auth` (GitHub CLI not signed in), `pr_fetch` (the pull request could not be read), `pr_checkout` (its code could not be checked out), `base` (the base branch does not exist), `port` (no port to listen on), `server_start` (the review server did not start) · `agent` · `kind`, when known. Never the error message, which can name a path, a branch, or a pull request |
 | `telemetry_disabled` | you turn reporting off, on a machine that has already reported | `source` (`ui` for the Settings → Privacy switch, `cli` for `diffo telemetry off`). The one and last event after your click; a machine that never reported sends nothing at all |
 
 Every event also carries Diffo's `version`, your `platform` (`darwin`, `linux`,
