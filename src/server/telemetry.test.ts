@@ -251,6 +251,100 @@ describe('Telemetry payloads', () => {
     })
   })
 
+  it('one review, one review_opened: re-running diffo on it resumes, a finish ends it', () => {
+    const { telemetry, sent, tick } = armed()
+    expect(telemetry.reviewOpened({ kind: 'branch', agent: 'claude' })).toBe(true)
+    tick(20 * 60_000)
+    // The agent re-attaches, and a daemon-spawning open announces a second time.
+    expect(telemetry.reviewOpened({ kind: 'branch', agent: 'unknown' })).toBe(true)
+    expect(telemetry.reviewOpened({ kind: 'branch', agent: 'claude' })).toBe(true)
+    telemetry.reviewFinished({ kind: 'branch', threads: 1, comments: 1, layers: false })
+    expect(sent.map((s) => s.body.event)).toEqual(['review_opened', 'review_finished'])
+    // The first open's agent and start time stand.
+    expect(sent[0]!.body.properties).toMatchObject({ agent: 'claude' })
+    expect(sent[1]!.body.properties).toMatchObject({ duration: '15-30m' })
+    // After a finish, the next diffo is a new review.
+    telemetry.reviewOpened({ kind: 'tree', agent: 'claude' })
+    expect(sent.map((s) => s.body.event)).toEqual([
+      'review_opened',
+      'review_finished',
+      'review_opened',
+    ])
+  })
+
+  it('a resumed open keeps the first open’s unarmed state, so the notice review stays silent', () => {
+    const { telemetry, sent } = harness()
+    expect(telemetry.reviewOpened({ kind: 'tree', agent: 'claude' })).toBe(false)
+    telemetry.noticeShown()
+    expect(telemetry.reviewOpened({ kind: 'tree', agent: 'claude' })).toBe(false)
+    telemetry.reviewFinished({ kind: 'tree', threads: 1, comments: 1, layers: false })
+    expect(sent).toEqual([])
+  })
+
+  it('review_failed carries the step, the agent and the kind when known — nothing else', () => {
+    const { telemetry, sent } = armed()
+    telemetry.reviewFailed({ step: 'pr_fetch', agent: 'claude', kind: 'pr' })
+    telemetry.reviewFailed({ step: 'not_repo', agent: 'unknown' })
+    expect(sent.map((s) => s.body.event)).toEqual(['review_failed', 'review_failed'])
+    expect(sent[0]!.body.properties).toEqual({
+      $lib: 'diffo',
+      $lib_version: '9.9.9',
+      $process_person_profile: false,
+      $geoip_disable: true,
+      version: '9.9.9',
+      platform: 'testos',
+      arch: 'test64',
+      node: 24,
+      dev: false,
+      step: 'pr_fetch',
+      agent: 'claude',
+      kind: 'pr',
+    })
+    expect(sent[1]!.body.properties).not.toHaveProperty('kind')
+  })
+
+  it('layers_requested carries the kind and two flags, only for a review opened reporting', () => {
+    const { telemetry, sent } = armed()
+    telemetry.layersRequested({ kind: 'branch', suggested: true, refresh: false })
+    expect(sent).toEqual([])
+    telemetry.reviewOpened({ kind: 'branch', agent: 'claude' })
+    telemetry.layersRequested({ kind: 'branch', suggested: true, refresh: false })
+    expect(sent.map((s) => s.body.event)).toEqual(['review_opened', 'layers_requested'])
+    expect(sent[1]!.body.properties).toEqual({
+      $lib: 'diffo',
+      $lib_version: '9.9.9',
+      $process_person_profile: false,
+      $geoip_disable: true,
+      version: '9.9.9',
+      platform: 'testos',
+      arch: 'test64',
+      node: 24,
+      dev: false,
+      kind: 'branch',
+      suggested: true,
+      refresh: false,
+    })
+    // The review that showed the notice stays silent here too.
+    const quiet = harness()
+    quiet.telemetry.reviewOpened({ kind: 'tree', agent: 'claude' })
+    quiet.telemetry.noticeShown()
+    quiet.telemetry.layersRequested({ kind: 'tree', suggested: false, refresh: true })
+    expect(quiet.sent).toEqual([])
+  })
+
+  it('review_failed waits for the notice and respects opting out', () => {
+    const fresh = harness()
+    fresh.telemetry.reviewFailed({ step: 'port', agent: 'claude', kind: 'tree' })
+    expect(fresh.sent).toEqual([])
+    const silenced = armed({ env: { DO_NOT_TRACK: '1' } })
+    silenced.telemetry.reviewFailed({ step: 'port', agent: 'claude', kind: 'tree' })
+    expect(silenced.sent).toEqual([])
+    const off = armed()
+    off.telemetry.setEnabled(false, 'cli')
+    off.telemetry.reviewFailed({ step: 'port', agent: 'claude', kind: 'tree' })
+    expect(off.sent).toEqual([])
+  })
+
   it('never carries a path, a repo name, or free text', () => {
     const { telemetry, sent } = armed()
     telemetry.reviewOpened({ kind: 'tree', agent: agentNameOf('/Users/sam/code/secret-repo') })

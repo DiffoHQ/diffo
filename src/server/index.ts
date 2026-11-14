@@ -594,7 +594,18 @@ export function createApp(
   // is written to the review; a request is a request, the post is the record.
   app.post('/api/review/layers/request', (c) => {
     if (!review || !queue) return c.json({ error: 'review unavailable' }, 503)
+    // A click while an ask is already on its way is the same ask; one over a
+    // stalled outline is a new one (enqueueLayers withdraws the stalled one).
+    const before = queue.layersRequest()
     queue.enqueueLayers()
+    if (before === null || before === 'stalled') {
+      const state = review.get()
+      ctx.telemetry?.layersRequested({
+        kind: reviewKind(),
+        suggested: state.layersSuggested !== undefined,
+        refresh: (state.layers?.items.length ?? 0) > 0,
+      })
+    }
     return c.json({ ok: true, request: queue.layersRequest(), presence: queue.presence() })
   })
 

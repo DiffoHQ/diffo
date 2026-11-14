@@ -8,7 +8,8 @@ per pull request you review. No account, no model API: it holds no keys because 
 no models. Two things do leave, neither carrying code:
 
 - **Anonymous usage data**: two small events per review (opened, finished) with the
-  version, OS, kind of review, which agent, and counts. Never code, paths, repository
+  version, OS, kind of review, which agent, and counts, plus one when you ask for
+  layers and the step at which an open failed, when one does. Never code, paths, repository
   names, or comment text. Announced in the review page before the first one is sent, and
   off with `diffo telemetry off` or `DO_NOT_TRACK=1`. [Usage data](/telemetry) lists
   every field.

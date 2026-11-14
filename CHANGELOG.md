@@ -7,7 +7,13 @@ Until 1.0, minor versions may break things. When they do, the entry says how to 
 
 ## [Unreleased]
 
-Nothing yet.
+### Changed
+
+- **Usage data counts each review once.** Running `diffo` again on a review
+  that is already open no longer reports a second open. Two new events: the
+  step at which an open failed (never the error text), and when you ask the
+  agent for layers. [Usage data](https://diffohq.github.io/diffo/telemetry)
+  lists every field.
 
 ## [0.24.0] — 2026-11-13
 

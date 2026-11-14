@@ -109,17 +109,28 @@ describe('/api/telemetry', () => {
     expect((await put(app, 'garbage')).status).toBe(400)
   })
 
-  it('an open before the notice arms nothing; after it, it reports with a narrowed agent', async () => {
+  it('an open before the notice arms nothing, and re-running diffo on it resumes it dark', async () => {
     const { app, events } = withTelemetry()
     expect(await (await opened(app, { agent: 'claude' })).json()).toEqual({
       ok: true,
       armed: false,
     })
     await put(app, { notice: 'shown' })
+    expect(await (await opened(app, { agent: 'claude' })).json()).toEqual({
+      ok: true,
+      armed: false,
+    })
+    expect(events).toEqual([])
+  })
+
+  it('after the notice, an open reports once, with a narrowed agent', async () => {
+    const { app, events } = withTelemetry()
+    await put(app, { notice: 'shown' })
     expect(await (await opened(app, { agent: '/usr/bin/evil' })).json()).toEqual({
       ok: true,
       armed: true,
     })
+    await opened(app, { agent: 'claude' })
     expect(events).toHaveLength(1)
     expect(events[0]).toMatchObject({
       event: 'review_opened',
@@ -219,5 +230,43 @@ describe('review_finished from the finish route', () => {
     })
     expect(JSON.stringify(events)).not.toContain('secret')
     expect(JSON.stringify(events)).not.toContain(root)
+  })
+})
+
+describe('layers_requested from the request route', () => {
+  it('reports one ask, whether the agent suggested it, and not the clicks that repeat it', async () => {
+    const root = tempRepo()
+    const dbDir = `${root}-db`
+    cleanups.push(() => rmSync(dbDir, { recursive: true, force: true }))
+    const db = new DiffoDb(join(dbDir, 'diffo.db'))
+    cleanups.push(() => db.close())
+    const store = new ChangesetStore(root, { kind: 'working-tree' })
+    const review = new ReviewStore(root, db, { kind: 'working-tree' })
+    const { events, impl } = fakeFetch()
+    const telemetry = new Telemetry({
+      store: memoryStore(),
+      ids: memoryIds(),
+      env: {},
+      fetch: impl,
+    })
+    telemetry.acknowledge()
+    const app = createApp(
+      { root, spec: { kind: 'working-tree' }, clientDir: '/nope', telemetry },
+      store,
+      review,
+      new DeliveryQueue(),
+    )
+    await opened(app, { agent: 'claude' })
+    review.suggestLayers('a flow worth following in order')
+
+    const ask = () => app.request('/api/review/layers/request', { method: 'POST' })
+    expect((await ask()).status).toBe(200)
+    // The same ask, still waiting for the agent.
+    expect((await ask()).status).toBe(200)
+    await telemetry.flush()
+
+    expect(events.map((e) => e.event)).toEqual(['review_opened', 'layers_requested'])
+    expect(events[1]!.properties).toMatchObject({ kind: 'tree', suggested: true, refresh: false })
+    expect(JSON.stringify(events)).not.toContain('a flow worth')
   })
 })

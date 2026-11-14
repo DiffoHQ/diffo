@@ -46,7 +46,9 @@ import {
 } from './server/prompt.js'
 import {
   describeTelemetry,
+  type FailedStep,
   fileMachineIdStore,
+  type ReviewKind,
   reviewKindOf,
   Telemetry,
 } from './server/telemetry.js'
@@ -71,6 +73,54 @@ function fail(message: string): never {
   console.error(`diffo: ${message}`)
   process.exit(1)
 }
+
+function cliTelemetry(db: DiffoDb): Telemetry {
+  return new Telemetry({
+    store: {
+      get: (key) => db.getUiSetting(key),
+      set: (key, value) => db.setUiSetting(key, value),
+    },
+    ids: fileMachineIdStore(),
+    log: (line) => process.stderr.write(`diffo: ${line}\n`),
+    dev: SRC_STAMP !== null || process.env.ENV === 'development',
+  })
+}
+
+/** What the open being attempted would review, once that is known. */
+let openKind: ReviewKind | undefined =
+  command.kind === 'run' && command.target === undefined
+    ? reviewKindOf(command.spec, false)
+    : undefined
+
+/**
+ * An open that stops before there is a review says at which step, then the
+ * caller fails as before. Only the CLI a person or agent ran reports: the daemon
+ * a fresh open spawns stays quiet, and its failure reaches that CLI as one. The
+ * send's own timeout bounds the wait, and nothing here changes how an open fails.
+ */
+async function reportOpenFailure(step: FailedStep): Promise<void> {
+  if (command.kind !== 'run' || process.env.DIFFO_DAEMON) return
+  try {
+    const db = new DiffoDb()
+    try {
+      const telemetry = cliTelemetry(db)
+      telemetry.reviewFailed({
+        step,
+        agent: detectHarness() ?? 'unknown',
+        ...(openKind ? { kind: openKind } : {}),
+      })
+      await telemetry.flush()
+    } finally {
+      db.close()
+    }
+  } catch {
+    // usage data never stands between the reviewer and the real error
+  }
+}
+
+const missingBaseMessage = (base: string) => `base branch '${base}' doesn't exist in this repo`
+/** The daemon's last word, quoted in the CLI's failure, is how a missing base crosses over. */
+const MISSING_BASE = /base branch '.*' doesn't exist in this repo/
 
 function probePort(port: number): Promise<number> {
   return new Promise((resolvePort, reject) => {
@@ -198,7 +248,10 @@ if (command.kind === 'clean') {
 }
 
 const found = findRepoRoot(process.cwd())
-if (!found) fail('not inside a git repository')
+if (!found) {
+  await reportOpenFailure('not_repo')
+  fail('not inside a git repository')
+}
 // Reassigned once when the target is a pull request: the review then runs in
 // the worktree diffo made for it, and everything below — the registry, the
 // server, the URL — is about that path.
@@ -244,6 +297,7 @@ async function discoverServer(): Promise<{ port: number; pid: number | null } | 
       SRC_STAMP,
     )
   } catch (err) {
+    await reportOpenFailure('server_start')
     fail((err as Error).message)
   } finally {
     db.close()
@@ -309,7 +363,9 @@ async function requireServer(
         ),
     })
   } catch (err) {
-    fail((err as Error).message)
+    const message = (err as Error).message
+    await reportOpenFailure(MISSING_BASE.test(message) ? 'base' : 'server_start')
+    fail(message)
   }
 }
 
@@ -564,15 +620,7 @@ if (command.kind === 'stop') {
 if (command.kind === 'telemetry') {
   const db = new DiffoDb()
   try {
-    const telemetry = new Telemetry({
-      store: {
-        get: (key) => db.getUiSetting(key),
-        set: (key, value) => db.setUiSetting(key, value),
-      },
-      ids: fileMachineIdStore(),
-      log: (line) => process.stderr.write(`diffo: ${line}\n`),
-      dev: SRC_STAMP !== null || process.env.ENV === 'development',
-    })
+    const telemetry = cliTelemetry(db)
     const farewell =
       command.action === 'status' ? false : telemetry.setEnabled(command.action === 'on', 'cli')
     console.log(describeTelemetry(telemetry.status(), command.action, farewell))
@@ -839,11 +887,15 @@ async function openPullRequest(
 ): Promise<{ prepared: PreparedWorktree; pr: PrInfo; context: PrContext }> {
   const forge = new GhClient()
   const auth = await forge.authStatus(ref.host)
-  if (!auth.ok) fail(auth.message)
+  if (!auth.ok) {
+    await reportOpenFailure('gh_auth')
+    fail(auth.message)
+  }
   let pr: PrInfo
   try {
     pr = await forge.getPr(ref)
   } catch (err) {
+    await reportOpenFailure('pr_fetch')
     fail(
       `could not read pull request #${ref.number} from ${ref.host}/${ref.owner}/${ref.repo}: ${(err as Error).message}`,
     )
@@ -886,6 +938,7 @@ async function openPullRequest(
     }
     prepared = prepareWorktree(mainRepo, ref, baseBranch, db)
   } catch (err) {
+    await reportOpenFailure('pr_checkout')
     fail(`could not check the pull request out: ${(err as Error).message}`)
   } finally {
     db.close()
@@ -907,8 +960,12 @@ let spec: CliSpec = command.spec
 let prOpen: Awaited<ReturnType<typeof openPullRequest>> | null = null
 if (command.target !== undefined) {
   const parsed = parseTarget(command.target, getRemoteUrl(repoPath))
-  if (!parsed.ok) fail(parsed.error)
+  if (!parsed.ok) {
+    await reportOpenFailure('target')
+    fail(parsed.error)
+  }
   if (parsed.target.kind === 'pr') {
+    openKind = 'pr'
     prOpen = await openPullRequest(
       command.target,
       parsed.target.ref,
@@ -920,6 +977,7 @@ if (command.target !== undefined) {
     spec = { kind: 'branch', base: prOpen.prepared.base }
   }
 }
+openKind = reviewKindOf(spec, prOpen !== null)
 
 rebuildDevClient(command.foreground)
 
@@ -953,6 +1011,7 @@ if (existing !== null && takeOverPort !== null) {
     await probePort(takeOverPort)
   } catch (err) {
     const code = (err as NodeJS.ErrnoException).code
+    await reportOpenFailure('port')
     fail(
       code === 'EADDRINUSE'
         ? `port ${takeOverPort} is already in use, so there is nothing to take over to; ` +
@@ -962,6 +1021,7 @@ if (existing !== null && takeOverPort !== null) {
   }
   console.error(`diffo: taking this repo over from the server on port ${existing.port}`)
   if (!(await retireServer(existing.port, existing.pid, existing.pid))) {
+    await reportOpenFailure('port')
     fail(`the server on port ${existing.port} would not step aside; stop it, then re-run`)
   }
   const db = new DiffoDb()
@@ -991,6 +1051,7 @@ try {
   port = command.port === undefined ? await preferredPort() : await probePort(command.port)
 } catch (err) {
   const code = (err as NodeJS.ErrnoException).code
+  await reportOpenFailure('port')
   if (command.port === undefined) fail(`no free port available (${code ?? (err as Error).message})`)
   fail(
     code === 'EADDRINUSE'
@@ -1018,21 +1079,27 @@ try {
   })
 } catch (err) {
   if (err instanceof MissingBaseError) {
-    console.error(`diffo: base branch '${err.base}' doesn't exist in this repo`)
-    process.exit(1)
+    await reportOpenFailure('base')
+    fail(missingBaseMessage(err.base))
   }
   if (err instanceof RepoAlreadyServedError) {
     console.log(`diffo is already watching this repo`)
     console.log(`→ ${reviewUrl(err.holder.port)}`)
     process.exit(0)
   }
+  await reportOpenFailure('server_start')
   throw err
 }
 
-started.telemetry.reviewOpened({
-  kind: reviewKindOf(spec, prOpen !== null),
-  agent: detectHarness() ?? 'unknown',
-})
+// A daemon leaves the open to the CLI that spawned it, whose announce knows the
+// agent; the daemon itself, detached, would report `unknown`, and a daemon a
+// `poll` respawned is the same review coming back, not a new one.
+if (!process.env.DIFFO_DAEMON) {
+  started.telemetry.reviewOpened({
+    kind: reviewKindOf(spec, prOpen !== null),
+    agent: detectHarness() ?? 'unknown',
+  })
+}
 
 const changeset = started.store.get()
 const { stats, repo } = changeset
