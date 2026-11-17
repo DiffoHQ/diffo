@@ -8,6 +8,7 @@ import type { ReviewActions } from './Threads.js'
 vi.mock('../highlight.js', () => ({
   tokenizeLines: async () => null,
   langForPath: () => null,
+  patchLineKind: () => null,
 }))
 
 afterEach(cleanup)

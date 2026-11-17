@@ -1,6 +1,6 @@
 import type { ThemedToken } from 'shiki/core'
 import { describe, expect, it } from 'vitest'
-import { langForPath, symbolRuns } from './highlight.js'
+import { langForPath, patchLineKind, symbolRuns, tokenizeLines } from './highlight.js'
 
 function token(parts: [string, string][]): ThemedToken {
   return {
@@ -80,5 +80,33 @@ describe('langForPath', () => {
     expect(langForPath('components/foo/BUILD.gn')).toBe('gn')
     expect(langForPath('build/config/features.gni')).toBe('gn')
     expect(langForPath('components/foo/proto/msg.proto')).toBe('proto')
+  })
+})
+
+describe('patchLineKind', () => {
+  const patch = (target: string) => [
+    `diff --git a/${target} b/${target}`,
+    `--- a/${target}`,
+    `+++ b/${target}`,
+    '@@ -1,2 +1,2 @@',
+    ' int a = 1;',
+    '-int b = 2;',
+    '+int b = 3;',
+  ]
+  const kinds = ['null', 'del', 'add', 'null', 'null', 'del', 'add']
+
+  it('marks a patch line added or deleted when its code is in the target language', async () => {
+    const tokens = await tokenizeLines(patch('x.cc'), 'patches/x.cc.patch', false)
+    expect(tokens!.map((t) => String(patchLineKind(t)))).toEqual(kinds)
+  })
+
+  it('marks them the same when the patch reads in the diff grammar alone', async () => {
+    const tokens = await tokenizeLines(patch('x.def'), 'patches/x.def.patch', true)
+    expect(tokens!.map((t) => String(patchLineKind(t)))).toEqual(kinds)
+  })
+
+  it('leaves lines of other files alone', async () => {
+    const tokens = await tokenizeLines(['-1', '+1'], 'src/a.ts', false)
+    expect(tokens!.map(patchLineKind)).toEqual([null, null])
   })
 })

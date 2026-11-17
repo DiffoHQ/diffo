@@ -8,6 +8,7 @@ import { ReadingPane } from './ReadingPane.js'
 vi.mock('../highlight.js', () => ({
   tokenizeLines: async () => null,
   langForPath: () => null,
+  patchLineKind: () => null,
 }))
 
 vi.mock('../mermaid.js', () => ({
