@@ -7,7 +7,11 @@ Until 1.0, minor versions may break things. When they do, the entry says how to 
 
 ## [Unreleased]
 
-Nothing yet.
+### Changed
+
+- **A patch file reads like a patch.** In a changed `.patch` or `.diff`, the
+  patch's own added and deleted lines, and its `---`/`+++` headers, get
+  GitHub's green and red bands.
 
 ## [0.25.0] — 2026-11-14
 

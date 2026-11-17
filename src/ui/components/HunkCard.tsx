@@ -4,7 +4,7 @@ import type { LineRange, ReviewThread } from '../../shared/review.js'
 import { anchorSpan, type ThreadIntent } from '../../shared/review.js'
 import type { DiffLine, Hunk } from '../../shared/types.js'
 import { EXPAND_STEP } from '../gaps.js'
-import { type LineTokens, symbolRuns, tokenizeLines } from '../highlight.js'
+import { type LineTokens, patchLineKind, symbolRuns, tokenizeLines } from '../highlight.js'
 import { useDarkMode } from '../hooks.js'
 import { intralineRanges, type Range, splitByRanges } from '../intraline.js'
 import { anchorForRange, rangedRows, rangeStartRows, threadsByLine } from '../reviewPlacement.js'
@@ -219,8 +219,10 @@ function CodeText({
     )
   }
   let offset = 0
+  const patchKind = patchLineKind(tokens)
+  const Wrap = patchKind ? 'span' : Fragment
   return (
-    <>
+    <Wrap {...(patchKind && { className: `patch-line patch-line-${patchKind}` })}>
       {tokens.map((t, i) => {
         const style = t.color ? { color: t.color } : undefined
         // Comments, strings and syntax opt out of the usages hover (SymbolHover.tsx);
@@ -256,7 +258,7 @@ function CodeText({
           )
         })
       })}
-    </>
+    </Wrap>
   )
 }
 

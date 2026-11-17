@@ -186,6 +186,7 @@ function codeLangForPath(path: string): string | null {
 function withMarker(line: string, code: LineTokens, asDiff: LineTokens | undefined): LineTokens {
   if (line === '') return code
   const marker = line[0]!
+  const markup = MARKER_MARKUP[marker]
   const prefix: ThemedToken = {
     content: marker,
     offset: 0,
@@ -193,11 +194,30 @@ function withMarker(line: string, code: LineTokens, asDiff: LineTokens | undefin
     explanation: [
       {
         content: marker,
-        scopes: [{ scopeName: 'punctuation.definition.patch', themeMatches: [] }],
+        scopes: [
+          ...(markup ? [{ scopeName: markup, themeMatches: [] }] : []),
+          { scopeName: 'punctuation.definition.patch', themeMatches: [] },
+        ],
       },
     ],
   }
   return [prefix, ...code]
+}
+
+const MARKER_MARKUP: Record<string, string> = {
+  '+': 'markup.inserted.patch',
+  '-': 'markup.deleted.patch',
+}
+
+export function patchLineKind(tokens: LineTokens | null | undefined): 'add' | 'del' | null {
+  const scopes = tokens?.[0]?.explanation?.[0]?.scopes ?? []
+  for (const { scopeName } of scopes) {
+    if (scopeName.startsWith('markup.inserted.') || scopeName === 'meta.diff.header.to-file')
+      return 'add'
+    if (scopeName.startsWith('markup.deleted.') || scopeName === 'meta.diff.header.from-file')
+      return 'del'
+  }
+  return null
 }
 
 /**
