@@ -88,6 +88,7 @@ describe('ui settings', () => {
       critter: null,
       voice: null,
       layersPresets: DEFAULT_PRESET_SETTINGS,
+      starNudge: 'hide',
     })
     expect((await put(app, '{"theme":"dark"}')).status).toBe(503)
   })
@@ -102,7 +103,47 @@ describe('ui settings', () => {
       critter: null,
       voice: null,
       layersPresets: DEFAULT_PRESET_SETTINGS,
+      starNudge: 'hide',
     })
+  })
+
+  it('offers the star nudge from the third finish on, until dismissed', async () => {
+    const { app, kv } = withStore()
+    const nudge = async () =>
+      ((await (await app.request('/api/settings')).json()) as { starNudge: string }).starNudge
+    expect(await nudge()).toBe('hide')
+    kv.set('finishes', '2')
+    expect(await nudge()).toBe('hide')
+    kv.set('finishes', '3')
+    expect(await nudge()).toBe('show')
+    expect((await put(app, '{"starNudge":"dismissed"}')).status).toBe(200)
+    expect(kv.get('starNudge')).toBe('dismissed')
+    expect(await nudge()).toBe('hide')
+    expect((await put(app, '{"starNudge":"show"}')).status).toBe(400)
+  })
+
+  it('snoozes the star nudge to the tenth finish on ✕, and a second ✕ ends it', async () => {
+    const { app, kv } = withStore()
+    const nudge = async () =>
+      ((await (await app.request('/api/settings')).json()) as { starNudge: string }).starNudge
+    kv.set('finishes', '3')
+    expect((await put(app, '{"starNudge":"snoozed"}')).status).toBe(200)
+    expect(kv.get('starNudge')).toBe('snoozed:10')
+    expect(await nudge()).toBe('hide')
+    kv.set('finishes', '9')
+    expect(await nudge()).toBe('hide')
+    kv.set('finishes', '10')
+    expect(await nudge()).toBe('show')
+    expect((await put(app, '{"starNudge":"snoozed"}')).status).toBe(200)
+    expect(kv.get('starNudge')).toBe('dismissed')
+    expect(await nudge()).toBe('hide')
+  })
+
+  it('snoozes a few finishes ahead when the tenth is already behind', async () => {
+    const { app, kv } = withStore()
+    kv.set('finishes', '15')
+    await put(app, '{"starNudge":"snoozed"}')
+    expect(kv.get('starNudge')).toBe('snoozed:22')
   })
 
   it('rejects a theme outside the three real values', async () => {
@@ -122,6 +163,7 @@ describe('ui settings', () => {
       critter: null,
       voice: null,
       layersPresets: DEFAULT_PRESET_SETTINGS,
+      starNudge: 'hide',
     })
   })
 
@@ -135,6 +177,7 @@ describe('ui settings', () => {
       critter: 'off',
       voice: null,
       layersPresets: DEFAULT_PRESET_SETTINGS,
+      starNudge: 'hide',
     })
   })
 

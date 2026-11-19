@@ -366,6 +366,30 @@ describe('review API', () => {
     expect(body.prompt).toContain('b.ts')
   })
 
+  it('each finish counts toward the star nudge, across reviews', async () => {
+    const root = tempRepo()
+    const kv = new Map<string, string>()
+    const app = createApp(
+      {
+        root,
+        spec: { kind: 'working-tree' },
+        clientDir: '/nope',
+        uiSettings: { get: (k) => kv.get(k) ?? null, set: (k, v) => void kv.set(k, v) },
+      },
+      new ChangesetStore(root, { kind: 'working-tree' }),
+      new ReviewStore(root, makeDb(root), { kind: 'working-tree' }),
+      new DeliveryQueue(),
+    )
+    const coverage = { viewedHunks: 1, totalHunks: 1, skippedFiles: [] }
+    await post(app, '/api/review/finish', { coverage })
+    expect(kv.get('finishes')).toBe('1')
+    await post(app, '/api/review/finish', { coverage })
+    expect(kv.get('finishes')).toBe('2')
+    await post(app, '/api/review/finish', { coverage })
+    const settings = (await (await app.request('/api/settings')).json()) as { starNudge: string }
+    expect(settings.starNudge).toBe('show')
+  })
+
   it('the closing note rides the coverage into the prompt; junk is dropped', async () => {
     const { app } = setup()
     const res = await post(app, '/api/review/finish', {

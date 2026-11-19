@@ -10,11 +10,13 @@ import type { Changeset, PrInfo } from '../../shared/types.js'
 import type { Presence, PresenceReason } from '../api.js'
 import { isDevServer } from '../devMode.js'
 import { shortAgo } from '../markdown.js'
+import { openGithub } from '../starNudge.js'
 import type { Theme } from '../theme.js'
 import { type CritterEyes, CritterFace, CritterTrack } from './Critter.js'
 import { Icon } from './Icon.js'
 import { LivingMark } from './LivingMark.js'
 import { Menu, MenuItem, MenuLabel, MenuSep } from './Menu.js'
+import { type StarAsk, StarBubble } from './StarAsk.js'
 
 /** Where you are, in one line: `repo · from → to`. The branch is one of the two
  * sides, so it is never repeated beside them; the worktree, when there is one,
@@ -531,11 +533,14 @@ export function Header({
   agent = {},
   review = {},
   settings = {},
+  starAsk,
 }: {
   changeset: Changeset
   agent?: HeaderAgent
   review?: HeaderReview
   settings?: HeaderSettings
+  /** The one-time GitHub-star ask, said by the critter (or on its own without one). */
+  starAsk?: StarAsk
 }) {
   const { openComments = 0, publicDrafts = 0, onFinishReview } = review
   // The chip's face is the companion's seat; it is empty while the companion is out.
@@ -587,7 +592,12 @@ export function Header({
           seat={seat}
           onAway={setCompanionAway}
           summon={summon}
+          starAsk={starAsk}
         />
+      ) : starAsk ? (
+        <span className="grow star-floor">
+          <StarBubble ask={starAsk} />
+        </span>
       ) : (
         <span className="grow" />
       )}
@@ -743,6 +753,21 @@ export function Header({
                 </MenuItem>
               </>
             )}
+            {(onSetTheme ||
+              onSetCritter ||
+              onShowVoice ||
+              onShowLayers ||
+              onShowShortcuts ||
+              onShowPrivacy) && <MenuSep />}
+            <MenuItem
+              icon="star"
+              onClick={() => {
+                close()
+                openGithub()
+              }}
+            >
+              Star on GitHub
+            </MenuItem>
           </>
         )}
       </Menu>

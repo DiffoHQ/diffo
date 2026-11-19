@@ -48,6 +48,8 @@
 
   /* --- role 3: attention. The only other hue in the chrome. --- */
   --attn: #9a6206;
+  /* the GitHub star the critter holds up (StarAsk.tsx) */
+  --star: #d29a00;
   --attn-wash: #faf1e2;
   --attn-line: #e6cfa0;
   --here: #3d8a5c;
@@ -148,6 +150,8 @@
     --brand-wash: rgba(63, 185, 80, 0.14);
     --brand-line: rgba(63, 185, 80, 0.5);
     --attn: #e0a83c;
+    /* the GitHub star the critter holds up (StarAsk.tsx) */
+    --star: #f2c94c;
     --attn-wash: #2a2214;
     --attn-line: #5c4818;
     --here: #5cb87e;
@@ -195,6 +199,8 @@
   --brand-wash: rgba(63, 185, 80, 0.14);
   --brand-line: rgba(63, 185, 80, 0.5);
   --attn: #e0a83c;
+  /* the GitHub star the critter holds up (StarAsk.tsx) */
+  --star: #f2c94c;
   --attn-wash: #2a2214;
   --attn-line: #5c4818;
   --here: #5cb87e;
@@ -241,6 +247,8 @@
   --brand-wash: rgba(31, 136, 61, 0.1);
   --brand-line: rgba(31, 136, 61, 0.45);
   --attn: #9a6206;
+  /* the GitHub star the critter holds up (StarAsk.tsx) */
+  --star: #d29a00;
   --attn-wash: #faf1e2;
   --attn-line: #e6cfa0;
   --here: #3d8a5c;
@@ -9038,7 +9046,9 @@ i.q-now {
 .critter-z,
 .critter-thought,
 .critter-spark,
-.critter-badge {
+.critter-badge,
+.critter-star,
+.critter-star-hand {
   display: none;
 }
 
@@ -9209,6 +9219,174 @@ i.q-now {
 .critter-act-approve .critter-badge {
   display: inline;
   animation: critter-pop 0.6s var(--ease-out) both;
+}
+
+/* The star ask (StarAsk.tsx): one hand up with a gold star, waving it a little,
+   eyes ^ ^. A star given: it hops, and the star flies off. */
+.critter-star {
+  fill: var(--star);
+  stroke: none;
+}
+
+.critter-star-hand {
+  fill: currentColor;
+}
+
+.critter-act-star .critter-star,
+.critter-act-star .critter-star-hand,
+.critter-act-thanks .critter-star,
+.critter-act-star .critter-eyes-happy,
+.critter-act-thanks .critter-eyes-happy {
+  display: inline;
+}
+
+.critter-act-star .critter-eyes-open,
+.critter-act-thanks .critter-eyes-open {
+  display: none;
+}
+
+.critter-act-star .critter-star {
+  animation: critter-wave 1.6s ease-in-out infinite;
+}
+
+.critter-act-star .critter-torso {
+  animation: critter-sway 3.2s ease-in-out infinite;
+}
+
+.critter-act-thanks .critter-figure {
+  animation: critter-hop 0.55s var(--ease-out) 3;
+}
+
+.critter-act-thanks .critter-star {
+  animation: critter-star-fly 1.4s var(--ease-out) both;
+}
+
+.critter-act-thanks .critter-spark {
+  display: inline;
+  animation: critter-rise 1.2s ease-out infinite;
+}
+
+@keyframes critter-wave {
+  0%,
+  100% {
+    transform: rotate(-14deg) scale(1);
+  }
+  50% {
+    transform: rotate(14deg) scale(1.12);
+  }
+}
+
+@keyframes critter-star-fly {
+  0% {
+    transform: translate(0, 0) rotate(0) scale(1);
+    opacity: 1;
+  }
+  100% {
+    transform: translate(3px, -16px) rotate(200deg) scale(1.6);
+    opacity: 0;
+  }
+}
+
+/* The ask beside the critter: a header chip of the presence chip's build (pill,
+   hairline, 12px), so it sits in the header rather than on top of it. A quiet
+   lead, the call in full ink with a gold star, then a small ✕. */
+.star-bubble {
+  position: absolute;
+  right: 40px;
+  top: 50%;
+  z-index: 2;
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s-1);
+  padding: 0 3px 0 0;
+  background: var(--paper);
+  border: 1px solid var(--hair);
+  border-radius: var(--r-pill);
+  font-family: var(--sans);
+  font-size: var(--t-12);
+  white-space: nowrap;
+  transform: translateY(-50%);
+  animation: star-bubble-in 0.35s var(--ease-out) 0.6s both;
+}
+
+/* With no critter to stand beside, it sits in the empty stretch alone. */
+.star-floor {
+  position: relative;
+  align-self: stretch;
+}
+
+.star-floor .star-bubble {
+  right: var(--s-3);
+}
+
+.star-bubble-ask {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s-2);
+  padding: 4px var(--s-2) 4px var(--s-4);
+  border-radius: var(--r-pill);
+  color: var(--ink-3);
+  text-decoration: none;
+  transition: color var(--dur) var(--ease-out);
+}
+
+.star-bubble-cta {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  color: var(--ink);
+  font-weight: 600;
+}
+
+.star-bubble-star {
+  width: 13px;
+  height: 13px;
+  fill: var(--star);
+}
+
+.star-bubble:hover {
+  border-color: var(--ink-3);
+}
+
+.star-bubble-ask:hover .star-bubble-cta {
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.star-bubble-x {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  border: 0;
+  border-radius: var(--r-pill);
+  background: none;
+  color: var(--ink-3);
+  cursor: pointer;
+}
+
+.star-bubble-x:hover {
+  background: var(--fill);
+  color: var(--ink);
+}
+
+@keyframes star-bubble-in {
+  from {
+    opacity: 0;
+    transform: translate(6px, -50%);
+  }
+  to {
+    opacity: 1;
+    transform: translate(0, -50%);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .star-bubble {
+    animation: none;
+  }
 }
 
 /* calm (the reviewer is busy): no sway, no nod — eyes and hands still work */

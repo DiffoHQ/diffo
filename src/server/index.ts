@@ -276,6 +276,36 @@ export function createApp(
   // The reviewer's voice (see shared/voice.ts): null is the default, which the
   // client knows on its own. Stored empty to reset, so the row never has to go.
   const storedVoice = () => normalizeVoice(ctx.uiSettings?.get('voice'))
+  // The one GitHub-star ask (see ui/starNudge.ts): the critter asks after a finished
+  // review, from the third one on across every repo. Counted here, not in the
+  // page, because each repo's page lives on its own origin. The page reads it
+  // after the finish is counted, so 3 means the third finish itself.
+  // Answered with the star: never again. Answered with ✕: snoozed (stored as
+  // `snoozed:<finish>`) until the tenth finish, or a few more if that is already
+  // behind; a second ✕ ends it for good.
+  const STAR_AFTER_FINISHES = 3
+  const STAR_AGAIN_AT = 10
+  const STAR_AGAIN_GAP = 7
+  const finishCount = () => Number.parseInt(ctx.uiSettings?.get('finishes') ?? '0', 10) || 0
+  const starState = () => ctx.uiSettings?.get('starNudge') ?? null
+  const starNudge = () => {
+    const state = starState()
+    if (state === 'dismissed') return 'hide'
+    const snoozedTo = state?.startsWith('snoozed:')
+      ? Number.parseInt(state.slice(8), 10)
+      : Number.NaN
+    const from = Number.isFinite(snoozedTo) ? snoozedTo : STAR_AFTER_FINISHES
+    return finishCount() >= from ? 'show' : 'hide'
+  }
+  const answerStar = (answer: 'dismissed' | 'snoozed') => {
+    // A second "not now" is a no.
+    if (answer === 'dismissed' || starState()?.startsWith('snoozed:')) {
+      ctx.uiSettings?.set('starNudge', 'dismissed')
+      return
+    }
+    const at = Math.max(STAR_AGAIN_AT, finishCount() + STAR_AGAIN_GAP)
+    ctx.uiSettings?.set('starNudge', `snoozed:${at}`)
+  }
   // The layers presets (see shared/presets.ts and server/presets.ts): the
   // reviewer's own presets with what is switched off and the default, and
   // each preset's conversation with the agent. Read leniently — a bad blob is
@@ -288,6 +318,7 @@ export function createApp(
       critter: stored('critter', CRITTER_VALUES),
       voice: storedVoice(),
       layersPresets: presetSettings(),
+      starNudge: starNudge(),
     })
   })
 
@@ -298,6 +329,7 @@ export function createApp(
     const critter: unknown = body?.critter
     const voice: unknown = body?.voice
     const presets: unknown = body?.layersPresets
+    const star: unknown = body?.starNudge
     const themeOk = typeof theme === 'string' && THEME_VALUES.has(theme)
     const critterOk = typeof critter === 'string' && CRITTER_VALUES.has(critter)
     // An empty voice is the reset; anything else must fit the prompt budget.
@@ -308,16 +340,18 @@ export function createApp(
       return c.json({ error: `layersPresets: ${presetsParsed.error}` }, 400)
     }
     const presetsOk = presetsParsed?.ok === true
+    const starOk = star === 'dismissed' || star === 'snoozed'
     // Each key is optional, but one must be there and whatever is there must be valid.
     if (
       (theme !== undefined && !themeOk) ||
       (critter !== undefined && !critterOk) ||
       (voice !== undefined && !voiceOk) ||
-      !(themeOk || critterOk || voiceOk || presetsOk)
+      (star !== undefined && !starOk) ||
+      !(themeOk || critterOk || voiceOk || presetsOk || starOk)
     ) {
       return c.json(
         {
-          error: `need {theme?: "system" | "light" | "dark", critter?: "on" | "off", voice?: string (up to ${VOICE_MAX} characters, empty for the default), layersPresets?: { presets, disabled, default }}, at least one`,
+          error: `need {theme?: "system" | "light" | "dark", critter?: "on" | "off", voice?: string (up to ${VOICE_MAX} characters, empty for the default), layersPresets?: { presets, disabled, default }, starNudge?: "dismissed" | "snoozed"}, at least one`,
         },
         400,
       )
@@ -325,6 +359,7 @@ export function createApp(
     if (themeOk) ctx.uiSettings.set('theme', theme)
     if (critterOk) ctx.uiSettings.set('critter', critter)
     if (voiceOk) ctx.uiSettings.set('voice', voice.trim())
+    if (starOk) answerStar(star)
     if (presetsParsed?.ok && presetStore) {
       const kept = new Set(presetsParsed.settings.presets.map((p) => p.id))
       const gone = presetStore.settings().presets.filter((p) => !kept.has(p.id))
@@ -1253,6 +1288,7 @@ export function createApp(
       layers: (review.get().layers?.items.length ?? 0) > 0,
       ...(event !== null ? { event } : {}),
     })
+    ctx.uiSettings?.set('finishes', String(finishCount() + 1))
     return c.json({
       threads: review.get().threads,
       prompt,

@@ -1,5 +1,6 @@
 import { type RefObject, useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
 import type { Presence, PresenceReason } from '../api.js'
+import { type StarAsk, StarBubble } from './StarAsk.js'
 
 /*
  * Diffo's critter: a small block on two legs, in reading glasses, that lives in
@@ -16,6 +17,9 @@ import type { Presence, PresenceReason } from '../api.js'
  *   working   — amber like the chip: walks to a spot and gets on with it,
  *               sweeping a magnifier over the code or writing the fix (eyes + +,
  *               +s rising), pausing to think, then moving on
+ *
+ * Once, on the third finished review, it walks out holding up a star and asks
+ * for one on GitHub (StarAsk.tsx); a star given earns a happy hop as it flies.
  *
  * When the agent replies, it hops and a ✓ pops overhead. Touch it with the
  * cursor and it hops, happy, then gets back to it.
@@ -38,6 +42,7 @@ const STROLL = 22
 const PACE = 48
 const POKE_MS = 1100
 const APPROVE_MS = 1500
+const THANKS_MS = 1700
 /** How far the eyes travel toward the cursor, in viewBox units. */
 const LOOK = 1.1
 /** How long after the reviewer's last scroll, key or mouse move it stays calm. */
@@ -74,6 +79,8 @@ export type CritterAct =
   | 'think'
   | 'poke'
   | 'approve'
+  | 'star'
+  | 'thanks'
 
 /** Acts with nothing better to look at, so the eyes follow the cursor. */
 const WATCHING: ReadonlySet<CritterAct> = new Set(['stand', 'sit'])
@@ -102,6 +109,7 @@ export function CritterTrack({
   seat,
   onAway,
   summon = 0,
+  starAsk,
 }: {
   presence: Presence
   reason?: PresenceReason
@@ -109,6 +117,8 @@ export function CritterTrack({
   onAway?: (away: boolean) => void
   /** Bumped when the cursor touches the chip: it comes out to say hello. */
   summon?: number
+  /** The one-time star ask: it walks out, holds up a star, and says so. */
+  starAsk?: StarAsk
 }) {
   const track = useRef<HTMLSpanElement>(null)
   const walker = useRef<HTMLSpanElement>(null)
@@ -137,7 +147,7 @@ export function CritterTrack({
   const [move, setMove] = useState<{ ms: number; dir: 'left' | 'right' } | null>(null)
   const [act, setAct] = useState<CritterAct>('stand')
   // A one-shot that interrupts whatever it was doing, then hands back.
-  const [flourish, setFlourish] = useState<'poke' | 'approve' | null>(null)
+  const [flourish, setFlourish] = useState<'poke' | 'approve' | 'thanks' | null>(null)
   const xRef = useRef<number | null>(null)
   xRef.current = x
   // Calm while the reviewer is busy. State drives the CSS (re-rendering only
@@ -220,7 +230,9 @@ export function CritterTrack({
   const maxRef = useRef(max)
   maxRef.current = max
   const measured = width > 0
-  const stayHome = presence === 'waiting' || max < ROOM || reducedMotion()
+  const asking = starAsk !== undefined
+  // Asking wakes it even with no agent about: the ask is its one line of its own.
+  const stayHome = (presence === 'waiting' && !asking) || max < ROOM || reducedMotion()
 
   // Gone from the header (switched off, or no presence): the seat is never left empty.
   useEffect(() => () => onAwayRef.current?.(false), [])
@@ -384,14 +396,19 @@ export function CritterTrack({
     } else if (summoned && !flourish && awayRef.current) {
       setFlourish('poke')
     } else if (flourish && awayRef.current) {
-      doing(flourish, flourish === 'poke' ? POKE_MS : APPROVE_MS, () => {
-        // A finished batch: the job is done, so it goes home to say so.
-        if (flourish === 'approve') homeAfter.current = true
+      const ms = flourish === 'poke' ? POKE_MS : flourish === 'thanks' ? THANKS_MS : APPROVE_MS
+      doing(flourish, ms, () => {
+        // A finished batch (or a star given): done, so it goes home to say so.
+        if (flourish !== 'poke') homeAfter.current = true
         setFlourish(null)
       })
     } else if (flourish) {
       // At home the chip's own face does the cheering.
       setFlourish(null)
+    } else if (asking && !stayHome) {
+      // The ask: out to its spot beside the chip, star up, and there it stays.
+      if (awayRef.current) walk(end(), HURRY, () => setAct('star'))
+      else hopOut(() => setAct('star'))
     } else if (stayHome) {
       if (awayRef.current && !reducedMotion()) goHome()
       else if (awayRef.current) arrive()
@@ -431,7 +448,7 @@ export function CritterTrack({
       }
       setMove(null)
     }
-  }, [presence, measured, flourish, homeward, stayHome, seat, setAway, summon])
+  }, [presence, measured, flourish, homeward, stayHome, seat, setAway, summon, asking])
 
   const onPoke = () => {
     if (!flourish && !reducedMotion()) setFlourish('poke')
@@ -454,6 +471,14 @@ export function CritterTrack({
       >
         <Critter presence={presence} act={act} />
       </span>
+      {starAsk && (
+        <StarBubble
+          ask={starAsk}
+          onStar={() => {
+            if (awayRef.current && !reducedMotion()) setFlourish('thanks')
+          }}
+        />
+      )}
     </span>
   )
 }
@@ -504,6 +529,12 @@ export function Critter({
           <path className="critter-line-ctx" d="M8 16.7h6.5" />
           <path className="critter-line-add" pathLength="1" d="M8 18.3h5.5" />
         </g>
+        {/* the star ask: one hand up, holding a star */}
+        <circle className="critter-star-hand" cx="20.6" cy="9.6" r="1.4" />
+        <path
+          className="critter-star"
+          d="M21.00 2.90L21.68 4.67L23.57 4.77L22.09 5.96L22.59 7.78L21.00 6.75L19.41 7.78L19.91 5.96L18.43 4.77L20.32 4.67z"
+        />
         <g className="critter-hands">
           <circle cx="6.2" cy="17" r="1.4" />
           <circle cx="17.8" cy="17" r="1.4" />

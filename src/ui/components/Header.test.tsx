@@ -110,7 +110,49 @@ describe('Header', () => {
     })
   })
 
+  describe('the star ask', () => {
+    const ask = { onStar: () => {}, onDismiss: () => {} }
+
+    it('is said by the critter when one is about', () => {
+      const { container } = render(
+        <Header changeset={changeset()} agent={{ presence: 'listening' }} starAsk={ask} />,
+      )
+      expect(container.querySelector('.critter-track .star-bubble')).toBeTruthy()
+    })
+
+    it('sits in the empty stretch on its own with the critter switched off', () => {
+      const { container } = render(
+        <Header
+          changeset={changeset()}
+          agent={{ presence: 'listening' }}
+          settings={{ critter: false }}
+          starAsk={ask}
+        />,
+      )
+      expect(container.querySelector('.critter-track')).toBeNull()
+      expect(container.querySelector('.star-floor .star-bubble')).toBeTruthy()
+    })
+
+    it('says nothing when not asked', () => {
+      const { container } = render(<Header changeset={changeset()} />)
+      expect(container.querySelector('.star-bubble')).toBeNull()
+    })
+  })
+
   describe('the ⋯ is settings, not actions', () => {
+    it('ends with Star on GitHub, opening the repo in a new tab', () => {
+      const open = vi.spyOn(window, 'open').mockReturnValue(null)
+      render(<Header changeset={changeset()} />)
+      fireEvent.click(screen.getByLabelText('Settings'))
+      fireEvent.click(screen.getByText('Star on GitHub'))
+      expect(open).toHaveBeenCalledWith(
+        'https://github.com/DiffoHQ/diffo',
+        '_blank',
+        'noopener,noreferrer',
+      )
+      open.mockRestore()
+    })
+
     it('offers the theme trio, current choice marked', () => {
       const onSetTheme = vi.fn()
       render(<Header changeset={changeset()} settings={{ theme: 'system', onSetTheme }} />)
@@ -135,7 +177,7 @@ describe('Header', () => {
       expect(screen.queryByText(/Clear threads/)).toBeNull()
       expect(container.querySelector('.menu-item-danger')).toBeNull()
       const items = [...container.querySelectorAll('.menu-item-label')].map((b) => b.textContent)
-      expect(items).toEqual(['System', 'Light', 'Dark', 'Shortcuts'])
+      expect(items).toEqual(['System', 'Light', 'Dark', 'Shortcuts', 'Star on GitHub'])
     })
 
     it('switches the companion, its state marked', () => {
