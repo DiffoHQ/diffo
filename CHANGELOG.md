@@ -9,6 +9,14 @@ Until 1.0, minor versions may break things. When they do, the entry says how to 
 
 Nothing yet.
 
+## [0.26.0] — 2026-11-17
+
+### Changed
+
+- **A patch file reads like a patch.** In a changed `.patch` or `.diff`, the
+  patch's own added and deleted lines, and its `---`/`+++` headers, get
+  GitHub's green and red bands.
+
 ## [0.25.0] — 2026-11-14
 
 ### Changed
@@ -997,7 +1005,8 @@ shipped in it, written as a starting point rather than a history.
 - **Guided reading** — splitting a large change into an ordered sequence of small,
   reviewable sections — is designed but not built.
 
-[Unreleased]: https://github.com/DiffoHQ/diffo/compare/v0.25.0...HEAD
+[Unreleased]: https://github.com/DiffoHQ/diffo/compare/v0.26.0...HEAD
+[0.26.0]: https://github.com/DiffoHQ/diffo/compare/v0.25.0...v0.26.0
 [0.25.0]: https://github.com/DiffoHQ/diffo/compare/v0.24.0...v0.25.0
 [0.24.0]: https://github.com/DiffoHQ/diffo/compare/v0.23.0...v0.24.0
 [0.23.0]: https://github.com/DiffoHQ/diffo/compare/v0.22.0...v0.23.0

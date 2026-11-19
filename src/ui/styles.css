@@ -58,6 +58,10 @@
   --add-tint: rgba(36, 138, 61, 0.055);
   --add-row: rgba(36, 138, 61, 0.1);
   --add-word: rgba(36, 138, 61, 0.22);
+  --patch-add-bg: #dafbe1;
+  --patch-add-fg: #116329;
+  --patch-del-bg: #ffebe9;
+  --patch-del-fg: #82071e;
   --del: #c9252d;
   --del-tint: rgba(201, 37, 45, 0.05);
   --del-row: rgba(201, 37, 45, 0.085);
@@ -152,6 +156,10 @@
     --add-tint: rgba(48, 209, 88, 0.075);
     --add-row: rgba(48, 209, 88, 0.13);
     --add-word: rgba(48, 209, 88, 0.28);
+    --patch-add-bg: #033a16;
+    --patch-add-fg: #aff5b4;
+    --patch-del-bg: #67060c;
+    --patch-del-fg: #ffdcd7;
     --del: #ff453a;
     --del-tint: rgba(255, 69, 58, 0.07);
     --del-row: rgba(255, 69, 58, 0.12);
@@ -195,6 +203,10 @@
   --add-tint: rgba(48, 209, 88, 0.075);
   --add-row: rgba(48, 209, 88, 0.13);
   --add-word: rgba(48, 209, 88, 0.28);
+  --patch-add-bg: #033a16;
+  --patch-add-fg: #aff5b4;
+  --patch-del-bg: #67060c;
+  --patch-del-fg: #ffdcd7;
   --del: #ff453a;
   --del-tint: rgba(255, 69, 58, 0.07);
   --del-row: rgba(255, 69, 58, 0.12);
@@ -237,6 +249,10 @@
   --add-tint: rgba(36, 138, 61, 0.055);
   --add-row: rgba(36, 138, 61, 0.1);
   --add-word: rgba(36, 138, 61, 0.22);
+  --patch-add-bg: #dafbe1;
+  --patch-add-fg: #116329;
+  --patch-del-bg: #ffebe9;
+  --patch-del-fg: #82071e;
   --del: #c9252d;
   --del-tint: rgba(201, 37, 45, 0.05);
   --del-row: rgba(201, 37, 45, 0.085);
@@ -2982,6 +2998,26 @@ body {
 .line-del .line-marker {
   color: var(--del);
   box-shadow: inset 2px 0 0 var(--del);
+}
+
+.patch-line {
+  -webkit-box-decoration-break: clone;
+  box-decoration-break: clone;
+}
+
+.patch-line-add {
+  background: var(--patch-add-bg);
+  color: var(--patch-add-fg);
+}
+
+.patch-line-del {
+  background: var(--patch-del-bg);
+  color: var(--patch-del-fg);
+}
+
+.patch-line-add span,
+.patch-line-del span {
+  color: inherit !important;
 }
 
 .line-add .word-changed,
