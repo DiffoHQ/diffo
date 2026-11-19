@@ -1,5 +1,16 @@
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
-import { type Anchor, isPublic, type LineRange, type ReviewThread } from '../../shared/review.js'
+import { lazy, Suspense, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import {
+  type Anchor,
+  type DecisionAt,
+  isPublic,
+  type LayerArrow,
+  type LayerBox,
+  type LayerColor,
+  type LayerContext,
+  type LayerNote,
+  type LineRange,
+  type ReviewThread,
+} from '../../shared/review.js'
 import type { DiffLine, FileChange, Hunk } from '../../shared/types.js'
 import { copyText } from '../clipboard.js'
 import { changedLineCount, type StubReason, stubReason } from '../diffStub.js'
@@ -36,6 +47,13 @@ import { type LandedNotice, ReviewLanded } from './ReviewLanded.js'
 import { CommentBox, type ReviewActions, ThreadList } from './Threads.js'
 
 export type ViewMode = 'unified' | 'split'
+
+/** The files as a list of diffs, or as a graph of code snippets and calls. */
+export type FilesView = 'list' | 'graph'
+
+// The graph brings a parser (WebAssembly) and a layout library. They load the
+// first time the graph opens.
+const GraphView = lazy(() => import('../graph/view/GraphView.js'))
 
 export interface PaneControls {
   navHidden?: boolean
@@ -74,6 +92,8 @@ export interface PaneControls {
   onIncludeExcluded?: () => void
   viewMode: ViewMode
   onSetViewMode: (mode: ViewMode) => void
+  filesView?: FilesView
+  onSetFilesView?: (view: FilesView) => void
   allCollapsed: boolean
   onToggleCollapseAll: () => void
   /** The bar's account of the active layer, with its pager. */
@@ -295,6 +315,11 @@ function ElsewhereRow({
 }
 
 type CardAnchor = Extract<Anchor, { kind: 'layer' } | { kind: 'commit' }>
+
+/** The summary of a step with no ```mermaid block. */
+function withoutDiagrams(summary: string | undefined): string | undefined {
+  return summary?.replace(/```mermaid[\s\S]*?```\n?/g, '').trim()
+}
 
 function cardAnchor(layer: LayerView): CardAnchor | null {
   if (layer.commit !== undefined) {
@@ -540,6 +565,38 @@ function LayerHead({
   )
 }
 
+/**
+ * One step of the outline of the agent (a layer), for the graph view: the
+ * parts of the files that the step holds.
+ */
+export interface GraphStep {
+  /** The key of the layer, as the page remembers the active one. */
+  key: string
+  /** 1-based place in the outline. Null for the step that Diffo adds for the
+   * files that no step lists. */
+  number: number | null
+  title: string
+  mechanical: boolean
+  /** The color and the boxes that the agent gave to the step. */
+  color?: LayerColor
+  boxes?: LayerBox[]
+  /** The arrows that the agent drew in the step, and its order of reading. */
+  arrows?: LayerArrow[]
+  order?: DecisionAt[]
+  /** The cards of the agent with no code, and its cards for code that the
+   * change does not touch. */
+  notes?: LayerNote[]
+  context?: LayerContext[]
+  parts: {
+    path: string
+    /** The hunks of the file that the step shows. */
+    hunkIds: string[]
+    /** The head lines that the step is about, when it holds a part of the
+     * file. */
+    ranges?: readonly { from: number; to: number }[]
+  }[]
+}
+
 export interface ReviewComments {
   partition: ThreadPartition
   /** Threads the changeset has left behind — their file is no longer in the diff, so
@@ -569,6 +626,8 @@ export interface ReviewComments {
 
 export interface ReviewHandlers {
   viewed?: ReadonlySet<string>
+  /** Sets or clears marks of read code: the graph marks a card by its lines. */
+  onSetMarks?: (marks: string[], on: boolean) => void
   onToggleFileViewed?: (path: string) => void
   selectedId?: string | null
   onSelect?: (hunkId: string) => void
@@ -847,7 +906,18 @@ function freshGapState(fingerprint: string): GapState {
  * so the fingerprint rotates on any edit and the expansions reset with it — same
  * reset semantics as everything else keyed by hunk id.
  */
-function useGapExpansion(file: FileChange) {
+export function useGapExpansion(file: FileChange, side: 'head' | 'base' = 'head') {
+  // The text that the gaps are read from. The base side is for a view of the
+  // code before the change (the graph, side by side).
+  const textUrl = () => {
+    if (side === 'base') {
+      return `/api/file?path=${encodeURIComponent(file.oldPath ?? file.path)}&side=base`
+    }
+    // One commit's own diff reads the file as that commit had it; the full
+    // diff and uncommitted edits read the working tree.
+    const rev = file.rev ? `&rev=${encodeURIComponent(file.rev)}` : ''
+    return `/api/file?path=${encodeURIComponent(file.path)}&side=head${rev}`
+  }
   const gaps = useMemo(() => fileGaps(file), [file])
   const fingerprint = useMemo(
     () => `${file.newLineCount ?? ''}#${file.hunks.map((h) => h.id).join('\n')}`,
@@ -863,10 +933,7 @@ function useGapExpansion(file: FileChange) {
     let headLines = live.headLines
     if (headLines === null) {
       try {
-        // One commit's own diff reads the file as that commit had it; the full
-        // diff and uncommitted edits read the working tree.
-        const rev = file.rev ? `&rev=${encodeURIComponent(file.rev)}` : ''
-        const res = await fetch(`/api/file?path=${encodeURIComponent(file.path)}&side=head${rev}`)
+        const res = await fetch(textUrl())
         if (!res.ok) throw new Error(`/api/file → ${res.status}`)
         const text = await res.text()
         headLines = text.endsWith('\n') ? text.slice(0, -1).split('\n') : text.split('\n')
@@ -923,8 +990,7 @@ function useGapExpansion(file: FileChange) {
     let headLines = live.headLines
     if (headLines === null) {
       try {
-        const rev = file.rev ? `&rev=${encodeURIComponent(file.rev)}` : ''
-        const res = await fetch(`/api/file?path=${encodeURIComponent(file.path)}&side=head${rev}`)
+        const res = await fetch(textUrl())
         if (!res.ok) throw new Error(`/api/file → ${res.status}`)
         const text = await res.text()
         headLines = text.endsWith('\n') ? text.slice(0, -1).split('\n') : text.split('\n')
@@ -1267,6 +1333,11 @@ export function FileBody({
 
 export function ReadingPane({
   files,
+  graphFiles,
+  graphSteps,
+  graphActiveStep,
+  pickedFile,
+  pickedThread,
   delta = EMPTY_DELTA,
   sinceReview,
   hasMore = false,
@@ -1278,6 +1349,16 @@ export function ReadingPane({
   ...handlers
 }: {
   files: FileChange[]
+  /** The files of the graph view: all of them, not only the ones that the
+   * list has loaded so far. */
+  graphFiles?: FileChange[]
+  /** The steps of the outline, and the active one, for the graph view. */
+  graphSteps?: GraphStep[]
+  graphActiveStep?: string | null
+  /** The file that a click in the tree picked: the graph shows its cards. */
+  pickedFile?: { path: string; n: number } | null
+  /** The thread that a click in the list of threads picked: the graph goes to it. */
+  pickedThread?: { id: string; path: string | null; n: number } | null
   delta?: LiveDelta
   sinceReview?: ReadonlySet<string>
   hasMore?: boolean
@@ -1425,6 +1506,8 @@ export function ReadingPane({
   const notesExpanded = overview || notesOpen || comments?.changesetComposerOpen === true
   const stripShown = overview || layer === undefined
   const [pastOpen, setPastOpen] = useState(false)
+  // The card of the step, above the graph: open at the start.
+  const [stepOpen, setStepOpen] = useState(true)
   const pastTick = comments?.revealPastTick ?? 0
   useEffect(() => {
     if (pastTick > 0) setPastOpen(true)
@@ -1551,6 +1634,9 @@ export function ReadingPane({
           : outdated > 0
             ? `The file or change these hang off is no longer in the diff: reverted, deleted, or stashed; ${outdated} ${outdated === 1 ? 'is' : 'are'} outdated on GitHub instead, the line left the diff.`
             : 'The file or change these hang off is no longer in the diff: reverted, deleted, or stashed.'
+  // The threads on the step itself, for the folded card above the graph.
+  const stepAnchor = layer ? cardAnchor(layer) : null
+  const stepThreadCount = stepAnchor ? cardThreads(stepAnchor, comments?.partition).length : 0
   const pastSection = comments && past.length > 0 && (
     <section className="file-section past-threads">
       <button
@@ -1598,6 +1684,10 @@ export function ReadingPane({
   const total = controls?.total ?? 0
   const emptyChangeset = files.length === 0 && total === 0
   const allHidden = files.length === 0 && total > 0
+  const graphOpen = controls?.filesView === 'graph' && !overview && files.length > 0
+  // The graph that the agent built, from its outline: always one graph. The
+  // split of the code before and after the change is for the Files view.
+  const agentGraph = graphOpen && (graphSteps?.length ?? 0) > 0
   const scopeDone = controls !== undefined && controls.scopeTotal > 0 && controls.scopeLeft === 0
   useEffect(() => {
     if (scopeDone) setDoneDismissed(false)
@@ -1813,6 +1903,9 @@ export function ReadingPane({
           changedCount={controls.changedCount}
           viewMode={controls.viewMode}
           onSetViewMode={controls.onSetViewMode}
+          viewModeOff={agentGraph}
+          filesView={controls.filesView}
+          onSetFilesView={controls.onSetFilesView}
           allCollapsed={controls.allCollapsed}
           onToggleCollapseAll={controls.onToggleCollapseAll}
           stats={controls.stats}
@@ -1825,7 +1918,67 @@ export function ReadingPane({
         {landed && !emptyChangeset && <ReviewLanded {...landed} shape="docked" />}
         {changesetSection}
         {pastSection}
-        {body}
+        {/* With the graph, the card of the step is above it: the card of the
+            list, with its summary, its decisions, its threads and its
+            comment box. It can fold, so the graph has the full height. */}
+        {graphOpen && layer && (
+          <section className="file-section graph-step-card">
+            <button
+              type="button"
+              className="file-header notes-header"
+              onClick={() => setStepOpen((v) => !v)}
+              aria-expanded={stepOpen}
+            >
+              <span className={`file-chevron chevron${stepOpen ? '' : ' chevron-shut'}`}>
+                <Icon name="chev" />
+              </span>
+              <span className="file-path">
+                {layer.kicker}: {layer.title}
+                {stepThreadCount > 0 &&
+                  ` · ${stepThreadCount === 1 ? '1 thread' : `${stepThreadCount} threads`}`}
+              </span>
+            </button>
+            {stepOpen && (
+              <LayerHead
+                key={layer.commit?.sha}
+                // With the graph of the agent, the flow of the step is in
+                // the graph: the diagram of the summary is for the list.
+                layer={agentGraph ? { ...layer, summary: withoutDiagrams(layer.summary) } : layer}
+                filesShown={files.length}
+                comments={comments}
+              />
+            )}
+          </section>
+        )}
+        {graphOpen ? (
+          <Suspense fallback={<p className="graph-note">Loading the graph…</p>}>
+            <GraphView
+              files={graphFiles ?? files}
+              pickedFile={pickedFile}
+              pickedThread={pickedThread}
+              steps={graphSteps}
+              activeStep={graphActiveStep}
+              split={controls?.viewMode === 'split' && !agentGraph}
+              comments={comments}
+              viewed={handlers.viewed}
+              onSetMarks={handlers.onSetMarks}
+              onOpenHunk={(id) => {
+                controls?.onSetFilesView?.('list')
+                handlers.onSelect?.(id)
+                // The list is not in the page until the next frame.
+                requestAnimationFrame(() =>
+                  requestAnimationFrame(() =>
+                    document
+                      .querySelector(`[data-hunk-id="${CSS.escape(id)}"]`)
+                      ?.scrollIntoView({ behavior: 'instant', block: 'center' }),
+                  ),
+                )
+              }}
+            />
+          </Suspense>
+        ) : (
+          body
+        )}
       </div>
       {scopeDone && !allHidden && !doneDismissed && done}
     </div>

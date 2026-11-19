@@ -255,6 +255,34 @@ export function ownPrAsk(
   ].join('\n')
 }
 
+/** The layers of a post that have a diagram in the summary and nothing of
+ * the agent in the graph: no note, no context card, no arrow. */
+export function layersWithoutGraph(
+  items: readonly {
+    title: string
+    summary?: string
+    notes?: unknown[]
+    context?: unknown[]
+    arrows?: unknown[]
+  }[],
+): string[] {
+  return items
+    .filter(
+      (l) =>
+        (l.summary ?? '').includes('```mermaid') &&
+        (l.notes?.length ?? 0) + (l.context?.length ?? 0) + (l.arrows?.length ?? 0) === 0,
+    )
+    .map((l) => l.title)
+}
+
+/** The part of the ack for the layers that have a diagram and no graph form. */
+export function layersGraphStep(titles: readonly string[]): string {
+  return (
+    ` These layers have a diagram in the summary and no graph form: ${titles.map((t) => `"${t}"`).join(', ')}. ` +
+    `${LAYERS.mirror[0]!.toUpperCase()}${LAYERS.mirror.slice(1)}. Re-post the whole list with \`${CLI_COMMANDS.layers}\` with these added; \`diffo help layers\` has the shape.`
+  )
+}
+
 /** The ack after a post with gaps: files and changed lines in no layer. Says
  * what was missed, and that the fix is a re-post of the whole list with it
  * placed. */
@@ -429,9 +457,17 @@ export const LAYERS = {
    * points somewhere different in each. */
   highlight:
     'highlight by default — on each file object, "highlight" the head-side lines this step is about: "40", "12-18", or a list of up to thirty. The reviewer sees them lit, the rest dimmed, and can fold the rest away. A highlight claims the changed lines it lights for this step, and a hunk it lights nothing in is another step\'s; a file or hunk listed without a highlight claims all of its changed lines. Each changed line belongs to exactly one layer: a hunk two steps share is listed in both, each highlighting its own lines, and the post refuses an outline that claims a line in two layers. A deleted line goes with the head line right after it. Leave "highlight" out only when every changed line of the file is this step\'s — a new file read top to bottom, a mechanical step',
+  /** The graph view of the layers, and what the agent can place in it. */
+  graph:
+    'the reviewer can read the layers as a graph: each layer is a column of cards, a card is a function that the layer changes, and an arrow is a call. `diffo graph` prints the cards and the arrows. A layer may carry "boxes": each one a "title" around the code at some places ("at": "path", "path:line" or "path:from-to", one or a list), and a box may hold more "boxes", to four levels. A layer and a box may carry a "color": blue, green, purple, orange, red, teal, pink or yellow. A layer may carry "arrows": each one goes "from" the code at one place "to" the code at a second place, with a short "label"; the graph draws it with its label, so a flow between places of the code can be in the graph. A layer may carry "order": a list of places in the order to read them; the Up and the Down keys of the reviewer follow it. A layer may carry "notes": a card with no code, with an "id", a "title" and a short "text" — an actor, a decision, a concept; an arrow can start or end at a note, as "note:<id>". A layer may carry "context": a card for code that the change does not touch, "at" a place with lines ("path:from-to") and with a "title"; an arrow can start or end at its place. A note and a context card may name the "box" (a title) that they are in. The graph view does not show the diagram of the summary: what the diagram tells goes in the graph too, as boxes, notes, context cards and arrows. Keep the diagram in the summary for the list view',
+  /** The rule that joins a diagram of a summary to the graph view. Short: it
+   * is also in the text that an agent gets when it opens a review, and in
+   * the answer to a post. */
+  mirror:
+    'the reviewer also reads the layers as a graph, and the graph does not show the diagram of a summary. So give each diagram its graph form too, in the same layer: a node that is changed code is the card at its place; a node that is code the change does not touch is a "context" card; each other node (an actor, a pref, a policy, a decision) is a "notes" card; each arrow of the diagram is an "arrows" entry with its label',
   /** The payload, in one line. */
   shape:
-    '[{ "title": "…", "summary": "…", "kind": "mechanical" (optional), "files": ["src/a.ts", { "path": "src/b.ts", "note": "why this file is in this step", "highlight": ["12-18", "40"] }, "src/c.ts:12-40"], "decisions": [{ "text": "…", "detail": "…", "at": "src/a.ts:12-18" | ["src/a.ts:12-18", "test/a.test.ts:40"] }] (optional, at most five) }]',
+    '[{ "title": "…", "summary": "…", "kind": "mechanical" (optional), "color": "…" (optional), "boxes": [{ "title": "…", "color": "…" (optional), "at": ["src/a.ts:12-40"], "boxes": [ … ] (optional) }] (optional), "arrows": [{ "from": "src/a.ts:12" | "note:user", "to": "src/b.ts:40-60" | "note:user", "label": "…" (optional) }] (optional), "order": ["src/a.ts:12-40", "src/b.ts:40-60"] (optional), "notes": [{ "id": "user", "title": "…", "text": "…" (optional), "box": "…" (optional) }] (optional), "context": [{ "at": "src/c.ts:80-95", "title": "…" (optional), "box": "…" (optional) }] (optional), "files": ["src/a.ts", { "path": "src/b.ts", "note": "why this file is in this step", "highlight": ["12-18", "40"] }, "src/c.ts:12-40"], "decisions": [{ "text": "…", "detail": "…", "at": "src/a.ts:12-18" | ["src/a.ts:12-18", "test/a.test.ts:40"] }] (optional, at most five) }]',
 } as const
 
 /**
@@ -606,7 +642,7 @@ export function layersNudge(
     `\`${CLI_COMMANDS.layersSuggest}\`, and offer it in your handoff ("say layers and I'll ` +
     `outline it"). Post the outline only when asked: \`${CLI_COMMANDS.layers}\` — each layer ` +
     `${D.layers.what}; ${D.layers.summary}; ${D.layers.diagram}; ${D.layers.order}. ${D.layers.stance}. ` +
-    `\`diffo help layers\` has the shape.`
+    `Also: ${LAYERS.mirror}. \`diffo help layers\` has the shape.`
   )
 }
 
@@ -1193,6 +1229,10 @@ export function buildLayersRequestPrompt(
     '',
     ...(ctx.changeset ? [...hunkListLines(ctx.changeset), ''] : []),
     `Decisions: ${D.layers.decisions}.`,
+    '',
+    `Graph: ${LAYERS.graph}.`,
+    '',
+    `Diagram and graph: ${LAYERS.mirror}.`,
     '',
     `Shape: ${LAYERS.shape}`,
     '',

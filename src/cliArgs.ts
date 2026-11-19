@@ -352,6 +352,10 @@ until you re-post.
 
 Decisions: ${LAYERS.decisions}.
 
+Graph: ${LAYERS.graph}.
+
+Diagram and graph: ${LAYERS.mirror}.
+
 Shape: ${LAYERS.shape}
 
 Output: {"ok":true,"layers":4,"next_step":"…"}
@@ -361,6 +365,27 @@ Output: {"ok":true,"layers":4,"next_step":"…"}
 Examples:
   diffo layers --suggest "the parser change explains the rest"
   diffo layers --json '[{"title":"Parser contract","summary":"The contract the rest of the change leans on: bad input now comes back as null, not an exception.","files":["src/parse.ts"],"decisions":[{"text":"Bad input returns null, not a throw","detail":"Callers already branch on null for a missing value; a throw would need a try at every site.","at":"src/parse.ts:41-46"}]},{"title":"Callers adapted","kind":"mechanical","summary":"Call sites following the new return type.","files":["src/cli.ts","src/api.ts"]}]'`,
+  graph: `diffo graph: print the code graph of the changeset, as JSON
+
+Usage: diffo graph
+
+The graph that the review shows, with only what the diff and the language tell
+for a fact. No rule of a repository, and no guess.
+
+cards: one for each function that a hunk changes: its file, its name, and its
+first and last head line. A card with no name is the changed lines of a hunk
+that are outside a function, or a file with no parser.
+arrows: a call from one card to another, with the line of the call. "kind" is
+"call", or "callback" for a callback that is followed to the code that runs it.
+open: what the text cannot tell. The function gives a callback or an object
+to "given_to", which is not in the change, and that code runs "runs". Each
+entry is a question that you can answer: what is "given_to", and when does it
+run this code?
+
+Output: {"ok":true,"cards":[…],"arrows":[…],"open":[…],"skipped":[…]}
+
+Example:
+  diffo graph`,
   end: `diffo end: detach from the review politely
 
 Usage: diffo end
@@ -478,6 +503,7 @@ export type CliCommand =
     }
   | { kind: 'layers'; source: LayersSource }
   | { kind: 'end' }
+  | { kind: 'graph' }
   | { kind: 'setup' }
   | { kind: 'telemetry'; action: 'status' | 'on' | 'off' }
   | { kind: 'status'; json: boolean }
@@ -495,6 +521,7 @@ const VERBS = new Set([
   'reply',
   'comment',
   'layers',
+  'graph',
   'end',
   'setup',
   'telemetry',
@@ -831,6 +858,7 @@ function parseVerb(verb: string, rest: string[]): CliCommand {
   if (
     verb === 'poll' ||
     verb === 'end' ||
+    verb === 'graph' ||
     verb === 'setup' ||
     verb === 'status' ||
     verb === 'stop'
@@ -842,6 +870,7 @@ function parseVerb(verb: string, rest: string[]): CliCommand {
       return { kind: 'error', message: `'${verb}' takes no options` }
     }
     if (verb === 'status') return { kind: 'status', json: values.json === true }
+    if (verb === 'graph') return { kind: 'graph' }
     if (verb === 'poll') {
       // An empty --title would silently poll title-less; say so instead.
       const title = normalizeTitle(values.title)

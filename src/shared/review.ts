@@ -348,7 +348,99 @@ export interface Layer {
    * handful of lines a reviewer reads before (or instead of) the diff. Most
    * layers have none; a plumbing step has nothing to decide. At most five. */
   decisions?: Decision[]
+  /** The color of the layer in the graph view. One of `LAYER_COLORS`. */
+  color?: LayerColor
+  /** How the agent arranges the code of the layer in the graph view. */
+  boxes?: LayerBox[]
+  /** The arrows that the agent draws in the graph view of the layer. */
+  arrows?: LayerArrow[]
+  /** The order in which the reviewer reads the code of the layer in the
+   * graph view: the Up and the Down keys follow it. */
+  order?: DecisionAt[]
+  /** Cards of the agent with no code: a concept, an actor, a decision. */
+  notes?: LayerNote[]
+  /** Cards for code that the change does not touch, at places of the head. */
+  context?: LayerContext[]
 }
+
+/**
+ * An end of an arrow: the code at a place, or a note of the layer by its id.
+ */
+export type LayerArrowEnd = DecisionAt | { note: string }
+
+/**
+ * An arrow of the agent in the graph view: from one card to a second card,
+ * with a short name. The agent decides what an arrow means: a step of a
+ * flow, a cause, a data path.
+ */
+export interface LayerArrow {
+  from: LayerArrowEnd
+  to: LayerArrowEnd
+  label?: string
+}
+
+/**
+ * A card of the agent in the graph view with no code: a title and a short
+ * text. An arrow can start or end at it.
+ */
+export interface LayerNote {
+  /** The name of the note for the arrows of its layer. */
+  id: string
+  title: string
+  text?: string
+  /** The title of the box of the layer that the note is in. */
+  box?: string
+}
+
+/**
+ * A card in the graph view for code that the change does not touch: the
+ * lines of a file of the head at a place. An arrow can start or end at it.
+ */
+export interface LayerContext {
+  at: DecisionAt
+  title?: string
+  /** The title of the box of the layer that the card is in. */
+  box?: string
+}
+
+/** The most notes and the most context cards of one layer. */
+export const NOTES_PER_LAYER = 24
+export const CONTEXT_PER_LAYER = 16
+/** The most lines of one context card. */
+export const CONTEXT_LINES = 80
+
+/** The most arrows of the agent in one layer, and the most places in its order. */
+export const ARROWS_PER_LAYER = 40
+export const ORDER_PER_LAYER = 80
+
+/** The colors that the agent can give to a layer or to a box. */
+export const LAYER_COLORS = [
+  'blue',
+  'green',
+  'purple',
+  'orange',
+  'red',
+  'teal',
+  'pink',
+  'yellow',
+] as const
+export type LayerColor = (typeof LAYER_COLORS)[number]
+
+/**
+ * A box in the graph view of a layer: a name around the code at some places.
+ * A box can hold more boxes. The agent decides what a box is.
+ */
+export interface LayerBox {
+  title: string
+  color?: LayerColor
+  /** The places whose code is in the box, head side. */
+  at?: DecisionAt[]
+  boxes?: LayerBox[]
+}
+
+/** The most boxes at one level, and the most levels. */
+export const BOXES_PER_LEVEL = 24
+export const BOX_DEPTH = 4
 
 /**
  * A decision is one short line — what the agent chose, found, or ran into

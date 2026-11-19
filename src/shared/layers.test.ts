@@ -471,3 +471,100 @@ describe('highlighted lines', () => {
     expect(sharedByLayers(once, [b])).toEqual([])
   })
 })
+
+describe('boxes and colors of a layer', () => {
+  const layer = (extra: object) => [{ title: 'Step', files: ['src/a.ts'], ...extra }]
+
+  it('keeps the color and the boxes, with a place as text or as an object', () => {
+    const parsed = parseLayersInput(
+      layer({
+        color: 'purple',
+        boxes: [
+          {
+            title: 'Outer',
+            at: 'src/a.ts:10-20',
+            boxes: [{ title: 'Inner', color: 'teal', at: [{ path: 'src/a.ts', line: 12 }] }],
+          },
+        ],
+      }),
+    )
+    expect(parsed).toMatchObject({
+      ok: true,
+      items: [
+        {
+          color: 'purple',
+          boxes: [
+            {
+              title: 'Outer',
+              at: [{ path: 'src/a.ts', line: 10, endLine: 20 }],
+              boxes: [{ title: 'Inner', color: 'teal', at: [{ path: 'src/a.ts', line: 12 }] }],
+            },
+          ],
+        },
+      ],
+    })
+  })
+
+  it('refuses a color that is not in the list, and a box with no place', () => {
+    expect(parseLayersInput(layer({ color: 'grey' }))).toMatchObject({ ok: false })
+    expect(parseLayersInput(layer({ boxes: [{ title: 'Empty' }] }))).toMatchObject({ ok: false })
+    expect(parseLayersInput(layer({ boxes: [{ at: 'src/a.ts' }] }))).toMatchObject({ ok: false })
+  })
+  it('takes the arrows and the order of a layer', () => {
+    const parsed = parseLayersInput([
+      {
+        title: 'Flow',
+        files: ['src/a.ts'],
+        arrows: [{ from: 'src/a.ts:12', to: 'src/b.ts:40-60', label: 'sends the event' }],
+        order: ['src/a.ts:12-40', { path: 'src/b.ts', line: 40, endLine: 60 }],
+      },
+    ])
+    expect(parsed.ok).toBe(true)
+    if (!parsed.ok) return
+    expect(parsed.items[0]?.arrows).toEqual([
+      {
+        from: { path: 'src/a.ts', line: 12 },
+        to: { path: 'src/b.ts', line: 40, endLine: 60 },
+        label: 'sends the event',
+      },
+    ])
+    expect(parsed.items[0]?.order).toEqual([
+      { path: 'src/a.ts', line: 12, endLine: 40 },
+      { path: 'src/b.ts', line: 40, endLine: 60 },
+    ])
+  })
+
+  it('refuses an arrow with no end', () => {
+    const parsed = parseLayersInput([
+      { title: 'Flow', files: ['src/a.ts'], arrows: [{ from: 'src/a.ts:12' }] },
+    ])
+    expect(parsed.ok).toBe(false)
+  })
+  it('takes notes, context cards, and an arrow to a note', () => {
+    const parsed = parseLayersInput([
+      {
+        title: 'Flow',
+        files: ['src/a.ts'],
+        notes: [{ id: 'user', title: 'The user', text: 'Deletes a row.' }],
+        context: [{ at: 'src/c.ts:80-95', title: 'The caller' }],
+        arrows: [{ from: 'note:user', to: 'src/c.ts:80' }],
+      },
+    ])
+    expect(parsed.ok).toBe(true)
+    if (!parsed.ok) return
+    expect(parsed.items[0]?.notes).toEqual([
+      { id: 'user', title: 'The user', text: 'Deletes a row.' },
+    ])
+    expect(parsed.items[0]?.context).toEqual([
+      { at: { path: 'src/c.ts', line: 80, endLine: 95 }, title: 'The caller' },
+    ])
+    expect(parsed.items[0]?.arrows?.[0]?.from).toEqual({ note: 'user' })
+  })
+
+  it('refuses an arrow to a note that the layer does not have', () => {
+    const parsed = parseLayersInput([
+      { title: 'Flow', files: ['src/a.ts'], arrows: [{ from: 'note:user', to: 'src/a.ts:1' }] },
+    ])
+    expect(parsed.ok).toBe(false)
+  })
+})

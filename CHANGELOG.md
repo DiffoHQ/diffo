@@ -7,7 +7,21 @@ Until 1.0, minor versions may break things. When they do, the entry says how to 
 
 ## [Unreleased]
 
-Nothing yet.
+### Added
+
+- **The graph view.** A **List / Graph** switch shows the change as cards and
+  arrows: a card is a function that the change touches, with its diff lines,
+  and an arrow is a call. Diffo parses C++ and TypeScript in the page, with no
+  types and no guess: an arrow is a fact of the text. Boxes group the cards by
+  folder and class, and from far a box shows its name. `↓` / `↑` walk the
+  cards, `↵` marks a card viewed. Comments and Viewed marks are the same as in
+  the list. See [The graph view](https://diffohq.github.io/diffo/guide/graph).
+- **Layers in the graph.** In the Layers tab each layer is a column of cards.
+  A layer can carry `color`, `boxes`, `arrows`, `order`, `notes` and `context`,
+  so the agent can draw a flow, name a group, and set the order of reading.
+  `diffo help layers` has the shape.
+- **`diffo graph`.** Prints the cards and the arrows of the changeset as JSON
+  for the agent, with the places where the text cannot tell what runs.
 
 ## [0.26.0] — 2026-11-17
 

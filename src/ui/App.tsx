@@ -49,6 +49,8 @@ import { Privacy } from './components/Privacy.js'
 import {
   type ElsewhereStep,
   type FilePart,
+  type FilesView,
+  type GraphStep,
   type LayerView,
   ReadingPane,
   type ReviewComments,
@@ -63,6 +65,7 @@ import type { ReviewActions } from './components/Threads.js'
 import { Voice } from './components/Voice.js'
 import { useCritter } from './critterPref.js'
 import { expandMarks, fileMarks, isFileViewed } from './fileMarks.js'
+import { OUTLINE_SLOT } from './graph/view/outlineSlot.js'
 import { fileAnchor, glideTo } from './hooks.js'
 import { actionForKey, isTypingTarget } from './keyboard.js'
 import { layerReadEntries, layerReadOrder, useLayerList } from './layerListPref.js'
@@ -321,6 +324,7 @@ function Review() {
     fileProgress,
   } = useViewed(data)
   const [viewMode, setViewMode] = useState<ViewMode>('unified')
+  const [filesView, setFilesView] = useState<FilesView>('list')
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [focusPath, setFocusPath] = useState<string | null>(null)
   const [collapsed, setCollapsed] = useState<ReadonlySet<string>>(new Set())
@@ -1140,8 +1144,37 @@ function Review() {
     requestAnimationFrame(() => seek(30))
   }, [])
 
+  // The file that a click in the tree picked, for the graph view: it shows
+  // where the file is. The count makes each click a new pick.
+  const [pickedFile, setPickedFile] = useState<{ path: string; n: number } | null>(null)
+  // The steps of the outline, for the graph view: which part of which file
+  // each step holds.
+  const graphSteps = useMemo(
+    (): GraphStep[] =>
+      inLayers
+        ? resolvedLayers.map((l) => ({
+            key: layerKey(l),
+            number: l.number,
+            title: l.title,
+            mechanical: l.kind === 'mechanical',
+            color: l.color,
+            boxes: l.boxes,
+            arrows: l.arrows,
+            order: l.order,
+            notes: l.notes,
+            context: l.context,
+            parts: l.files.map((f) => ({
+              path: f.file.path,
+              hunkIds: f.hunks.map((h) => h.id),
+              ranges: f.highlight,
+            })),
+          }))
+        : [],
+    [inLayers, resolvedLayers],
+  )
   const pickFile = useCallback(
     (path: string) => {
+      setPickedFile((prev) => ({ path, n: (prev?.n ?? 0) + 1 }))
       enterLayerFor(path)
       revealFile(path)
       setCollapsed((prev) => {
@@ -1349,6 +1382,12 @@ function Review() {
     goCommit,
   ])
 
+  // The thread of the last click in the list of threads, for the graph view.
+  const [pickedThread, setPickedThread] = useState<{
+    id: string
+    path: string | null
+    n: number
+  } | null>(null)
   const openThread = useCallback(
     (item: {
       threadId: string
@@ -1358,6 +1397,8 @@ function Review() {
       gone?: boolean
     }) => {
       setOpenThreadId(item.threadId)
+      // The graph goes to the comment by itself.
+      setPickedThread((prev) => ({ id: item.threadId, path: item.path, n: (prev?.n ?? 0) + 1 }))
       // A thread whose file left the changeset has no file body to scroll to — it
       // renders in the pane's own section for the ones the diff left behind.
       if (item.gone) {
@@ -1404,6 +1445,9 @@ function Review() {
       // can't spin.
       const seek = (attempts: number) => {
         holdOpenRef.current = null
+        // In the graph, the comment is in a card of the canvas: the graph
+        // moves its own view to it, and the page does not scroll.
+        if (document.querySelector('.graph-canvas')) return
         const node = document.querySelector(`[data-thread-id="${item.threadId}"]`)
         if (node) {
           // Top, not centre: the thread you picked is the thing to read, and what
@@ -2009,34 +2053,38 @@ function Review() {
               </>
             }
             files={
-              <Nav
-                files={allFiles}
-                viewed={viewed}
-                selectedPath={selectedPath}
-                onPickFile={pickFile}
-                onToggleFileViewed={toggleFileViewed}
-                onMarkFiles={markFilesViewed}
-                onClearFiles={clearFilesViewed}
-                parts={splitFileSteps}
-                onAskFile={(path) => {
-                  // The composer renders inside the file body, so the file must be in
-                  // the rendering window first.
-                  revealFile(path)
-                  setComposeFilePath(path)
-                }}
-                threads={fileThreads}
-                attention={fileAttention}
-                changed={sinceLastReview.changed}
-                query={filter.query}
-                onQuery={filter.setQuery}
-                focusTick={searchFocusTick}
-                hideReviewed={filter.hideReviewed}
-                onHideReviewed={filter.setHideReviewed}
-                hideTests={filter.hideTests}
-                onHideTests={filter.setHideTests}
-                onlyChanged={onlyChanged}
-                onOnlyChanged={setOnlyChanged}
-              />
+              <>
+                {/* The graph puts its outline here, when it is in the page. */}
+                <div id={OUTLINE_SLOT} hidden={filesView !== 'graph'} />
+                <Nav
+                  files={allFiles}
+                  viewed={viewed}
+                  selectedPath={selectedPath}
+                  onPickFile={pickFile}
+                  onToggleFileViewed={toggleFileViewed}
+                  onMarkFiles={markFilesViewed}
+                  onClearFiles={clearFilesViewed}
+                  parts={splitFileSteps}
+                  onAskFile={(path) => {
+                    // The composer renders inside the file body, so the file must be in
+                    // the rendering window first.
+                    revealFile(path)
+                    setComposeFilePath(path)
+                  }}
+                  threads={fileThreads}
+                  attention={fileAttention}
+                  changed={sinceLastReview.changed}
+                  query={filter.query}
+                  onQuery={filter.setQuery}
+                  focusTick={searchFocusTick}
+                  hideReviewed={filter.hideReviewed}
+                  onHideReviewed={filter.setHideReviewed}
+                  hideTests={filter.hideTests}
+                  onHideTests={filter.setHideTests}
+                  onlyChanged={onlyChanged}
+                  onOnlyChanged={setOnlyChanged}
+                />
+              </>
             }
             threads={
               <ThreadRail
@@ -2081,6 +2129,13 @@ function Review() {
           />
           <ReadingPane
             files={visibleFiles}
+            // With an outline, the graph has the files of all the steps: it
+            // groups the cards by step, and it does not hide the other steps.
+            graphFiles={inLayers && !onOverview ? filter.files : paneOrder}
+            graphSteps={graphSteps}
+            graphActiveStep={paneLayerActive ? layerKey(paneLayerActive) : null}
+            pickedFile={pickedFile}
+            pickedThread={pickedThread}
             delta={delta}
             landed={landedNotice}
             sinceReview={sinceLastReview.changedHunkIds}
@@ -2135,6 +2190,8 @@ function Review() {
               unsent: openComments,
               viewMode,
               onSetViewMode: setViewMode,
+              filesView,
+              onSetFilesView: setFilesView,
               allCollapsed: collapsed.size >= data.files.length && data.files.length > 0,
               onToggleCollapseAll: () =>
                 setCollapsed((prev) =>
@@ -2145,6 +2202,7 @@ function Review() {
             }}
             viewed={viewed}
             onToggleFileViewed={toggleViewedHere}
+            onSetMarks={setMarks}
             selectedId={selectedId}
             onSelect={setSelectedId}
             viewMode={viewMode}

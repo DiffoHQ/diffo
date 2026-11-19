@@ -109,6 +109,8 @@ const MIME: Record<string, string> = {
   '.js': 'application/javascript',
   '.css': 'text/css',
   '.woff2': 'font/woff2',
+  // The tree-sitter runtime and grammars of the graph view.
+  '.wasm': 'application/wasm',
   ...IMAGE_MIME,
 }
 

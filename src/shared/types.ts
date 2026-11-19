@@ -57,7 +57,12 @@ export interface ChangesetStats {
 export interface Changeset {
   version: number
   spec: ChangesetSpec
-  repo: { path: string; name: string; branch: string; worktree: string | null }
+  repo: {
+    path: string
+    name: string
+    branch: string
+    worktree: string | null
+  }
   files: FileChange[]
   stats: ChangesetStats
   /**

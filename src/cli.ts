@@ -11,6 +11,7 @@ import { SRC_STAMP } from './devStamp.js'
 import { GhClient } from './forge/github/gh.js'
 import { parseRemoteUrl, parseTarget, prUrl } from './forge/target.js'
 import type { PrRef } from './forge/types.js'
+import { graphReport } from './graphCommand.js'
 import { DiffoDb } from './server/db.js'
 import {
   findRepoRoot,
@@ -35,8 +36,10 @@ import {
   doctrineFor,
   guideInherit,
   guideNudge,
+  layersGraphStep,
   layersIncompleteStep,
   layersNudge,
+  layersWithoutGraph,
   ownPrAsk,
   POLL_NOW,
   POLL_NOW_FOREGROUND,
@@ -520,6 +523,15 @@ function readStdin(): Promise<string> {
  */
 const POST_TIMEOUT_MS = 10_000
 
+/** The folder of the built page: it has the grammars of the graph. */
+function graphClientDir(): string {
+  const dir = dirname(fileURLToPath(import.meta.url))
+  return (
+    [resolve(dir, 'client'), resolve(dir, '../dist/client')].find(existsSync) ??
+    resolve(dir, 'client')
+  )
+}
+
 async function postJson(
   port: number,
   path: string,
@@ -778,14 +790,33 @@ if (command.kind === 'layers') {
   if (status === 400) fail(`layers: ${(body as { error?: string } | null)?.error ?? 'rejected'}`)
   if (status !== 200) fail(`layers failed (${status})`)
   const { layers, uncovered = [] } = body as { layers: Layers; uncovered?: UncoveredRef[] }
+  // A diagram that the graph view does not show: the agent is told, as it is
+  // told of a line in no layer.
+  const noGraph = layersWithoutGraph(parsed.items)
   console.log(
     JSON.stringify({
       ok: true,
       layers: layers.items.length,
       ...(uncovered.length > 0 ? { uncovered } : {}),
-      next_step: uncovered.length === 0 ? ACK_NEXT_STEP.layers : layersIncompleteStep(uncovered),
+      ...(noGraph.length > 0 ? { diagram_without_graph: noGraph } : {}),
+      next_step:
+        (uncovered.length === 0 ? ACK_NEXT_STEP.layers : layersIncompleteStep(uncovered)) +
+        (noGraph.length > 0 ? layersGraphStep(noGraph) : ''),
     }),
   )
+  process.exit(0)
+}
+
+if (command.kind === 'graph') {
+  const port = await requireServer()
+  try {
+    const report = await graphReport(graphClientDir(), (path) =>
+      fetch(apiUrl(port, path), { headers: sessionHeaders() }),
+    )
+    console.log(JSON.stringify(report))
+  } catch (err) {
+    fail(`graph failed: ${(err as Error).message}`)
+  }
   process.exit(0)
 }
 

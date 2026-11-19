@@ -2,3 +2,9 @@
 # below, which lets pnpm run esbuild's install script (needed by vite/tsdown).
 allowBuilds:
   esbuild: true
+  # The graph view uses only the prebuilt .wasm grammars of these packages,
+  # so their native builds do not run.
+  tree-sitter-c: false
+  tree-sitter-cpp: false
+  tree-sitter-javascript: false
+  tree-sitter-typescript: false

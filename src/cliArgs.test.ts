@@ -76,6 +76,8 @@ describe('parseCliArgs — agent verbs', () => {
   it('poll, end, setup, status, and stop take no arguments', () => {
     expect(parseCliArgs(['poll'])).toEqual({ kind: 'poll', title: null })
     expect(parseCliArgs(['end'])).toEqual({ kind: 'end' })
+    expect(parseCliArgs(['graph'])).toEqual({ kind: 'graph' })
+    expect(parseCliArgs(['graph', 'extra'])).toMatchObject({ kind: 'error' })
     expect(parseCliArgs(['setup'])).toEqual({ kind: 'setup' })
     expect(parseCliArgs(['status'])).toEqual({ kind: 'status', json: false })
     expect(parseCliArgs(['stop'])).toEqual({ kind: 'stop' })

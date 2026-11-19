@@ -1,15 +1,29 @@
 import {
+  ARROWS_PER_LAYER,
+  BOX_DEPTH,
+  BOXES_PER_LEVEL,
+  CONTEXT_LINES,
+  CONTEXT_PER_LAYER,
   DECISION_PLACES,
   type Decision,
   type DecisionAt,
+  LAYER_COLORS,
   type Layer,
+  type LayerArrow,
+  type LayerArrowEnd,
+  type LayerBox,
+  type LayerColor,
+  type LayerContext,
   type LayerFile,
+  type LayerNote,
   type LineRange,
   layerFileHighlight,
   layerFileNote,
   layerFilePath,
   layerFileRange,
   layerFileRef,
+  NOTES_PER_LAYER,
+  ORDER_PER_LAYER,
   parseLineSpan,
 } from './review.js'
 import type { DiffLine, FileChange, Hunk } from './types.js'
@@ -312,15 +326,209 @@ export function parseLayersInput(raw: unknown): LayersParse {
         decisions.push(parsed.decision)
       }
     }
+    const color = parseColor(l.color, `${where} ("${title}")`)
+    if (color !== undefined && !isColor(color)) return { ok: false, error: color }
+    const boxes = parseBoxes(l.boxes, `${where} ("${title}")`, 1)
+    if (typeof boxes === 'string') return { ok: false, error: boxes }
+    const arrows = parseArrows(l.arrows, `${where} ("${title}")`)
+    if (typeof arrows === 'string') return { ok: false, error: arrows }
+    const order = parsePlaces(l.order, `${where} ("${title}"): "order"`, ORDER_PER_LAYER)
+    if (typeof order === 'string') return { ok: false, error: order }
+    const notes = parseNotes(l.notes, `${where} ("${title}")`)
+    if (typeof notes === 'string') return { ok: false, error: notes }
+    const context = parseContext(l.context, `${where} ("${title}")`)
+    if (typeof context === 'string') return { ok: false, error: context }
+    // An arrow to a note needs the note.
+    const ids = new Set(notes.map((n) => n.id))
+    for (const arrow of arrows) {
+      for (const end of [arrow.from, arrow.to]) {
+        if ('note' in end && !ids.has(end.note)) {
+          return {
+            ok: false,
+            error: `${where} ("${title}"): an arrow names the note "${end.note}", which is not in "notes"`,
+          }
+        }
+      }
+    }
     items.push({
       title,
       files,
       ...(summary !== '' ? { summary } : {}),
       ...(l.kind === 'mechanical' ? { kind: 'mechanical' as const } : {}),
       ...(decisions && decisions.length > 0 ? { decisions } : {}),
+      ...(color !== undefined ? { color } : {}),
+      ...(boxes.length > 0 ? { boxes } : {}),
+      ...(arrows.length > 0 ? { arrows } : {}),
+      ...(order.length > 0 ? { order } : {}),
+      ...(notes.length > 0 ? { notes } : {}),
+      ...(context.length > 0 ? { context } : {}),
     })
   }
   return { ok: true, items }
+}
+
+/** One place, as text or as the object that a parse gives back. */
+function parsePlace(raw: unknown, where: string): DecisionAt | string {
+  const text = typeof raw === 'string' ? raw : atToString(raw)
+  if (text === null) return `${where}: a place is "path", "path:line" or "path:from-to"`
+  const parsed = parseDecisionAt(text)
+  return typeof parsed === 'string' ? `${where}: ${parsed}` : parsed
+}
+
+/** A list of places, or the text of the error. */
+function parsePlaces(raw: unknown, where: string, most: number): DecisionAt[] | string {
+  if (raw === undefined) return []
+  if (!Array.isArray(raw)) return `${where} must be a list of places`
+  if (raw.length > most) return `${where}: keep it to ${most} places`
+  const out: DecisionAt[] = []
+  for (const entry of raw) {
+    const place = parsePlace(entry, where)
+    if (typeof place === 'string') return place
+    out.push(place)
+  }
+  return out
+}
+
+/** An end of an arrow: a place, or a note as "note:id" or { note: "id" }. */
+function parseEnd(raw: unknown, where: string): LayerArrowEnd | string {
+  if (typeof raw === 'string' && raw.startsWith('note:')) {
+    const id = raw.slice('note:'.length).trim()
+    return id === '' ? `${where}: "note:" needs the id of a note` : { note: id }
+  }
+  if (typeof raw === 'object' && raw !== null && !Array.isArray(raw)) {
+    const note = (raw as Record<string, unknown>).note
+    if (typeof note === 'string' && note.trim() !== '') return { note: note.trim() }
+  }
+  return parsePlace(raw, where)
+}
+
+/** The notes of a layer, or the text of the error. */
+function parseNotes(raw: unknown, where: string): LayerNote[] | string {
+  if (raw === undefined) return []
+  if (!Array.isArray(raw)) return `${where}: "notes" must be a list`
+  if (raw.length > NOTES_PER_LAYER) return `${where}: keep "notes" to ${NOTES_PER_LAYER}`
+  const out: LayerNote[] = []
+  for (const [i, entry] of raw.entries()) {
+    const here = `${where} note ${i + 1}`
+    if (typeof entry !== 'object' || entry === null || Array.isArray(entry)) {
+      return `${here}: a note is { id, title, text?, box? }`
+    }
+    const n = entry as Record<string, unknown>
+    const id = typeof n.id === 'string' ? n.id.trim() : ''
+    const title = typeof n.title === 'string' ? oneLine(n.title, 80) : ''
+    if (id === '' || title === '') return `${here}: a note needs an "id" and a "title"`
+    if (out.some((o) => o.id === id)) return `${here}: the id "${id}" is on two notes`
+    const text = typeof n.text === 'string' ? n.text.trim().slice(0, 400) : ''
+    const box = typeof n.box === 'string' ? oneLine(n.box, 80) : ''
+    out.push({ id, title, ...(text !== '' ? { text } : {}), ...(box !== '' ? { box } : {}) })
+  }
+  return out
+}
+
+/** The context cards of a layer, or the text of the error. */
+function parseContext(raw: unknown, where: string): LayerContext[] | string {
+  if (raw === undefined) return []
+  if (!Array.isArray(raw)) return `${where}: "context" must be a list`
+  if (raw.length > CONTEXT_PER_LAYER) return `${where}: keep "context" to ${CONTEXT_PER_LAYER}`
+  const out: LayerContext[] = []
+  for (const [i, entry] of raw.entries()) {
+    const here = `${where} context ${i + 1}`
+    // A place alone is a card with no title.
+    const c =
+      typeof entry === 'string'
+        ? { at: entry }
+        : typeof entry === 'object' && entry !== null && !Array.isArray(entry)
+          ? (entry as Record<string, unknown>)
+          : null
+    if (c === null) return `${here}: a context card is { at, title?, box? }`
+    const at = parsePlace(c.at, `${here} "at"`)
+    if (typeof at === 'string') return at
+    if (at.line === undefined) return `${here}: "at" needs lines, as "path:from-to"`
+    if ((at.endLine ?? at.line) - at.line >= CONTEXT_LINES) {
+      return `${here}: keep a context card to ${CONTEXT_LINES} lines`
+    }
+    const title = typeof c.title === 'string' ? oneLine(c.title, 80) : ''
+    const box = typeof c.box === 'string' ? oneLine(c.box, 80) : ''
+    out.push({ at, ...(title !== '' ? { title } : {}), ...(box !== '' ? { box } : {}) })
+  }
+  return out
+}
+
+/** The arrows of a layer, or the text of the error. */
+function parseArrows(raw: unknown, where: string): LayerArrow[] | string {
+  if (raw === undefined) return []
+  if (!Array.isArray(raw)) return `${where}: "arrows" must be a list`
+  if (raw.length > ARROWS_PER_LAYER) return `${where}: keep "arrows" to ${ARROWS_PER_LAYER}`
+  const out: LayerArrow[] = []
+  for (const [i, entry] of raw.entries()) {
+    const here = `${where} arrow ${i + 1}`
+    if (typeof entry !== 'object' || entry === null || Array.isArray(entry)) {
+      return `${here}: an arrow is { from, to, label? }`
+    }
+    const a = entry as Record<string, unknown>
+    const from = parseEnd(a.from, `${here} "from"`)
+    if (typeof from === 'string') return from
+    const to = parseEnd(a.to, `${here} "to"`)
+    if (typeof to === 'string') return to
+    const label = typeof a.label === 'string' ? oneLine(a.label, 60) : ''
+    out.push({ from, to, ...(label !== '' ? { label } : {}) })
+  }
+  return out
+}
+
+function isColor(value: string): value is LayerColor {
+  return (LAYER_COLORS as readonly string[]).includes(value)
+}
+
+/** A color of a layer or of a box, or the text of the error. */
+function parseColor(raw: unknown, where: string): string | undefined {
+  if (raw === undefined) return undefined
+  if (typeof raw === 'string' && isColor(raw)) return raw
+  return `${where}: "color" is one of ${LAYER_COLORS.join(', ')}`
+}
+
+/** The boxes of a layer or of a box, or the text of the error. */
+function parseBoxes(raw: unknown, where: string, depth: number): LayerBox[] | string {
+  if (raw === undefined) return []
+  if (!Array.isArray(raw)) return `${where}: "boxes" must be a list`
+  if (depth > BOX_DEPTH) return `${where}: keep "boxes" to ${BOX_DEPTH} levels`
+  if (raw.length > BOXES_PER_LEVEL) {
+    return `${where}: keep "boxes" to ${BOXES_PER_LEVEL} at one level`
+  }
+  const out: LayerBox[] = []
+  for (const [i, entry] of raw.entries()) {
+    const here = `${where} box ${i + 1}`
+    if (typeof entry !== 'object' || entry === null || Array.isArray(entry)) {
+      return `${here}: a box is { title, at?, boxes?, color? }`
+    }
+    const b = entry as Record<string, unknown>
+    const title = typeof b.title === 'string' ? oneLine(b.title, 80) : ''
+    if (title === '') return `${here}: a box needs a "title"`
+    const color = parseColor(b.color, `${here} ("${title}")`)
+    if (color !== undefined && !isColor(color)) return color
+    const places = b.at === undefined ? [] : Array.isArray(b.at) ? b.at : [b.at]
+    const at: DecisionAt[] = []
+    for (const place of places) {
+      // The object form is what a parse gives back: a second parse takes it.
+      const text = typeof place === 'string' ? place : atToString(place)
+      if (text === null) return `${here} ("${title}"): "at" is a list of "path:from-to"`
+      const parsed = parseDecisionAt(text)
+      if (typeof parsed === 'string') return `${here} ("${title}"): ${parsed}`
+      at.push(parsed)
+    }
+    const boxes = parseBoxes(b.boxes, `${here} ("${title}")`, depth + 1)
+    if (typeof boxes === 'string') return boxes
+    if (at.length === 0 && boxes.length === 0) {
+      return `${here} ("${title}"): a box needs "at" or "boxes"`
+    }
+    out.push({
+      title,
+      ...(color !== undefined ? { color } : {}),
+      ...(at.length > 0 ? { at } : {}),
+      ...(boxes.length > 0 ? { boxes } : {}),
+    })
+  }
+  return out
 }
 
 // ---------- ranges against hunks ----------

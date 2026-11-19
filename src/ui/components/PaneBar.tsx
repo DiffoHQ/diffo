@@ -1,5 +1,5 @@
 import { Icon } from './Icon.js'
-import type { ViewMode } from './ReadingPane.js'
+import type { FilesView, ViewMode } from './ReadingPane.js'
 
 /**
  * The active layer, as the bar tells it. Navigation lives here and not on the
@@ -23,6 +23,8 @@ export interface PaneLayer {
   noun?: string
 }
 
+const OFF_TIP = 'The graph of the layers is one graph: it has no split'
+
 export function PaneBar({
   navHidden,
   onToggleNav,
@@ -44,6 +46,9 @@ export function PaneBar({
   changedCount,
   viewMode,
   onSetViewMode,
+  viewModeOff = false,
+  filesView = 'list',
+  onSetFilesView,
   allCollapsed,
   onToggleCollapseAll,
   stats,
@@ -77,6 +82,12 @@ export function PaneBar({
   changedCount: number
   viewMode: ViewMode
   onSetViewMode: (mode: ViewMode) => void
+  /** The diff layout has no effect on what the pane shows now: the graph of
+   * the agent is one graph, with no split. The two buttons are gray. */
+  viewModeOff?: boolean
+  /** The files as a list of diffs, or as a graph of code snippets and calls. */
+  filesView?: FilesView
+  onSetFilesView?: (view: FilesView) => void
   allCollapsed: boolean
   onToggleCollapseAll: () => void
   /** The size of the whole change. It sits beside the coverage because both
@@ -197,13 +208,37 @@ export function PaneBar({
         />
       )}
       <span className="pane-sep" />
+      {onSetFilesView && (
+        // biome-ignore lint/a11y/useSemanticElements: a fieldset would bring a legend and its own box
+        <span className="pane-modes pane-views" role="group" aria-label="Files view">
+          <button
+            type="button"
+            className="pane-word"
+            aria-pressed={filesView === 'list'}
+            data-tip="The files as a list of diffs"
+            onClick={() => onSetFilesView('list')}
+          >
+            List
+          </button>
+          <button
+            type="button"
+            className="pane-word"
+            aria-pressed={filesView === 'graph'}
+            data-tip="The changed functions as a graph of calls"
+            onClick={() => onSetFilesView('graph')}
+          >
+            Graph
+          </button>
+        </span>
+      )}
       {/* biome-ignore lint/a11y/useSemanticElements: a a fieldset would bring a legend and its own box */}
       <span className="pane-modes" role="group" aria-label="Diff layout">
         <button
           type="button"
           className="pane-icon"
-          aria-pressed={viewMode === 'unified'}
-          data-tip="Unified diff (u)"
+          aria-pressed={!viewModeOff && viewMode === 'unified'}
+          disabled={viewModeOff}
+          data-tip={viewModeOff ? OFF_TIP : 'Unified diff (u)'}
           aria-label="Unified diff"
           onClick={() => onSetViewMode('unified')}
         >
@@ -212,8 +247,9 @@ export function PaneBar({
         <button
           type="button"
           className="pane-icon"
-          aria-pressed={viewMode === 'split'}
-          data-tip="Split diff (u)"
+          aria-pressed={!viewModeOff && viewMode === 'split'}
+          disabled={viewModeOff}
+          data-tip={viewModeOff ? OFF_TIP : 'Split diff (u)'}
           aria-label="Split diff"
           onClick={() => onSetViewMode('split')}
         >

@@ -8,6 +8,11 @@ import {
 import {
   type Decision,
   type DecisionAt,
+  type LayerArrow,
+  type LayerBox,
+  type LayerColor,
+  type LayerContext,
+  type LayerNote,
   type Layers,
   type LineRange,
   layerFileHighlight,
@@ -92,6 +97,15 @@ export interface ResolvedLayer {
   title: string
   summary?: string
   kind?: 'mechanical'
+  /** The color and the boxes of the layer in the graph view, as the agent
+   * gave them. */
+  color?: LayerColor
+  boxes?: LayerBox[]
+  /** The arrows of the agent, and its order of reading, for the graph view. */
+  arrows?: LayerArrow[]
+  order?: DecisionAt[]
+  notes?: LayerNote[]
+  context?: LayerContext[]
   /** The listed files the changeset still has, in the order they were listed. */
   files: ResolvedLayerFile[]
   /** Listed paths that resolve to nothing today — an unknown path, a file that
@@ -182,6 +196,12 @@ export function resolveLayers(
       title: layer.title,
       ...(layer.summary ? { summary: layer.summary } : {}),
       ...(layer.kind ? { kind: layer.kind } : {}),
+      ...(layer.color ? { color: layer.color } : {}),
+      ...(layer.boxes ? { boxes: layer.boxes } : {}),
+      ...(layer.arrows ? { arrows: layer.arrows } : {}),
+      ...(layer.order ? { order: layer.order } : {}),
+      ...(layer.notes ? { notes: layer.notes } : {}),
+      ...(layer.context ? { context: layer.context } : {}),
       files: present,
       missing,
       derived: false,

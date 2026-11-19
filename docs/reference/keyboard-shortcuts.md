@@ -23,6 +23,18 @@ The review UI is keyboard-first. Press `?` in the review for this sheet.
 | `o` | Collapse / expand file |
 | `b` | Show / hide the file list |
 
+## In the graph
+
+| Key | Action |
+| --- | --- |
+| `↓` / `↑` | Next / previous card |
+| `→` / `←` | Show the calls out of the selected card, or the calls into it |
+| `1` … `9` | Follow the arrow with that number |
+| `↵` | Mark the selected card viewed, or go into the box in focus |
+| `esc` | Go up one level |
+
+See [The graph view](/guide/graph).
+
 ## Comment
 
 | Key | Action |

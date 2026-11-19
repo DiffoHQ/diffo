@@ -35,6 +35,7 @@ nothing.
 | [`diffo reply`](#diffo-reply-threadid) | agent | Reply to a thread |
 | [`diffo comment`](#diffo-comment-file) | agent | Start a thread in the agent's own voice |
 | [`diffo layers`](#diffo-layers) | agent | Outline the changeset as steps to read in order |
+| [`diffo graph`](#diffo-graph) | agent | Print the code graph of the changeset, as JSON |
 | [`diffo end`](#diffo-end) | agent | Detach from the review |
 | [`diffo help`](#help-and-version) | both | Help for the CLI, or for one command |
 | [`diffo help pr`](#help-and-version) | both | Help for reviewing a pull request: the spellings, the worktree, what `gh` needs |
@@ -299,6 +300,25 @@ The reviewer's **Ask the agent for steps** button, and *re-outline* over
 an existing outline, reach the agent as a `kind: "layers"` poll payload whose
 prompt asks for exactly this post and lists every file with its hunks' head-side
 line ranges, so splitting a file is copying a range. A post concludes the request.
+
+### `diffo graph`
+
+```bash
+diffo graph
+```
+
+Prints the [code graph](/guide/graph) of the changeset: what the diff and the
+language tell for a fact, with no rule of a repository and no guess.
+
+| Field | |
+| --- | --- |
+| `cards` | One for each function that a hunk changes: its file, its name, its first and last head line. A card with no name is changed lines outside a function, or a file with no parser |
+| `arrows` | A call from one card to another, with the line of the call. `kind` is `call`, or `callback` for a callback that is followed to the code that runs it |
+| `open` | What the text cannot tell: the function gives a callback or an object to `given_to`, which is not in the change, and that code runs `runs` |
+| `skipped` | Files with a parser whose text was not read |
+
+An agent reads it before it outlines [layers](#diffo-layers) with boxes and
+arrows, so the places that it names are cards of the graph.
 
 ### `diffo end`
 
