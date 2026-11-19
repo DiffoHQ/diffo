@@ -28,7 +28,7 @@ The review is exactly the one you know, with the pull request's side added:
   draft, CI running, or nothing when the PR is open and green. Click the title
   for the rest: author, `head → base`, checks with the commit count and last
   push, reviews, and the link to GitHub. The tab is named after the PR.
-- The description is the **Overview**: row 0 of the Layers list, the place the
+- The description is the **Overview**: the book at the head of the Layers list, the place the
   agent's guide takes on a local review, with the guide under it when the
   agent posts one. Standing on it, the pane is **On the pull request**: the
   description, your private threads, and the GitHub conversations you are part

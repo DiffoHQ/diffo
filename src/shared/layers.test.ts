@@ -5,8 +5,10 @@ import {
   hunkHeadSpan,
   parseDecisionAt,
   parseLayersInput,
+  parseLayersPost,
   parseSuggestReason,
   rangeTouchesHunk,
+  rowClaims,
   sharedByLayers,
   sharedLine,
   uncoveredByLayers,
@@ -153,7 +155,13 @@ describe('parseLayersInput', () => {
     expect(ok([{ title: 'A', files: ['does/not/exist.ts'] }])).toHaveLength(1)
   })
 
-  it('refuses a kind other than mechanical rather than dropping it', () => {
+  it('accepts kind background, and keeps it', () => {
+    expect(ok([{ title: 'Tests', kind: 'background', files: ['a.test.ts'] }])[0]!.kind).toBe(
+      'background',
+    )
+  })
+
+  it('refuses a kind other than mechanical or background rather than dropping it', () => {
     expect(err([{ title: 'A', kind: 'risky', files: ['a.ts'] }])).toContain('"kind" can only be')
   })
 
@@ -469,5 +477,102 @@ describe('highlighted lines', () => {
       },
     ]
     expect(sharedByLayers(once, [b])).toEqual([])
+  })
+})
+
+describe('background layers', () => {
+  const line = (kind: 'add' | 'del' | 'context', oldNo: number | null, newNo: number | null) => ({
+    kind,
+    oldNo,
+    newNo,
+    text: '',
+  })
+  // rec.ts: one hunk, changes at head lines 2, 4-5 and 8.
+  const rec: FileChange = {
+    path: 'src/rec.ts',
+    oldPath: null,
+    status: 'modified',
+    kind: 'text',
+    staged: false,
+    hunks: [
+      {
+        id: 'r1',
+        path: 'src/rec.ts',
+        oldStart: 1,
+        newStart: 1,
+        lines: [
+          line('context', 1, 1),
+          line('add', null, 2),
+          line('context', 2, 3),
+          line('add', null, 4),
+          line('add', null, 5),
+          line('context', 3, 6),
+          line('context', 4, 7),
+          line('add', null, 8),
+        ],
+      },
+    ],
+  }
+  const tests: FileChange = {
+    ...rec,
+    path: 'src/rec.test.ts',
+    hunks: [{ ...rec.hunks[0]!, id: 't1', path: 'src/rec.test.ts' }],
+  }
+
+  it('a background layer listed whole holds what the review layers left, so nothing is shared', () => {
+    const outline = [
+      { files: [{ path: 'src/rec.ts', highlight: ['2'] }] },
+      { files: [{ path: 'src/rec.ts', highlight: ['8'] }] },
+      { kind: 'background' as const, files: ['src/rec.ts', 'src/rec.test.ts'] },
+    ]
+    expect(sharedByLayers(outline, [rec, tests])).toEqual([])
+    expect(uncoveredByLayers(outline, [rec, tests])).toEqual([])
+    const claims = rowClaims(outline, [rec, tests])
+    const bg = claims.filter((c) => c.layer === 2)
+    expect(bg.map((c) => [c.hunk.id, [...c.rows]])).toEqual([
+      ['r1', [3, 4]],
+      ['t1', [1, 3, 4, 7]],
+    ])
+  })
+
+  it('a background claim nothing is left of is dropped, not shared', () => {
+    const outline = [
+      { files: ['src/rec.ts'] },
+      { kind: 'background' as const, files: ['src/rec.ts'] },
+    ]
+    expect(sharedByLayers(outline, [rec])).toEqual([])
+    expect(rowClaims(outline, [rec]).filter((c) => c.layer === 1)).toEqual([])
+  })
+
+  it('two background layers over one line still collide', () => {
+    const outline = [
+      { kind: 'background' as const, files: ['src/rec.ts'] },
+      { kind: 'background' as const, files: [{ path: 'src/rec.ts', highlight: ['8'] }] },
+    ]
+    expect(sharedByLayers(outline, [rec])).toEqual([
+      { path: 'src/rec.ts', layers: [0, 1], lines: [{ from: 8, to: 8 }] },
+    ])
+  })
+})
+
+describe('parseLayersPost', () => {
+  const items = [{ title: 'A', files: ['a.ts'] }]
+
+  it('a bare list is the list; an object carries the preset it follows', () => {
+    expect(parseLayersPost(items)).toEqual({
+      ok: true,
+      post: { items },
+    })
+    expect(
+      parseLayersPost({ layers: items, preset: { id: 'importance', picked: true, why: 'big' } }),
+    ).toEqual({
+      ok: true,
+      post: { items, preset: { id: 'importance', picked: true, why: 'big' } },
+    })
+  })
+
+  it('the list is validated the same way, and a non-object is refused', () => {
+    expect(parseLayersPost({ layers: [{ title: 'A' }] })).toMatchObject({ ok: false })
+    expect(parseLayersPost('nope')).toMatchObject({ ok: false, error: /expected a list/ })
   })
 })

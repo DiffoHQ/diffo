@@ -762,3 +762,76 @@ describe('decisions', () => {
     expect(layer).not.toHaveProperty('decisions')
   })
 })
+
+describe('background layers', () => {
+  const spanned = (path: string, n: number, newStart: number, count: number): Hunk => ({
+    id: `${path}#${n}`,
+    path,
+    oldStart: newStart,
+    newStart,
+    lines: Array.from({ length: count }, (_, i) => ({
+      kind: 'add' as const,
+      oldNo: null,
+      newNo: newStart + i,
+      text: '',
+    })),
+  })
+  // src/rec.ts: hunks at 10-14 and 40-42; src/rec.test.ts: one hunk at 1-3.
+  const rec: FileChange = {
+    ...file('src/rec.ts'),
+    hunks: [spanned('src/rec.ts', 1, 10, 5), spanned('src/rec.ts', 2, 40, 3)],
+  }
+  const tests: FileChange = {
+    ...file('src/rec.test.ts'),
+    hunks: [spanned('src/rec.test.ts', 1, 1, 3)],
+  }
+  const outline = layers([
+    {
+      id: 'a',
+      title: 'Where data is saved',
+      files: [{ path: 'src/rec.ts', highlight: ['12-13'] }],
+    },
+    { id: 'b', title: 'Guards', files: [{ path: 'src/rec.ts', highlight: ['40-42'] }] },
+    { id: 'bg', title: 'Recorder implementation', kind: 'background', files: ['src/rec.ts'] },
+    { id: 'bt', title: 'Tests', kind: 'background', files: ['src/rec.test.ts'] },
+  ])
+  const [a, b, bg, bt, since] = resolveLayers(outline, [rec, tests])
+
+  it('holds the hunks the review layers left something of, with the leftover lines lit', () => {
+    expect(bg!.kind).toBe('background')
+    expect(bg!.files[0]!.hunks.map((h) => h.id)).toEqual(['src/rec.ts#1'])
+    expect(bg!.files[0]!.partial).toBe(true)
+    expect(bg!.files[0]!.highlight).toEqual([
+      { from: 10, to: 11 },
+      { from: 14, to: 14 },
+    ])
+    expect(a!.files[0]!.highlight).toEqual([{ from: 12, to: 13 }])
+    expect(b!.files[0]!.hunks.map((h) => h.id)).toEqual(['src/rec.ts#2'])
+  })
+
+  it('a file no review layer touched is whole and unlit; nothing lands in the derived layer', () => {
+    expect(bt!.files[0]!.hunks.map((h) => h.id)).toEqual(['src/rec.test.ts#1'])
+    expect(bt!.files[0]!.highlight).toBeUndefined()
+    expect(bt!.files[0]!.partial).toBe(false)
+    expect(since).toBeUndefined()
+  })
+
+  it('a file the review layers took whole drops out of the background layer', () => {
+    const [, whole] = resolveLayers(
+      layers([
+        { id: 'a', title: 'All of it', files: ['src/rec.ts'] },
+        { id: 'bg', title: 'Rest', kind: 'background', files: ['src/rec.ts', 'src/rec.test.ts'] },
+      ]),
+      [rec, tests],
+    )
+    expect(paths(whole!.files)).toEqual(['src/rec.test.ts'])
+    expect(whole!.missing).toEqual([])
+  })
+
+  it('reading a step reads its lines; the background entry’s marks are the rest', () => {
+    const mine = entryMarks(a!.files[0]!)
+    const rest = entryMarks(bg!.files[0]!)
+    expect(mine.some((m) => rest.includes(m))).toBe(false)
+    expect(mine.length + rest.length).toBe(5)
+  })
+})

@@ -62,7 +62,8 @@ import {
 } from './serverLifecycle.js'
 import { apiUrl, reviewUrl } from './serverUrl.js'
 import { postRegisterHint, refreshInstalledSkills, runSetup } from './setup.js'
-import { parseLayersInput, type UncoveredRef } from './shared/layers.js'
+import { parseLayersPost, type UncoveredRef } from './shared/layers.js'
+import { parsePresetPatch } from './shared/presets.js'
 import type { Layers, ReviewState } from './shared/review.js'
 import type { ChangesetSpec as CliSpec, PrInfo } from './shared/types.js'
 import { VERSION } from './version.js'
@@ -539,6 +540,19 @@ async function postJson(
   return { status: res.status, body: await res.json().catch(() => null) }
 }
 
+async function getJson(port: number, path: string): Promise<{ status: number; body: unknown }> {
+  let res: Response
+  try {
+    res = await fetch(apiUrl(port, path), {
+      headers: sessionHeaders(),
+      signal: AbortSignal.timeout(POST_TIMEOUT_MS),
+    })
+  } catch {
+    fail('lost connection to the diffo server; re-run the command')
+  }
+  return { status: res.status, body: await res.json().catch(() => null) }
+}
+
 if (command.kind === 'status') {
   const db = new DiffoDb()
   let record: ReturnType<DiffoDb['getServer']>
@@ -751,13 +765,15 @@ if (command.kind === 'layers') {
     const { status, body } = await postJson(port, '/api/review/layers', {
       suggest: true,
       ...(source.reason === null ? {} : { reason: source.reason }),
+      ...(source.preset === null ? {} : { preset: source.preset }),
     })
     if (status !== 200) fail(`layers failed (${status})`)
-    const { suggested } = body as { suggested: boolean }
+    const { suggested, note } = body as { suggested: boolean; note?: string }
     console.log(
       JSON.stringify({
         ok: true,
         suggested,
+        ...(note ? { note } : {}),
         next_step: suggested ? ACK_NEXT_STEP.layersSuggested : ACK_NEXT_STEP.layersAlready,
       }),
     )
@@ -770,20 +786,101 @@ if (command.kind === 'layers') {
   try {
     raw = JSON.parse(text)
   } catch (err) {
-    fail(`layers needs a JSON array of layers: ${(err as Error).message}`)
+    fail(`layers needs JSON — a list of layers, or { preset, layers }: ${(err as Error).message}`)
   }
-  const parsed = parseLayersInput(raw)
+  const parsed = parseLayersPost(raw)
   if (!parsed.ok) fail(`layers: ${parsed.error}`)
-  const { status, body } = await postJson(port, '/api/review/layers', { items: parsed.items })
+  const { items, preset } = parsed.post
+  const { status, body } = await postJson(port, '/api/review/layers', {
+    items,
+    ...(preset ? { preset } : {}),
+  })
   if (status === 400) fail(`layers: ${(body as { error?: string } | null)?.error ?? 'rejected'}`)
   if (status !== 200) fail(`layers failed (${status})`)
-  const { layers, uncovered = [] } = body as { layers: Layers; uncovered?: UncoveredRef[] }
+  const {
+    layers,
+    uncovered = [],
+    note,
+  } = body as { layers: Layers; uncovered?: UncoveredRef[]; note?: string }
   console.log(
     JSON.stringify({
       ok: true,
       layers: layers.items.length,
       ...(uncovered.length > 0 ? { uncovered } : {}),
+      ...(note ? { note } : {}),
       next_step: uncovered.length === 0 ? ACK_NEXT_STEP.layers : layersIncompleteStep(uncovered),
+    }),
+  )
+  process.exit(0)
+}
+
+if (command.kind === 'preset') {
+  const port = await requireServer()
+  const action = command.action
+  if (action.kind === 'list') {
+    const { status, body } = await getJson(port, '/api/presets')
+    if (status !== 200) fail(`preset list failed (${status})`)
+    const { presets, default: def } = body as { presets: unknown[]; default: string }
+    console.log(JSON.stringify({ ok: true, default: def, presets }))
+    process.exit(0)
+  }
+  if (action.kind === 'show') {
+    const { status, body } = await getJson(port, '/api/presets')
+    if (status !== 200) fail(`preset show failed (${status})`)
+    const preset = (body as { presets: Array<{ id: string }> }).presets.find(
+      (p) => p.id === action.id,
+    )
+    if (!preset) fail(`no preset with id '${action.id}'`)
+    const thread = await getJson(port, `/api/presets/${encodeURIComponent(action.id)}/thread`)
+    console.log(
+      JSON.stringify({ ok: true, preset, thread: (thread.body as { thread: unknown }).thread }),
+    )
+    process.exit(0)
+  }
+  if (action.kind === 'reply') {
+    if (action.message === null && process.stdin.isTTY) {
+      fail('preset reply needs a message: pass --message "<text>" or pipe it on stdin')
+    }
+    const message = (action.message ?? (await readStdin())).trim()
+    if (!message) fail('preset reply needs a message: pass --message "<text>" or pipe it on stdin')
+    const { status, body } = await postJson(
+      port,
+      `/api/presets/${encodeURIComponent(action.id)}/messages`,
+      { author: 'agent', text: message },
+    )
+    if (status === 400)
+      fail(`preset reply refused: ${(body as { error?: string } | null)?.error ?? 'bad request'}`)
+    if (status !== 200) fail(`preset reply failed (${status})`)
+    console.log(
+      JSON.stringify({ ok: true, presetId: action.id, next_step: ACK_NEXT_STEP.presetReply }),
+    )
+    process.exit(0)
+  }
+  const text = action.source.kind === 'json' ? action.source.text : await readStdin()
+  let raw: unknown
+  try {
+    raw = JSON.parse(text)
+  } catch (err) {
+    fail(
+      `preset update needs JSON — { name?, blurb?, whenToUse?, instructions? }: ${(err as Error).message}`,
+    )
+  }
+  // Checked here first so a bad field is refused with its name.
+  const patch = parsePresetPatch(raw)
+  if (!patch.ok) fail(`preset update: ${patch.error}`)
+  const { status, body } = await postJson(port, `/api/presets/${encodeURIComponent(action.id)}`, {
+    fields: patch.patch,
+    ...(action.message ? { message: action.message } : {}),
+  })
+  if (status === 400)
+    fail(`preset update refused: ${(body as { error?: string } | null)?.error ?? 'bad request'}`)
+  if (status !== 200) fail(`preset update failed (${status})`)
+  const { preset } = body as { preset: { id: string; name: string } }
+  console.log(
+    JSON.stringify({
+      ok: true,
+      preset: { id: preset.id, name: preset.name },
+      next_step: ACK_NEXT_STEP.presetUpdate,
     }),
   )
   process.exit(0)
@@ -815,6 +912,19 @@ if (!process.env.DIFFO_DAEMON) {
 }
 
 /** Agents read piped stdout; a human's terminal never shows these lines. */
+/** The presets the reviewer has on, for the open's layers nudge. Empty when
+ * the server cannot say: the nudge then goes without them. */
+async function activePresetList(port: number): Promise<Array<{ id: string; blurb: string }>> {
+  try {
+    const { status, body } = await getJson(port, '/api/presets')
+    if (status !== 200) return []
+    const { presets } = body as { presets?: Array<{ id: string; blurb: string; on: boolean }> }
+    return (presets ?? []).filter((p) => p.on).map((p) => ({ id: p.id, blurb: p.blurb }))
+  } catch {
+    return []
+  }
+}
+
 async function printAgentNextStep(port: number, pr?: PrInfo): Promise<void> {
   if (process.stdout.isTTY) return
   // A courtesy that must not block the open: if the review can't be read, the
@@ -836,7 +946,11 @@ async function printAgentNextStep(port: number, pr?: PrInfo): Promise<void> {
   )
   const nudge = review ? guideNudge(findGuideThread(review) !== undefined, D) : null
   if (nudge) console.log(`then: ${nudge}`)
-  const layers = review ? layersNudge(review, D) : null
+  // The presets that are on ride the nudge, so the flag can name the one
+  // that fits without another command.
+  const presets =
+    review && !review.layers && !review.layersSuggested ? await activePresetList(port) : []
+  const layers = review ? layersNudge(review, D, presets) : null
   if (layers) console.log(`also: ${layers}`)
 }
 

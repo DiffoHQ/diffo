@@ -28,7 +28,7 @@ the machine's is not.
 ### The diff is in alphabetical order. Can it show me the right order to read it in?
 
 Yes, if the agent posts one. Ask for **layers** from the Layers tab and the agent that
-wrote the change outlines it as ordered steps, each with a title, a summary, and its files;
+wrote the change splits it into ordered layers, each with a title, a summary, and its files;
 you read one layer at a time. Layers come from the agent only: Diffo never guesses a plan
 from paths, and with none posted the review is the flat file list. Details in
 [Layers](guide/layers.md); the agent's side is in
@@ -79,7 +79,7 @@ it to `diffo` in one go, or a pipe from a file the session never visibly wrote (
 reason it prints is *External System Writes*). Nothing about `localhost` changes that
 verdict. The CLI's own instructions now say to write the file in one command and post
 it in the next, which the classifier accepts, and inline `--json` was never affected.
-If the post is still refused, the Layers tab stops saying *Outlining…* after three
+If the post is still refused, the Layers tab stops saying *Layering…* after three
 minutes and offers the ask again. To take the classifier out of the loop for Diffo
 altogether, allow its commands in your Claude Code settings:
 

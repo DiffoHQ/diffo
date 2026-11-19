@@ -6942,12 +6942,14 @@ i.q-now {
   color: var(--ink);
 }
 
+/* One voice under the title: what the tab does, in the size and ink of
+   everything else here. The only smaller text is the line under the picker. */
 .ch-empty-sub,
 .ch-empty-note {
-  margin: 0;
-  font-size: var(--t-125);
-  line-height: 1.45;
-  color: var(--ink-3);
+  margin: var(--s-1) 0 0;
+  font-size: var(--t-13);
+  line-height: 1.5;
+  color: var(--ink-2);
   overflow-wrap: anywhere;
 }
 
@@ -6971,6 +6973,236 @@ i.q-now {
 
 .ch-empty-note + .ch-empty-cta.btn {
   margin-top: var(--s-3);
+}
+
+/* "Layer by": what the layers will be for, picked before the ask. */
+/* What a layers ask says (LayersAsk.tsx): what to layer by, and a note for
+   this change. One block, in the empty state and in the "Layer again" sheet. */
+.la-fields {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-4);
+  min-width: 0;
+}
+
+.ch-empty .la-fields {
+  margin-top: var(--s-5);
+}
+
+.la-by,
+.la-note {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-1);
+  min-width: 0;
+}
+
+.la-note-input {
+  width: 100%;
+  min-height: 68px;
+  margin: 0;
+  padding: var(--s-2) var(--s-3);
+  border: 1px solid var(--hair);
+  border-radius: var(--r-sm);
+  background: var(--paper);
+  font: inherit;
+  font-size: var(--t-13);
+  line-height: 1.5;
+  color: var(--ink);
+  resize: vertical;
+  transition: border-color var(--dur) var(--ease-out);
+}
+
+.la-note-input::placeholder {
+  color: var(--ink-3);
+  opacity: 0.7;
+}
+
+.la-note-input:hover {
+  border-color: var(--acc-line);
+}
+
+.la-note-input:focus-visible {
+  outline: 2px solid var(--acc);
+  outline-offset: 1px;
+}
+
+/* Under the picker, one quiet size: what the pick gives, and the agent's
+   suggestion, its reason when the picker is on it, a line to take when the
+   reviewer's own default is. */
+.la-desc,
+.la-suggest {
+  margin: var(--s-1) 0 0;
+  font-size: var(--t-12);
+  line-height: 1.45;
+  color: var(--ink-3);
+  text-align: left;
+}
+
+/* "Layer by Importance": the label inside the control, as in the rail's head
+   once there are layers. */
+.la-pick-by {
+  flex: none;
+  color: var(--ink-3);
+}
+
+.la-pick-by + .la-pick-name {
+  flex: 1;
+  text-align: left;
+}
+
+.la-hint {
+  margin: 0;
+  font-size: var(--t-11);
+  color: var(--ink-3);
+}
+
+.la-link {
+  align-self: flex-start;
+  padding: 0;
+  border: 0;
+  background: none;
+  font: inherit;
+  font-size: var(--t-12);
+  color: var(--ink-3);
+  text-decoration: underline;
+  text-decoration-color: var(--hair);
+  text-underline-offset: 3px;
+  cursor: pointer;
+}
+
+/* The empty state's way to a note on top of the preset: plain, like the line
+   above it, until it is pointed at. */
+.la-add-note {
+  align-self: center;
+  margin-top: var(--s-3);
+  color: var(--ink-3);
+  text-decoration: none;
+}
+
+.la-add-note::before {
+  content: "+ ";
+}
+
+.la-link:hover {
+  color: var(--ink);
+  text-decoration-color: var(--ink-3);
+}
+
+/* The picker's list drops over the sheet's foot and past its edge, like any
+   menu: the sheet is too short to hold it. The foot keeps the round corners
+   the clip was giving it. */
+.modal.la-sheet,
+.la-sheet .modal-body {
+  overflow: visible;
+}
+
+.la-sheet .modal-foot {
+  border-radius: 0 0 var(--r-lg) var(--r-lg);
+}
+
+.la-by-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--s-3);
+}
+
+.la-by-head .la-link {
+  font-size: var(--t-11);
+}
+
+/* The note these layers carry, under the rail's head: the reviewer's words,
+   two lines at most, the whole of it on hover. */
+.lr-about-note {
+  margin: 0;
+  color: var(--ink-2);
+  overflow-wrap: anywhere;
+}
+
+.lr-note-cap {
+  color: var(--ink-3);
+}
+
+.la-cap {
+  font-size: var(--t-11);
+  color: var(--ink-3);
+}
+
+.la-by .menu {
+  display: flex;
+}
+
+.la-pick {
+  display: flex;
+  flex: 1;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--s-3);
+  min-width: 0;
+  height: 30px;
+  padding: 0 var(--s-3) 0 var(--s-4);
+  border: 1px solid var(--hair);
+  border-radius: var(--r-sm);
+  background: var(--paper);
+  font: inherit;
+  font-size: var(--t-13);
+  color: var(--ink);
+  cursor: pointer;
+  transition:
+    background var(--dur) var(--ease-out),
+    border-color var(--dur) var(--ease-out);
+}
+
+.la-pick:hover,
+.la-pick[aria-expanded="true"] {
+  background: var(--fill);
+  border-color: var(--acc-line);
+}
+
+.la-pick:focus-visible {
+  outline: 2px solid var(--acc);
+  outline-offset: 1px;
+}
+
+.la-pick-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.la-pick-chev {
+  flex: none;
+  color: var(--ink-3);
+}
+
+.la-by .menu-panel {
+  min-width: 0;
+  width: 100%;
+}
+
+.la-fields + .ch-empty-cta.btn {
+  margin-top: var(--s-3);
+}
+
+.ch-empty-link {
+  align-self: flex-start;
+  margin-top: var(--s-4);
+  padding: 0;
+  border: 0;
+  background: none;
+  font: inherit;
+  font-size: var(--t-12);
+  color: var(--ink-3);
+  text-decoration: underline;
+  text-decoration-color: var(--hair);
+  text-underline-offset: 3px;
+  cursor: pointer;
+}
+
+.ch-empty-link:hover {
+  color: var(--ink);
 }
 
 @container (max-width: 232px) {
@@ -7027,11 +7259,6 @@ i.q-now {
   50% {
     opacity: 1;
   }
-}
-
-/* Row 0: the guide, folded into the outline. Not markable — it is not code. */
-.row-layer-overview .row-box {
-  visibility: hidden;
 }
 
 /* Per-file note: why this file is in this step. One line, truncates — and it is
@@ -9465,4 +9692,919 @@ span.elsewhere-go {
   font-size: 10px;
   font-weight: 600;
   white-space: nowrap;
+}
+
+/* ---------- The Layers tab: head, groups, rows ----------
+   One row at the head — the preset these layers follow, as a menu, and a
+   "more" for everything else done to the outline. Under it a hair of
+   progress. The list is one row style; groups are quiet labels, not bands.
+   The reviewing pane's layer card owns `.ch-head`, so this is `lr-`. */
+/* The rail's header: the title's weight and one hairline set it off from
+   the list. No band: in the rail a fill means "this is open", nothing else. */
+.lr-head {
+  display: flex;
+  flex: none;
+  flex-direction: column;
+  min-width: 0;
+  padding: var(--s-2) var(--s-3);
+  border-bottom: 1px solid var(--hair);
+}
+
+.lr-head-row {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  min-width: 0;
+}
+
+/* The title takes the row; the "more" and the fold keep to its end. */
+.lr-head-row > .lr-preset,
+.lr-head-row > .lr-title-plain {
+  flex: 1;
+  min-width: 0;
+}
+
+.lr-head-chev {
+  display: grid;
+  flex: none;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  /* In line with the chevrons of the layers below. */
+  margin-right: 6px;
+  padding: 0;
+  border: 0;
+  border-radius: var(--r-sm);
+  background: none;
+  color: var(--ink-3);
+  cursor: pointer;
+}
+
+.lr-head-chev:hover {
+  background: var(--fill);
+  color: var(--ink);
+}
+
+/* The preset, as the trigger of its menu: reads as a title, acts as a picker. */
+.lr-preset {
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+  max-width: 100%;
+  height: 28px;
+  /* Tight on the right: three buttons share the row, and a preset's name
+     should not be the one to give way at the rail's narrowest. */
+  padding: 0 var(--s-1) 0 var(--s-3);
+  border: 0;
+  border-radius: var(--r-sm);
+  background: none;
+  font: inherit;
+  font-size: var(--t-13);
+  color: var(--ink-3);
+  text-align: left;
+  cursor: pointer;
+  transition: background var(--dur) var(--ease-out);
+}
+
+.lr-preset:hover,
+.lr-preset[aria-expanded="true"] {
+  background: var(--fill);
+}
+
+.lr-preset:focus-visible {
+  outline: 2px solid var(--acc);
+  outline-offset: -2px;
+}
+
+.lr-title-by {
+  flex: none;
+  color: var(--ink-3);
+}
+
+.lr-title {
+  min-width: 0;
+  font-weight: 600;
+  color: var(--ink);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.lr-title-plain {
+  padding: 0 var(--s-3);
+  line-height: 28px;
+}
+
+.lr-preset-chev {
+  flex: none;
+  opacity: 0.8;
+}
+
+.lr-more {
+  flex: none;
+  color: var(--ink-3);
+}
+
+/* The Overview's button, lit while the pane is on it. */
+.lr-ov[aria-current="true"] {
+  background: var(--fill);
+  color: var(--ink);
+}
+
+/* The menus hang inside the rail, which clips: they take its width, not their own. */
+.lr-head .menu-panel {
+  min-width: 0;
+  width: max-content;
+  max-width: calc(var(--rail-w, 264px) - 2 * var(--s-3));
+}
+
+.lr-head .menu-item:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+.lr-about {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-1);
+  padding: var(--s-2) var(--s-3) var(--s-2);
+  font-size: var(--t-12);
+  line-height: 1.5;
+}
+
+.lr-about p {
+  margin: 0;
+}
+
+.lr-about-blurb {
+  color: var(--ink-2);
+}
+
+.lr-about-by {
+  color: var(--ink-3);
+}
+
+.lr-status {
+  padding: var(--s-1) var(--s-3) var(--s-2);
+  font-size: var(--t-12);
+  color: var(--attn);
+}
+
+/* A sentence that is a button: the one inline action a label may carry. */
+.lr-link {
+  padding: 0;
+  border: 0;
+  background: none;
+  font: inherit;
+  font-size: var(--t-11);
+  color: var(--ink-2);
+  text-decoration: underline;
+  text-decoration-color: var(--hair);
+  text-underline-offset: 3px;
+  cursor: pointer;
+}
+
+.lr-link:hover {
+  color: var(--ink);
+  text-decoration-color: currentcolor;
+}
+
+.lr-status .lr-link {
+  margin-left: var(--s-2);
+}
+
+/* Under the last layer: the way to different layers. Two short lines, the
+   question and the link that answers it. */
+.lr-cta {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  margin-top: var(--s-3);
+  padding: var(--s-3) var(--s-3) var(--s-4) var(--s-5);
+  border-top: 1px solid var(--hair);
+  font-size: var(--t-12);
+  color: var(--ink-3);
+}
+
+.lr-cta .lr-link {
+  font-size: var(--t-12);
+}
+
+/* How far through the key changes: a hair under the head. */
+.lr-prog {
+  height: 2px;
+  margin: var(--s-2) var(--s-3) 0;
+  border-radius: 1px;
+  background: var(--hair);
+  overflow: hidden;
+}
+
+.lr-prog i {
+  display: block;
+  height: 100%;
+  border-radius: 1px;
+  background: var(--ink-3);
+  transition: width var(--dur) var(--ease-out);
+}
+
+.lr-head + .rail-scroll {
+  padding-top: var(--s-2);
+}
+
+/* Group labels: chevron, name, how many, and the lines as every row counts
+   them. Quiet text with air above — the label is the divider. */
+.lr-sec {
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+  width: 100%;
+  margin-top: var(--s-4);
+  /* The label starts where the layers' marks do, and the fold ends where
+     their chevrons do. */
+  padding: var(--s-2) 18px var(--s-1) var(--s-5);
+  border: 0;
+  background: none;
+  font: inherit;
+  font-size: var(--t-11);
+  color: var(--ink-3);
+  text-align: left;
+  cursor: pointer;
+}
+
+.lr-sec:hover {
+  color: var(--ink);
+}
+
+.lr-sec > svg {
+  flex: none;
+  opacity: 0.7;
+}
+
+/* The rail's one label style, the dialog's too: small capitals. */
+.lr-sec-name {
+  font-weight: 500;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+}
+
+.lr-sec-n {
+  font-variant-numeric: tabular-nums;
+}
+
+.lr-sec-stat {
+  margin-left: auto;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.lr-sec-since {
+  padding-left: var(--s-5);
+  cursor: default;
+}
+
+.lr-sec-since .lr-sec-name {
+  color: var(--attn);
+}
+
+.lr-sec-since:hover {
+  color: var(--ink-3);
+}
+
+.lr-sec-act {
+  margin-left: auto;
+}
+
+.lr-bg .ch-layer .row-layer .row-base {
+  color: var(--ink-2);
+}
+
+/* A layer's title is what the outline is read by: it wraps to a second line
+   before it is cut, so "What a layers post and a ba…" says what it is. */
+.ch-layer .row-layer .row-name {
+  white-space: normal;
+}
+
+.ch-layer .row-layer .row-base {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  overflow: hidden;
+}
+
+/* Under its own label, the trailing row reads as a row, not as a second label. */
+.rail-scroll .row-layer-since .row-base {
+  color: var(--ink);
+}
+
+/* ---------- Settings → Layers: the presets dialog ----------
+   A sidebar of grouped rows picks a preset; the detail is sectioned under
+   small captions: the fields, edited in place, and the conversation with
+   the agent. Grouped boxes with hairlines between rows, the way a settings
+   pane reads; the one strong colour is the selected row. */
+.lp-modal {
+  width: min(800px, 100%);
+}
+
+/* The dialog's one line sits right under its title, as its subtitle. */
+.lp-modal .modal-head {
+  padding-bottom: var(--s-1);
+}
+
+.lp-intro {
+  margin-bottom: var(--s-3);
+}
+
+/* The modal body is a column that scrolls: its children keep their height,
+   or a long detail would shrink under the bar at the foot. */
+.lp-intro,
+.lp-grid,
+.lp-bar {
+  flex: none;
+}
+
+.lp-grid {
+  display: grid;
+  grid-template-columns: 224px minmax(0, 1fr);
+  gap: var(--s-7);
+}
+
+.lp-side {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-2);
+  min-width: 0;
+}
+
+.lp-cap {
+  padding: var(--s-4) var(--s-3) 0;
+  font-size: var(--t-11);
+  color: var(--ink-3);
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+}
+
+/* A grouped box: rows under hairlines, rounded as one. */
+.lp-group {
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--hair);
+  border-radius: var(--s-3);
+  background: var(--paper);
+  overflow: hidden;
+}
+
+.lp-group > * + * {
+  border-top: 1px solid var(--hair);
+}
+
+/* A card: a click shows it. The card in view is tinted, with a bar down its
+   left edge; the default wears a badge. */
+.lp-row {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+  width: 100%;
+  padding: var(--s-3) var(--s-4);
+  border: 0;
+  background: none;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.lp-row:hover:not(:disabled) {
+  background: var(--fill);
+}
+
+.lp-row[aria-current="true"] {
+  background: var(--acc-wash);
+}
+
+.lp-row[aria-current="true"]::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 3px;
+  background: var(--acc);
+}
+
+.lp-row[aria-current="true"] .lp-row-name {
+  font-weight: 600;
+}
+
+.lp-row:focus-visible {
+  outline: 2px solid var(--acc);
+  outline-offset: -2px;
+}
+
+.lp-row-new {
+  flex-direction: row;
+  align-items: center;
+  gap: var(--s-3);
+  color: var(--ink-2);
+}
+
+.lp-row-new:disabled {
+  cursor: default;
+  opacity: 0.5;
+}
+
+.lp-row-new > svg {
+  flex: none;
+  width: 14px;
+  opacity: 0.7;
+}
+
+.lp-row-name {
+  font-weight: 600;
+}
+
+.lp-radio {
+  flex: none;
+  width: 14px;
+  height: 14px;
+  margin: 0;
+  accent-color: var(--acc);
+  cursor: pointer;
+}
+
+.lp-radio:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+
+.lp-pick {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  flex: 1;
+  min-width: 0;
+  padding: var(--s-3) 0;
+  border: 0;
+  background: none;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.lp-pick:focus-visible,
+.lp-row-new:focus-visible {
+  outline: 2px solid var(--acc);
+  outline-offset: -2px;
+}
+
+.lp-row-new {
+  padding: var(--s-3) var(--s-4);
+  color: var(--ink-2);
+  cursor: pointer;
+}
+
+.lp-row-new:disabled {
+  cursor: default;
+  opacity: 0.5;
+}
+
+.lp-row-new > svg {
+  flex: none;
+  width: 14px;
+  opacity: 0.7;
+}
+
+.lp-row-name {
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+  min-width: 0;
+  font-size: var(--t-13);
+  color: var(--ink);
+}
+
+.lp-row-sub {
+  font-size: var(--t-11);
+  color: var(--ink-3);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.lp-row-off .lp-row-name,
+.lp-row-off .lp-row-sub {
+  color: var(--ink-3);
+}
+
+.lp-tag,
+.lp-row-state {
+  flex: none;
+  padding: 0 6px;
+  border-radius: var(--r-pill);
+  font-size: 10px;
+  font-weight: 500;
+  letter-spacing: 0.02em;
+}
+
+.lp-tag {
+  background: var(--acc-wash);
+  color: var(--acc);
+}
+
+.lp-row-state {
+  background: var(--fill);
+  color: var(--ink-3);
+}
+
+/* The detail: a heading, the actions, then sections under captions. */
+.lp-detail {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-5);
+  min-width: 0;
+}
+
+.lp-dhead {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+}
+
+.lp-dhead-row {
+  display: flex;
+  align-items: center;
+  gap: var(--s-3);
+  min-width: 0;
+}
+
+.lp-dhead-row .lp-title {
+  flex: 0 1 auto;
+}
+
+/* What the preset is right now, beside its name: built in, default,
+   disabled. What can be done to it is behind the "more" at the far end. */
+.lp-dhead-tags {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: var(--s-1);
+}
+
+.lp-dhead-tags .lp-tag,
+.lp-dhead-tags .lp-row-state {
+  padding: 1px 7px;
+}
+
+/* The controls are taller than the title: they overhang the row, so the
+   preset's line stays close under its name. */
+.lp-dhead-acts {
+  display: flex;
+  flex: none;
+  margin-block: -4px;
+  margin-left: auto;
+  align-items: center;
+  gap: var(--s-2);
+}
+
+.lp-tag-lg {
+  padding: 2px var(--s-3);
+  font-size: var(--t-11);
+}
+
+.lp-title {
+  margin: 0;
+  font-size: var(--t-15);
+  font-weight: 600;
+  color: var(--ink);
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.lp-dsub {
+  margin: 0;
+  font-size: var(--t-13);
+  line-height: 1.5;
+  color: var(--ink-2);
+}
+
+/* One card for a preset: what it says on top, and under it, in a band, the
+   conversation that changes it, the way a comment sits under the lines it is
+   about. */
+.lp-card {
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--hair);
+  border-radius: var(--r);
+  background: var(--paper);
+  overflow: hidden;
+}
+
+.lp-facts {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-4);
+  margin: 0;
+  padding: var(--s-4) var(--s-5);
+}
+
+.lp-fact {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-1);
+}
+
+.lp-fact-cap {
+  margin: 0;
+  font-size: var(--t-11);
+  font-weight: 500;
+  color: var(--ink-3);
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+}
+
+.lp-fact-body {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--s-1);
+  margin: 0;
+}
+
+.lp-fact-body .lp-fro {
+  margin: 0;
+}
+
+/* Long instructions open on their first lines. */
+.lp-clamp {
+  display: -webkit-box;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+}
+
+/* A sentence that is a button, under what it opens. */
+.lp-more {
+  align-self: flex-start;
+  padding: 0;
+  border: 0;
+  background: none;
+  font: inherit;
+  font-size: var(--t-12);
+  color: var(--ink-2);
+  text-decoration: underline;
+  text-decoration-color: var(--hair);
+  text-underline-offset: 3px;
+  cursor: pointer;
+}
+
+.lp-more:hover {
+  color: var(--ink);
+  text-decoration-color: currentcolor;
+}
+
+.lp-more:focus-visible {
+  outline: 2px solid var(--acc);
+  outline-offset: 2px;
+}
+
+/* What the agent picks from: a name, and when it is the pick. */
+.lp-picks {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-3);
+  margin: 0;
+}
+
+.lp-pick-row {
+  display: grid;
+  grid-template-columns: 112px minmax(0, 1fr);
+  gap: var(--s-3);
+}
+
+.lp-pick-name {
+  font-size: var(--t-13);
+  font-weight: 600;
+  color: var(--ink);
+}
+
+.lp-pick-when {
+  margin: 0;
+  font-size: var(--t-13);
+  line-height: 1.5;
+  color: var(--ink-2);
+}
+
+/* A preset nobody has written yet: one line where its text will be. */
+.lp-empty-note {
+  margin: 0;
+  padding: var(--s-4) var(--s-5);
+  font-size: var(--t-13);
+  line-height: 1.5;
+  color: var(--ink-3);
+}
+
+.lp-card-thread {
+  padding: var(--s-4);
+  border-top: 1px solid var(--hair);
+  background: var(--hair-2);
+}
+
+/* A new preset nobody has written yet: the conversation alone, no card. */
+.lp-card-bare {
+  border: 0;
+  border-radius: 0;
+  background: none;
+  overflow: visible;
+}
+
+.lp-card-bare .lp-card-thread {
+  padding: 0;
+  border: 0;
+  background: none;
+}
+
+/* The form inside the card: the card is the frame. */
+.lp-card .lp-fields {
+  border: 0;
+  border-radius: 0;
+}
+
+.lp-card .lp-savebar {
+  padding: var(--s-3) var(--s-4);
+  border-top: 1px solid var(--hair);
+}
+
+/* A section's caption with one quiet action at its right. */
+.lp-sec-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--s-3);
+}
+
+.lp-sec-act {
+  padding: 0;
+  border: 0;
+  background: none;
+  font: inherit;
+  font-size: var(--t-12);
+  color: var(--ink-3);
+  cursor: pointer;
+}
+
+.lp-sec-act:hover {
+  color: var(--ink);
+  text-decoration: underline;
+}
+
+.lp-sec-cap {
+  margin: 0;
+  font-size: var(--t-11);
+  font-weight: 500;
+  color: var(--ink-3);
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+}
+
+/* The fields: label on the left, the value or control on the right, one
+   row each. The controls are bare, the row is the frame. */
+.lp-frow {
+  display: grid;
+  grid-template-columns: 96px minmax(0, 1fr);
+  gap: var(--s-3);
+  align-items: start;
+  padding: var(--s-3) var(--s-4);
+}
+
+.lp-flabel {
+  padding-top: 2px;
+  font-size: var(--t-12);
+  color: var(--ink-3);
+}
+
+.lp-fro {
+  font-size: var(--t-13);
+  line-height: 1.5;
+  color: var(--ink-2);
+  white-space: pre-wrap;
+}
+
+.lp-fin {
+  width: 100%;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: none;
+  font: inherit;
+  font-size: var(--t-13);
+  line-height: 1.5;
+  color: var(--ink);
+  outline: none;
+}
+
+.lp-fin::placeholder {
+  color: var(--ink-4, var(--ink-3));
+  opacity: 0.8;
+}
+
+.lp-farea {
+  resize: vertical;
+  min-height: 2.5em;
+}
+
+.lp-farea-tall {
+  min-height: 6em;
+}
+
+.lp-frow:focus-within {
+  background: var(--fill);
+}
+
+.lp-savebar {
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+}
+
+/* The conversation is the review's own thread card; only the change line
+   under an agent's edit is the dialog's. */
+.lp-conv {
+  max-width: none;
+}
+
+/* The first message's box is the review's own composer, at the detail's
+   width. */
+.cbox.lp-cbox {
+  max-width: none;
+  margin: 0;
+}
+
+.lp-conv-head {
+  justify-content: space-between;
+  padding-left: var(--s-4);
+}
+
+.lp-change {
+  display: inline-block;
+  margin: var(--s-1) 0 0;
+  padding: 2px var(--s-3);
+  border-radius: var(--r-pill);
+  background: var(--fill);
+  font-size: var(--t-11);
+  color: var(--ink-3);
+}
+
+.lp-change-undo {
+  padding: 0;
+  border: 0;
+  background: none;
+  font: inherit;
+  color: var(--ink);
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+/* With a review open: the one action that touches it, at the dialog's foot. */
+.lp-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--s-4);
+  margin-top: var(--s-5);
+  padding-top: var(--s-4);
+  border-top: 1px solid var(--hair);
+}
+
+/* The action keeps to the right with or without the line beside it. */
+.lp-bar .btn {
+  margin-left: auto;
+}
+
+.lp-bar-text {
+  font-size: var(--t-12);
+  color: var(--ink-3);
+}
+
+.lp-bar-text b {
+  font-weight: 600;
+  color: var(--ink-2);
+}
+
+.lp-area {
+  min-height: 7em;
+  line-height: 1.5;
+  font-size: var(--t-13);
+}
+
+.lp-area-short {
+  min-height: 3em;
+}
+
+@media (max-width: 640px) {
+  .lp-grid {
+    grid-template-columns: 1fr;
+  }
 }

@@ -35,7 +35,7 @@ agent's behalf. Three things follow from it.
 | --- | --- | --- |
 | 1. Open | `diffo --no-open` | Starts the review and prints the URL. `--no-open` because an agent should never throw a browser window at someone; it hands over the URL instead, immediately, before anything else |
 | 2. Guide | `diffo comment -m "…"` | One comment on the whole changeset (a map of the change, not a reading order), only when the changeset needs it, written while the reviewer is opening the page. See [the guide comment](#the-guide-comment) |
-| 2b. Layers | `diffo layers --suggest "…"` | Optional: a flag that this read benefits from an ordered outline. The outline itself is posted only when the reviewer asks. See [layers](#layers) |
+| 2b. Layers | `diffo layers --suggest "…"` | Optional: a flag that this read benefits from layers. The layers themselves are posted only when the reviewer asks. See [layers](#layers) |
 | 3. Attach | `diffo poll --title "…"` | Blocks until the reviewer acts, then prints one payload. The title becomes the reviewer's browser tab name; see [the tab title](#the-tab-title) |
 | 4. Act | (edits, and `diffo reply`) | Work the threads the payload named, and answer each one |
 | 5. Re-attach | `diffo poll` | Also a statement: see [re-polling closes the batch](#re-polling-closes-the-batch) |
@@ -89,7 +89,7 @@ A `feedback` payload:
 {
   "status": "feedback",
   "kind": "threads",           // "threads" = individual sends · "finish" = the reviewer is done reading
-                               // "layers" = the reviewer asked for the outline · "cleared" = they started over
+                               // "layers" = the reviewer asked for layers · "cleared" = they started over
   "threadIds": ["4f1c9a2e-…"], // reply to each of these
   "prompt": "…",               // the authoritative instruction (see below)
   "next_step": "…"             // what to do once they are all handled
@@ -108,8 +108,8 @@ closing note leads that batch as its own thread on the whole changeset, with an 
 to reply to. It re-ships every thread that was sent, including ones already
 answered, and the prompt tells the agent not to answer those twice.
 
-A `kind: "layers"` payload is the reviewer pressing **Ask the agent for steps**,
-or *re-outline* over an outline that has gone stale. It carries no threads and owes no
+A `kind: "layers"` payload is the reviewer pressing **Ask the agent for layers**,
+or **Layer again** over layers that have gone stale. It carries no threads and owes no
 reply: the prompt restates the whole [layers](#layers) doctrine and asks for one
 `diffo layers --json` post, which is what concludes it. A `kind: "cleared"`
 payload is the reviewer starting the review over; it owes nothing but a fresh
@@ -202,26 +202,38 @@ Two commands, one doctrine:
 
 | | |
 | --- | --- |
-| **Suggest** | `diffo layers --suggest "<why, in one line>"`, at open, next to the guide. It flags that this read benefits from layers, without writing them. The review shows the offer to the reviewer; the reason is quoted next to it |
-| **Post** | `diffo layers --json '<Layer[]>'`, or the same JSON piped to `diffo layers --stdin`. Posted only when the reviewer asks, because writing an outline is the heavy step and most changesets never need one. When the JSON is too long to inline, write it to a file in one command and pipe that file in the next, never both in one: a harness that screens each command on its own (Claude Code's auto mode, for one) refuses a post it cannot trace back to the session, such as a pipe from a file the session never visibly wrote |
-| **The ask** | The reviewer's click arrives through the poll as a `kind: "layers"` payload, with the doctrine restated and no threads to answer. The Layers tab reads *Outlining…* and the presence chip *outlining layers* until the post lands; a re-poll without a post lets the request lapse and gives the reviewer their button back. An outline owed for three minutes with neither reads as **stalled**: the tab says the post never came and why it might not have, and offers the ask again, which withdraws the old one |
-| **Re-outline** | The same ask over an existing outline, from the line at the foot of the Layers tab. The payload names the layers they have and asks for the whole list again, which is how *Since your review* gets absorbed. Ids survive for titles that match, so the reviewer's place holds. There is no "remove": an outline is replaced, or cleared with the review |
+| **Suggest** | `diffo layers --suggest "<why, in one line>"`, at open, next to the guide. It flags that this read benefits from layers, without writing them. The review shows the offer to the reviewer; the reason is quoted next to it. Add `--preset <id>` when one of the reviewer's presets fits the change (the open's output lists the ones that are on): the Layers tab then opens on it, with your reason, unless the reviewer has a default of their own. A preset that is not on is dropped, and the ack's `note` says so |
+| **Post** | `diffo layers --json '<post>'`, or the same JSON piped to `diffo layers --stdin`. A post is `{ "preset", "layers": Layer[] }`, or a bare `Layer[]` for layers that follow no preset. Posted only when the reviewer asks, because writing layers is the heavy step and most changesets never need them. When the JSON is too long to inline, write it to a file in one command and pipe that file in the next, never both in one: a harness that screens each command on its own (Claude Code's auto mode, for one) refuses a post it cannot trace back to the session, such as a pipe from a file the session never visibly wrote |
+| **The ask** | The reviewer's click arrives through the poll as a `kind: "layers"` payload, with the doctrine restated and no threads to answer. The Layers tab reads *Layering…* and the presence chip *layering the change* until the post lands; a re-poll without a post lets the request lapse and gives the reviewer their button back. Layers owed for three minutes with neither read as **stalled**: the tab says the post never came and why it might not have, and offers the ask again, which withdraws the old one |
+| **Preset** | What the layers are for, chosen before you write them (see [What the layers are for](/guide/layers#what-the-layers-are-for)). The ask names it: the reviewer picked a preset, and the payload carries its instructions, which decide what goes in the layers, in what order, and what goes to background; or the pick was left to you, and the payload lists the presets that are on, each with its *use it when* and instructions — choose by the change, follow it, and post `"preset": { "id": "<its id>", "picked": true, "why": "<one line>" }` so the reviewer sees the pick and the reason |
+| **Note** | The reviewer's words for this change only, sent with the ask. On top of a preset the payload quotes it after the preset's instructions: follow both, and the note where they disagree. With no preset (*One-time instructions*) the note is the whole ask, and the post carries no `preset`. The note is never part of the post: the server keeps it with the layers the post answers, and a re-post nobody asked for keeps it too |
+| **Talking about a preset** | Every preset has a conversation with you in the Layers presets dialog. A `kind: "preset"` poll payload carries the preset as it stands and the messages so far; the last reviewer message is what to act on. The reviewer can start a new conversation, which clears the messages and keeps the preset, so never rely on an earlier turn being there. When they want it changed, `diffo preset update <id> --json '{ "<field>": "…" }' --message "<what changed>"` sends only the fields you change — a preset nobody has yet is made from them (a name at least), and a built-in is never edited: copy it under a new id of your own and say so. The message is your line on what you changed and why; it shows in the conversation with an undo. When no edit is needed, a question or advice against the change, `diffo preset reply <id> --message "<text>"`. One of the two per message; nothing else is owed. `diffo preset list` and `diffo preset show <id>` read; `diffo help preset` has the fields: a name under forty characters, a one-line blurb saying in plain words what the layers show, *use it when* for an agent choosing among presets, and instructions concrete enough that two agents following them post the same layers |
+| **Add to layers** | The light ask, from the *Since your review* label: not a new split. The payload carries the layers as they stand, as the JSON a post takes, and what is outside them; put each path in the layer it belongs with, add a layer at the end only for something none covers, and re-post the whole list. The layers keep the preset and the note they had, whatever the post names |
+| **Layer again** | The same ask over existing layers, from the Layers tab's menus. The payload names the layers they have and asks for the whole list again. Ids survive for titles that match, so the reviewer's place holds. The reviewer can also remove the layers from the tab's menu; the next ask starts from none |
 | **When to suggest** | When the change has an order worth explaining. A wide diff with one idea does not need layers; four files can hide three steps. Agent judgment, no file-count threshold |
-| **Order** | The order you would explain it, not the order you wrote it: the file that explains the rest first, mechanical consequences last. For a feature, follow the request from entry point to effect; for a refactor, contract first, then consumers |
+| **Order** | The preset's instructions decide; Concept's, and the default with no preset, is the order you would explain it, not the order you wrote it: the file that explains the rest first, mechanical consequences last. For a feature, follow the request from entry point to effect; for a refactor, contract first, then consumers |
 | **Mechanical** | `"kind": "mechanical"` marks a layer that changes no behaviour (a rename, call sites following a signature); its files render folded. If unsure, don't tag |
+| **Background** | `"kind": "background"` marks a layer that is how the change is done and nothing in it is the reviewer's to decide: implementation the review layers already describe, tests, build wiring. List its files whole. The lines a review layer highlights are that layer's, and a background layer holds what is left of each file, so the complement of a highlight is never worked out by hand; a file the review layers took whole simply contributes nothing. Background layers go last; the reviewer sees them in their own section under the ones for review |
 | **Summaries** | What the layer is about, and enough context to review it: the part its files cannot show on their own. No template: the agent writes it however the step reads best, kept short, without retelling the diff. The guide's line holds verbatim: orient reading, never pre-review |
 | **Files** | A file is its path: the whole file, every hunk. When a file's hunks belong to different steps, each step lists the part it owns as `path:from-to` (head-side lines; the ask lists every file with its hunks' ranges, so a split is a copied range), in every step that has a part of it, never whole in one step and by range in another. Most files stay whole. Every hunk of the changeset belongs in some layer: the post's ack reports any it leaves out, and the fix is a re-post with them placed |
-| **Highlight** | On by default: a file object's `"highlight"` names the head-side lines (`"40"`, `"12-18"`, or a list of up to thirty) the step is about within the file. It also decides which changed lines the step owns: a hunk with no highlighted line is not in the step, and a hunk several steps share is listed in each with its own lines lit. A file or hunk listed without a highlight owns all of its changed lines, and a highlight that lights none of the entry's changed lines is ignored. Each changed line belongs to exactly one layer: the post refuses an outline that claims one twice, and reports any no layer claims. A deleted line goes with the head line right after it. Left out only when every changed line of the file is the step's (a new file read top to bottom, a mechanical step) |
+| **Highlight** | On by default: a file object's `"highlight"` names the head-side lines (`"40"`, `"12-18"`, or a list of up to thirty) the step is about within the file. It also decides which changed lines the step owns: a hunk with no highlighted line is not in the step, and a hunk several steps share is listed in each with its own lines lit. A file or hunk listed without a highlight owns all of its changed lines, and a highlight that lights none of the entry's changed lines is ignored. Each changed line belongs to exactly one layer: the post is refused when two layers claim one, and reports any no layer claims. A deleted line goes with the head line right after it. Left out only when every changed line of the file is the step's (a new file read top to bottom, a mechanical step) |
 | **Diagrams** | When the step has a shape (a flow, a decision, a before/after), a small ```` ```mermaid ```` diagram usually beats prose. Nodes are tagged `:::new` / `:::changed` with the guide's two classDef lines |
 | **Decisions** | Up to five per layer, each one short line (under eight words) with a one-sentence `detail` and an `at`, where it lives: `path`, `path:line` or `path:from-to`, or a list of up to three such places when the decision spans hunks (the rule and the test that pins it). A decision is where the agent chose between real alternatives a reviewer might weigh differently (a cache, a data shape, a fallback), where the code now does something the diff does not make obvious (a 400 where there was an empty list, a sort every caller sees), or where something in the repo or the environment shaped the change (no clock on the model, tests that could not run). Only what a reviewer could want done differently or would be surprised by later; nothing about naming or style; no verdicts. Each line is a concrete statement in plain words, the answer to "what did you decide here?" for a teammate who has not seen the code, understood in a second: no project nicknames, no clever phrasing, the effect rather than the mechanism. Most layers have none — a plumbing step has nothing to decide, so the list is left out |
 
-A layer:
+A post, and a layer in it:
+
+```jsonc
+{
+  "preset": { "id": "importance", "picked": true, "why": "a large feature the reviewer owns" },
+  "layers": [ /* Layer[] */ ]
+}
+```
 
 ```jsonc
 {
   "title": "Weekday resolution",
   "summary": "A bare weekday resolves to the *next* occurrence. Read `weekday.ts` first.",
-  "kind": "mechanical",            // optional, only when nothing changes behaviour
+  "kind": "mechanical",            // optional: "mechanical" (changes no behaviour) or "background" (how it's done, nothing to decide)
   "files": [
     "src/weekday.ts",
     { "path": "src/dates.ts", "note": "delegates to resolveWeekday; the old arithmetic goes" },
@@ -266,17 +278,17 @@ without a highlight claims all of its changed lines. Each changed line belongs
 to exactly one layer: a post that claims a line in two is refused with exit 1,
 naming the lines and layers (`src/a.ts:31-33 (layers 2, 4)`).
 
-The ack names what the outline left out: `{ "ok": true, "layers": 4,
+The ack names what the layers left out: `{ "ok": true, "layers": 4,
 "uncovered": [{ "path": "src/a.ts", "ranges": ["88-95"] }, { "path": "src/b.ts" }],
-"next_step": "…" }`. The outline is live regardless, with the leftovers under
+"next_step": "…" }`. The layers are live regardless, with the leftovers under
 *Since your review*, lit; the next step is a re-post with them placed. A
 range is the head-side lines of changed lines no layer claims, a deleted line
-named by the head line it goes with; a path alone is a file the outline never
+named by the head line it goes with; a path alone is a file no layer
 names.
 
 The rules that make a post safe to repeat:
 
-- **A post replaces the whole list.** The agent never diffs its own outline. Ids
+- **A post replaces the whole list.** The agent never diffs its own layers. Ids
   are minted by the server and kept for every title that survives a re-post, so
   the reviewer's active layer stays under them.
 - **Resolution happens at render.** Layers are re-resolved against the live
@@ -291,14 +303,14 @@ The rules that make a post safe to repeat:
   exist. Both go when the reviewer clears the review.
 - **A thread can anchor to a layer.** The reviewer asks about the step itself,
   not a line in it. The prompt heads the thread `layer "<title>"` and, in place
-  of a diff snapshot, quotes the layer as it was outlined when the comment was
-  written: title, summary, files. Answer about the outline, with `diffo reply`
+  of a diff snapshot, quotes the layer as it was when the comment was
+  written: title, summary, files. Answer about the layers, with `diffo reply`
   like any thread; if the ask is to re-split or re-order, re-post the layers.
   A layer thread follows its layer by title across re-posts, and a re-post
   that drops the title retires it.
 
 If the agent suggests layers, the suggestion belongs in its handoff message
-too, where the reviewer's eyes already are: *say "layers" and I'll outline it
+too, where the reviewer's eyes already are: *say "layers" and I'll split it into layers
 before you start*. Saying it in the terminal is the zero-UI path.
 
 ## Presence: what the reviewer can see

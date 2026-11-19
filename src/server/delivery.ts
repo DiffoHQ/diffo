@@ -69,7 +69,8 @@ export type AttachOutcome = 'data' | 'superseded' | 'ended' | 'gone'
 export type Snapshot =
   | { kind: 'threads'; threadIds: string[] }
   | { kind: 'finish'; coverage: Coverage; absorbedThreadIds: string[] }
-  | { kind: 'layers' }
+  | { kind: 'layers'; ask: LayersAsk }
+  | { kind: 'preset'; id: string }
   | { kind: 'cleared' }
   | { kind: 'submitted'; submitted: Submitted }
 
@@ -96,6 +97,20 @@ export interface Submitted {
  * in the agent's hands, or nowhere. */
 export type LayersRequest = 'queued' | 'outlining' | 'stalled' | null
 
+/**
+ * What the reviewer asked the layers to be (see shared/presets.ts): left to
+ * the agent, a named preset, or their own words alone. `note` is what they
+ * want this time only, on top of the preset; with `own` it is the whole ask.
+ * `add` asks for no new layers at all, only for the code that changed since
+ * to be placed in the ones the review has.
+ */
+export type LayersAsk =
+  | { kind: 'auto'; note?: string }
+  | { kind: 'preset'; id: string; note?: string }
+  | { kind: 'own'; note: string }
+  /** Not a new split: place what is outside the layers into the ones there. */
+  | { kind: 'add' }
+
 interface ScopePending {
   threads: Set<string>
   finish: Coverage | null
@@ -103,9 +118,13 @@ interface ScopePending {
    * a chance to post a fresh guide). Rides behind real feedback: take() only
    * surfaces it once nothing else is pending. */
   cleared: boolean
-  /** The reviewer asked for the outline (or a fresh one). A boolean like
-   * `cleared`: two clicks before a poll are one request. */
-  layers: boolean
+  /** The reviewer asked for the outline (or a fresh one), and what for. One
+   * slot like `cleared`: two clicks before a poll are one request, the later
+   * ask winning. */
+  layers: LayersAsk | null
+  /** Presets whose conversation has a reviewer message the agent has not
+   * seen (Layers dialog): ids, in the order they were spoken to. */
+  presets: Set<string>
   /** The reviewer submitted the PR review — one notice, the newest wins. */
   submitted: Submitted | null
   /** The request was delivered and the outline is owed: epoch ms of the
@@ -114,6 +133,10 @@ interface ScopePending {
    * reply clock: the post that answers it (`layersPosted`) or a settled
    * re-poll without one ends it. */
   outlining: number | null
+  /** The ask the agent was last handed, until a post answers it. It outlives
+   * a lapsed request: a post that comes late still answers the reviewer's
+   * last ask, and carries its note. */
+  asked: LayersAsk | null
 }
 
 export class DeliveryQueue {
@@ -263,8 +286,10 @@ export class DeliveryQueue {
         threads: new Set(),
         finish: null,
         cleared: false,
-        layers: false,
+        layers: null,
+        presets: new Set(),
         outlining: null,
+        asked: null,
         submitted: null,
       }
       this.buckets.set(this.scope, bucket)
@@ -296,6 +321,20 @@ export class DeliveryQueue {
     if (this.outlining() !== null) return this.outlineStalled() ? 'stalled' : 'outlining'
     if (this.buckets.get(this.scope)?.layers) return 'queued'
     return null
+  }
+
+  /** The parked ask, while one is parked. */
+  layersAsk(): LayersAsk | null {
+    return this.buckets.get(this.scope)?.layers ?? null
+  }
+
+  /** The reviewer wrote to the agent about a preset. Rides like the layers
+   * ask: parked until the next poll, behind open threads. */
+  enqueuePreset(id: string): void {
+    this.bucket().presets.add(id)
+    const queued = this.waiter === null
+    this.wake()
+    if (queued) this.notify()
   }
 
   private outlining(): number | null {
@@ -530,12 +569,19 @@ export class DeliveryQueue {
     if (queued) this.notify()
   }
 
+  /** The reviewer cleared a preset's conversation, or deleted the preset: a
+   * message about it still parked for the agent has nothing left to answer. */
+  dropPreset(id: string): void {
+    for (const bucket of this.buckets.values()) bucket.presets.delete(id)
+    this.notify()
+  }
+
   /** The reviewer asked for layers — the outline, or a fresh one. Rides like
    * the cleared heads-up: a boolean per scope, surfaced once real feedback is
    * answered. */
-  enqueueLayers(): void {
+  enqueueLayers(ask: LayersAsk = { kind: 'auto' }): void {
     const bucket = this.bucket()
-    bucket.layers = true
+    bucket.layers = ask
     // Asking again over a stalled outline withdraws it: the click means "that
     // one is not coming", and the ask reads as parked for the next poll.
     if (this.outlineStalled()) {
@@ -553,11 +599,21 @@ export class DeliveryQueue {
   dropLayers(): void {
     const bucket = this.buckets.get(this.scope)
     if (bucket) {
-      bucket.layers = false
+      bucket.layers = null
       bucket.outlining = null
+      bucket.asked = null
     }
     this.clearOutlineWatch()
     this.notify()
+  }
+
+  /** The ask a layers post answers, handed over once: the one the agent was
+   * last given, or null when it posts of its own accord. */
+  takeLayersAsk(): LayersAsk | null {
+    const bucket = this.buckets.get(this.scope)
+    const asked = bucket?.asked ?? null
+    if (bucket) bucket.asked = null
+    return asked
   }
 
   /** The agent posted layers. Concludes an outstanding request; a spontaneous
@@ -657,7 +713,8 @@ export class DeliveryQueue {
       (bucket.threads.size > 0 ||
         bucket.finish !== null ||
         bucket.cleared ||
-        bucket.layers ||
+        bucket.layers !== null ||
+        bucket.presets.size > 0 ||
         bucket.submitted !== null)
     )
   }
@@ -682,9 +739,12 @@ export class DeliveryQueue {
       }
     }
     if (bucket.threads.size > 0) return { kind: 'threads', threadIds: [...bucket.threads] }
+    // A preset is a few lines of writing: ahead of the outline, which is heavy.
+    const presetId = bucket.presets.values().next().value
+    if (presetId !== undefined) return { kind: 'preset', id: presetId }
     // The outline is heavy work: it waits behind replies the reviewer is
     // already owed, and ahead of the cleared heads-up, which owes nothing.
-    if (bucket.layers) return { kind: 'layers' }
+    if (bucket.layers !== null) return { kind: 'layers', ask: bucket.layers }
     // Real feedback outranks the heads-up: a cleared notice only surfaces once
     // nothing else is owed, and survives in the bucket until then.
     if (bucket.cleared) return { kind: 'cleared' }
@@ -697,9 +757,17 @@ export class DeliveryQueue {
   confirm(snapshot: Snapshot, deliveredThreadIds: string[]): void {
     if (snapshot.kind === 'layers') {
       const bucket = this.bucket()
-      bucket.layers = false
+      bucket.layers = null
+      bucket.asked = snapshot.ask
       bucket.outlining = Date.now()
       this.armOutlineWatch()
+      this.notify()
+      return
+    }
+    if (snapshot.kind === 'preset') {
+      // The reply or edit lands in the conversation when posted; nothing here waits for it.
+      this.buckets.get(this.scope)?.presets.delete(snapshot.id)
+      this.armGrace()
       this.notify()
       return
     }
@@ -781,7 +849,10 @@ export class DeliveryQueue {
     this.releaseWaiter('ended')
     this.closeBatch('ended')
     this.awaitingReply = false
-    for (const bucket of this.buckets.values()) bucket.outlining = null
+    for (const bucket of this.buckets.values()) {
+      bucket.outlining = null
+      bucket.asked = null
+    }
     this.clearOutlineWatch()
     this.stalled = false
     this.clearStall()

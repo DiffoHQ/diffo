@@ -9,11 +9,22 @@ import type { ForgeClient, PrRef, ReviewEvent } from '../forge/types.js'
 import { findHunk, translateHunkAnchor } from '../shared/anchors.js'
 import {
   describeUncovered,
-  parseLayersInput,
+  parseLayersPost,
   parseSuggestReason,
   sharedByLayers,
   uncoveredByLayers,
 } from '../shared/layers.js'
+import {
+  AGENT_PICKS,
+  activePresets,
+  DEFAULT_PRESET_SETTINGS,
+  findPreset,
+  PRESET_MESSAGE_MAX,
+  parseLayersNote,
+  parsePresetPatch,
+  parsePresetSettings,
+  presetDefault,
+} from '../shared/presets.js'
 import {
   type Anchor,
   type Coverage,
@@ -46,7 +57,7 @@ import {
   listCommits,
 } from './commits.js'
 import { DiffoDb, type ServerRecord } from './db.js'
-import { DeliveryQueue, type Snapshot } from './delivery.js'
+import { DeliveryQueue, type LayersAsk, type Snapshot } from './delivery.js'
 import {
   getBaseFileBytes,
   getCommitSubject,
@@ -68,13 +79,16 @@ import {
 } from './pr/finish.js'
 import { PrPuller } from './pr/puller.js'
 import { removeWorktree } from './pr/worktree.js'
+import { DELETED, PresetStore } from './presets.js'
 import {
   answeredByAgent,
   buildClearedPrompt,
   buildCoalescedPrompt,
   buildConnectAsk,
   buildFinishPrompt,
+  buildLayersAddPrompt,
   buildLayersRequestPrompt,
+  buildPresetThreadPrompt,
   buildSubmittedPrompt,
   buildThreadPrompt,
   captureAnchor,
@@ -85,7 +99,13 @@ import {
 } from './prompt.js'
 import { parseAnchor, ReviewStore } from './review.js'
 import { ChangesetStore } from './store.js'
-import { agentNameOf, fileMachineIdStore, reviewKindOf, Telemetry } from './telemetry.js'
+import {
+  agentNameOf,
+  fileMachineIdStore,
+  type LayersAskKind,
+  reviewKindOf,
+  Telemetry,
+} from './telemetry.js'
 import { watchRepo } from './watcher.js'
 
 /** Types the UI embeds in <img>/srcset — the only repo content that may keep
@@ -256,11 +276,18 @@ export function createApp(
   // The reviewer's voice (see shared/voice.ts): null is the default, which the
   // client knows on its own. Stored empty to reset, so the row never has to go.
   const storedVoice = () => normalizeVoice(ctx.uiSettings?.get('voice'))
+  // The layers presets (see shared/presets.ts and server/presets.ts): the
+  // reviewer's own presets with what is switched off and the default, and
+  // each preset's conversation with the agent. Read leniently — a bad blob is
+  // the defaults, never a review that fails to open.
+  const presetStore = ctx.uiSettings ? new PresetStore(ctx.uiSettings) : null
+  const presetSettings = () => presetStore?.settings() ?? DEFAULT_PRESET_SETTINGS
   app.get('/api/settings', (c) => {
     return c.json({
       theme: stored('theme', THEME_VALUES),
       critter: stored('critter', CRITTER_VALUES),
       voice: storedVoice(),
+      layersPresets: presetSettings(),
     })
   })
 
@@ -270,20 +297,27 @@ export function createApp(
     const theme: unknown = body?.theme
     const critter: unknown = body?.critter
     const voice: unknown = body?.voice
+    const presets: unknown = body?.layersPresets
     const themeOk = typeof theme === 'string' && THEME_VALUES.has(theme)
     const critterOk = typeof critter === 'string' && CRITTER_VALUES.has(critter)
     // An empty voice is the reset; anything else must fit the prompt budget.
     const voiceOk = typeof voice === 'string' && voice.trim().length <= VOICE_MAX
+    // The presets are the whole blob, replaced: the dialog saves what it shows.
+    const presetsParsed = presets === undefined ? null : parsePresetSettings(presets)
+    if (presetsParsed !== null && !presetsParsed.ok) {
+      return c.json({ error: `layersPresets: ${presetsParsed.error}` }, 400)
+    }
+    const presetsOk = presetsParsed?.ok === true
     // Each key is optional, but one must be there and whatever is there must be valid.
     if (
       (theme !== undefined && !themeOk) ||
       (critter !== undefined && !critterOk) ||
       (voice !== undefined && !voiceOk) ||
-      !(themeOk || critterOk || voiceOk)
+      !(themeOk || critterOk || voiceOk || presetsOk)
     ) {
       return c.json(
         {
-          error: `need {theme?: "system" | "light" | "dark", critter?: "on" | "off", voice?: string (up to ${VOICE_MAX} characters, empty for the default)}, at least one`,
+          error: `need {theme?: "system" | "light" | "dark", critter?: "on" | "off", voice?: string (up to ${VOICE_MAX} characters, empty for the default), layersPresets?: { presets, disabled, default }}, at least one`,
         },
         400,
       )
@@ -291,6 +325,13 @@ export function createApp(
     if (themeOk) ctx.uiSettings.set('theme', theme)
     if (critterOk) ctx.uiSettings.set('critter', critter)
     if (voiceOk) ctx.uiSettings.set('voice', voice.trim())
+    if (presetsParsed?.ok && presetStore) {
+      const kept = new Set(presetsParsed.settings.presets.map((p) => p.id))
+      const gone = presetStore.settings().presets.filter((p) => !kept.has(p.id))
+      presetStore.saveSettings(presetsParsed.settings)
+      // A deleted preset's parked message has nothing left to be about.
+      for (const preset of gone) queue?.dropPreset(preset.id)
+    }
     return c.json({ ok: true })
   })
 
@@ -432,7 +473,7 @@ export function createApp(
     const layer =
       layerId !== undefined ? review.get().layers?.items.find((l) => l.id === layerId) : undefined
     if (anchor.kind === 'layer') {
-      if (!layer) return c.json({ error: 'that layer is not in the outline' }, 400)
+      if (!layer) return c.json({ error: 'that layer is no longer in the review' }, 400)
       anchor.title = layer.title
     }
     // Likewise a commit thread needs a commit the changeset lists, and its
@@ -564,18 +605,54 @@ export function createApp(
     if (!review) return c.json({ error: 'review unavailable' }, 503)
     const body = await c.req.json().catch(() => null)
     if (body?.suggest === true) {
-      const suggested = review.suggestLayers(parseSuggestReason(body.reason))
+      // The suggestion may name the preset that fits: one that is on, or the
+      // flag stands without it and the ack says why.
+      const wanted = typeof body.preset === 'string' ? body.preset : undefined
+      const preset =
+        wanted !== undefined && activePresets(presetSettings()).some((p) => p.id === wanted)
+          ? wanted
+          : undefined
+      const suggested = review.suggestLayers(parseSuggestReason(body.reason), preset)
       return c.json({
         suggested,
-        ...(suggested ? {} : { note: 'layers are already posted, nothing to suggest' }),
+        ...(suggested
+          ? wanted !== undefined && preset === undefined
+            ? { note: `no active layers preset "${wanted}": suggested without one` }
+            : {}
+          : { note: 'layers are already posted, nothing to suggest' }),
       })
     }
-    const parsed = parseLayersInput(body?.items)
+    // The body is the CLI's `{ items, preset? }`; the shared parser reads the
+    // agent's own `{ layers, preset? }`, so the list is handed over under its
+    // name.
+    const parsed = parseLayersPost({
+      layers: body?.items,
+      ...(body?.preset !== undefined ? { preset: body.preset } : {}),
+    })
     if (!parsed.ok) return c.json({ error: parsed.error }, 400)
     const files = store?.get().files ?? []
-    const shared = sharedByLayers(parsed.items, files)
+    const shared = sharedByLayers(parsed.post.items, files)
     if (shared.length > 0) return c.json({ error: layersSharedError(shared) }, 400)
-    const layers = review.setLayers(parsed.items)
+    // The note is the reviewer's, never the agent's: it comes from the ask this
+    // post answers. A post nobody asked for keeps the one the layers had, and
+    // layers asked for in the reviewer's own words alone follow no preset.
+    // An ask to add what is outside the layers changes neither: the layers
+    // still follow the preset and the note they did.
+    const asked = queue?.takeLayersAsk() ?? null
+    const prior = review.get().layers
+    const kept = asked === null || asked.kind === 'add'
+    const note = kept ? prior?.note : asked.note
+    // A preset the reviewer does not have — an id the agent got wrong, or one
+    // deleted while it was layering — has no name to head the layers with:
+    // they are kept, following none, and the ack says so.
+    const sent = parsed.post.preset
+    const named = sent && findPreset(presetSettings(), sent.id) ? sent : undefined
+    const preset =
+      asked?.kind === 'own' ? undefined : asked?.kind === 'add' ? (prior?.preset ?? named) : named
+    const layers = review.setLayers(parsed.post.items, {
+      ...(preset ? { preset } : {}),
+      ...(note ? { note } : {}),
+    })
     // The post answers a standing request, if there was one: "Outlining…" gives
     // way to the outline, and the agent is back in the re-poll grace.
     queue?.layersPosted()
@@ -585,6 +662,9 @@ export function createApp(
     return c.json({
       layers,
       uncovered: uncoveredByLayers(layers.items, files).map(describeUncovered),
+      ...(sent && !named && asked?.kind !== 'own'
+        ? { note: `no layers preset "${sent.id}": posted as following none` }
+        : {}),
     })
   })
 
@@ -592,21 +672,189 @@ export function createApp(
   // stale. It rides the delivery queue like a comment: the next `diffo poll`
   // carries it as a `layers` item, and presence shows the agent on it. Nothing
   // is written to the review; a request is a request, the post is the record.
-  app.post('/api/review/layers/request', (c) => {
+  /** The poll's words for a layers ask: the whole doctrine for a split, or,
+   * when the ask is only to add what is outside the layers there, the layers
+   * as they stand and what to place in them. */
+  const layersPrompt = (ask: LayersAsk): string => {
+    const ctx = { repo: repoInfo(), changeset: store?.get() ?? null }
+    const layers = review?.get().layers
+    if (ask.kind === 'add') {
+      if (layers && layers.items.length > 0) {
+        const outside = uncoveredByLayers(layers.items, store?.get().files ?? []).map(
+          describeUncovered,
+        )
+        return buildLayersAddPrompt(ctx, layers, outside)
+      }
+      return buildLayersRequestPrompt(ctx, null, { kind: 'auto' }, presetSettings())
+    }
+    return buildLayersRequestPrompt(ctx, layers?.items ?? null, ask, presetSettings())
+  }
+
+  app.post('/api/review/layers/request', async (c) => {
     if (!review || !queue) return c.json({ error: 'review unavailable' }, 503)
-    // A click while an ask is already on its way is the same ask; one over a
+    // What the layers are for: a preset by id ("agent" leaves the pick to the
+    // agent), or, without one, the default from Settings → Layers. An id
+    // nothing active answers to is refused, not silently replaced: the dialog
+    // only offers what is in play.
+    // A `note` is what the reviewer wants this time only, on top of the preset;
+    // `preset: null` says there is none, and the note is the whole ask.
+    // `add: true` asks for no new layers: only that the agent place what is
+    // outside the ones the review has. Without layers there is nothing to add
+    // to, and the ask is an ordinary one.
+    const body = (await c.req.json().catch(() => null)) as {
+      preset?: unknown
+      note?: unknown
+      add?: unknown
+    } | null
+    const settings = presetSettings()
+    const note = parseLayersNote(body?.note)
+    const withNote = note ? { note } : {}
+    const wanted = typeof body?.preset === 'string' ? body.preset : presetDefault(settings)
+    let ask: LayersAsk
+    let kind: LayersAskKind
+    if (body?.add === true && (review.get().layers?.items.length ?? 0) > 0) {
+      ask = { kind: 'add' }
+      kind = 'add'
+    } else if (body?.preset === null) {
+      if (!note) return c.json({ error: 'layers asked for with no preset need a "note"' }, 400)
+      ask = { kind: 'own', note }
+      kind = 'one-time'
+    } else if (wanted === AGENT_PICKS) {
+      ask = { kind: 'auto', ...withNote }
+      kind = 'agent'
+    } else {
+      const preset = activePresets(settings).find((p) => p.id === wanted)
+      if (!preset) return c.json({ error: `no active layers preset "${wanted}"` }, 400)
+      ask = { kind: 'preset', id: preset.id, ...withNote }
+      kind = preset.builtIn ? 'built-in' : 'custom'
+    }
+    // A click while an ask is already on its way replaces the ask; one over a
     // stalled outline is a new one (enqueueLayers withdraws the stalled one).
     const before = queue.layersRequest()
-    queue.enqueueLayers()
+    queue.enqueueLayers(ask)
     if (before === null || before === 'stalled') {
       const state = review.get()
       ctx.telemetry?.layersRequested({
         kind: reviewKind(),
-        suggested: state.layersSuggested !== undefined,
+        suggested: state.layersSuggested !== undefined && !state.layersSuggested.answered,
         refresh: (state.layers?.items.length ?? 0) > 0,
+        preset: kind,
+        note: ask.kind !== 'add' && note !== undefined,
       })
     }
     return c.json({ ok: true, request: queue.layersRequest(), presence: queue.presence() })
+  })
+
+  // The reviewer removed the outline: the Layers tab goes back to its empty
+  // state, with the offer to ask for one. An ask still on its way is dropped
+  // with it — the reviewer just said they do not want the layers.
+  app.delete('/api/review/layers', (c) => {
+    if (!review) return c.json({ error: 'review unavailable' }, 503)
+    const removed = review.removeLayers()
+    queue?.dropLayers()
+    return c.json({ removed })
+  })
+
+  // The conversation about a layers preset (see server/presets.ts): the
+  // reviewer writes to the agent from the Layers dialog, the message rides
+  // the delivery queue like a layers request, and the agent answers with
+  // `diffo preset update` (an edit, with a line on it) or `diffo preset
+  // reply`. Presets and their conversations follow the reviewer, not the
+  // repo; only the delivery needs a review, because that is where an agent
+  // is attached.
+  app.get('/api/presets', (c) => {
+    if (!presetStore) return c.json({ error: 'settings unavailable' }, 503)
+    return c.json({ presets: presetStore.list(), default: presetDefault(presetStore.settings()) })
+  })
+
+  app.get('/api/presets/:id/thread', (c) => {
+    if (!presetStore) return c.json({ error: 'settings unavailable' }, 503)
+    return c.json({ thread: presetStore.thread(c.req.param('id')) })
+  })
+
+  // A new conversation: the messages go, the preset stays. A message still
+  // parked for the agent goes too — there is nothing left for it to answer.
+  app.delete('/api/presets/:id/thread', (c) => {
+    if (!presetStore) return c.json({ error: 'settings unavailable' }, 503)
+    const id = c.req.param('id')
+    const cleared = presetStore.clearThread(id)
+    queue?.dropPreset(id)
+    return c.json({ cleared, thread: presetStore.thread(id) })
+  })
+
+  app.post('/api/presets/:id/messages', async (c) => {
+    if (!presetStore) return c.json({ error: 'settings unavailable' }, 503)
+    const id = c.req.param('id')
+    const body = (await c.req.json().catch(() => null)) as {
+      author?: unknown
+      text?: unknown
+    } | null
+    const text = typeof body?.text === 'string' ? body.text.trim() : ''
+    if (text === '') return c.json({ error: 'need { text }' }, 400)
+    if (text.length > PRESET_MESSAGE_MAX) {
+      return c.json({ error: `keep a message under ${PRESET_MESSAGE_MAX} characters` }, 400)
+    }
+    const author = body?.author === 'agent' ? 'agent' : 'reviewer'
+    if (
+      author === 'reviewer' &&
+      !presetStore.find(id) &&
+      !/^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$/.test(id)
+    ) {
+      return c.json({ error: 'bad preset id' }, 400)
+    }
+    // An agent answering late about a preset the reviewer deleted: its words
+    // have nowhere to go, and must not bring the conversation back.
+    if (author === 'agent' && presetStore.wasDeleted(id)) return c.json({ error: DELETED }, 400)
+    // The reviewer's first word about a preset nobody has yet makes it, empty:
+    // the conversation has a preset to belong to from the start.
+    if (author === 'reviewer') {
+      const started = presetStore.start(id)
+      if (!started.ok) return c.json({ error: started.error }, 400)
+    }
+    const message = presetStore.addMessage(id, author, text)
+    // The reviewer's words are for the agent: parked for its next poll.
+    if (author === 'reviewer') queue?.enqueuePreset(id)
+    return c.json({
+      message,
+      thread: presetStore.thread(id),
+      ...(queue ? { presence: queue.presence() } : {}),
+    })
+  })
+
+  // The agent's edit: the fields it sends replace the preset's (a preset
+  // nobody has yet is made from them), and the change lands in the
+  // conversation with the agent's line on it and the values before, for undo.
+  app.post('/api/presets/:id', async (c) => {
+    if (!presetStore) return c.json({ error: 'settings unavailable' }, 503)
+    const id = c.req.param('id')
+    if (!/^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$/.test(id)) return c.json({ error: 'bad preset id' }, 400)
+    const body = (await c.req.json().catch(() => null)) as {
+      fields?: unknown
+      message?: unknown
+    } | null
+    const patch = parsePresetPatch(body?.fields)
+    if (!patch.ok) return c.json({ error: patch.error }, 400)
+    const existed = presetStore.find(id) !== undefined
+    const result = presetStore.upsert(id, patch.patch)
+    if (!result.ok) return c.json({ error: result.error }, 400)
+    const text = typeof body?.message === 'string' ? body.message : ''
+    const message = presetStore.addMessage(id, 'agent', text, result.change)
+    // A preset under an id of the agent's own, while a built-in's conversation
+    // waits on it, is the copy the reviewer asked for there. The answer goes
+    // to that conversation too, naming the copy: otherwise the reviewer waits
+    // on a thread the agent has already answered somewhere else.
+    if (!existed) {
+      const asked = presetStore.waitingBuiltIn()
+      if (asked) {
+        const where = `The copy is “${result.preset.name}”, under your presets.`
+        presetStore.addMessage(
+          asked.id,
+          'agent',
+          text.trim() ? `${text.trim()}\n\n${where}` : where,
+        )
+      }
+    }
+    return c.json({ preset: result.preset, message, thread: presetStore.thread(id) })
   })
 
   app.post('/api/review/threads/:id/messages', async (c) => {
@@ -1025,9 +1273,19 @@ export function createApp(
         status: 'feedback' as const,
         kind: 'layers' as const,
         threadIds: [] as string[],
-        prompt: buildLayersRequestPrompt(
+        prompt: layersPrompt(snapshot.ask),
+      }
+    }
+    if (snapshot.kind === 'preset') {
+      return {
+        status: 'feedback' as const,
+        kind: 'preset' as const,
+        threadIds: [] as string[],
+        prompt: buildPresetThreadPrompt(
           { repo: repoInfo(), changeset: store?.get() ?? null },
-          review?.get().layers?.items ?? null,
+          snapshot.id,
+          presetStore?.find(snapshot.id) ?? null,
+          presetStore?.thread(snapshot.id) ?? { presetId: snapshot.id, messages: [] },
         ),
       }
     }
@@ -1340,6 +1598,11 @@ export function createApp(
       const unsubscribeReview = review?.subscribe(() => {
         void sse.writeSSE({ event: 'review', data: '{}', id: String(id++) })
       })
+      // The presets and their conversations moved — an edit by the agent, a
+      // message, a save from another tab: an open Layers dialog re-reads.
+      const unsubscribePresets = presetStore?.subscribe(() => {
+        void sse.writeSSE({ event: 'presets', data: '{}', id: String(id++) })
+      })
       const unsubscribePresence = queue?.subscribe(() => {
         void sse.writeSSE({
           event: 'presence',
@@ -1361,6 +1624,7 @@ export function createApp(
         drop()
         unsubscribe()
         unsubscribeReview?.()
+        unsubscribePresets?.()
         unsubscribePresence?.()
       })
       await sse.writeSSE({

@@ -1,17 +1,19 @@
 import {
+  changedRows,
   claimedHunks,
   claimsOf,
   highlightedRows,
   litChangedRows,
+  rowClaims,
+  rowSpans,
   uncoveredByLayers,
 } from '../shared/layers.js'
 import {
   type Decision,
   type DecisionAt,
+  type LayerKind,
   type Layers,
   type LineRange,
-  layerFileHighlight,
-  layerFileRange,
   type ReviewThread,
   startedByAgent,
 } from '../shared/review.js'
@@ -91,7 +93,7 @@ export interface ResolvedLayer {
   number: number | null
   title: string
   summary?: string
-  kind?: 'mechanical'
+  kind?: LayerKind
   /** The listed files the changeset still has, in the order they were listed. */
   files: ResolvedLayerFile[]
   /** Listed paths that resolve to nothing today — an unknown path, a file that
@@ -151,19 +153,47 @@ export function resolveLayers(
 ): ResolvedLayer[] {
   if (!layers || layers.items.length === 0) return []
   const byPath = new Map(files.map((f) => [f.path, f]))
+  // What each background layer is left with once the review layers took their
+  // lines: by layer, then by hunk. A background entry shows those hunks, with
+  // the leftover lines lit when a review layer lit the others.
+  const leftover = new Map<number, Map<string, ReadonlySet<number>>>()
+  if (layers.items.some((l) => l.kind === 'background')) {
+    for (const claim of rowClaims(layers.items, files)) {
+      if (layers.items[claim.layer]?.kind !== 'background') continue
+      const byHunk = leftover.get(claim.layer) ?? new Map()
+      byHunk.set(claim.hunk.id, claim.rows)
+      leftover.set(claim.layer, byHunk)
+    }
+  }
   const resolved: ResolvedLayer[] = layers.items.map((layer, i) => {
     const present: ResolvedLayerFile[] = []
     const missing: string[] = []
+    const rest = layer.kind === 'background' ? (leftover.get(i) ?? new Map()) : null
     for (const claim of claimsOf(layer)) {
       const file = byPath.get(claim.path)
       if (!file) {
         missing.push(claim.path)
         continue
       }
-      const hunks = claimedHunks(file.hunks, claim)
+      let hunks = claimedHunks(file.hunks, claim)
       if (!claim.whole && hunks.length === 0) {
         // The file is here, the lines are not: say which part drifted away.
         missing.push(...claim.refs)
+        continue
+      }
+      if (rest !== null) {
+        // A background layer holds what the review layers left of the file —
+        // nothing, when they took it all, and the file is theirs alone then.
+        hunks = hunks.filter((h) => rest.has(h.id))
+        if (hunks.length === 0) continue
+        const partly = hunks.some((h) => rest.get(h.id)!.size < changedRows(h).size)
+        present.push({
+          file,
+          ...(claim.note ? { note: claim.note } : {}),
+          ...(partly ? { highlight: hunks.flatMap((h) => rowSpans(h, rest.get(h.id)!)) } : {}),
+          hunks,
+          partial: hunks.length < file.hunks.length,
+        })
         continue
       }
       const lit = hunks.some((h) => litChangedRows(h, claim.highlight).size > 0)
@@ -232,7 +262,7 @@ export function layerKey(layer: ResolvedLayer): string {
   return layer.id ?? 'since'
 }
 
-/** Row 0 of the outline: the guide comment, when the review has one — the same
+/** The Overview of the outline: the guide comment, when the review has one — the same
  * rule the CLI applies (`findGuideThread`), the newest agent thread on the whole
  * changeset. */
 export function findGuide(threads: readonly ReviewThread[]): ReviewThread | undefined {

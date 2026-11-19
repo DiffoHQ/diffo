@@ -198,7 +198,16 @@ export interface LayersRequestedProps {
   suggested: boolean
   /** Layers were already there: the reviewer asked for a fresh outline. */
   refresh: boolean
+  /** What the layers were asked to be: left to the agent, a built-in preset,
+   * one of the reviewer's own, or their words for this change alone; `add`
+   * when the ask was only to place what is outside the layers. Never the
+   * preset's name. */
+  preset: LayersAskKind
+  /** The ask carried a note for this change. Never the note. */
+  note: boolean
 }
+
+export type LayersAskKind = 'agent' | 'built-in' | 'custom' | 'one-time' | 'add'
 
 export interface FailedProps {
   step: FailedStep
@@ -310,6 +319,8 @@ export class Telemetry {
       kind: props.kind,
       suggested: props.suggested,
       refresh: props.refresh,
+      preset: props.preset,
+      note: props.note,
     })
   }
 

@@ -1219,7 +1219,7 @@ describe('ReadingPane in layer mode', () => {
       render(
         <ReadingPane
           files={[FILES[0]!]}
-          layer={view({ id: null, kicker: 'Outside the outline', title: 'Since your review' })}
+          layer={view({ id: null, kicker: 'Not in any layer', title: 'Since your review' })}
           comments={comments()}
         />,
       )

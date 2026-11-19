@@ -266,7 +266,12 @@ describe('layers_requested from the request route', () => {
     await telemetry.flush()
 
     expect(events.map((e) => e.event)).toEqual(['review_opened', 'layers_requested'])
-    expect(events[1]!.properties).toMatchObject({ kind: 'tree', suggested: true, refresh: false })
+    expect(events[1]!.properties).toMatchObject({
+      kind: 'tree',
+      suggested: true,
+      refresh: false,
+      note: false,
+    })
     expect(JSON.stringify(events)).not.toContain('a flow worth')
   })
 })

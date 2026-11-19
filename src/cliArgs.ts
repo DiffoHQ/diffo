@@ -11,6 +11,7 @@ import {
   TAB_TITLE,
 } from './server/prompt.js'
 import { parseSuggestReason } from './shared/layers.js'
+import { PRESET_NAME_MAX } from './shared/presets.js'
 import { normalizeTitle } from './shared/review.js'
 import type { ChangesetSpec } from './shared/types.js'
 
@@ -52,9 +53,11 @@ For the agent (the AI that wrote the change):
   comment [<file>]   Start a comment thread as the agent: on a line (--line),
                      a file, or (with no file) the whole changeset; the
                      reviewer replies to take it up, or resolves it
-  layers             Outline the changeset as steps to read in order
-                     (--suggest ["why"] flags it at open; --json '<Layer[]>'
+  layers             Split the changeset into layers to read in order
+                     (--suggest ["why"] flags it at open; --json '<post>'
                      or --stdin posts the list, replacing the last one)
+  preset             The reviewer's layers presets: list, show <id>,
+                     update <id> --json '{…}' --message "…", reply <id>
   end                Detach from the review politely
   help agent         The agent's whole protocol on one page
   help guide         The guide comment — the map of the change — with an example
@@ -120,14 +123,22 @@ The loop:
    If the changeset later shifts under the guide, ${GUIDE.update}.
 4. Layers: offer them when the changeset reads better in order:
    ${LAYERS.suggest}.
-   Flag it at open with \`diffo layers --suggest "<why, in one line>"\` and
-   say so in your handoff ("say layers and I'll outline it"). Post the
-   outline only when the reviewer asks, in chat or through the poll as a
-   \`"kind": "layers"\` payload: \`diffo layers --json '<Layer[]>'\` —
+   Flag it at open with \`diffo layers --suggest "<why, in one line>"\`,
+   adding \`--preset <id>\` when one of the reviewer's presets fits (the
+   Layers tab then opens on it, with your line as the reason), and
+   say so in your handoff ("say layers and I'll split it into layers"). Post
+   them only when the reviewer asks, in chat or through the poll as a
+   \`"kind": "layers"\` payload: \`diffo layers --json '<post>'\` —
    ${LAYERS.post} (\`diffo layers --stdin\`). Each layer is ${LAYERS.what}.
    Summary: ${LAYERS.summary}. Diagram: ${LAYERS.diagram}.
-   Order: ${LAYERS.order}. ${LAYERS.mechanical}. ${LAYERS.stance}.
+   Order: ${LAYERS.order}. ${LAYERS.mechanical}. ${LAYERS.background}.
+   ${LAYERS.stance}. The ask names a preset — what the layers are for — or
+   lists the presets to pick from; follow it, and post the preset's id.
    ${LAYERS.replace}. \`diffo help layers\` has the shape.
+   A \`"kind": "preset"\` payload is the reviewer talking to you about a
+   preset in the Layers presets dialog: edit it with \`diffo preset update <id>
+   --json '{…}' --message "…"\` or answer with \`diffo preset reply <id>\`,
+   and nothing else; \`diffo help preset\` has the fields.
 5. Act: \`[issue]\` threads want a code change; \`[question]\` threads want an
    answer in the reply and no edit. Your edits reach the reviewer live.
 6. Reply: \`diffo reply <threadId> --message "<text>"\` (pipe long replies on
@@ -326,12 +337,22 @@ Output: {"ok":true,"threadId":"t-1","next_step":"…"}
 Examples:
   diffo comment src/auth.ts --line 42 --message "this branch is unreachable"
   diffo comment src/auth.ts --line 42 -m "I can fold these two guards into one. Want that?" --suggest-reply "yes, fold them"`,
-  layers: `diffo layers: outline the changeset as steps to read in order
+  layers: `diffo layers: split the changeset into layers to read in order
 
 Usage: diffo layers --suggest ["<why, in one line>"]   at open: this read benefits from layers
-       diffo layers --json '<Layer[]>'                 post the outline, replacing the last one
+                     [--preset <id>]                   and by this preset (diffo preset list)
+       diffo layers --json '<post>'                    post the layers, replacing the last ones
        … | diffo layers --stdin                        the same payload, piped — from a file
                                                        written in a command of its own
+
+A post is { "preset", "layers": Layer[] }, or a bare Layer[] for layers
+that follow no preset. The preset is what the layers are for: the reviewer
+picks one (or lets you pick), and the ask you get through the poll names it
+with its instructions. The ask may also carry the reviewer's note for this
+change: follow it too, and over the preset where the two disagree. It is not
+part of the post; the review keeps it. A preset id the reviewer does not
+have is dropped: the layers are kept, following none, and the ack's "note"
+says so.
 
 Each layer is ${LAYERS.what}.
 Summary: ${LAYERS.summary}.
@@ -340,8 +361,10 @@ Diagram: ${LAYERS.diagram}:
   ${GUIDE_CLASSDEFS[0]}
   ${GUIDE_CLASSDEFS[1]}
 
-Order: ${LAYERS.order}.
+Order: ${LAYERS.order} — unless the ask's preset says otherwise; its
+instructions decide what goes in the layers and in what order.
 ${LAYERS.mechanical}.
+${LAYERS.background}.
 ${LAYERS.stance}.
 ${LAYERS.replace}. Paths are relative to the repo root; an unknown path is
 accepted (the file may land later) and simply shows nothing until it does.
@@ -360,7 +383,44 @@ Output: {"ok":true,"layers":4,"next_step":"…"}
 
 Examples:
   diffo layers --suggest "the parser change explains the rest"
+  diffo layers --suggest "38 files, most of them implementation" --preset importance
   diffo layers --json '[{"title":"Parser contract","summary":"The contract the rest of the change leans on: bad input now comes back as null, not an exception.","files":["src/parse.ts"],"decisions":[{"text":"Bad input returns null, not a throw","detail":"Callers already branch on null for a missing value; a throw would need a try at every site.","at":"src/parse.ts:41-46"}]},{"title":"Callers adapted","kind":"mechanical","summary":"Call sites following the new return type.","files":["src/cli.ts","src/api.ts"]}]'`,
+  preset: `diffo preset: the reviewer's layers presets — list them, show one, edit one, answer about one
+
+Usage: diffo preset list                       every preset, with whether it is on
+       diffo preset show <id>                  one preset, and its conversation
+       diffo preset update <id> --json '{"name"?,"blurb"?,"whenToUse"?,"instructions"?}' --message "<what changed>"
+       … | diffo preset update <id> --stdin --message "<what changed>"
+       diffo preset reply <id> --message "<text>"
+
+A preset is a saved way of layering a change — what goes in the review
+layers, in what order, what goes to background — which the reviewer picks for
+a review or lets you pick by its "use it when". The reviewer talks to you about
+one in the Layers presets dialog, and the message reaches you as a \`"kind": "preset"\`
+poll payload with the preset as it stands and the conversation so far.
+
+update sends only the fields you change; a preset nobody has yet is made from
+them (a name at least), and a built-in is never changed — copy it under a new
+id of your own (letters, digits, - and _). The --message is your line on what
+you changed and why; it shows in the conversation, with an undo. reply answers
+without changing anything: a question, or advice against the change.
+
+Fields: name under ${PRESET_NAME_MAX} characters, naming what the change is layered by ("Layered by …");
+blurb one line saying in plain words what the layers show ("the lines that
+matter most; the rest in background"); whenToUse one or two sentences on the change this fits, for an agent
+choosing among presets; instructions what layering by it does — what goes in
+the review layers, in what order, what is highlighted in a file that mixes
+concerns, what goes to background — concrete enough that two agents following it
+post the same layers.
+
+Output: {"ok":true,"presets":[{"id":"concept","name":"Concept","blurb":"…","on":true,"builtIn":true},…]}
+        {"ok":true,"preset":{…},"thread":{…}}
+        {"ok":true,"preset":{"id":"…","name":"…"},"next_step":"…"}
+
+Examples:
+  diffo preset list
+  diffo preset update a1b2 --json '{"instructions":"First every route, highlighted; then every write to the database. Tests in background."}' --message "Routes first now, as you asked; tests moved to background."
+  diffo preset reply a1b2 --message "Putting tests first would hide the contract they pin; I'd keep them in background. Want it anyway?"`,
   end: `diffo end: detach from the review politely
 
 Usage: diffo end
@@ -477,6 +537,7 @@ export type CliCommand =
       prComment: string | null
     }
   | { kind: 'layers'; source: LayersSource }
+  | { kind: 'preset'; action: PresetAction }
   | { kind: 'end' }
   | { kind: 'setup' }
   | { kind: 'telemetry'; action: 'status' | 'on' | 'off' }
@@ -484,17 +545,30 @@ export type CliCommand =
   | { kind: 'stop' }
   | { kind: 'error'; message: string }
 
+/** What `diffo preset` does: one of the four, each with what it needs. */
+export type PresetAction =
+  | { kind: 'list' }
+  | { kind: 'show'; id: string }
+  | {
+      kind: 'update'
+      id: string
+      source: { kind: 'json'; text: string } | { kind: 'stdin' }
+      message: string | null
+    }
+  | { kind: 'reply'; id: string; message: string | null }
+
 /** Where a `layers` post comes from — exactly one of the three. */
 export type LayersSource =
   | { kind: 'json'; text: string }
   | { kind: 'stdin' }
-  | { kind: 'suggest'; reason: string | null }
+  | { kind: 'suggest'; reason: string | null; preset: string | null }
 
 const VERBS = new Set([
   'poll',
   'reply',
   'comment',
   'layers',
+  'preset',
   'end',
   'setup',
   'telemetry',
@@ -690,6 +764,7 @@ function parseLayersVerb(rest: string[]): CliCommand {
         json: { type: 'string' },
         stdin: { type: 'boolean' },
         suggest: { type: 'boolean' },
+        preset: { type: 'string' },
         help: { type: 'boolean', short: 'h' },
       },
     }),
@@ -701,16 +776,27 @@ function parseLayersVerb(rest: string[]): CliCommand {
   if (sources.filter(Boolean).length !== 1) {
     return {
       kind: 'error',
-      message: 'layers takes exactly one of --json <Layer[]>, --stdin, or --suggest ["<why>"]',
+      message: 'layers takes exactly one of --json <post>, --stdin, or --suggest ["<why>"]',
+    }
+  }
+  if (values.preset !== undefined && !values.suggest) {
+    return {
+      kind: 'error',
+      message: '--preset goes with --suggest; a post names its preset in the JSON',
     }
   }
   if (values.suggest) {
     if (positionals.length > 1) {
       return { kind: 'error', message: '--suggest takes at most one reason; quote it' }
     }
+    const preset = values.preset?.trim()
     return {
       kind: 'layers',
-      source: { kind: 'suggest', reason: parseSuggestReason(positionals[0]) ?? null },
+      source: {
+        kind: 'suggest',
+        reason: parseSuggestReason(positionals[0]) ?? null,
+        preset: preset ? preset : null,
+      },
     }
   }
   if (positionals.length > 0) {
@@ -723,10 +809,62 @@ function parseLayersVerb(rest: string[]): CliCommand {
   if (values.json!.trim() === '') {
     return {
       kind: 'error',
-      message: '--json needs a JSON array of layers; see `diffo help layers`',
+      message: '--json needs the layers post as JSON; see `diffo help layers`',
     }
   }
   return { kind: 'layers', source: { kind: 'json', text: values.json! } }
+}
+
+/** `preset <action> [<id>]`: list and show read; update takes the fields as
+ * JSON (inline or piped) and a message; reply takes a message. */
+function parsePresetVerb(rest: string[]): CliCommand {
+  const parsed = tryParse(() =>
+    parseArgs({
+      args: rest,
+      allowPositionals: true,
+      options: {
+        json: { type: 'string' },
+        stdin: { type: 'boolean' },
+        message: { type: 'string', short: 'm' },
+        help: { type: 'boolean', short: 'h' },
+      },
+    }),
+  )
+  if (!parsed.ok) return { kind: 'error', message: parsed.message }
+  const { values, positionals } = parsed.value
+  if (values.help) return { kind: 'help', topic: 'preset' }
+  const [action, id, ...extra] = positionals
+  const usage =
+    'preset takes list, show <id>, update <id> --json <fields> --message "…", or reply <id> --message "…"'
+  if (action === undefined || extra.length > 0) return { kind: 'error', message: usage }
+  if (action === 'list') {
+    if (id !== undefined) return { kind: 'error', message: 'preset list takes no id' }
+    return { kind: 'preset', action: { kind: 'list' } }
+  }
+  if (action !== 'show' && action !== 'update' && action !== 'reply') {
+    return { kind: 'error', message: usage }
+  }
+  if (id === undefined || id.trim() === '') {
+    return { kind: 'error', message: `preset ${action} needs the preset's id` }
+  }
+  if (action === 'show') return { kind: 'preset', action: { kind: 'show', id } }
+  const message = values.message ?? null
+  if (action === 'reply') return { kind: 'preset', action: { kind: 'reply', id, message } }
+  if ((values.json !== undefined) === (values.stdin === true)) {
+    return {
+      kind: 'error',
+      message: 'preset update takes exactly one of --json <fields> or --stdin',
+    }
+  }
+  if (values.stdin)
+    return { kind: 'preset', action: { kind: 'update', id, source: { kind: 'stdin' }, message } }
+  if (values.json!.trim() === '') {
+    return { kind: 'error', message: '--json needs the fields as JSON; see `diffo help preset`' }
+  }
+  return {
+    kind: 'preset',
+    action: { kind: 'update', id, source: { kind: 'json', text: values.json! }, message },
+  }
 }
 
 function parseCleanVerb(rest: string[]): CliCommand {
@@ -769,6 +907,7 @@ function parseTelemetryVerb(rest: string[]): CliCommand {
 
 function parseVerb(verb: string, rest: string[]): CliCommand {
   if (verb === 'layers') return parseLayersVerb(rest)
+  if (verb === 'preset') return parsePresetVerb(rest)
   if (verb === 'clean') return parseCleanVerb(rest)
   if (verb === 'telemetry') return parseTelemetryVerb(rest)
   const parsed = tryParse(() =>
