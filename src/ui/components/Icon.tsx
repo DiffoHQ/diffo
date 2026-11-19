@@ -65,6 +65,7 @@ export type IconName =
   | 'diff-mod'
   | 'undo'
   | 'bell'
+  | 'star'
 
 export type IconSize = 'xs' | 'sm' | 'md' | 'lg'
 
@@ -335,6 +336,15 @@ export function IconSprite() {
           <circle cx="12" cy="12.4" r="1.7" />
           <path d="M12 10.7V6.6a2 2 0 00-2-2H6.5M8.2 2.8L6.3 4.6l1.9 1.8" />
         </g>
+      </symbol>
+      <symbol id="i-star" viewBox="0 0 16 16">
+        <path
+          d="M8 1.9l1.85 3.86 4.2.55-3.08 2.9.78 4.17L8 11.33l-3.75 2.05.78-4.17-3.08-2.9 4.2-.55z"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="1.3"
+          strokeLinejoin="round"
+        />
       </symbol>
       <symbol id="i-sparkle" viewBox="0 0 16 16">
         <path

@@ -96,6 +96,7 @@ import { PrContext } from './prMode.js'
 import { isTestFile, useReviewFilter } from './reviewFilter.js'
 import { partitionForCommit, partitionThreads, threadsByFile } from './reviewPlacement.js'
 import { computeSinceLastReview } from './sinceLastReview.js'
+import { useStarNudge } from './starNudge.js'
 import { useTelemetry } from './telemetry.js'
 import { useTheme } from './theme.js'
 import {
@@ -358,6 +359,24 @@ function Review() {
   const [composeFilePath, setComposeFilePath] = useState<string | null>(null)
   const [noteComposerOpen, setNoteComposerOpen] = useState(false)
   const [finishOpen, setFinishOpen] = useState(false)
+  // A finish that went through: the star ask (starNudge.ts) waits for the
+  // dialog to close on it, so it never lands on top of the dialog.
+  const finishedRef = useRef(false)
+  const star = useStarNudge()
+  const closeFinish = useCallback(() => {
+    setFinishOpen(false)
+    if (finishedRef.current) {
+      finishedRef.current = false
+      star.offer()
+    }
+  }, [star.offer])
+  const starAsk = useMemo(
+    () =>
+      star.visible
+        ? { onStar: () => star.end('dismissed'), onDismiss: () => star.end('snoozed') }
+        : undefined,
+    [star.visible, star.end],
+  )
   const [clearOpen, setClearOpen] = useState(false)
   const [shortcutsOpen, setShortcutsOpen] = useState(false)
   const [inviteOpen, setInviteOpen] = useState(false)
@@ -1010,6 +1029,7 @@ function Review() {
       await queryClient.invalidateQueries({ queryKey: ['finish-preview'] })
       const handedOver = delivered || at !== 'waiting'
       if (deliver && handedOver && openComments > 0 && !outcome?.failed) setMonitorOpen(true)
+      if (!outcome?.failed) finishedRef.current = true
       return { prompt, delivered: handedOver, ...(outcome ? { public: outcome } : {}) }
     },
     [coverage, openComments],
@@ -1952,6 +1972,7 @@ function Review() {
     <PrContext.Provider value={pr}>
       <div className="layout">
         <Header
+          starAsk={starAsk}
           changeset={data}
           agent={{
             presence,
@@ -2249,7 +2270,7 @@ function Review() {
                 setFinishOpen(false)
                 setInviteOpen(true)
               }}
-              onClose={() => setFinishOpen(false)}
+              onClose={closeFinish}
             />
           ) : (
             <FinishReview
@@ -2263,7 +2284,7 @@ function Review() {
                 setFinishOpen(false)
                 setInviteOpen(true)
               }}
-              onClose={() => setFinishOpen(false)}
+              onClose={closeFinish}
             />
           ))}
         {clearOpen && (
