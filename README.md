@@ -9,10 +9,10 @@
 
 Ask your agent for a review. You get the change in **layers**, in the order it should be
 read, and **the agent on the other end of every comment**: it answers on the line and fixes
-while you read. Hand it a pull request instead, and it reads beside you and sends your
-review to GitHub.
+while you read. When a change is too big to read, you read **only the lines that matter**.
+Hand it a pull request instead, and it reads beside you and sends your review to GitHub.
 
-[Quick start](#quick-start) · [The conversation](#talk-to-the-agent-on-the-line) · [Layers](#read-it-in-layers) · [Pull requests](#review-a-pull-request) · [Docs](#docs) · [Contributing](#contributing)
+[Quick start](#quick-start) · [Big changes](#review-the-paths-that-matter) · [The conversation](#talk-to-the-agent-on-the-line) · [Layers](#read-it-in-layers) · [Pull requests](#review-a-pull-request) · [Docs](#docs) · [Contributing](#contributing)
 
 [![CI](https://img.shields.io/github/actions/workflow/status/DiffoHQ/diffo/ci.yml?branch=main&label=CI&style=flat-square)](https://github.com/DiffoHQ/diffo/actions/workflows/ci.yml)
 [![npm](https://img.shields.io/npm/v/%40diffohq%2Fdiffo?label=npm&style=flat-square&color=1f883d)](https://www.npmjs.com/package/@diffohq/diffo)
@@ -55,6 +55,19 @@ and off with `diffo telemetry off`.
 
 New here? [**Your first review, end to end**](https://diffohq.github.io/diffo/tutorial) takes about five minutes.
 
+## Review the paths that matter
+
+**An agent writes 20,000 lines in an afternoon. Nobody reads 20,000 lines.** Layer it by
+**Importance** and review only the paths that decide something: your data, sign-in,
+permissions, the API. The rest waits, folded.
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/assets/readme-importance-dark.svg">
+  <img alt="A 20,418-line pull request in Diffo, layered by Importance: organizations, roles and SSO across 214 files, opened alphabetical. The reviewer picks Importance under Layer by and asks the agent, which keeps 152 lines in five key layers, the deciding sections of each: the schema migration, the SSO sign-in, the roles and permission checks, the API routes that break, and the API keys it removed. UI, call sites, tests, fixtures and docs go to Other changes, folded." src="docs/assets/readme-importance.svg" width="100%">
+</picture>
+
+<p align="center"><sub>A 20,418-line pull request, down to the paths that matter.</sub></p>
+
 ## Talk to the agent on the line
 
 **We write code with an LLM. We review it alone.**
@@ -90,6 +103,8 @@ so nothing hides outside the plan.
 </picture>
 
 <p align="center"><sub>Thirteen files, alphabetical, become four steps to read in order.</sub></p>
+
+Too big to read whole? Layer it by **Importance**: [review the paths that matter](#review-the-paths-that-matter).
 
 ## Review a pull request
 

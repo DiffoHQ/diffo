@@ -8,6 +8,9 @@ layer at a time, in the order the agent would explain it.
 ![Layers in Diffo: the header chip suggests layers and the reviewer accepts; the request crosses to the agent, which splits the 13-file change into four ordered layers and posts them with diffo layers; the layers land in the rail, the first layer's card draws its diagram, its files are read and ticked, and \] steps to the second and third layers.](../assets/readme-layers.svg){.clip .clip-light}
 ![Layers in Diffo: the header chip suggests layers and the reviewer accepts; the request crosses to the agent, which splits the 13-file change into four ordered layers and posts them with diffo layers; the layers land in the rail, the first layer's card draws its diagram, its files are read and ticked, and \] steps to the second and third layers.](../assets/readme-layers-dark.svg){.clip .clip-dark}
 
+**Too big to read whole?** Layer it by **Importance** and review only the paths that
+decide something. [See it on a 20,000-line change](#what-the-layers-are-for).
+
 Layers come from the agent only. The session that wrote the change still
 remembers the order it would explain it in; Diffo never guesses a plan from
 paths, and with no layers the review is exactly the flat file list.
@@ -162,96 +165,40 @@ never pre-reviews: it says what was done and why, never whether it is fine.
 
 ## What the layers are for
 
-The same change can be layered more than one way. The head of the Layers tab
-names the **preset** the layers follow, *Layered by* **Importance**. Click it
-and it opens to why: one line on what the layers show, whether you picked the
-preset or the agent suggested or picked it, and your note for this change if
-you gave one. The **more** menu beside it acts on the layers: **Layer
-again**, **Manage presets**, and **Remove layers**. To change the preset, use
-**Layer again**, there or in the line under the list (*Layers not quite
-right?*); leaving the pick to the agent is in that dialog, under **Layer by**.
+The same change can be layered more than one way. A **preset** says how: what to read
+closely, in what order, and what goes to background. The head of the Layers tab names
+it: *Layered by* **Importance**.
 
-Layering again is the agent's heavy step, so nothing in the tab starts it on
-its own. **Layer again** opens a small dialog on what the layers follow now;
-its **Layer again** button is what asks, and its **Manage presets** link goes
-to the presets. The dialog has one
-more field, **For this change only**: a note for the agent on top of the
-preset, such as *start with the migration, keep the tests in background*.
-Where the note and the preset disagree, the note wins. It is kept with these
-layers, shown when you open the head as *Your note*, and filled in again the next
-time you layer again; it is never saved with your presets. **One-time
-instructions** is the same box with no preset: the agent layers the change by
-what you write, once, and the head reads *Layered by* **your instructions**.
-
-A preset tells the agent how to split a change into layers: what to read
-closely, in what order, and what goes to background. Two are built in, named
-for what the change is layered by, and what you mean to do with the change
-tells them apart: read all of it, or sign it off.
-
-| Preset | What you get | Use it when |
+| Preset | You get | Use it when |
 | --- | --- | --- |
-| **Concept** | One idea per layer, in the order the change was built. Each layer is a change you could approve on its own, the way it would have been one small pull request: the code with its call sites and tests, needing only the layers before it. A layer that changes existing behaviour says so, and anything beyond the request is a layer of its own | You will read the whole change: ordinary size, or bigger and made of parts that stand alone |
-| **Importance** | The lines that matter most; the rest in background. A budget: at most five layers and about 150 changed lines, the most important first (the data, then the contracts, then the few places that decide), every file given as short line ranges and never whole, each layer titled as the question you answer | You will sign the change off rather than read it: it is too big to read whole, you directed it and trust it, or it is a second look |
+| **Concept** | One idea per layer, in the order it was built; each one you could approve on its own | You'll read the whole change |
+| **Importance** | Only the lines that matter: at most five layers and about 150 lines, each titled as a question; the rest in background | You'll sign it off: too big to read, or a second look |
+| **Let the agent choose** | The default: the agent picks one and says why | You're not sure |
 
-Importance promises a size, and says in its last layer what the budget cut.
-For a different size, say so in a note for this change (*up to 400 lines*),
-or keep a preset of your own.
+![A 20,418-line pull request in Diffo, layered by Importance: organizations, roles and SSO across 214 files, opened alphabetical. The reviewer picks Importance under Layer by and asks the agent, which keeps 152 lines in five key layers, the deciding sections of each: the schema migration, the SSO sign-in, the roles and permission checks, the API routes that break, and the API keys it removed. UI, call sites, tests, fixtures and docs go to Other changes, folded.](../assets/readme-importance.svg){.clip .clip-light}
+![A 20,418-line pull request in Diffo, layered by Importance: organizations, roles and SSO across 214 files, opened alphabetical. The reviewer picks Importance under Layer by and asks the agent, which keeps 152 lines in five key layers, the deciding sections of each: the schema migration, the SSO sign-in, the roles and permission checks, the API routes that break, and the API keys it removed. UI, call sites, tests, fixtures and docs go to Other changes, folded.](../assets/readme-importance-dark.svg){.clip .clip-dark}
 
-Anything narrower, a domain or a concern (*only the database changes*, *what
-could break first*), is **One-time instructions** when it is about this
-change, and a preset of your own when you will want it again: ask the agent
-for it in the dialog and it writes one.
+- **Change it:** **Layer again**, in the head's **more** menu or under the list, opens a
+  small dialog. Pick a preset and press **Layer again**; nothing re-layers on its own.
+- **A note for this change:** *For this change only*, in the same dialog (*up to 400
+  lines, keep the tests in background*). It wins over the preset and isn't saved.
+- **No preset:** **One-time instructions** layers the change by what you write, once.
+- **Remove layers:** in the **more** menu. Your read marks and threads stay.
 
-**Let the agent choose**, the default, leaves the pick to the agent: it reads
-the change, chooses by each preset's *use it when*, and **Why this preset**
-says it picked and why. While the agent is layering again, the head says so.
-**Remove layers** asks first and then takes the layers away; your read marks
-and threads stay, and you can ask for layers again.
+### Your own presets
 
-**Manage presets** opens the **Layers presets** dialog, the same one the gear
-menu's **Layers presets** opens. The presets are cards down the left; clicking one
-shows it, and the default wears a badge. A preset opens on its name, its one
-line, and a card with what it says; tags beside the name say what it is (*Built in*,
-*Default*, *Disabled*), and the **more** menu at the end of the row holds what
-can be done to it: **Make default** sets what new layers follow,
-**Disable** takes it out of the choices, yours and the agent's, and
-**Delete** asks, in a dialog, before it removes one of yours and its
-conversation. Built-ins can't be edited; **Make a copy to edit** makes one
-your own, every field prefilled. With a review open, the bar at the foot of
-the dialog layers it by the one in view, **Layer by Concept**, and names the
-preset the review's layers follow when they follow one.
+**Manage presets**, in the Layer by menu or the gear menu, opens the **Layers presets**
+dialog.
 
-The card reads top to bottom: **Use it when**, then **What the agent is
-told**, which opens on its first lines with **Show all** for the rest. On one
-of yours, **Manual edit** turns the card into a form of the four fields, with
-**Save** and **Cancel**. Attached under it, the way a comment sits under the
-lines it is about, is the conversation with the agent: a thread like
-any in a review, where you say what to change (*put every new environment variable in the review layers,
-before the routes*): the message rides to the agent through its next poll,
-the agent answers in the conversation and edits the fields, and each edit
-shows as a line, *Changed instructions · undo*; once taken, it reads
-*undone*. The agent is sent the preset's
-fields as they stand with every message, so it always works from what the
-dialog shows. It is one conversation per preset, kept with it across reviews;
-**New conversation** clears the messages and leaves the preset as it is. Asked about a built-in, the
-agent makes a changed copy under your own presets and names it in its answer
-there; **Make a copy to edit** does the same by hand.
+- **New preset:** tell the agent what to review and what to skip (*only the public API
+  and anything that writes to disk*) and it writes the preset, or **Manual edit** to
+  type it yourself.
+- **Change one:** say what to change in its conversation. The agent edits it, and every
+  edit has an **undo**.
+- **Built-ins** can't be edited: **Make a copy to edit**, or ask the agent for a copy.
+- **More** on a preset: **Make default**, **Disable**, **Delete**.
 
-Layers stay when you delete the preset they follow: the head reads
-*Layered by a deleted preset*, and **Layer again** opens on the agent's choice.
-
-**New preset** opens on the conversation, with the same **Manual edit**
-beside its name: type the fields, or tell the agent
-what you want to review and what to skip (*only the public API and anything
-that writes to disk; tests and UI go to background*) and it fills them in.
-Your first message makes the preset: it sits under *yours* from then on,
-called **New preset** and marked *empty*, so moving to another card or
-closing the dialog loses nothing, and the conversation carries on there. An
-empty preset is not offered in **Layer by** and the agent never picks it;
-once it has instructions it is a preset like any other. Opening **New
-preset** and leaving without writing anything makes nothing.
-Presets and their conversations follow you, not the repo: they live beside
-the theme and the voice, on this machine, for every review.
+Presets live on your machine, not in the repo, and follow you to every review.
 
 ## The plan stays honest
 

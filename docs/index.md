@@ -25,7 +25,7 @@ features:
     linkText: How the loop works
   - icon: '<svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="m12 3 9 5-9 5-9-5 9-5z"/><path d="m3 13 9 5 9-5"/><path d="m3 18 9 5 9-5"/></svg>'
     title: Read it in layers
-    details: The agent splits the change into ordered layers, each with a summary and its files. One layer at a time, in the order it should be read, not alphabetically.
+    details: The agent splits the change into ordered layers, each with a summary and its files. One layer at a time, in the order it should be read; on a change too big to read, only the lines that matter.
     link: /guide/layers
     linkText: Layers
   - icon: '<svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><circle cx="18" cy="18" r="3"/><circle cx="6" cy="6" r="3"/><path d="M13 6h3a2 2 0 0 1 2 2v7"/><path d="M6 9v12"/></svg>'
@@ -63,6 +63,15 @@ Then, in any agent session, one command:
 The agent opens the review and hands you the URL. Nothing to commit, nothing to push, no
 CI to wait for. Installed from one agent and want them all? `diffo setup`
 [registers every agent on the machine](./guide/getting-started#one-setup-every-agent).
+
+## Review the paths that matter
+
+![A 20,418-line pull request in Diffo, layered by Importance: organizations, roles and SSO across 214 files, opened alphabetical. The reviewer picks Importance under Layer by and asks the agent, which keeps 152 lines in five key layers, the deciding sections of each: the schema migration, the SSO sign-in, the roles and permission checks, the API routes that break, and the API keys it removed. UI, call sites, tests, fixtures and docs go to Other changes, folded.](./assets/readme-importance.svg){.clip .clip-light .home-clip}
+![A 20,418-line pull request in Diffo, layered by Importance: organizations, roles and SSO across 214 files, opened alphabetical. The reviewer picks Importance under Layer by and asks the agent, which keeps 152 lines in five key layers, the deciding sections of each: the schema migration, the SSO sign-in, the roles and permission checks, the API routes that break, and the API keys it removed. UI, call sites, tests, fixtures and docs go to Other changes, folded.](./assets/readme-importance-dark.svg){.clip .clip-dark .home-clip}
+
+**An agent writes 20,000 lines in an afternoon. Nobody reads 20,000 lines.** Layer it by
+**Importance** and review only the paths that decide something: your data, sign-in,
+permissions, the API. The rest waits, folded. [How](./guide/layers#what-the-layers-are-for)
 
 ## The loop
 

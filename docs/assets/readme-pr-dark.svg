@@ -135,9 +135,9 @@
     @keyframes r61 { 0%, 76.5% { opacity: 0; transform: scale(0.3); } 77% { opacity: 0.9; } 81.5%, 100% { opacity: 0; transform: scale(2.4); } }
   </style>
   <defs>
-    <linearGradient id="stage" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#0b0f14"/><stop offset="1" stop-color="#0e1a13"/></linearGradient>
-    <radialGradient id="glow" cx="0.55" cy="0.45" r="0.6"><stop offset="0" stop-color="rgba(63,185,80,0.16)"/><stop offset="1" stop-color="rgba(63,185,80,0.16)" stop-opacity="0"/></radialGradient>
-    <pattern id="dots" width="22" height="22" patternUnits="userSpaceOnUse"><circle cx="11" cy="11" r="1" fill="rgba(255,255,255,0.07)"/></pattern>
+    <linearGradient id="stage" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#1c232c"/><stop offset="1" stop-color="#172a1f"/></linearGradient>
+    <radialGradient id="glow" cx="0.55" cy="0.45" r="0.6"><stop offset="0" stop-color="rgba(63,185,80,0.18)"/><stop offset="1" stop-color="rgba(63,185,80,0.18)" stop-opacity="0"/></radialGradient>
+    <pattern id="dots" width="22" height="22" patternUnits="userSpaceOnUse"><circle cx="11" cy="11" r="1" fill="rgba(255,255,255,0.09)"/></pattern>
     <filter id="shadow" x="-10%" y="-10%" width="120%" height="125%"><feDropShadow dx="0" dy="18" stdDeviation="20" flood-color="#000" flood-opacity="0.55"/></filter>
     <filter id="lift" x="-20%" y="-60%" width="140%" height="240%"><feDropShadow dx="0" dy="3" stdDeviation="4" flood-color="#000" flood-opacity="0.5"/></filter>
     <marker id="arrow-brand" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse" markerUnits="userSpaceOnUse"><path d="M2 1.5L8 5L2 8.5" fill="none" stroke="#238636" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></marker>
@@ -197,6 +197,7 @@
     <rect class="caret" x="64" y="618" width="8" height="18" fill="#e6edf3"/>
     <text x="46" y="674" font-family="ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, monospace" font-size="12.5" fill="#e3b341">▸▸ auto mode on <tspan fill="#8b949e">· 1 shell</tspan></text>
   </g>
+  <rect x="24.5" y="24.5" width="469" height="671" rx="11.5" fill="none" stroke="rgba(255,255,255,0.16)"/>
     
   <g class="b15">
     <rect x="521" y="25" width="734" height="670" rx="12" fill="none" stroke="#8e8e93" stroke-opacity="0.35" stroke-width="1.5" stroke-dasharray="6 8"/>
@@ -319,7 +320,7 @@
         <text class="t41" x="600" y="614" font-size="14" fill="#f5f5f7">every time. Compare the days on both sides.</text>
       </g>
     </g>
-    <rect x="520.5" y="24.5" width="735" height="671" rx="11.5" fill="none" stroke="#2c2c2e"/>
+    <rect x="520.5" y="24.5" width="735" height="671" rx="11.5" fill="none" stroke="rgba(255,255,255,0.16)"/>
   </g>
   
     <g transform="translate(1182 54)">
