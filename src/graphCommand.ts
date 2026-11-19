@@ -3,7 +3,7 @@ import { join } from 'node:path'
 import { isTestFile } from './shared/testFiles.js'
 import type { Changeset, FileChange } from './shared/types.js'
 import { buildGraph } from './ui/graph/basic/build.js'
-import { graphLang } from './ui/graph/language/extract.js'
+import { graphGrammar, graphLang } from './ui/graph/language/extract.js'
 import { loadParser } from './ui/graph/language/parser.js'
 
 /**
@@ -34,7 +34,7 @@ export interface GraphReport {
 }
 
 /** The grammars are the WebAssembly files that the build of the page makes. */
-function grammars(clientDir: string): { runtime: string; cpp: string; ts: string } {
+function grammars(clientDir: string): { runtime: string; cpp: string; ts: string; tsx: string } {
   const assets = join(clientDir, 'assets')
   const names = existsSync(assets) ? readdirSync(assets) : []
   const find = (prefix: string) => {
@@ -46,6 +46,7 @@ function grammars(clientDir: string): { runtime: string; cpp: string; ts: string
     runtime: find('web-tree-sitter'),
     cpp: find('tree-sitter-cpp'),
     ts: find('tree-sitter-typescript'),
+    tsx: find('tree-sitter-tsx'),
   }
 }
 
@@ -74,8 +75,8 @@ export async function graphReport(
         : text(f, 'base').then((t) => t !== null && baseTexts.set(f.path, t)),
     ]),
   )
-  const langs = new Set(parsed.flatMap((f) => graphLang(f.path) ?? []))
-  const parse = await loadParser(grammars(clientDir), [...langs])
+  const needed = new Set(parsed.flatMap((f) => graphGrammar(f.path) ?? []))
+  const parse = await loadParser(grammars(clientDir), [...needed])
   const graph = buildGraph(files, texts, parse, isTestFile, baseTexts)
   const span = (lines: { newNo: number | null }[]): [number, number] | null => {
     const numbers = lines.flatMap((l) => (l.newNo === null ? [] : [l.newNo]))

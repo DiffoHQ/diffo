@@ -63,15 +63,34 @@ const LANG_BY_EXT: Record<string, GraphLang> = {
   mm: 'cpp',
   ts: 'ts',
   mts: 'ts',
+  cts: 'ts',
+  tsx: 'ts',
   js: 'ts',
   mjs: 'ts',
+  cjs: 'ts',
+  jsx: 'ts',
 }
+
+/**
+ * The grammar that parses a file. A file with JSX has the TSX grammar: it is
+ * a grammar of its own, because `<T>x` is a type assertion in TypeScript and
+ * the start of an element in TSX. The language of the file is TypeScript for
+ * the two: the functions and the calls are the same.
+ */
+export type Grammar = 'cpp' | 'ts' | 'tsx'
 
 /** The language of the graph for a path, or null when the graph does not read
  * that kind of file. */
 export function graphLang(path: string): GraphLang | null {
   const ext = path.slice(path.lastIndexOf('.') + 1).toLowerCase()
   return LANG_BY_EXT[ext] ?? null
+}
+
+/** The grammar for a path, or null when the graph does not read that kind
+ * of file. */
+export function graphGrammar(path: string): Grammar | null {
+  const lang = graphLang(path)
+  return lang === 'ts' && /\.[jt]sx$/i.test(path) ? 'tsx' : lang
 }
 
 function oneLine(text: string): string {
@@ -380,6 +399,6 @@ function tsFunctions(root: Node): FunctionInfo[] {
 }
 
 /** The functions of a parsed file, in source order. */
-export function extractFunctions(root: Node, lang: GraphLang): FunctionInfo[] {
-  return lang === 'cpp' ? cppFunctions(root) : tsFunctions(root)
+export function extractFunctions(root: Node, grammar: Grammar): FunctionInfo[] {
+  return grammar === 'cpp' ? cppFunctions(root) : tsFunctions(root)
 }

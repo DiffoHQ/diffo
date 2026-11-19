@@ -1,11 +1,12 @@
 import { useEffect, useState } from 'react'
 import cppUrl from 'tree-sitter-cpp/tree-sitter-cpp.wasm?url'
+import tsxUrl from 'tree-sitter-typescript/tree-sitter-tsx.wasm?url'
 import tsUrl from 'tree-sitter-typescript/tree-sitter-typescript.wasm?url'
 import runtimeUrl from 'web-tree-sitter/web-tree-sitter.wasm?url'
 import type { FileChange } from '../../../shared/types.js'
 import { isTestFile } from '../../reviewFilter.js'
 import { buildSides, type GraphSides } from '../basic/build.js'
-import { graphLang } from '../language/extract.js'
+import { graphGrammar, graphLang } from '../language/extract.js'
 import { loadParser } from '../language/parser.js'
 import type { GraphRepo } from '../repo/repo.js'
 import { MAX_FILE_BYTES } from './constants.js'
@@ -43,9 +44,9 @@ export function useGraph(
           .filter((f) => (side === 'head' ? f.status !== 'deleted' : f.status !== 'added'))
           .map(async (f) => [f.path, await fileText(f, side)] as const),
       )
-    const langs = new Set(readable.flatMap((f) => graphLang(f.path) ?? []))
+    const grammars = new Set(readable.flatMap((f) => graphGrammar(f.path) ?? []))
     Promise.all([
-      loadParser({ runtime: runtimeUrl, cpp: cppUrl, ts: tsUrl }, [...langs]),
+      loadParser({ runtime: runtimeUrl, cpp: cppUrl, ts: tsUrl, tsx: tsxUrl }, [...grammars]),
       sides('head'),
       // The base text tells what the change removes.
       sides('base'),

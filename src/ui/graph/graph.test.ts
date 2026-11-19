@@ -571,6 +571,33 @@ void Client::Go() {
     expect(sides.after.edges).toEqual([])
   })
 
+  it('reads a file with JSX: its components and the calls in them', () => {
+    const tsx = `import { useState } from 'react'
+
+function format(n: number): string {
+  return String(n)
+}
+
+export function Counter({ start }: { start: number }) {
+  const [n, setN] = useState(start)
+  return <button onClick={() => setN(n + 1)}>{format(n)}</button>
+}
+
+export const Total = ({ items }: { items: number[] }) => {
+  return <span>{format(items.length)}</span>
+}
+`
+    const file = added('ui/Counter.tsx', tsx, [4, 8, 9, 13])
+    const graph = build([file], new Map([[file.path, tsx]]), parse)
+    expect(graph.skipped).toEqual([])
+    expect(graph.nodes.map((n) => n.name)).toEqual(['format', 'Counter', 'Total'])
+    const end = (id: string) => id.split('#')[1]?.split('@')[0]
+    expect(graph.edges.map((e) => `${end(e.from)} -> ${end(e.to)}`).sort()).toEqual([
+      'Counter -> format',
+      'Total -> format',
+    ])
+  })
+
   it('reports a file whose text it did not get', () => {
     const file = added('a/list.ts', TS, [3])
     expect(buildGraph([file], new Map(), parse).skipped).toEqual(['a/list.ts'])

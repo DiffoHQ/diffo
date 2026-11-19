@@ -13,7 +13,7 @@ between the two views.
 
 Diffo parses the head text and the base text of each changed file in the page,
 with [tree-sitter](https://tree-sitter.github.io). It has grammars for C++ and
-for TypeScript and JavaScript. A file in a different language is one card with
+for TypeScript and JavaScript, with and without JSX. A file in a different language is one card with
 the lines of its hunks, so the graph always holds the whole change.
 
 | In the graph | What it is |

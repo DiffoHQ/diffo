@@ -1,6 +1,6 @@
 import type { DiffLine, FileChange, Hunk } from '../../../shared/types.js'
 import { CallbackJoin } from '../language/callbacks.js'
-import { type FunctionInfo, type GraphLang, graphLang } from '../language/extract.js'
+import { type FunctionInfo, type Grammar, graphGrammar, graphLang } from '../language/extract.js'
 import { objectEscapes, overrideBases } from '../language/objects.js'
 import { type GraphFunction, Resolver } from '../language/resolve.js'
 import { plainRepo } from '../repo/plain.js'
@@ -114,7 +114,7 @@ export interface CodeGraph {
   skipped: string[]
 }
 
-export type ParseFile = (lang: GraphLang, text: string) => FunctionInfo[]
+export type ParseFile = (grammar: Grammar, text: string) => FunctionInfo[]
 
 /** The head line a diff line sits at. A deleted line sits where the next head
  * line is, so it counts for the function that it was removed from. */
@@ -169,7 +169,8 @@ export function buildGraph(
     const deleted = file.status === 'deleted'
     const text = deleted ? undefined : texts.get(file.path)
     const baseText = baseTexts.get(file.path)
-    if (lang === null || (text === undefined && baseText === undefined)) {
+    const grammar = graphGrammar(file.path)
+    if (lang === null || grammar === null || (text === undefined && baseText === undefined)) {
       if (lang !== null) skipped.push(file.path)
       continue
     }
@@ -187,7 +188,7 @@ export function buildGraph(
     const rows =
       text === undefined
         ? []
-        : parse(lang, text)
+        : parse(grammar, text)
             .map(named)
             .map((f) => ({
               ...f,
@@ -201,7 +202,7 @@ export function buildGraph(
     const gone =
       baseText === undefined
         ? []
-        : parse(lang, baseText)
+        : parse(grammar, baseText)
             .map(named)
             .filter((f) => !names.has(f.name))
             .map((f) => ({

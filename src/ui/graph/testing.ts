@@ -12,6 +12,7 @@ export function loadTestParser(): Promise<ParseFile> {
     runtime: require.resolve('web-tree-sitter/web-tree-sitter.wasm'),
     cpp: require.resolve('tree-sitter-cpp/tree-sitter-cpp.wasm'),
     ts: require.resolve('tree-sitter-typescript/tree-sitter-typescript.wasm'),
+    tsx: require.resolve('tree-sitter-typescript/tree-sitter-tsx.wasm'),
   })
 }
 
