@@ -34,7 +34,7 @@ nothing.
 | [`diffo poll`](#diffo-poll) | agent | Wait for the reviewer's feedback |
 | [`diffo reply`](#diffo-reply-threadid) | agent | Reply to a thread |
 | [`diffo comment`](#diffo-comment-file) | agent | Start a thread in the agent's own voice |
-| [`diffo layers`](#diffo-layers) | agent | Outline the changeset as steps to read in order |
+| [`diffo layers`](#diffo-layers) | agent | Split the changeset into layers to read in order |
 | [`diffo end`](#diffo-end) | agent | Detach from the review |
 | [`diffo help`](#help-and-version) | both | Help for the CLI, or for one command |
 | [`diffo help pr`](#help-and-version) | both | Help for reviewing a pull request: the spellings, the worktree, what `gh` needs |
@@ -183,7 +183,7 @@ the connection alive; a single poll is capped at **30 minutes**.
 `status` is one of `feedback` (the only one that carries work), `timeout`,
 `superseded` (another session took the review), or `ended`. A `feedback`
 payload's `kind` is `threads` (individual sends), `finish` (the reviewer is done
-reading), `layers` (the reviewer asked for the outline; see
+reading), `layers` (the reviewer asked for layers; see
 [`diffo layers`](#diffo-layers)), or `cleared` (they started the review over).
 
 Run it attended: as a tracked background task when its completion wakes the
@@ -241,11 +241,11 @@ toward the reviewer's outstanding feedback and isn't flushed by Finish review.
 
 ```bash
 diffo layers --suggest "the parser change explains the rest"   # at open: this read benefits from layers
-diffo layers --json '[{"title":"Parser contract","files":["src/parse.ts"]}]'
-cat outline.json | diffo layers --stdin
+diffo layers --json '{"preset":{"id":"concept"},"layers":[{"title":"Parser contract","files":["src/parse.ts"]}]}'
+cat layers.json | diffo layers --stdin
 ```
 
-Outlines the changeset as **layers**: ordered steps, each with a title, a
+Splits the changeset into **layers**: ordered steps, each with a title, a
 short summary of what the step is about (a diagram when it helps), and the
 files that belong to it. The reviewer reads one layer at a time; files no layer lists gather in a trailing
 *Since your review* layer until the agent re-posts. [Layers](/agents#layers)
@@ -256,8 +256,14 @@ Exactly one of:
 | Option | What it does |
 | --- | --- |
 | `--suggest ["<why>"]` | Flag, without writing them, that this read benefits from layers. The optional reason is one line, quoted to the reviewer next to the offer |
-| `--json '<Layer[]>'` | Post the outline. **Replaces** the whole list; ids are kept for titles that match, so the reviewer's place survives a re-post |
+| `--preset <id>` | With `--suggest` only: the reviewer's preset that fits this change. The Layers tab opens on it. One that is not on is dropped, and the output's `note` says so |
+| `--json '<post>'` | Post the layers: `{ "preset", "layers": Layer[] }`, or a bare `Layer[]` for layers following no preset. A preset id the reviewer does not have is dropped, and the ack's `note` says so. **Replaces** the whole list; ids are kept for titles that match, so the reviewer's place survives a re-post |
 | `--stdin` | The same payload, piped |
+
+`preset` is `{ id, picked?, why? }`: the preset the layers follow (a
+built-in's id, or one of the reviewer's), `picked` when the ask left the choice
+to the agent, and `why` its one line on the choice. [Layers](/agents#layers)
+has when each applies.
 
 A layer is `{ title, summary?, kind?, files, decisions? }`. `files` holds
 repo-relative paths, as strings or as `{ "path", "note"?, "highlight"? }` where
@@ -265,8 +271,10 @@ the note is one line on why the file is in this step, and `highlight` the
 head-side lines the step is about within the file (`"40"`, `"12-18"`, or a list
 of up to thirty), lit in the pane with the rest dimmed. A highlighted entry holds
 only the hunks its highlight touches; a highlight that touches none is
-ignored. `kind` may only be `"mechanical"`: the
-layer changes no behaviour, and its files render folded. A bare path is the
+ignored. `kind` is `"mechanical"` (the layer changes no behaviour, and its
+files render folded) or `"background"` (how the change is done, not for
+review: listed whole, it holds what the review layers left of its files, and
+the reviewer sees it folded under one row at the foot of the tab). A bare path is the
 whole file; `path:from-to` (head-side lines) is the hunks that range touches,
 for a file whose hunks belong to different steps — list it with its own range
 in each step that has a part of it. A path listed whole in one layer and by
@@ -281,24 +289,52 @@ malformed `at` fails the post the same way a bad file does.
 [Layers](/agents#layers) has what earns a line.
 
 A title that is empty or used twice, an empty file list, an absolute or
-`..`-escaping path, a `kind` other than `mechanical`, or more than five
-decisions fails with exit 1 and
+`..`-escaping path, a `kind` other than `mechanical` or `background`, or more
+than five decisions fails with exit 1 and
 names the layer at fault (`layer 2 ("Callers"): needs a non-empty "files" list`).
 Nothing is stored on a failed post.
 
 Prints `{ "ok": true, "layers": 4, "next_step": "…" }` after a post — with an
-`uncovered` list when the outline leaves changed lines or files in no layer
+`uncovered` list when the post leaves changed lines or files in no layer
 (`[{ "path": "src/a.ts", "ranges": ["88-95"] }, { "path": "src/b.ts" }]`: the
-head-side lines no layer claims, or a path alone for a file the outline never
+head-side lines no layer claims, or a path alone for a file no layer
 names), and a `next_step` that asks for a re-post with them placed — and
 `{ "ok": true, "suggested": true, "next_step": "…" }` after a suggestion.
 `suggested` is `false` when layers already exist: there is nothing left to
 suggest, and the next step says to re-post instead.
 
-The reviewer's **Ask the agent for steps** button, and *re-outline* over
-an existing outline, reach the agent as a `kind: "layers"` poll payload whose
+The reviewer's **Ask the agent for layers** button, and **Layer again** over
+existing layers, reach the agent as a `kind: "layers"` poll payload whose
 prompt asks for exactly this post and lists every file with its hunks' head-side
-line ranges, so splitting a file is copying a range. A post concludes the request.
+line ranges, so splitting a file is copying a range. **Add to layers** reaches
+it the same way with a shorter prompt: the layers as they stand and what is
+outside them, to re-post with the additions. A post concludes the request.
+
+### `diffo preset`
+
+```bash
+diffo preset list
+diffo preset show <id>
+diffo preset update <id> --json '{"instructions":"…"}' --message "Routes first now, as you asked."
+… | diffo preset update <id> --stdin --message "…"
+diffo preset reply <id> --message "Putting tests first would hide the contract they pin. Want it anyway?"
+```
+
+The reviewer's layers presets (see [What the layers are for](/guide/layers#what-the-layers-are-for)),
+and the conversation about each one in the Layers presets dialog. A reviewer's message
+reaches the agent as a `kind: "preset"` poll payload with the preset as it
+stands and the messages so far.
+
+| Command | What it does |
+| --- | --- |
+| `list` | Every preset, built-ins first, with `on` (offered, and open to the agent's pick) and `builtIn`, plus the default (`agent`, or a preset id) |
+| `show <id>` | One preset with its four fields, and its conversation |
+| `update <id>` | Sets the fields sent (`name`, `blurb`, `whenToUse`, `instructions`; any subset, each capped), makes the preset when nobody has it yet (a name at least), and refuses a built-in's id. `--message` is the agent's line on what changed; it shows in the conversation with an undo |
+| `reply <id>` | A message in the conversation that changes nothing |
+
+An empty or non-string field, nothing to change, a built-in's id on `update`,
+or a new preset without a name fails with exit 1 and says which. `update`
+prints `{ "ok": true, "preset": { "id", "name" }, "next_step": "…" }`.
 
 ### `diffo end`
 

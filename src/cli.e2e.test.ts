@@ -240,7 +240,12 @@ describe.skipIf(!existsSync(cliPath))('diffo binary (e2e smoke)', () => {
       'The constant',
       'Everything else',
     ])
-    expect(withLayers.layersSuggested).toBeUndefined()
+    // The suggestion is answered, not forgotten: the empty Layers tab opens
+    // on it again if the layers are removed.
+    expect(withLayers.layersSuggested).toEqual({
+      reason: 'app.ts explains the rest',
+      answered: true,
+    })
     const rejected = await run(['layers', '--json', '[{"title":"no files"}]'])
     expect(rejected.code).toBe(1)
     expect(rejected.stderr).toContain('needs a non-empty "files"')

@@ -1,5 +1,6 @@
 import { type ReactNode, useEffect, useRef, useState } from 'react'
 import { Icon, type IconName } from './Icon.js'
+import { claimEscape } from './Modal.js'
 
 /**
  * The overflow menu — one control standing in for a whole toolbar.
@@ -14,12 +15,20 @@ export function Menu({
   children,
   align = 'right',
   triggerClassName = 'btn btn-ghost btn-icon btn-sm',
+  trigger,
+  tip,
 }: {
   label: string
   icon?: IconName
+  /** What the trigger shows in place of the icon: a name with a chevron,
+   * for a menu that is a picker. `label` stays its accessible name. */
+  trigger?: ReactNode
   children: (close: () => void) => ReactNode
   align?: 'left' | 'right'
   triggerClassName?: string
+  /** The trigger's tooltip, when it should say more than `label`: what the
+   * picked value gives, on a menu that is a picker. */
+  tip?: string
 }) {
   const [open, setOpen] = useState(false)
   const wrap = useRef<HTMLDivElement>(null)
@@ -37,9 +46,12 @@ export function Menu({
     }
     document.addEventListener('mousedown', onDown)
     document.addEventListener('keydown', onKey, true)
+    // In a dialog, this Escape is the menu's: the dialog under it stands.
+    const release = claimEscape('menu')
     return () => {
       document.removeEventListener('mousedown', onDown)
       document.removeEventListener('keydown', onKey, true)
+      release()
     }
   }, [open])
 
@@ -49,7 +61,7 @@ export function Menu({
         type="button"
         className={triggerClassName}
         aria-label={label}
-        data-tip={open ? undefined : label}
+        data-tip={open ? undefined : (tip ?? label)}
         aria-haspopup="menu"
         aria-expanded={open}
         onClick={(e) => {
@@ -57,7 +69,7 @@ export function Menu({
           setOpen((v) => !v)
         }}
       >
-        <Icon name={icon} />
+        {trigger ?? <Icon name={icon} />}
       </button>
       {open && (
         <div className={`menu-panel${align === 'left' ? ' menu-panel-left' : ''}`} role="menu">
@@ -73,6 +85,8 @@ export function MenuItem({
   kbd,
   checked,
   danger = false,
+  disabled = false,
+  title,
   onClick,
   children,
 }: {
@@ -80,6 +94,9 @@ export function MenuItem({
   kbd?: string
   checked?: boolean
   danger?: boolean
+  /** Shown but inert; `title` says why. */
+  disabled?: boolean
+  title?: string
   onClick: () => void
   children: ReactNode
 }) {
@@ -89,6 +106,8 @@ export function MenuItem({
       role={checked === undefined ? 'menuitem' : 'menuitemradio'}
       {...(checked === undefined ? {} : { 'aria-checked': checked })}
       className={`menu-item${danger ? ' menu-item-danger' : ''}`}
+      disabled={disabled}
+      title={title}
       onClick={onClick}
     >
       {icon && <Icon name={icon} size="sm" />}

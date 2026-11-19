@@ -32,11 +32,11 @@ For a change with an order worth explaining, the agent may also suggest **layers
 header chip reads *agent · suggests layers*. Click it, or press **Ask the agent for steps** in
 the **Layers** tab, and a moment later the change arrives as ordered steps, each
 with a title, a summary, and its files. You can ask whether the agent suggested it or not;
-without an outline the review is the plain file list.
+without layers the review is the plain file list.
 [Layers](guide/layers.md) has the detail.
 
-![Layers in Diffo: the header chip suggests layers and the reviewer accepts; the request crosses to the agent, which outlines the 13-file change as four ordered steps and posts them with diffo layers; the layers land in the rail, the first layer's card draws its diagram, its files are read and ticked, and \] steps to the second and third layers.](./assets/readme-layers.svg){.clip .clip-light}
-![Layers in Diffo: the header chip suggests layers and the reviewer accepts; the request crosses to the agent, which outlines the 13-file change as four ordered steps and posts them with diffo layers; the layers land in the rail, the first layer's card draws its diagram, its files are read and ticked, and \] steps to the second and third layers.](./assets/readme-layers-dark.svg){.clip .clip-dark}
+![Layers in Diffo: the header chip suggests layers and the reviewer accepts; the request crosses to the agent, which splits the 13-file change into four ordered layers and posts them with diffo layers; the layers land in the rail, the first layer's card draws its diagram, its files are read and ticked, and \] steps to the second and third layers.](./assets/readme-layers.svg){.clip .clip-light}
+![Layers in Diffo: the header chip suggests layers and the reviewer accepts; the request crosses to the agent, which splits the 13-file change into four ordered layers and posts them with diffo layers; the layers land in the rail, the first layer's card draws its diagram, its files are read and ticked, and \] steps to the second and third layers.](./assets/readme-layers-dark.svg){.clip .clip-dark}
 
 ## 2 · Review the code
 
@@ -115,9 +115,9 @@ can clone.
 
 1. **Open it.** In any session, `/diffo <PR link>`. The PR is fetched into a worktree
    Diffo owns, so nothing in your checkout moves, and the review opens with the PR's
-   title, author and checks in the header. Row 0 of the Layers list is the
+   title, author and checks in the header. The book at the head of the Layers list opens the
    **Overview**: the description, and the GitHub conversation you are part of.
-2. **Read it in layers.** The agent suggests an outline when the change has an order
+2. **Read it in layers.** The agent suggests layers when the change has an order
    worth explaining. Click the chip and read one layer at a time, as before.
 3. **Ask the agent.** Every composer has two tabs. **Ask agent** is private: the agent
    can run the tests in the worktree and answer with evidence, and when the answer is a

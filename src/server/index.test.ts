@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest'
+import { DEFAULT_PRESET_SETTINGS } from '../shared/presets.js'
 import { VOICE_MAX } from '../shared/voice.js'
 import { createApp, markDevIndex } from './index.js'
 
@@ -82,7 +83,12 @@ describe('ui settings', () => {
   it('answers null without a store, and refuses writes', async () => {
     const app = createApp(ctx)
     const res = await app.request('/api/settings')
-    expect(await res.json()).toEqual({ theme: null, critter: null, voice: null })
+    expect(await res.json()).toEqual({
+      theme: null,
+      critter: null,
+      voice: null,
+      layersPresets: DEFAULT_PRESET_SETTINGS,
+    })
     expect((await put(app, '{"theme":"dark"}')).status).toBe(503)
   })
 
@@ -91,7 +97,12 @@ describe('ui settings', () => {
     expect((await put(app, '{"theme":"dark"}')).status).toBe(200)
     expect(kv.get('theme')).toBe('dark')
     const res = await app.request('/api/settings')
-    expect(await res.json()).toEqual({ theme: 'dark', critter: null, voice: null })
+    expect(await res.json()).toEqual({
+      theme: 'dark',
+      critter: null,
+      voice: null,
+      layersPresets: DEFAULT_PRESET_SETTINGS,
+    })
   })
 
   it('rejects a theme outside the three real values', async () => {
@@ -106,7 +117,12 @@ describe('ui settings', () => {
     kv.set('theme', 'neon')
     kv.set('critter', 'maybe')
     const res = await app.request('/api/settings')
-    expect(await res.json()).toEqual({ theme: null, critter: null, voice: null })
+    expect(await res.json()).toEqual({
+      theme: null,
+      critter: null,
+      voice: null,
+      layersPresets: DEFAULT_PRESET_SETTINGS,
+    })
   })
 
   it('round-trips the critter switch on its own, leaving the theme alone', async () => {
@@ -114,7 +130,12 @@ describe('ui settings', () => {
     kv.set('theme', 'dark')
     expect((await put(app, '{"critter":"off"}')).status).toBe(200)
     const res = await app.request('/api/settings')
-    expect(await res.json()).toEqual({ theme: 'dark', critter: 'off', voice: null })
+    expect(await res.json()).toEqual({
+      theme: 'dark',
+      critter: 'off',
+      voice: null,
+      layersPresets: DEFAULT_PRESET_SETTINGS,
+    })
   })
 
   it('round-trips the voice, trimmed; empty resets it to the default (null)', async () => {
@@ -144,5 +165,57 @@ describe('ui settings', () => {
     expect((await put(app, '{"theme":"dark","critter":"maybe"}')).status).toBe(400)
     expect((await put(app, '{}')).status).toBe(400)
     expect(kv.size).toBe(0)
+  })
+})
+
+describe('ui settings — layers presets', () => {
+  const put = (app: ReturnType<typeof createApp>, body: unknown) =>
+    app.request('/api/settings', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    })
+  const withStore = () => {
+    const kv = new Map<string, string>()
+    const app = createApp({
+      ...ctx,
+      uiSettings: {
+        get: (key) => kv.get(key) ?? null,
+        set: (key, value) => void kv.set(key, value),
+      },
+    })
+    return { app, kv }
+  }
+  const mine = {
+    id: 'mine1',
+    name: 'Data and storage',
+    blurb: 'types and keys',
+    whenToUse: 'A change that adds stored state.',
+    instructions: 'Type files whole.',
+  }
+
+  it('round-trips the whole blob, normalised, and reads a bad stored one as the defaults', async () => {
+    const { app, kv } = withStore()
+    const res = await put(app, {
+      layersPresets: { presets: [mine], disabled: ['importance'], default: 'mine1' },
+    })
+    expect(res.status).toBe(200)
+    expect((await (await app.request('/api/settings')).json()).layersPresets).toEqual({
+      presets: [{ ...mine, builtIn: false }],
+      disabled: ['importance'],
+      default: 'mine1',
+    })
+    kv.set('layersPresets', '{"presets":"nope"}')
+    expect((await (await app.request('/api/settings')).json()).layersPresets).toEqual(
+      DEFAULT_PRESET_SETTINGS,
+    )
+  })
+
+  it('refuses a bad blob with the field at fault, and touches nothing', async () => {
+    const { app, kv } = withStore()
+    const res = await put(app, { layersPresets: { presets: [{ ...mine, id: 'concept' }] } })
+    expect(res.status).toBe(400)
+    expect(((await res.json()) as { error: string }).error).toMatch(/layersPresets: .*built-in/)
+    expect(kv.has('layersPresets')).toBe(false)
   })
 })

@@ -1256,9 +1256,11 @@ describe('threads the changeset left behind', () => {
       />,
     )
     const section = container.querySelector('.past-threads')!
-    expect(section.textContent).toContain('1 thread whose layer left the outline')
+    expect(section.textContent).toContain('1 thread whose layer is gone')
     fireEvent.click(section.querySelector('.file-header')!)
-    expect(section.textContent).toContain('left the outline: the agent re-posted without its title')
+    expect(section.textContent).toContain(
+      'is gone: the agent re-posted the layers without its title',
+    )
     const card = section.querySelector('[data-thread-id="t-layer-gone"]')!
     expect(card.querySelector('.thread-where')!.textContent).toBe('Layer “Callers”')
     expect(card.querySelector('.thread-where-gone')).toBeTruthy()

@@ -25,7 +25,7 @@ features:
     linkText: How the loop works
   - icon: '<svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="m12 3 9 5-9 5-9-5 9-5z"/><path d="m3 13 9 5 9-5"/><path d="m3 18 9 5 9-5"/></svg>'
     title: Read it in layers
-    details: The agent outlines the change as ordered steps, each with a summary and its files. One layer at a time, in the order it should be read, not alphabetically.
+    details: The agent splits the change into ordered layers, each with a summary and its files. One layer at a time, in the order it should be read, not alphabetically.
     link: /guide/layers
     linkText: Layers
   - icon: '<svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><circle cx="18" cy="18" r="3"/><circle cx="6" cy="6" r="3"/><path d="M13 6h3a2 2 0 0 1 2 2v7"/><path d="M6 9v12"/></svg>'
@@ -70,8 +70,8 @@ CI to wait for. Installed from one agent and want them all? `diffo setup`
 
 ## Read it in layers
 
-![Layers in Diffo: the header chip suggests layers and the reviewer accepts; the request crosses to the agent, which outlines the 13-file change as four ordered steps and posts them with diffo layers; the layers land in the rail, the first layer's card draws its diagram, its files are read and ticked, and \] steps to the second and third layers.](./assets/readme-layers.svg){.clip .clip-light .home-clip}
-![Layers in Diffo: the header chip suggests layers and the reviewer accepts; the request crosses to the agent, which outlines the 13-file change as four ordered steps and posts them with diffo layers; the layers land in the rail, the first layer's card draws its diagram, its files are read and ticked, and \] steps to the second and third layers.](./assets/readme-layers-dark.svg){.clip .clip-dark .home-clip}
+![Layers in Diffo: the header chip suggests layers and the reviewer accepts; the request crosses to the agent, which splits the 13-file change into four ordered layers and posts them with diffo layers; the layers land in the rail, the first layer's card draws its diagram, its files are read and ticked, and \] steps to the second and third layers.](./assets/readme-layers.svg){.clip .clip-light .home-clip}
+![Layers in Diffo: the header chip suggests layers and the reviewer accepts; the request crosses to the agent, which splits the 13-file change into four ordered layers and posts them with diffo layers; the layers land in the rail, the first layer's card draws its diagram, its files are read and ticked, and \] steps to the second and third layers.](./assets/readme-layers-dark.svg){.clip .clip-dark .home-clip}
 
 A diff arrives alphabetically, which is almost never the order to read it in. Ask, and
 the agent posts **layers**: the change as ordered steps, each with a title, a summary,

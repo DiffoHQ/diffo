@@ -258,7 +258,12 @@ export const reviewApi = {
     ),
   remove: (threadId: string) => del<{ removed: boolean }>(`/api/review/threads/${threadId}`),
   clear: () => del<{ removed: number }>('/api/review/threads'),
-  /** Outline, or refresh: the click rides to the agent's next poll. */
-  requestLayers: () => post<{ ok: boolean }>('/api/review/layers/request'),
+  /** Outline, or refresh: the click rides to the agent's next poll. The ask
+   * says what the layers are for — a preset by id (`agent` leaves the pick to
+   * the agent); none means the default from Settings → Layers. */
+  requestLayers: (ask: { preset?: string | null; note?: string; add?: true } = {}) =>
+    post<{ ok: boolean }>('/api/review/layers/request', ask),
+  /** Take the outline away: the Layers tab returns to its empty state. */
+  removeLayers: () => del<{ removed: boolean }>('/api/review/layers'),
   dismissLanded: () => del<{ ok: boolean }>('/api/review/landed'),
 }

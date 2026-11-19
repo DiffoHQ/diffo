@@ -977,7 +977,7 @@ describe('DeliveryQueue — the layers request', () => {
     q.enqueueLayers()
     expect(await attached).toBe('data')
     const snapshot = q.take()!
-    expect(snapshot).toEqual({ kind: 'layers' })
+    expect(snapshot).toEqual({ kind: 'layers', ask: { kind: 'auto' } })
     q.confirm(snapshot, [])
     expect(q.take()).toBeNull()
     // No batch, no reply owed — but the outline IS owed, and presence says so.
@@ -985,6 +985,26 @@ describe('DeliveryQueue — the layers request', () => {
     expect(q.presenceDetail().reason).toBe('delivered')
     expect(q.layersRequest()).toBe('outlining')
     expect(q.currentBatch()).toBeNull()
+  })
+
+  it('a preset message rides ahead of the outline, behind threads; one item per preset', async () => {
+    const q = new DeliveryQueue()
+    const attached = q.attach()
+    q.enqueueLayers()
+    q.enqueuePreset('p1')
+    q.enqueuePreset('p1')
+    q.enqueuePreset('p2')
+    q.enqueueThreads(['t1'])
+    expect(await attached).toBe('data')
+    const first = q.take()!
+    expect(first).toMatchObject({ kind: 'threads' })
+    q.confirm(first, ['t1'])
+    const second = q.take()!
+    expect(second).toEqual({ kind: 'preset', id: 'p1' })
+    q.confirm(second, [])
+    expect(q.take()).toEqual({ kind: 'preset', id: 'p2' })
+    q.confirm(q.take()!, [])
+    expect(q.take()).toEqual({ kind: 'layers', ask: { kind: 'auto' } })
   })
 
   it('reads as queued while parked, and two clicks before a poll are one item', () => {
@@ -1007,7 +1027,7 @@ describe('DeliveryQueue — the layers request', () => {
     expect(first).toMatchObject({ kind: 'threads', threadIds: ['t1'] })
     q.confirm(first, ['t1'])
     const second = q.take()!
-    expect(second).toEqual({ kind: 'layers' })
+    expect(second).toEqual({ kind: 'layers', ask: { kind: 'auto' } })
     q.confirm(second, [])
     expect(q.take()).toEqual({ kind: 'cleared' })
   })
@@ -1079,7 +1099,7 @@ describe('DeliveryQueue — the layers request', () => {
     expect(q.layersRequest()).toBe('queued')
     expect(q.presence()).toBe('waiting')
     // ...and the next poll carries it again.
-    expect(q.take()).toEqual({ kind: 'layers' })
+    expect(q.take()).toEqual({ kind: 'layers', ask: { kind: 'auto' } })
     // Before the window, a second click changes nothing: the outline is still being written.
     const fresh = new DeliveryQueue(undefined, undefined, {}, undefined, 10_000)
     fresh.enqueueLayers()
@@ -1088,6 +1108,23 @@ describe('DeliveryQueue — the layers request', () => {
     expect(fresh.layersRequest()).toBe('outlining')
     fresh.end()
     q.end()
+  })
+
+  it('the ask the agent was handed waits for the post that answers it, once', () => {
+    const q = new DeliveryQueue()
+    expect(q.takeLayersAsk()).toBeNull()
+    const ask = { kind: 'preset' as const, id: 'importance', note: 'tests last' }
+    q.enqueueLayers(ask)
+    // Parked is not handed over: a post now answers nothing.
+    expect(q.takeLayersAsk()).toBeNull()
+    q.confirm(q.take()!, [])
+    expect(q.takeLayersAsk()).toEqual(ask)
+    expect(q.takeLayersAsk()).toBeNull()
+    // Withdrawn with the request.
+    q.enqueueLayers({ kind: 'own', note: 'db only' })
+    q.confirm(q.take()!, [])
+    q.dropLayers()
+    expect(q.takeLayersAsk()).toBeNull()
   })
 
   it('dropLayers withdraws a parked request and an outline in flight alike', () => {
@@ -1111,7 +1148,7 @@ describe('DeliveryQueue — the layers request', () => {
     expect(q.take()).toBeNull()
     expect(q.layersRequest()).toBeNull()
     q.rescope('')
-    expect(q.take()).toEqual({ kind: 'layers' })
+    expect(q.take()).toEqual({ kind: 'layers', ask: { kind: 'auto' } })
     q.confirm(q.take()!, [])
     // The outline owed on this branch is not owed on another.
     q.rescope('other')

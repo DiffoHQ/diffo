@@ -925,7 +925,7 @@ describe('ReviewStore layers', () => {
     expect(back.codeContext).toBeNull()
   })
 
-  it('a suggestion stands until the post answers it, and is refused once layers exist', () => {
+  it('a post answers the suggestion and keeps what it named; a new one is refused once layers exist', () => {
     const root = tempRoot()
     const store = makeStore(root)
     expect(store.suggestLayers('the parser change explains the rest')).toBe(true)
@@ -934,9 +934,33 @@ describe('ReviewStore layers', () => {
       reason: 'the parser change explains the rest',
     })
     post(store, ['Contract'])
-    expect(store.get().layersSuggested).toBeUndefined()
+    const answered = { reason: 'the parser change explains the rest', answered: true }
+    expect(store.get().layersSuggested).toEqual(answered)
     expect(store.suggestLayers()).toBe(false)
-    expect(store.get().layersSuggested).toBeUndefined()
+    expect(store.get().layersSuggested).toEqual(answered)
+    // The layers removed, it is still there for the empty tab to open on; a
+    // fresh suggestion nudges again.
+    store.removeLayers()
+    expect(store.get().layersSuggested).toEqual(answered)
+    expect(makeStore(root).get().layersSuggested).toEqual(answered)
+    expect(store.suggestLayers('again', 'importance')).toBe(true)
+    expect(store.get().layersSuggested).toEqual({ reason: 'again', preset: 'importance' })
+  })
+
+  it('a preset the agent picked for a post is remembered as its suggestion', () => {
+    const store = makeStore(tempRoot())
+    store.suggestLayers('first thought', 'concept')
+    store.setLayers([{ title: 'A', files: ['a.ts'] }], {
+      preset: { id: 'importance', picked: true, why: 'a large feature' },
+    })
+    expect(store.get().layersSuggested).toEqual({
+      preset: 'importance',
+      reason: 'a large feature',
+      answered: true,
+    })
+    // A preset the reviewer chose says nothing about what the agent thinks.
+    store.setLayers([{ title: 'A', files: ['a.ts'] }], { preset: { id: 'concept' } })
+    expect(store.get().layersSuggested?.preset).toBe('importance')
   })
 
   it('a suggestion without a reason is still a suggestion', () => {
@@ -1027,7 +1051,7 @@ describe('parseReview layers', () => {
     ).toBeUndefined()
   })
 
-  it('a suggestion stored next to layers is stale and dropped', () => {
+  it('a suggestion stored next to layers is kept as answered', () => {
     const parsed = parseReview(
       JSON.stringify({
         version: 1,
@@ -1037,6 +1061,26 @@ describe('parseReview layers', () => {
       }),
     )!
     expect(parsed.layers).toBeDefined()
-    expect(parsed.layersSuggested).toBeUndefined()
+    expect(parsed.layersSuggested).toEqual({ reason: 'stale', answered: true })
+  })
+})
+
+describe('parseReview layers presets', () => {
+  it('round-trips the preset the outline follows; a bad one is dropped alone', () => {
+    const stored = (preset: unknown) =>
+      JSON.stringify({
+        version: 1,
+        threads: [],
+        layers: {
+          items: [{ id: 'l-1', title: 'A', files: ['a.ts'] }],
+          postedAt: '2026-09-20T00:00:00Z',
+          preset,
+        },
+      })
+    const good = parseReview(stored({ id: 'mine1', picked: true, why: 'big' }))!
+    expect(good.layers?.preset).toEqual({ id: 'mine1', picked: true, why: 'big' })
+    const bad = parseReview(stored({ id: 'has space' }))!
+    expect(bad.layers?.items).toHaveLength(1)
+    expect(bad.layers?.preset).toBeUndefined()
   })
 })

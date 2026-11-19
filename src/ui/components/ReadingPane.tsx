@@ -98,6 +98,9 @@ export interface LayerView {
   title: string
   /** The agent tagged it `mechanical`: a chip after the title; files fold. */
   mechanical: boolean
+  /** The agent tagged it `background`: how the change is done, not for
+   * review. A chip after the title; files fold, as a mechanical layer's do. */
+  background?: boolean
   summary?: string
   /** Listed paths the changeset lacks right now — named on the card, since no
    * file header below will. The files it has are the headers themselves. */
@@ -372,6 +375,14 @@ function LayerHead({
             mechanical
           </span>
         )}
+        {layer.background && (
+          <span
+            className="ch-kind"
+            title="how the change is done, which the layers above already describe; files are folded, expand one to check"
+          >
+            background
+          </span>
+        )}
       </h2>
       {(hasAbout || hasDecisions) && (
         <div className="ch-head-body">
@@ -461,7 +472,7 @@ function LayerHead({
                   role="radio"
                   className="src-chip"
                   aria-checked={layer.reading.kind !== 'tree'}
-                  data-tip="The order the agent outlined this layer in"
+                  data-tip="The order the agent put this layer’s files in"
                   onClick={() => layer.reading!.onPick('order')}
                 >
                   the agent’s order
@@ -1408,7 +1419,7 @@ export function ReadingPane({
   }, [askedFor])
   // Open by default: agent heads-ups and unanswered questions must not hide
   // behind a count the way the old "N changeset notes" fold did. In layer mode
-  // the strip starts folded instead — the guide is row 0 of the outline, one
+  // the strip starts folded instead — the guide is behind the rail head's book, one
   // click away, and the layer's own card is what the pane should lead with.
   // The default is derived, not stored: layers arrive after the first render,
   // and a reviewer's own click is the only thing that should outlast that.
@@ -1421,7 +1432,7 @@ export function ReadingPane({
     if (revealTick > 0) setNotesOpen(true)
   }, [revealTick])
   // On the Overview the strip IS the pane, so it cannot fold; on a layer it is
-  // not shown at all — the guide is one click away as row 0 of the outline.
+  // not shown at all — the guide is one click away, behind the book in the rail's head.
   const notesExpanded = overview || notesOpen || comments?.changesetComposerOpen === true
   const stripShown = overview || layer === undefined
   const [pastOpen, setPastOpen] = useState(false)
@@ -1543,7 +1554,7 @@ export function ReadingPane({
   const onCommits = past.filter((t) => t.anchor.kind === 'commit').length
   const pastWhy =
     onLayers === past.length
-      ? `The layer ${past.length === 1 ? 'this hangs' : 'these hang'} off left the outline: the agent re-posted without ${past.length === 1 ? 'its' : 'their'} title.`
+      ? `The layer ${past.length === 1 ? 'this hangs' : 'these hang'} off is gone: the agent re-posted the layers without ${past.length === 1 ? 'its' : 'their'} title.`
       : onCommits === past.length
         ? `The commit ${past.length === 1 ? 'this hangs' : 'these hang'} off left the branch: reworded, squashed, or dropped.`
         : outdated === past.length
@@ -1565,7 +1576,7 @@ export function ReadingPane({
         <span className="file-path">
           {past.length === 1 ? '1 thread' : `${past.length} threads`} whose{' '}
           {onLayers === past.length
-            ? 'layer left the outline'
+            ? 'layer is gone'
             : onCommits === past.length
               ? 'commit left the branch'
               : 'code left the changeset'}

@@ -9,6 +9,20 @@ import {
   uncoveredLine,
 } from '../shared/layers.js'
 import {
+  activePresets,
+  DEFAULT_PRESET_SETTINGS,
+  fallbackPreset,
+  findPreset,
+  isEmptyPreset,
+  type LayersPreset,
+  type LayersPresetSettings,
+  PRESET_BLURB_MAX,
+  PRESET_INSTRUCTIONS_MAX,
+  PRESET_NAME_MAX,
+  PRESET_WHEN_MAX,
+  type PresetThread,
+} from '../shared/presets.js'
+import {
   type Anchor,
   type AnchoredCommit,
   type AnchoredLayer,
@@ -28,7 +42,7 @@ import {
 } from '../shared/review.js'
 import type { Changeset, FileChange, Hunk, PrInfo } from '../shared/types.js'
 import { effectiveVoice, normalizeVoice } from '../shared/voice.js'
-import type { Submitted } from './delivery.js'
+import type { LayersAsk, Submitted } from './delivery.js'
 
 /** A comment can anchor to a long range; the frozen text keeps its head. */
 const ANCHORED_TEXT_CAP = 10
@@ -115,9 +129,12 @@ export function buildCliCommands(cli: string) {
     // alongside a usage string offering a file.
     guide: `${cli} comment --message "<what the change does>"`,
     // The reading plan: the flag at open, and the post itself (inline or piped).
-    layersSuggest: `${cli} layers --suggest "<why, in one line>"`,
-    layers: `${cli} layers --json '<Layer[]>'`,
+    layersSuggest: `${cli} layers --suggest "<why, in one line>" [--preset <id>]`,
+    layers: `${cli} layers --json '<post>'`,
     layersStdin: `${cli} layers --stdin`,
+    // The conversation about a layers preset: edit it, or answer.
+    presetUpdate: `${cli} preset update <id> --json '{ "<field>": "…" }' --message "<what changed>"`,
+    presetReply: `${cli} preset reply <id> --message "<text>"`,
     end: `${cli} end`,
     setup: `${cli} setup`,
   } as const
@@ -194,14 +211,17 @@ export const TAB_TITLE = {
 } as const
 
 export function nextStepFor(
-  kind: 'threads' | 'finish' | 'cleared' | 'layers' | 'submitted',
+  kind: 'threads' | 'finish' | 'cleared' | 'layers' | 'preset' | 'submitted',
   actionable: number,
 ): string {
+  if (kind === 'preset') {
+    return `Edit the preset with \`${CLI_COMMANDS.presetUpdate}\`, or answer with \`${CLI_COMMANDS.presetReply}\`; nothing else is owed for it. Then run \`${CLI_COMMANDS.poll}\` again to keep listening (${POLL_STANCE}).`
+  }
   if (kind === 'submitted') {
     return `Nothing to act on — tell the user the review was submitted, then run \`${CLI_COMMANDS.poll}\` again to keep listening (${POLL_STANCE}), or \`${CLI_COMMANDS.end}\` if they are done.`
   }
   if (kind === 'layers') {
-    return `Post the outline with \`${CLI_COMMANDS.layers}\` — ${LAYERS.post} (\`${CLI_COMMANDS.layersStdin}\`). If the post is refused, say so to the reviewer in chat — they are watching the Layers tab for it. Then run \`${CLI_COMMANDS.poll}\` again to keep listening (${POLL_STANCE}).`
+    return `Post the layers with \`${CLI_COMMANDS.layers}\` — ${LAYERS.post} (\`${CLI_COMMANDS.layersStdin}\`). If the post is refused, say so to the reviewer in chat — they are watching the Layers tab for it. Then run \`${CLI_COMMANDS.poll}\` again to keep listening (${POLL_STANCE}).`
   }
   if (kind === 'cleared') {
     // A cleared review dropped its tab title along with its threads (see
@@ -277,10 +297,12 @@ export const ACK_NEXT_STEP = {
   comment: `It's in the review as your comment, labeled as yours — the reviewer replies to take it up, or resolves it. Continue with the review threads, then run \`${CLI_COMMANDS.poll}\`.`,
   replyPrComment: `Reply posted, with the suggested review comment under it. The reviewer adds it to their review, edits it first, or dismisses it — nothing posts on its own, and you will hear what happened when they submit. When every thread is handled, run \`${CLI_COMMANDS.poll}\` again to keep listening (${POLL_STANCE}).`,
   commentPrComment: `It's in the review as your comment, with the suggested review comment under it. The reviewer adds it to their review, edits it first, or dismisses it — nothing posts on its own. Continue with the review threads, then run \`${CLI_COMMANDS.poll}\`.`,
-  layers: `The outline is live in the reviewer's Layers tab, resolved against the changeset as it moves. Files you touch later land in a trailing "Since your review" layer until you re-post the whole list. Continue with the review threads, then run \`${CLI_COMMANDS.poll}\`.`,
-  layersSuggested: `The review now offers the outline to the reviewer. Mention it in your handoff too — "say layers and I'll outline it" — and post it with \`${CLI_COMMANDS.layers}\` when they ask. Then run \`${CLI_COMMANDS.poll}\`.`,
-  layersAlready: `This review already carries layers, so there is nothing to suggest — re-post the whole list with \`${CLI_COMMANDS.layers}\` if the outline is stale. Then run \`${CLI_COMMANDS.poll}\`.`,
-  layersUncovered: `The outline is live, but part of the changeset is in no layer and reads under "Since your review" until it is: `,
+  layers: `The layers are live in the reviewer's Layers tab, resolved against the changeset as it moves. Files you touch later land in a trailing "Since your review" layer until you re-post the whole list. Continue with the review threads, then run \`${CLI_COMMANDS.poll}\`.`,
+  layersSuggested: `The review now offers layers to the reviewer. Mention it in your handoff too — "say layers and I'll split it into layers" — and post it with \`${CLI_COMMANDS.layers}\` when they ask. Then run \`${CLI_COMMANDS.poll}\`.`,
+  layersAlready: `This review already carries layers, so there is nothing to suggest — re-post the whole list with \`${CLI_COMMANDS.layers}\` if the layers are stale. Then run \`${CLI_COMMANDS.poll}\`.`,
+  layersUncovered: `The layers are live, but part of the changeset is in no layer and reads under "Since your review" until it is: `,
+  presetUpdate: `The preset is changed, and the reviewer sees your message and the change in the Layers presets dialog, with an undo. Nothing else is owed for it. Then run \`${CLI_COMMANDS.poll}\`.`,
+  presetReply: `Your answer is in the preset's conversation; the preset itself is as it was. Then run \`${CLI_COMMANDS.poll}\`.`,
   end: 'Detached. Do not reopen or re-poll this review unless the user asks — deliver anything remaining directly in the conversation.',
 } as const
 
@@ -399,9 +421,14 @@ export const LAYERS = {
   /** When to raise the flag at open — and that not raising it is the common case. */
   suggest:
     'suggest layers when the change has an order worth explaining; a wide diff with one idea does not need them',
-  /** The one tag, and the bar for it. */
+  /** The two tags, and the bar for each. */
   mechanical:
     'tag a layer "kind": "mechanical" only when it changes no behaviour — a rename, call sites following a signature; if unsure, don\'t tag',
+  /** Background: how it is done, for the reviewer who is not reading how.
+   * Listed whole, because the claim rule hands it what the review layers
+   * left — the agent never computes the complement of a highlight. */
+  background:
+    'tag a layer "kind": "background" when it is how the change is done and nothing in it is the reviewer\'s to decide — implementation the review layers already describe, tests, build wiring. List its files whole: the lines a review layer highlights are that layer\'s, and a background layer gets what is left of each file, so never work out the lines a review layer did not take. Background layers go last; the reviewer sees them in their own section, under the ones for review, and opens one only to check something',
   /** Summaries orient reading, never pre-review: the guide's line, verbatim. */
   stance: GUIDE.stance,
   /** A post is the whole list. */
@@ -428,10 +455,10 @@ export const LAYERS = {
    * decide which changed lines the step owns, so a hunk two steps share
    * points somewhere different in each. */
   highlight:
-    'highlight by default — on each file object, "highlight" the head-side lines this step is about: "40", "12-18", or a list of up to thirty. The reviewer sees them lit, the rest dimmed, and can fold the rest away. A highlight claims the changed lines it lights for this step, and a hunk it lights nothing in is another step\'s; a file or hunk listed without a highlight claims all of its changed lines. Each changed line belongs to exactly one layer: a hunk two steps share is listed in both, each highlighting its own lines, and the post refuses an outline that claims a line in two layers. A deleted line goes with the head line right after it. Leave "highlight" out only when every changed line of the file is this step\'s — a new file read top to bottom, a mechanical step',
+    'highlight by default — on each file object, "highlight" the head-side lines this step is about: "40", "12-18", or a list of up to thirty. The reviewer sees them lit, the rest dimmed, and can fold the rest away. A highlight claims the changed lines it lights for this step, and a hunk it lights nothing in is another step\'s; a file or hunk listed without a highlight claims all of its changed lines. Each changed line belongs to exactly one layer: a hunk two steps share is listed in both, each highlighting its own lines, and the post is refused when two layers claim the same line. A deleted line goes with the head line right after it. Leave "highlight" out only when every changed line of the file is this step\'s — a new file read top to bottom, a mechanical step',
   /** The payload, in one line. */
   shape:
-    '[{ "title": "…", "summary": "…", "kind": "mechanical" (optional), "files": ["src/a.ts", { "path": "src/b.ts", "note": "why this file is in this step", "highlight": ["12-18", "40"] }, "src/c.ts:12-40"], "decisions": [{ "text": "…", "detail": "…", "at": "src/a.ts:12-18" | ["src/a.ts:12-18", "test/a.test.ts:40"] }] (optional, at most five) }]',
+    '{ "preset": { "id": "<the preset id the ask names>", "picked": true (only when the ask left the pick to you), "why": "<one line, only when picked>" }, "layers": [{ "title": "…", "summary": "…", "kind": "mechanical" | "background" (optional), "files": ["src/a.ts", { "path": "src/b.ts", "note": "why this file is in this step", "highlight": ["12-18", "40"] }, "src/c.ts:12-40"], "decisions": [{ "text": "…", "detail": "…", "at": "src/a.ts:12-18" | ["src/a.ts:12-18", "test/a.test.ts:40"] }] (optional, at most five) }] } — a bare list of layers is accepted too, as layers following no preset',
 } as const
 
 /**
@@ -599,12 +626,21 @@ export function layersNudge(
     layersSuggested?: unknown
   },
   D: Doctrine = AUTHOR_DOCTRINE,
+  presets: readonly { id: string; blurb: string }[] = [],
 ): string | null {
   if (review.layers || review.layersSuggested) return null
+  // The reviewer's presets that are on: the flag can name the one that fits,
+  // and the Layers tab then opens on it with the reason beside it.
+  const fit =
+    presets.length > 0
+      ? ` Add --preset with the one that fits this change, and the Layers tab opens on it: ${presets
+          .map((p) => (p.blurb ? `${p.id} (${p.blurb})` : p.id))
+          .join(', ')}.`
+      : ''
   return (
     `if this changeset reads better in order — ${D.layers.suggest} — flag it: ` +
-    `\`${CLI_COMMANDS.layersSuggest}\`, and offer it in your handoff ("say layers and I'll ` +
-    `outline it"). Post the outline only when asked: \`${CLI_COMMANDS.layers}\` — each layer ` +
+    `\`${CLI_COMMANDS.layersSuggest}\`.${fit} Offer it in your handoff too ("say layers and I'll ` +
+    `split it into layers"). Post the layers only when asked: \`${CLI_COMMANDS.layers}\` — each layer ` +
     `${D.layers.what}; ${D.layers.summary}; ${D.layers.diagram}; ${D.layers.order}. ${D.layers.stance}. ` +
     `\`diffo help layers\` has the shape.`
   )
@@ -948,7 +984,7 @@ function snapshotWindow(
  * read it, so the agent answers about the outline, not about a line. */
 function layerBlock(layer: AnchoredLayer): string[] {
   return [
-    'The layer this comments on, as it was outlined when the comment was written:',
+    'The layer this comments on, as it was when the comment was written:',
     `- title: ${layer.title}`,
     ...(layer.summary ? ['- summary:', ...layer.summary.split('\n').map((l) => `  ${l}`)] : []),
     `- files: ${layer.files.map((f) => `\`${f}\``).join(', ')}`,
@@ -1164,28 +1200,31 @@ export function buildSubmittedPrompt(ctx: PromptContext, submitted: Submitted): 
 export function buildLayersRequestPrompt(
   ctx: PromptContext,
   existing: Pick<Layer, 'title'>[] | null,
+  ask: Exclude<LayersAsk, { kind: 'add' }> = { kind: 'auto' },
+  settings: LayersPresetSettings = DEFAULT_PRESET_SETTINGS,
 ): string {
   const refresh = existing !== null && existing.length > 0
   const titles = refresh ? existing.map((l) => `"${l.title}"`).join(', ') : ''
   const D = doctrineFor(ctx.changeset, ctx.voiceSetting)
   return [
     refresh
-      ? `The reviewer asked you to refresh the layers in \`${ctx.repo.name}\` (branch \`${ctx.repo.branch}\`): the code moved since you outlined it, and files outside the outline have been gathering under "Since your review". Re-post the whole list as the change stands now.`
-      : `The reviewer asked for layers in \`${ctx.repo.name}\` (branch \`${ctx.repo.branch}\`): outline the changeset as steps to read in order. The Layers tab reads "Outlining…" until you post.`,
+      ? `The reviewer asked you to refresh the layers in \`${ctx.repo.name}\` (branch \`${ctx.repo.branch}\`): the code moved since you posted the layers, and files outside them have been gathering under "Since your review". Re-post the whole list as the change stands now.`
+      : `The reviewer asked for layers in \`${ctx.repo.name}\` (branch \`${ctx.repo.branch}\`): split the changeset into layers to read in order. The Layers tab reads "Layering…" until you post.`,
     '',
     ...prLines(ctx),
     ...(ctx.changeset ? [specLine(ctx.changeset), ''] : []),
     ...(refresh
       ? [
-          `The outline they have: ${titles}. Keep a title that still fits its step, rename or drop the ones that don't — ${D.layers.replace}.`,
+          `The layers they have: ${titles}. Keep a title that still fits its step, rename or drop the ones that don't — ${D.layers.replace}.`,
           '',
         ]
       : []),
+    ...presetLines(ask, settings),
     `Each layer is ${D.layers.what}. Summary: ${D.layers.summary}. Diagram: ${D.layers.diagram}:`,
     '',
     ...GUIDE_CLASSDEFS.map((line) => `    ${line}`),
     '',
-    `Order: ${D.layers.order}. ${D.layers.mechanical}. ${D.layers.stance}.`,
+    `${D.layers.mechanical}. ${D.layers.background}. ${D.layers.stance}.`,
     '',
     `Files: ${D.layers.files}. Paths are relative to the repo root.`,
     '',
@@ -1201,6 +1240,103 @@ export function buildLayersRequestPrompt(
     `Then run \`${CLI_COMMANDS.poll}\` again to keep listening (${POLL_STANCE}).`,
     '',
   ].join('\n')
+}
+
+/**
+ * The reviewer pressed "Add to layers": code changed after the post and sits
+ * outside every layer. Not a new split, so no preset and no doctrine on how
+ * to divide a change: the layers as they stand, what is outside them, and the
+ * rules a file entry follows. The agent re-posts the same list with the
+ * additions, because a post replaces.
+ */
+export function buildLayersAddPrompt(
+  ctx: PromptContext,
+  layers: Layers,
+  outside: readonly UncoveredRef[],
+): string {
+  const D = doctrineFor(ctx.changeset, ctx.voiceSetting)
+  const standing = JSON.stringify({
+    ...(layers.preset ? { preset: layers.preset } : {}),
+    layers: layers.items.map(({ id: _id, ...layer }) => layer),
+  })
+  return [
+    `The reviewer asked you to add what is outside the layers in \`${ctx.repo.name}\` (branch \`${ctx.repo.branch}\`): code that changed after you posted them, which reads under "Since your review" until a layer holds it. This is not a new split. Keep every layer as it stands — title, summary, kind, order, the files and highlights it has — and put each path below into the layer it belongs with. Add a layer at the end only for something none of them covers, and touch a summary only where the addition makes it wrong.`,
+    '',
+    ...prLines(ctx),
+    ...(ctx.changeset ? [specLine(ctx.changeset), ''] : []),
+    outside.length > 0
+      ? `Outside the layers now: ${uncoveredLine(outside)}.`
+      : 'Nothing is outside the layers right now: re-post them as they stand, and the reviewer sees that.',
+    '',
+    'The layers as they stand, in the shape a post takes:',
+    '',
+    `    ${standing}`,
+    '',
+    `Files: ${D.layers.files}. Paths are relative to the repo root.`,
+    '',
+    `Highlights: ${D.layers.highlight}.`,
+    '',
+    `Post it: \`${CLI_COMMANDS.layers}\` — the whole list with the additions, because ${D.layers.replace}; ${D.layers.post} (\`${CLI_COMMANDS.layersStdin}\`). If the post is refused, tell the reviewer in chat; they are watching the Layers tab for it. Nothing else is owed for this item — no reply, no comment.`,
+    '',
+    `Then run \`${CLI_COMMANDS.poll}\` again to keep listening (${POLL_STANCE}).`,
+    '',
+  ].join('\n')
+}
+
+/**
+ * What the layers are for, as the ask said: the preset's instructions in
+ * place of the walkthrough's order; or the list to pick from, with each one's
+ * "when to use", when the pick was left to the agent. Every branch ends with
+ * the `preset` field the post must carry, so the chip can say what the
+ * outline follows.
+ */
+function presetLines(
+  ask: Exclude<LayersAsk, { kind: 'add' }>,
+  settings: LayersPresetSettings,
+): string[] {
+  const quote = (text: string) => text.replace(/\s+/g, ' ').trim()
+  if (ask.kind === 'own') {
+    return [
+      `What the layers are for — the reviewer's own words, for this change only: “${quote(ask.note)}”. Layer the change the way they ask; where they leave a question open, keep each layer one self-contained step and order the layers so each builds on the ones before it. Post without a "preset".`,
+      '',
+    ]
+  }
+  // What the reviewer wants this time, on top of the preset: theirs, so it
+  // wins where the two disagree.
+  const noteLines = ask.note
+    ? [
+        `For this change only, the reviewer also asked: “${quote(ask.note)}”. Do that too; where it and the preset disagree, their words win.`,
+        '',
+      ]
+    : []
+  if (ask.kind === 'preset') {
+    const preset = findPreset(settings, ask.id) ?? fallbackPreset()
+    return [
+      `What the layers are for — the reviewer picked the "${preset.name}" preset: ${preset.instructions} Post with "preset": { "id": "${preset.id}" }.`,
+      '',
+      ...noteLines,
+    ]
+  }
+  const choices = activePresets(settings)
+  if (choices.length === 0) {
+    const preset = fallbackPreset()
+    return [
+      `What the layers are for — the "${preset.name}" preset: ${preset.instructions} Post with "preset": { "id": "${preset.id}" }.`,
+      '',
+      ...noteLines,
+    ]
+  }
+  return [
+    'What the layers are for is yours to pick: choose the preset below that fits this change by its "when to use", follow its instructions, and post with "preset": { "id": "<its id>", "picked": true, "why": "<one line, in plain words, on why this one for this change>" }. The reviewer sees the name and the line, and can ask for another.',
+    ...choices.flatMap((p) => [
+      '',
+      `  ${p.id} — ${p.name}: ${p.blurb}.`,
+      `    When to use: ${quote(p.whenToUse)}`,
+      `    Instructions: ${quote(p.instructions)}`,
+    ]),
+    '',
+    ...noteLines,
+  ]
 }
 
 /** The most files the ask lists hunk by hunk. Past it the list says how many
@@ -1229,6 +1365,56 @@ export function hunkListLines(changeset: Changeset): string[] {
     lines.push(`  … and ${files.length - HUNK_LIST_CAP} more files`)
   }
   return lines
+}
+
+/** The four fields of a preset, as the agent is told to write them. */
+export function presetFieldGuide(background: string): string {
+  return `"name": under ${PRESET_NAME_MAX} characters, naming what the change is layered by, so it finishes the sentence "Layered by …" ("Importance", "API and disk"). "blurb": one line under ${PRESET_BLURB_MAX} characters, shown under the name wherever the preset is listed — plain words on what the layers show ("the lines that matter most; the rest in background"). "whenToUse": one or two sentences, under ${PRESET_WHEN_MAX} characters, on the change this fits — size, who wrote it, what the reviewer is deciding — written for an agent choosing among presets. "instructions": under ${PRESET_INSTRUCTIONS_MAX} characters, what an agent layering by this preset does: what goes in the review layers, in what order, what is highlighted in a file that mixes concerns, and what goes to background layers (${background}). Concrete enough that two agents following it post the same layers; no verdicts, no reading order the layers themselves will carry.`
+}
+
+/**
+ * The reviewer wrote to the agent about a layers preset (Layers dialog): the
+ * preset as it stands, the conversation so far, and what to do — edit it
+ * with `diffo preset update` and say what changed, or answer with
+ * `diffo preset reply`. A preset nobody has yet is made from the ask; a
+ * built-in is copied under the reviewer's own.
+ */
+export function buildPresetThreadPrompt(
+  ctx: PromptContext,
+  id: string,
+  preset: LayersPreset | null,
+  thread: PresetThread,
+): string {
+  const quote = (text: string) => text.replace(/\s+/g, ' ').trim()
+  const D = doctrineFor(ctx.changeset, ctx.voiceSetting)
+  const standing = preset
+    ? preset.builtIn
+      ? `The preset is "${preset.name}" (id \`${id}\`), built in: it cannot be edited. Make a copy under a new id of your own (letters, digits, - and _, such as \`${id}-mine\`) with what they ask changed, and say in your reply that it is a copy under their own presets. As it stands: blurb "${quote(preset.blurb)}"; use it when "${quote(preset.whenToUse)}"; instructions "${quote(preset.instructions)}".`
+      : isEmptyPreset(preset) && preset.blurb === '' && preset.whenToUse === ''
+        ? `The preset (id \`${id}\`) is new and still empty, called "${preset.name}" for now: write every field from what they ask, the name included.`
+        : `The preset is "${preset.name}" (id \`${id}\`), one of the reviewer's own. As it stands: blurb "${quote(preset.blurb)}"; use it when "${quote(preset.whenToUse)}"; instructions "${quote(preset.instructions)}".`
+    : `There is no preset \`${id}\` yet: make it from what they ask, under that id, with every field written (a name at least).`
+  const lines = thread.messages.map((m) => {
+    const who = m.author === 'reviewer' ? 'Reviewer' : 'You'
+    const changed = m.change
+      ? m.change.created
+        ? ' (you made the preset)'
+        : ` (you changed: ${m.change.fields.join(', ')})`
+      : ''
+    return `- ${who}${changed}: ${quote(m.text) || '(no text)'}`
+  })
+  return [
+    `The reviewer is talking to you about a layers preset in \`${ctx.repo.name}\` — a saved way of layering a change, which they pick for a review or let an agent pick by its "use it when" (see \`diffo help preset\`). ${standing}`,
+    '',
+    'The conversation, oldest first; the last reviewer message is what to act on:',
+    '',
+    ...lines,
+    '',
+    `Act: when they want the preset changed, edit it with \`${CLI_COMMANDS.presetUpdate}\` — send only the fields you change (${presetFieldGuide(D.layers.background)}) — and the --message is your one or two lines on what you changed and why, shown in the conversation. When no edit is needed — a question, or you advise against the change — answer with \`${CLI_COMMANDS.presetReply}\`. One of the two per message, concise, addressed to the reviewer; nothing else is owed for this item: no layers, no review comment.`,
+    '',
+    `Then run \`${CLI_COMMANDS.poll}\` again to keep listening (${POLL_STANCE}).`,
+    '',
+  ].join('\n')
 }
 
 export function buildClearedPrompt(ctx: PromptContext): string {

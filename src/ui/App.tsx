@@ -10,6 +10,7 @@ import {
   useState,
 } from 'react'
 import { changedLineSpans } from '../shared/layers.js'
+import { AGENT_PICKS, activePresets, findPreset, presetDefault } from '../shared/presets.js'
 import {
   type Coverage,
   isDraft,
@@ -40,7 +41,9 @@ import { Icon, IconSprite } from './components/Icon.js'
 import { InviteAgent } from './components/InviteAgent.js'
 import { LayerRail } from './components/LayerRail.js'
 import { LayerSource, type LayerSourceKind } from './components/LayerSource.js'
+import type { LayersAskInput } from './components/LayersAsk.js'
 import { LayersEmpty, type LayersEmptyState } from './components/LayersEmpty.js'
+import { LayersPresets } from './components/LayersPresets.js'
 import { LeftPanel } from './components/LeftPanel.js'
 import { LivingMark } from './components/LivingMark.js'
 import { Monitor } from './components/Monitor.js'
@@ -88,6 +91,7 @@ import {
 } from './layers.js'
 import { computeDelta, EMPTY_DELTA } from './liveDelta.js'
 import { timeAgo } from './markdown.js'
+import { notifyPresetsChanged, useLayersPresets } from './presetsPref.js'
 import { PrContext } from './prMode.js'
 import { isTestFile, useReviewFilter } from './reviewFilter.js'
 import { partitionForCommit, partitionThreads, threadsByFile } from './reviewPlacement.js'
@@ -121,7 +125,7 @@ const clampRail = (w: number) => Math.min(RAIL_MAX, Math.max(RAIL_MIN, w))
 
 const FILE_BATCH = 12
 
-/** The active-layer key for row 0, the guide — not a stored layer, so not an id. */
+/** The active-layer key for the Overview, the guide — not a stored layer, so not an id. */
 const OVERVIEW_KEY = 'overview'
 
 const FILE_GAP = 16
@@ -175,6 +179,7 @@ function useLiveUpdates(): {
     source.addEventListener('review', () => {
       void client.invalidateQueries({ queryKey: ['review'] })
     })
+    source.addEventListener('presets', () => notifyPresetsChanged())
     source.addEventListener('presence', (event) => {
       try {
         const detail = JSON.parse((event as MessageEvent).data) as {
@@ -362,6 +367,10 @@ function Review() {
   const [privacyOpen, setPrivacyOpen] = useState(false)
   const voicePref = useVoice()
   const [voiceOpen, setVoiceOpen] = useState(false)
+  // Settings → Layers, and the chip on the Layers tab: the same dialog, which
+  // knows the open review (use a preset now, have the agent write one).
+  const presetsPref = useLayersPresets()
+  const [layersDialog, setLayersDialog] = useState(false)
   const [panel, setPanel] = useState<PanelTab>('files')
   const [searchFocusTick, setSearchFocusTick] = useState(0)
   // The pull request under review, when there is one (see prMode.ts). Null is
@@ -452,7 +461,7 @@ function Review() {
     [pr, review?.threads],
   )
   const hasOverview = guide !== undefined || description !== undefined
-  // Row 0. Standing on it, the pane shows the guide and the other changeset
+  // The Overview. Standing on it, the pane shows the guide and the other changeset
   // threads — the orientation — and no layer's files. Only exists with a guide
   // or a description.
   const onOverview = layerMode && activeLayerKey === OVERVIEW_KEY && hasOverview
@@ -650,7 +659,10 @@ function Review() {
   // reviewer enters it. Expanding one is a click, and stays expanded: the fold
   // keys on the layer's identity, not the resolved object, which every
   // changeset event rebuilds.
-  const mechanicalKey = paneLayerActive?.kind === 'mechanical' ? layerKey(paneLayerActive) : null
+  const mechanicalKey =
+    paneLayerActive?.kind === 'mechanical' || paneLayerActive?.kind === 'background'
+      ? layerKey(paneLayerActive)
+      : null
   const foldLayerRef = useRef(paneLayerActive)
   foldLayerRef.current = paneLayerActive
   // The one file the fold must leave open: a jump into a mechanical layer is
@@ -675,9 +687,56 @@ function Review() {
   // Outline, or refresh: the click rides the delivery queue to the agent's
   // next poll, and the presence stream carries "outlining" back. Nothing to
   // await here — the SSE event is what changes the screen.
-  const requestLayers = useCallback(() => {
-    void reviewApi.requestLayers().catch(() => {})
+  const requestLayers = useCallback((ask: LayersAskInput = {}) => {
+    void reviewApi.requestLayers(ask).catch(() => {})
   }, [])
+  // The presets that are on, for the rail's menu and the empty state's picker.
+  const layerPresets = useMemo(
+    () =>
+      activePresets(presetsPref.settings).map((p) => ({ id: p.id, name: p.name, blurb: p.blurb })),
+    [presetsPref.settings],
+  )
+  // What the outline follows, for the rail's head: the preset's name, its one
+  // line on what the layers show, and the agent's line on why when the pick
+  // was its own.
+  const presetUse = review?.layers?.preset
+  const suggestedPreset = review?.layersSuggested?.preset
+  const suggestedReason = review?.layersSuggested?.reason
+  const presetChip = useMemo(() => {
+    if (!presetUse) return undefined
+    const preset = findPreset(presetsPref.settings, presetUse.id)
+    // Deleted since the layers were posted: the id is nothing to read.
+    const name = preset?.name ?? 'a deleted preset'
+    return {
+      id: presetUse.id,
+      name,
+      blurb: preset?.blurb ?? '',
+      ...(presetUse.picked ? { picked: true } : {}),
+      ...(presetUse.why ? { why: presetUse.why } : {}),
+      // The reviewer asked for it, and it is the one the agent suggested: the
+      // head says whose idea it was, with the agent's reason.
+      ...(!presetUse.picked && suggestedPreset === presetUse.id
+        ? { suggested: true, ...(suggestedReason ? { why: suggestedReason } : {}) }
+        : {}),
+    }
+  }, [presetUse, presetsPref.settings, suggestedPreset, suggestedReason])
+  // The preset the agent named when it suggested layers, while it is one that
+  // is on: where the empty state's picker opens, with the agent's reason.
+  const suggestion = review?.layersSuggested
+  const suggestedLayers = useMemo(() => {
+    const preset = layerPresets.find((p) => p.id === suggestion?.preset)
+    return preset
+      ? { preset, ...(suggestion?.reason ? { reason: suggestion.reason } : {}) }
+      : undefined
+  }, [layerPresets, suggestion])
+  // The ask the layers on screen answered, for asking again as it was: the
+  // preset (or the agent's choice, when the pick was its own) and the note.
+  const layersNote = review?.layers?.note
+  const standingAsk = useMemo<LayersAskInput>(() => {
+    const note = layersNote ? { note: layersNote } : {}
+    if (presetUse) return { preset: presetUse.picked ? AGENT_PICKS : presetUse.id, ...note }
+    return layersNote ? { preset: null, note: layersNote } : {}
+  }, [presetUse, layersNote])
   // A jump can target a file beyond the window — widen it, or the scroll finds no
   // node. It can also target a file the pane is *hiding*; pinning exempts that one
   // path from the filters. The window is sized from the file's index in the order
@@ -758,7 +817,7 @@ function Review() {
   const activity =
     presence === 'working'
       ? (agentActivity(batch.stillTo, lastAnswered) ??
-        (layersRequest === 'outlining' ? 'outlining layers' : null))
+        (layersRequest === 'outlining' ? 'layering the change' : null))
       : null
   const [monitorOpen, setMonitorOpen] = useState(false)
   useEffect(() => {
@@ -1390,7 +1449,7 @@ function Review() {
         })
       } else {
         // A changeset thread lives in the changeset strip, which a layer does
-        // not draw: in layers it is the Overview — row 0 — or, with no Overview
+        // not draw: in layers it is the Overview or, with no Overview
         // to go to, the flat pane on the Files tab.
         if (inLayers && !onOverview) {
           if (hasOverview) goOverview()
@@ -1769,14 +1828,15 @@ function Review() {
           }
         : {}),
       kicker: activeLayer.derived
-        ? 'Outside the outline'
+        ? 'Not in any layer'
         : `Layer ${activeLayer.number} of ${layerCount}`,
       title: activeLayer.title,
       mechanical: activeLayer.kind === 'mechanical',
+      background: activeLayer.kind === 'background',
       ...(activeLayer.derived
         ? {
             summary:
-              'Files no layer lists, and hunks no step claims: touched after the outline was posted, or left out of it. The agent absorbs them by re-posting.',
+              'Files no layer lists, and lines no layer claims: touched after the layers were posted, or left out of them. The agent absorbs them by re-posting.',
           }
         : activeLayer.summary
           ? { summary: activeLayer.summary }
@@ -1901,8 +1961,21 @@ function Review() {
             onInvite: () => setInviteOpen(true),
             batch: batchForBadge,
             suggestion:
-              !layerMode && layersRequest === null && review?.layersSuggested
-                ? { reason: review.layersSuggested.reason, onOutline: requestLayers }
+              !layerMode &&
+              layersRequest === null &&
+              review?.layersSuggested &&
+              !review.layersSuggested.answered
+                ? {
+                    reason: review.layersSuggested.reason,
+                    // The chip asks by the preset the agent named, unless the
+                    // reviewer has a default of their own.
+                    onOutline: () =>
+                      requestLayers(
+                        suggestedLayers && presetDefault(presetsPref.settings) === AGENT_PICKS
+                          ? { preset: suggestedLayers.preset.id }
+                          : {},
+                      ),
+                  }
                 : undefined,
             monitorOpen,
             onOpenMonitor: setMonitorOpen,
@@ -1929,6 +2002,7 @@ function Review() {
             critter,
             onSetCritter: setCritter,
             onShowVoice: () => setVoiceOpen(true),
+            onShowLayers: () => setLayersDialog(true),
             ...(telemetry.status ? { onShowPrivacy: () => setPrivacyOpen(true) } : {}),
             onShowShortcuts: () => setShortcutsOpen(true),
           }}
@@ -1946,7 +2020,9 @@ function Review() {
             threadCount={liveThreads}
             settledCount={settledThreads}
             layerCount={layerMode ? layerCount : null}
-            layersSuggested={review?.layersSuggested !== undefined}
+            layersSuggested={
+              review?.layersSuggested !== undefined && !review.layersSuggested.answered
+            }
             layers={
               <>
                 {commitsOffered && (
@@ -1996,14 +2072,24 @@ function Review() {
                       revealFile(path)
                       setComposeFilePath(path)
                     }}
-                    onRefresh={agentAttached ? requestLayers : undefined}
+                    onRefresh={agentAttached ? () => requestLayers(standingAsk) : undefined}
+                    onRemove={() => void reviewApi.removeLayers().catch(() => {})}
                     request={agentAttached ? layersRequest : null}
+                    preset={presetChip}
+                    presets={layerPresets}
+                    note={layersNote}
+                    onAsk={agentAttached ? requestLayers : undefined}
+                    onOpenPresets={() => setLayersDialog(true)}
                   />
                 ) : (
                   <LayersEmpty
                     state={layersEmptyState}
-                    onOutline={requestLayers}
+                    onOutline={(ask) => requestLayers(ask)}
                     onInvite={() => setInviteOpen(true)}
+                    presets={layerPresets}
+                    defaultPreset={presetDefault(presetsPref.settings)}
+                    onManagePresets={() => setLayersDialog(true)}
+                    suggested={suggestedLayers}
                   />
                 )}
               </>
@@ -2216,6 +2302,22 @@ function Review() {
             voice={voicePref.voice}
             onSave={voicePref.setVoice}
             onClose={() => setVoiceOpen(false)}
+          />
+        )}
+        {layersDialog && (
+          <LayersPresets
+            settings={presetsPref.settings}
+            onSave={presetsPref.save}
+            review={
+              review
+                ? {
+                    ...(presetUse ? { inUse: presetUse.id } : {}),
+                    agentAttached,
+                    onUse: (id) => requestLayers({ preset: id }),
+                  }
+                : undefined
+            }
+            onClose={() => setLayersDialog(false)}
           />
         )}
         {inviteOpen && (

@@ -26,7 +26,7 @@ export function LayerSource({
         role="radio"
         className="src-chip"
         aria-checked={source === 'steps'}
-        title="The agent's steps, read in the order it outlined them"
+        title="The agent's layers, read in the order it put them in"
         onClick={() => onPick('steps')}
       >
         Steps {stepCount !== null && <span className="tab-n">{stepCount}</span>}

@@ -1,7 +1,9 @@
-import { useMemo, useState } from 'react'
+import { useMemo, useRef, useState } from 'react'
+import { AGENT_PICKS } from '../../shared/presets.js'
 import type { ReviewThread } from '../../shared/review.js'
 import type { FileChange } from '../../shared/types.js'
 import type { LayersRequest } from '../api.js'
+import { type LayerSection, useLayerSections } from '../layerSectionsPref.js'
 import {
   entryMarks,
   entryViewed,
@@ -11,8 +13,11 @@ import {
   type ResolvedLayerFile,
 } from '../layers.js'
 import type { ThreadItem } from '../threads.js'
+import { Confirm } from './Confirm.js'
 import { Icon } from './Icon.js'
+import { type LayersAskDraft, type LayersAskInput, LayersAskSheet, OWN_WORDS } from './LayersAsk.js'
 import { MarkBox } from './MarkBox.js'
+import { Menu, MenuItem, MenuSep } from './Menu.js'
 import { FileTree, type FileTreeProps } from './Nav.js'
 
 /**
@@ -97,6 +102,7 @@ function LayerRow({
   onPick,
   onMarkFiles,
   onClearFiles,
+  label,
 }: {
   layer: ResolvedLayer
   index: number
@@ -109,6 +115,9 @@ function LayerRow({
   onPick: (index: number) => void
   onMarkFiles?: (paths: string[], layer: ResolvedLayer) => void
   onClearFiles?: (paths: string[], layer: ResolvedLayer) => void
+  /** What the row reads in place of the layer's title: the trailing layer
+   * sits under a "Since your review" label and says what it holds. */
+  label?: string
 }) {
   const p = layerProgress(layer, viewed)
   const allDone = p.files > 0 && p.doneFiles === p.files
@@ -162,7 +171,7 @@ function LayerRow({
         }}
       >
         <span className="row-name">
-          <span className="row-base">{layer.title}</span>
+          <span className="row-base">{label ?? layer.title}</span>
         </span>
         <span className="ch-sub">
           {/* The bar waits for the first mark: an empty track reads as
@@ -267,6 +276,9 @@ function LayerFiles({
   )
 }
 
+/** Why a choice that needs the agent is inert. */
+const NO_AGENT = 'No agent attached; invite one from the header'
+
 export function LayerRail({
   layers,
   activeIndex,
@@ -287,12 +299,18 @@ export function LayerRail({
   onAskFile,
   onRefresh,
   request = null,
+  preset,
+  onOpenPresets,
+  onRemove,
+  presets,
+  note,
+  onAsk,
 }: {
   layers: readonly ResolvedLayer[]
   activeIndex: number
   onPick: (index: number) => void
   viewed: ReadonlySet<string>
-  /** The guide comment, folded in as row 0 — one outline, not two agent
+  /** The guide comment, the Overview behind the head's book — one outline, not two agent
    * artifacts in two places. Not markable: it is not code. */
   guide?: ReviewThread
   /** On a pull request, the description: the author's map of the change, which
@@ -314,11 +332,41 @@ export function LayerRail({
   onClearFiles?: (paths: string[], layer: ResolvedLayer) => void
   onAskFile?: (path: string) => void
   /** Ask the agent to re-outline the change as it stands now. Absent when no
-   * agent is attached: the line at the foot of the outline says so instead. */
+   * agent is attached: the line in the head says so instead. */
   onRefresh?: () => void
   /** A re-outline is in flight — parked behind the agent's open threads, or in
    * its hands. The line says which, and cannot be clicked again. */
   request?: LayersRequest
+  /** What the outline follows (see shared/presets.ts), for the head of the
+   * rail: the preset's name is the title, and the line under it is its one
+   * line on what the layers show and who picked it, with the agent's why on
+   * hover. Absent when the outline follows no preset. */
+  preset?: {
+    id?: string
+    name: string
+    blurb: string
+    /** The agent chose it for this post. */
+    picked?: boolean
+    /** The reviewer asked for it, and it is the one the agent suggested. */
+    suggested?: boolean
+    /** The agent's reason, for its pick or its suggestion. */
+    why?: string
+  }
+  /** Open the Layers dialog from the head's "Change". Absent when there is
+   * nothing to open it on. */
+  onOpenPresets?: () => void
+  /** Remove the outline from the review. Asked for in a dialog first. */
+  onRemove?: () => unknown
+  /** The presets that are on, for the head's menu. */
+  presets?: readonly { id: string; name: string }[]
+  /** What the reviewer asked of these layers for this change only: a line
+   * under the head. With no preset it was the whole ask. */
+  note?: string
+  /** Ask for the layers again: by a preset, the agent's choice, or the
+   * reviewer's own words, with a note for this change. Nothing in the rail
+   * sends it directly; each way in opens the sheet, and its button asks.
+   * Absent when no agent is attached: the menu's choices then say so. */
+  onAsk?: (ask: LayersAskInput) => void
 }) {
   const threadCount = (layer: ResolvedLayer) =>
     layer.files.reduce((n, f) => n + (threads?.get(f.file.path)?.length ?? 0), 0)
@@ -334,124 +382,419 @@ export function LayerRail({
       else next.add(key)
       return next
     })
-  return (
-    <div className="rail-scroll">
-      {(guide || description) && (
-        // biome-ignore lint/a11y/noStaticElementInteractions: the pick button inside is the keyboard path; the row widens the mouse target
-        // biome-ignore lint/a11y/useKeyWithClickEvents: same
-        <div
-          className="row row-layer row-layer-overview"
-          aria-current={overviewActive ? 'true' : undefined}
-          onClick={onOpenGuide}
-        >
-          <span className="row-box" aria-hidden="true">
-            <MarkBox />
-          </span>
-          <button
-            type="button"
-            className="row-pick"
-            title={
-              description && guide
-                ? 'The pull request description, and the agent’s guide to this change'
-                : description
-                  ? 'The pull request description'
-                  : 'The agent’s guide to this change'
-            }
-            onClick={(e) => {
-              e.stopPropagation()
-              onOpenGuide?.()
-            }}
-          >
-            <span className="row-name">
-              <span className="row-base">Overview</span>
-            </span>
-            {/* The count line the layers carry, in words: a row that looks like
-                the others reads as one of them, not as a heading over them. */}
-            <span className="ch-sub">
-              <span>
-                {description && guide
-                  ? 'the description, and the agent’s guide'
-                  : description
-                    ? 'the pull request description'
-                    : 'the agent’s guide'}
-              </span>
-            </span>
-          </button>
-          <span className="row-right" />
-        </div>
-      )}
-      {layers.map((layer, index) => {
-        const current = index === activeIndex
-        const open = isOpen(layer)
-        return (
-          <div key={layer.id ?? 'since'} className="ch-layer">
-            {layer.derived && <div className="rail-rule" />}
-            <LayerRow
+  // Background layers sit in their own section under a rule: how the change
+  // is done, for a reviewer who asked not to read how. Each keeps its index in
+  // the outline, so picking one reads it like any other layer. The derived
+  // trailing layer — what moved since the outline — comes last of all.
+  const front = layers.flatMap((layer, index) =>
+    layer.kind === 'background' || layer.derived ? [] : [{ layer, index }],
+  )
+  const background = layers.flatMap((layer, index) =>
+    layer.kind === 'background' ? [{ layer, index }] : [],
+  )
+  const trailing = layers.flatMap((layer, index) =>
+    layer.derived && layer.kind !== 'background' ? [{ layer, index }] : [],
+  )
+  const totals = (items: readonly { layer: ResolvedLayer }[]) =>
+    items.reduce(
+      (sum, { layer }) => {
+        const s = layerLineStats(layer)
+        return { additions: sum.additions + s.additions, deletions: sum.deletions + s.deletions }
+      },
+      { additions: 0, deletions: 0 },
+    )
+  // Sections exist once there is background to set apart; each folds from its
+  // header row. A folded section the reviewer moves into shows their place;
+  // a click on its header still folds it, until they move again.
+  const sectioned = background.length > 0
+  const [sectionsOpen, toggleSection] = useLayerSections()
+  // The preset's line opens to what it does; shut by default, the rail's head is one line.
+  const [aboutOpen, setAboutOpen] = useState(false)
+  // The section the reviewer folded over their own place, and the layer they
+  // were on: it lasts until they move to another layer.
+  const [foldedOver, setFoldedOver] = useState<{ section: LayerSection; at: number } | null>(null)
+  if (foldedOver && foldedOver.at !== activeIndex) setFoldedOver(null)
+  const holdsPlace = (section: LayerSection) =>
+    foldedOver?.section !== section &&
+    (section === 'read' ? front : background).some(({ index }) => index === activeIndex)
+  const readOpen = !sectioned || sectionsOpen.read || holdsPlace('read')
+  const backgroundOpen = sectionsOpen.background || holdsPlace('background')
+  const sectionRow = (
+    section: LayerSection,
+    name: string,
+    items: readonly { layer: ResolvedLayer }[],
+    open: boolean,
+    title: string,
+  ) => {
+    const t = totals(items)
+    return (
+      <button
+        type="button"
+        className="lr-sec"
+        aria-expanded={open}
+        title={title}
+        onClick={() => {
+          // The header does what it shows: an open section folds, the
+          // reviewer's place in it included; a folded one opens.
+          if (open) {
+            if (sectionsOpen[section]) toggleSection(section)
+            setFoldedOver({ section, at: activeIndex })
+          } else {
+            setFoldedOver(null)
+            toggleSection(section)
+          }
+        }}
+      >
+        {/* A quiet label on the rail's left edge, where the layers have
+            their marks, with how many it holds; its lines and the fold sit at
+            the right, where a layer has its own chevron. */}
+        <span className="lr-sec-name">{name}</span>
+        <span className="lr-sec-n">{items.length}</span>
+        <span className="lr-sec-stat">
+          {t.additions > 0 && <span className="stat-add">+{t.additions.toLocaleString()}</span>}
+          {t.additions > 0 && t.deletions > 0 && ' '}
+          {t.deletions > 0 && <span className="stat-del">−{t.deletions.toLocaleString()}</span>}
+        </span>
+        <Icon
+          name="chev"
+          size="sm"
+          className={`chevron lr-sec-chev${open ? '' : ' chevron-shut'}`}
+        />
+      </button>
+    )
+  }
+  // What the Overview opens, in a few words: the tip of its button.
+  const overviewSub =
+    description && guide
+      ? 'the description, and the agent’s guide'
+      : description
+        ? 'the pull request description'
+        : 'the agent’s guide'
+  // Removing the outline asks first, in a dialog.
+  const [removing, setRemoving] = useState(false)
+  // Layering again is heavy, so every way in opens the sheet on a draft: the
+  // choice just made, and the note these layers already carry.
+  const [asking, setAsking] = useState<LayersAskDraft | null>(null)
+  const ask = (pick: string) => setAsking({ pick, note: note ?? '' })
+  // What "Layer again" opens on: the ask these layers answered.
+  const standing = preset?.id
+    ? preset.picked
+      ? AGENT_PICKS
+      : preset.id
+    : note
+      ? OWN_WORDS
+      : AGENT_PICKS
+  // The last ask sent from here, so "Ask again" over one that never came back
+  // repeats it rather than falling back to the default.
+  const lastAsk = useRef<LayersAskInput | null>(null)
+  // The ask on its way is the light one: the status says "adding", not
+  // "layering again".
+  const [adding, setAdding] = useState(false)
+  const send = (input: LayersAskInput) => {
+    lastAsk.current = input
+    setAdding(input.add === true)
+    onAsk?.(input)
+  }
+  const renderLayer = (layer: ResolvedLayer, index: number) => {
+    const current = index === activeIndex
+    const open = isOpen(layer)
+    return (
+      <div key={layer.id ?? 'since'} className="ch-layer">
+        <LayerRow
+          label={layer.derived ? 'Not in any layer' : undefined}
+          layer={layer}
+          index={index}
+          current={current}
+          open={open}
+          onToggleOpen={() => toggle(layer)}
+          viewed={viewed}
+          threadCount={threadCount(layer)}
+          onPick={onPick}
+          onMarkFiles={onMarkFiles}
+          onClearFiles={onClearFiles}
+        />
+        {open && layer.files.length > 0 && (
+          <div className="ch-files">
+            <LayerFiles
               layer={layer}
-              index={index}
-              current={current}
-              open={open}
-              onToggleOpen={() => toggle(layer)}
               viewed={viewed}
-              threadCount={threadCount(layer)}
-              onPick={onPick}
+              selectedPath={selectedPath}
+              threads={threads}
+              attention={attention}
+              changed={changed}
+              onPickFile={onPickFile}
+              onToggleFileViewed={onToggleFileViewed}
               onMarkFiles={onMarkFiles}
               onClearFiles={onClearFiles}
+              onAskFile={onAskFile}
             />
-            {open && layer.files.length > 0 && (
-              <div className="ch-files">
-                <LayerFiles
-                  layer={layer}
-                  viewed={viewed}
-                  selectedPath={selectedPath}
-                  threads={threads}
-                  attention={attention}
-                  changed={changed}
-                  onPickFile={onPickFile}
-                  onToggleFileViewed={onToggleFileViewed}
-                  onMarkFiles={onMarkFiles}
-                  onClearFiles={onClearFiles}
-                  onAskFile={onAskFile}
-                />
-              </div>
+          </div>
+        )}
+      </div>
+    )
+  }
+  // How far the reviewer is through what the preset puts first.
+  const progress = front.reduce(
+    (sum, { layer }) => {
+      const p = layerProgress(layer, viewed)
+      return { marks: sum.marks + p.marks, done: sum.done + p.doneMarks }
+    },
+    { marks: 0, done: 0 },
+  )
+  const inFlight = request === 'outlining' || request === 'queued'
+  return (
+    <>
+      {/* The head: one row. What the layers follow is its title, and it opens
+          to why: what the preset shows, who picked it, the reviewer's note.
+          Changing it is "Layer again", behind the "more" beside it and in the
+          line under the list. */}
+      <div className="lr-head">
+        <div className="lr-head-row">
+          {preset || note ? (
+            <button
+              type="button"
+              className="lr-preset"
+              aria-expanded={aboutOpen}
+              title={aboutOpen ? undefined : 'What these layers follow, and why'}
+              onClick={() => setAboutOpen(!aboutOpen)}
+            >
+              <span className="lr-title-by">Layered by</span>
+              <span className="lr-title">{preset ? preset.name : 'your instructions'}</span>
+            </button>
+          ) : (
+            <span className="lr-title lr-title-plain">Layers</span>
+          )}
+          {/* The Overview is not a layer, so it is not a row of the list: a
+              book in the head opens it, and stays lit while it is up. */}
+          {(guide || description) && onOpenGuide && (
+            <button
+              type="button"
+              className="btn btn-ghost btn-icon btn-sm lr-more lr-ov"
+              aria-label="Overview"
+              aria-current={overviewActive ? 'true' : undefined}
+              title={`Overview: ${overviewSub}`}
+              onClick={onOpenGuide}
+            >
+              <Icon name="book" size="sm" />
+            </button>
+          )}
+          {(onAsk || onRemove || onOpenPresets) && (
+            <Menu
+              label="More for these layers"
+              triggerClassName="btn btn-ghost btn-icon btn-sm lr-more"
+            >
+              {(close) => (
+                <>
+                  <MenuItem
+                    disabled={!onAsk || inFlight}
+                    title={
+                      !onAsk
+                        ? NO_AGENT
+                        : inFlight
+                          ? 'Already asked'
+                          : 'The change moved on; a re-post keeps your place'
+                    }
+                    onClick={() => {
+                      close()
+                      ask(standing)
+                    }}
+                  >
+                    Layer again
+                  </MenuItem>
+                  {onOpenPresets && (
+                    <MenuItem
+                      onClick={() => {
+                        close()
+                        onOpenPresets()
+                      }}
+                    >
+                      Manage presets
+                    </MenuItem>
+                  )}
+                  {onRemove && (
+                    <>
+                      <MenuSep />
+                      <MenuItem
+                        danger
+                        onClick={() => {
+                          close()
+                          setRemoving(true)
+                        }}
+                      >
+                        Remove layers
+                      </MenuItem>
+                    </>
+                  )}
+                </>
+              )}
+            </Menu>
+          )}
+          {/* The fold sits at the row's end, in the column the layers below
+              have their own chevrons in. A second target for the mouse: the
+              title is the control. */}
+          {(preset || note) && (
+            <button
+              type="button"
+              className="lr-head-chev"
+              aria-hidden="true"
+              tabIndex={-1}
+              onClick={() => setAboutOpen(!aboutOpen)}
+            >
+              <Icon
+                name="chev"
+                size="sm"
+                className={`chevron${aboutOpen ? '' : ' chevron-shut'}`}
+              />
+            </button>
+          )}
+        </div>
+        {/* What the layers follow, in full, only when asked for: the head
+            itself stays one line, whatever the reviewer's note runs to. */}
+        {aboutOpen && (preset || note) && (
+          <div className="lr-about">
+            {preset && preset.blurb !== '' && (
+              <p className="lr-about-blurb">
+                {preset.blurb.charAt(0).toUpperCase() + preset.blurb.slice(1)}
+                {/[.?!]$/.test(preset.blurb) ? '' : '.'}
+              </p>
+            )}
+            {preset && (
+              <p className="lr-about-by">
+                {preset.picked || preset.suggested
+                  ? `The agent ${preset.picked ? 'picked' : 'suggested'} it${preset.why ? `: ${preset.why}` : ''}.`
+                  : 'You picked it.'}
+              </p>
+            )}
+            {note && (
+              <p className="lr-about-note">
+                {preset && <span className="lr-note-cap">Your note: </span>}
+                {note}
+              </p>
             )}
           </div>
-        )
-      })}
-      {/* The foot of the outline, in the voice of the Threads tab's "Clear all
-          threads…": a sentence, not a button, and only ever the one action. */}
-      {request === 'stalled' && onRefresh ? (
-        <button
-          type="button"
-          className="ch-foot ch-foot-act"
-          title="the agent took the request but never re-posted; its harness may have refused the command"
-          onClick={onRefresh}
-        >
-          The re-outline never came · ask again…
-        </button>
-      ) : request !== null && request !== 'stalled' ? (
-        <div className="ch-foot ch-foot-live" aria-live="polite">
-          <span className="ch-working" aria-hidden="true">
-            <i />
-            <i />
-            <i />
-          </span>{' '}
-          {request === 'outlining' ? 're-outlining…' : 'asked · waits for the open threads'}
-        </div>
-      ) : onRefresh ? (
-        <button
-          type="button"
-          className="ch-foot ch-foot-act"
-          title="the change moved on; a re-post keeps your place"
-          onClick={onRefresh}
-        >
-          Ask the agent to re-outline…
-        </button>
-      ) : (
-        <div className="ch-foot" title="Invite one from the header">
-          No agent attached to re-outline
-        </div>
+        )}
+        {request !== null && (
+          <div className="lr-status" aria-live="polite">
+            {request === 'stalled' ? (
+              <>
+                No layers came back.
+                {onRefresh && (
+                  <button
+                    type="button"
+                    className="lr-link"
+                    title="the agent took the request but never re-posted; its harness may have refused the command"
+                    onClick={() =>
+                      lastAsk.current && onAsk ? onAsk(lastAsk.current) : onRefresh?.()
+                    }
+                  >
+                    Ask again
+                  </button>
+                )}
+              </>
+            ) : (
+              <>
+                <span className="ch-working" aria-hidden="true">
+                  <i />
+                  <i />
+                  <i />
+                </span>{' '}
+                {request === 'outlining'
+                  ? adding
+                    ? 'Adding to the layers…'
+                    : 'Layering again…'
+                  : 'Asked · after the agent’s open threads'}
+              </>
+            )}
+          </div>
+        )}
+        {/* The bar waits for the first mark, as a layer's does: an empty
+            track reads as something that failed to draw. */}
+        {progress.done > 0 && (
+          <div
+            className="lr-prog"
+            role="progressbar"
+            aria-label="Read so far, of the key changes"
+            aria-valuemin={0}
+            aria-valuemax={progress.marks}
+            aria-valuenow={progress.done}
+          >
+            <i style={{ width: `${Math.round((progress.done / progress.marks) * 100)}%` }} />
+          </div>
+        )}
+      </div>
+      <div className="rail-scroll">
+        {sectioned &&
+          sectionRow(
+            'read',
+            'Key changes',
+            front,
+            readOpen,
+            'The layers the preset puts first: read them closely.',
+          )}
+        {readOpen && front.map(({ layer, index }) => renderLayer(layer, index))}
+        {sectioned &&
+          sectionRow(
+            'background',
+            'Other changes',
+            background,
+            backgroundOpen,
+            'How the change is done — implementation, tests, wiring — which the layers above already describe. Open one to check something.',
+          )}
+        {sectioned && backgroundOpen && (
+          <div className="lr-bg">
+            {background.map(({ layer, index }) => renderLayer(layer, index))}
+          </div>
+        )}
+        {/* What moved since the outline: its own group, with the one action
+            that answers it on the label. The light one: the agent places
+            these in the layers there, which needs no sheet. A new split is
+            "Layer again", in the head's menu. */}
+        {trailing.length > 0 && (
+          <div className="lr-sec lr-sec-since">
+            <span className="lr-sec-name">Since your review</span>
+            {onAsk && request === null && (
+              <button
+                type="button"
+                className="lr-link lr-sec-act"
+                title="The agent puts these in the layers you have; nothing else changes"
+                onClick={() => send({ add: true })}
+              >
+                Add to layers
+              </button>
+            )}
+          </div>
+        )}
+        {trailing.map(({ layer, index }) => renderLayer(layer, index))}
+        {/* The way to different layers, where the reviewer ends up after
+            reading down the list: the sheet, on the ask these layers answered. */}
+        {onAsk && request === null && (
+          <div className="lr-cta">
+            <span className="lr-cta-q">Layers not quite right?</span>
+            <button type="button" className="lr-link" onClick={() => ask(standing)}>
+              Change the preset or tell the agent
+            </button>
+          </div>
+        )}
+      </div>
+      {asking && onAsk && (
+        <LayersAskSheet
+          presets={presets ?? []}
+          initial={asking}
+          {...(onOpenPresets ? { onManagePresets: onOpenPresets } : {})}
+          onAsk={send}
+          onClose={() => setAsking(null)}
+        />
       )}
-    </div>
+      {removing && onRemove && (
+        <Confirm
+          title="Remove layers"
+          action="Remove layers"
+          onConfirm={onRemove}
+          onClose={() => setRemoving(false)}
+        >
+          Your read marks and threads stay.
+        </Confirm>
+      )}
+    </>
   )
 }

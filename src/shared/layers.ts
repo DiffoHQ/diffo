@@ -1,3 +1,4 @@
+import { type LayersPresetUse, parsePresetUse } from './presets.js'
 import {
   DECISION_PLACES,
   type Decision,
@@ -288,10 +289,10 @@ export function parseLayersInput(raw: unknown): LayersParse {
       return { ok: false, error: `${where} ("${title}"): "summary" must be a markdown string` }
     }
     const summary = typeof l.summary === 'string' ? l.summary.trim().slice(0, SUMMARY_CAP) : ''
-    if (l.kind !== undefined && l.kind !== 'mechanical') {
+    if (l.kind !== undefined && l.kind !== 'mechanical' && l.kind !== 'background') {
       return {
         ok: false,
-        error: `${where} ("${title}"): "kind" can only be "mechanical"; leave it out otherwise`,
+        error: `${where} ("${title}"): "kind" can only be "mechanical" or "background"; leave it out otherwise`,
       }
     }
     let decisions: Decision[] | undefined
@@ -316,11 +317,46 @@ export function parseLayersInput(raw: unknown): LayersParse {
       title,
       files,
       ...(summary !== '' ? { summary } : {}),
-      ...(l.kind === 'mechanical' ? { kind: 'mechanical' as const } : {}),
+      ...(l.kind === 'mechanical' || l.kind === 'background' ? { kind: l.kind } : {}),
       ...(decisions && decisions.length > 0 ? { decisions } : {}),
     })
   }
   return { ok: true, items }
+}
+
+/** What a `layers` post carries besides the list: the preset it follows. */
+export interface LayersPostInput {
+  items: LayerInput[]
+  preset?: LayersPresetUse
+}
+
+export type LayersPostParse = { ok: true; post: LayersPostInput } | { ok: false; error: string }
+
+/**
+ * A post is the list alone — the shape every agent learned first — or an
+ * object around it: `{ layers, preset? }`. The list goes through
+ * `parseLayersInput` either way.
+ */
+export function parseLayersPost(raw: unknown): LayersPostParse {
+  if (Array.isArray(raw)) {
+    const parsed = parseLayersInput(raw)
+    return parsed.ok ? { ok: true, post: { items: parsed.items } } : parsed
+  }
+  if (typeof raw !== 'object' || raw === null) {
+    return { ok: false, error: 'expected a list of layers, or { layers, preset? }' }
+  }
+  const o = raw as Record<string, unknown>
+  const parsed = parseLayersInput(o.layers)
+  if (!parsed.ok) return parsed
+  const use = parsePresetUse(o.preset)
+  if (!use.ok) return use
+  return {
+    ok: true,
+    post: {
+      items: parsed.items,
+      ...(use.use ? { preset: use.use } : {}),
+    },
+  }
 }
 
 // ---------- ranges against hunks ----------
@@ -415,7 +451,7 @@ export function claimedRows(hunk: Hunk, highlight: readonly LineRange[]): Set<nu
   return lit.size > 0 ? lit : changedRows(hunk)
 }
 
-function changedRows(hunk: Hunk): Set<number> {
+export function changedRows(hunk: Hunk): Set<number> {
   return new Set(hunk.lines.flatMap((line, i) => (line.kind === 'context' ? [] : [i])))
 }
 
@@ -436,19 +472,31 @@ function headLines(hunk: Hunk, row: number): number[] {
   return [at ?? hunkHeadSpan(hunk).from]
 }
 
-interface RowClaim {
+export interface RowClaim {
   layer: number
   path: string
   hunk: Hunk
   rows: ReadonlySet<number>
 }
 
-function rowClaims(
-  layers: readonly Pick<Layer, 'files'>[],
+/** What each layer claims: a layer's files are `Pick<Layer, 'files' | 'kind'>`
+ * because the kind decides precedence. */
+export type LayerClaims = Pick<Layer, 'files' | 'kind'>
+
+/**
+ * Every layer's claims, hunk by hunk, with precedence applied: a review layer
+ * claims what it lists and lights, and a background layer claims what is left
+ * of its files after every review layer took its lines. So the agent lists a
+ * background file whole and never computes the complement of a highlight —
+ * and two background layers over one line still collide, as two review
+ * layers do. A background claim that nothing is left of is dropped.
+ */
+export function rowClaims(
+  layers: readonly LayerClaims[],
   files: readonly FileChange[],
 ): RowClaim[] {
   const byPath = new Map(files.map((f) => [f.path, f]))
-  return layers.flatMap((layer, i) =>
+  const claimsFor = (layer: LayerClaims, i: number): RowClaim[] =>
     claimsOf(layer).flatMap((claim) => {
       const file = byPath.get(claim.path)
       if (!file) return []
@@ -458,8 +506,32 @@ function rowClaims(
         hunk,
         rows: claimedRows(hunk, claim.highlight),
       }))
-    }),
+    })
+  const review = layers.flatMap((layer, i) =>
+    layer.kind === 'background' ? [] : claimsFor(layer, i),
   )
+  const taken = new Map<string, Set<number>>()
+  for (const { hunk, rows } of review) {
+    const known = taken.get(hunk.id) ?? new Set()
+    for (const row of rows) known.add(row)
+    taken.set(hunk.id, known)
+  }
+  const background = layers.flatMap((layer, i) =>
+    layer.kind !== 'background'
+      ? []
+      : claimsFor(layer, i).flatMap((claim) => {
+          const held = taken.get(claim.hunk.id)
+          const rows = held ? new Set([...claim.rows].filter((r) => !held.has(r))) : claim.rows
+          return rows.size === 0 ? [] : [{ ...claim, rows }]
+        }),
+  )
+  return [...review, ...background]
+}
+
+/** A hunk's changed rows as head-side spans — what a highlight lighting
+ * exactly those rows would name. */
+export function rowSpans(hunk: Hunk, rows: ReadonlySet<number>): LineRange[] {
+  return toSpans([...rows].flatMap((i) => headLines(hunk, i)))
 }
 
 /**
@@ -479,7 +551,7 @@ export interface UncoveredFile {
 }
 
 export function uncoveredByLayers(
-  layers: readonly Pick<Layer, 'files'>[],
+  layers: readonly LayerClaims[],
   files: readonly FileChange[],
 ): UncoveredFile[] {
   const listed = new Set(layers.flatMap((layer) => claimsOf(layer).map((c) => c.path)))
@@ -524,7 +596,7 @@ export interface SharedLines {
  * reads in exactly one step, so the post refuses an outline with any.
  */
 export function sharedByLayers(
-  layers: readonly Pick<Layer, 'files'>[],
+  layers: readonly LayerClaims[],
   files: readonly FileChange[],
 ): SharedLines[] {
   const owners = new Map<string, { path: string; hunk: Hunk; row: number; layers: Set<number> }>()

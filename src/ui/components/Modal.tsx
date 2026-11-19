@@ -2,6 +2,23 @@ import { type ReactNode, useEffect, useRef } from 'react'
 import { createPortal } from 'react-dom'
 import { Icon } from './Icon.js'
 
+/** The dialogs open now, oldest first, and any menu open in one. A dialog
+ * opened over another — a confirm over a settings dialog — is the only one
+ * that answers the keyboard: every Modal listens on the document, and without
+ * this both would close on one Escape. A menu joins while it is open (see
+ * Menu.tsx), so Escape closes the menu and leaves its dialog standing. */
+const stack: symbol[] = []
+
+/** Take the top of the Escape stack; the returned function gives it back. */
+export function claimEscape(name: string): () => void {
+  const me = Symbol(name)
+  stack.push(me)
+  return () => {
+    const at = stack.indexOf(me)
+    if (at !== -1) stack.splice(at, 1)
+  }
+}
+
 /**
  * Every dialog in the app, so none of them can be missing a way out again.
  *
@@ -38,7 +55,12 @@ export function Modal({
   onCloseRef.current = onClose
 
   useEffect(() => {
+    const me = Symbol('modal')
+    stack.push(me)
     const onKey = (e: KeyboardEvent) => {
+      // Only the dialog on top answers: Escape closes one layer, and Tab is
+      // trapped in the one the reviewer is looking at.
+      if (stack.at(-1) !== me) return
       if (e.key === 'Escape') {
         e.stopPropagation()
         onCloseRef.current()
@@ -75,6 +97,8 @@ export function Modal({
     panel.current?.focus()
     return () => {
       document.removeEventListener('keydown', onKey, true)
+      const at = stack.indexOf(me)
+      if (at !== -1) stack.splice(at, 1)
       restore?.focus?.()
     }
   }, [])

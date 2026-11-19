@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { fixturePr } from '../forge/fixture.js'
+import { BUILT_IN_PRESETS } from '../shared/presets.js'
 import { type Anchor, describeAnchor, type ReviewThread } from '../shared/review.js'
 import type { Changeset } from '../shared/types.js'
 import { DEFAULT_VOICE } from '../shared/voice.js'
@@ -10,7 +11,9 @@ import {
   buildCoalescedPrompt,
   buildConnectAsk,
   buildFinishPrompt,
+  buildLayersAddPrompt,
   buildLayersRequestPrompt,
+  buildPresetThreadPrompt,
   buildSubmittedPrompt,
   buildThreadPrompt,
   CLI,
@@ -542,7 +545,7 @@ describe('a thread on a layer', () => {
   it('heads with the layer and quotes the step instead of a diff', () => {
     const prompt = buildThreadPrompt(onLayer, ctx)
     expect(prompt).toContain('### Thread 1 — layer "Contract"')
-    expect(prompt).toContain('as it was outlined when the comment was written')
+    expect(prompt).toContain('as it was when the comment was written')
     expect(prompt).toContain('- title: Contract')
     expect(prompt).toContain('- summary:\n  The parser returns null.\n  Callers follow.')
     expect(prompt).toContain('- files: `src/a.ts`, `src/b.ts`')
@@ -925,14 +928,21 @@ describe('the layers payload (reviewer pressed Outline)', () => {
   it('asks for the outline, carries the whole doctrine, and owes nothing else', () => {
     const prompt = buildLayersRequestPrompt({ repo, changeset: changeset() }, null)
     expect(prompt).toContain('asked for layers')
-    expect(prompt).toContain('reads "Outlining…"')
+    expect(prompt).toContain('reads "Layering…"')
     expect(prompt).not.toContain('refresh')
     // An agent with no skill still gets every rule the CLI help carries.
     expect(prompt).toContain(LAYERS.summary)
     expect(prompt).toContain(LAYERS.diagram)
     for (const line of GUIDE_CLASSDEFS) expect(prompt).toContain(line)
-    expect(prompt).toContain(LAYERS.order)
+    // With the pick left to the agent, every built-in is offered with its
+    // "when to use" and instructions; Concept's are the plain order.
+    for (const p of BUILT_IN_PRESETS) {
+      expect(prompt).toContain(`${p.id} — ${p.name}`)
+      expect(prompt).toContain(p.whenToUse)
+    }
+    expect(prompt).toContain('"picked": true')
     expect(prompt).toContain(LAYERS.mechanical)
+    expect(prompt).toContain(LAYERS.background)
     expect(prompt).toContain(LAYERS.stance)
     expect(prompt).toContain(LAYERS.decisions)
     expect(prompt).toContain(LAYERS.shape)
@@ -1091,6 +1101,15 @@ describe('the takeover guide-inherit notice', () => {
 describe('layers doctrine', () => {
   it('the nudge appears only while the review has neither layers nor a suggestion', () => {
     const nudge = layersNudge({})!
+    expect(nudge).not.toContain('Add --preset')
+    // With the reviewer's presets at hand, the flag can name the one that fits.
+    const named = layersNudge({}, undefined, [
+      { id: 'importance', blurb: 'the code that drives the change' },
+      { id: 'mine1', blurb: '' },
+    ])!
+    expect(named).toContain(
+      'Add --preset with the one that fits this change, and the Layers tab opens on it: importance (the code that drives the change), mine1.',
+    )
     expect(nudge).toContain(CLI_COMMANDS.layersSuggest)
     expect(nudge).toContain(CLI_COMMANDS.layers)
     expect(nudge).toContain(LAYERS.suggest)
@@ -1276,3 +1295,160 @@ describe('suggested PR comments — the doctrine, the voice, the notice', () => 
 function describeLine(t: ReviewThread): string {
   return describeAnchor(t.anchor)
 }
+
+describe('the layers payload names what the layers are for', () => {
+  const repo = { path: '/x', name: 'demo', branch: 'main', worktree: null }
+  const settings = {
+    presets: [
+      {
+        id: 'mine1',
+        name: 'Data and storage',
+        blurb: 'types and keys',
+        whenToUse: 'A change that adds stored state.',
+        instructions: 'Type files whole, storage keys lit, the rest in background.',
+        builtIn: false,
+      },
+    ],
+    disabled: ['importance'],
+    default: 'agent',
+  }
+
+  it('a picked preset carries its instructions and the id to post', () => {
+    const prompt = buildLayersRequestPrompt(
+      { repo, changeset: null },
+      null,
+      { kind: 'preset', id: 'mine1' },
+      settings,
+    )
+    expect(prompt).toContain('picked the "Data and storage" preset')
+    expect(prompt).toContain('Type files whole, storage keys lit')
+    expect(prompt).toContain('"preset": { "id": "mine1" }')
+    expect(prompt).not.toContain('yours to pick')
+    // The other presets are not offered: the reviewer chose.
+    expect(prompt).not.toContain('concept —')
+  })
+
+  it('a note for this change rides after the preset, and wins where they disagree', () => {
+    const prompt = buildLayersRequestPrompt(
+      { repo, changeset: null },
+      null,
+      { kind: 'preset', id: 'mine1', note: 'start with\nthe migration' },
+      settings,
+    )
+    expect(prompt).toContain('picked the "Data and storage" preset')
+    expect(prompt).toContain('the reviewer also asked: “start with the migration”')
+    expect(prompt).toContain('their words win')
+    expect(prompt.indexOf('also asked')).toBeGreaterThan(prompt.indexOf('"id": "mine1"'))
+    // Left to the agent, the note still rides, after the choices.
+    const auto = buildLayersRequestPrompt(
+      { repo, changeset: null },
+      null,
+      { kind: 'auto', note: 'tests in background' },
+      settings,
+    )
+    expect(auto).toContain('yours to pick')
+    expect(auto.indexOf('“tests in background”')).toBeGreaterThan(auto.indexOf('mine1 —'))
+  })
+
+  it('the reviewer’s own words alone: no preset is offered, and none is posted', () => {
+    const prompt = buildLayersRequestPrompt(
+      { repo, changeset: null },
+      null,
+      { kind: 'own', note: 'only the database changes' },
+      settings,
+    )
+    expect(prompt).toContain("the reviewer's own words, for this change only")
+    expect(prompt).toContain('“only the database changes”')
+    expect(prompt).toContain('Post without a "preset"')
+    expect(prompt).not.toContain('yours to pick')
+    expect(prompt).not.toContain('mine1 —')
+  })
+
+  it('an ask to add carries the layers as they stand and what is outside them, not the doctrine of a split', () => {
+    const prompt = buildLayersAddPrompt(
+      { repo, changeset: null },
+      {
+        items: [{ id: 'l1', title: 'Contract', files: ['src/a.ts:1-40'] }],
+        postedAt: '2026-01-01T00:00:00.000Z',
+        preset: { id: 'importance', picked: true, why: 'big change' },
+        note: 'tests last',
+      },
+      [{ path: 'src/a.ts', ranges: ['88-95'] }, { path: 'src/b.ts' }],
+    )
+    expect(prompt).toContain('This is not a new split')
+    expect(prompt).toContain('Outside the layers now: src/a.ts:88-95, src/b.ts (whole).')
+    expect(prompt).toContain(
+      '{"preset":{"id":"importance","picked":true,"why":"big change"},"layers":[{"title":"Contract","files":["src/a.ts:1-40"]}]}',
+    )
+    expect(prompt).not.toContain('"id":"l1"')
+    expect(prompt).not.toContain('yours to pick')
+    expect(prompt).toContain('layers --json')
+    // Nothing outside: said, so the agent does not go looking.
+    const none = buildLayersAddPrompt(
+      { repo, changeset: null },
+      { items: [{ id: 'l1', title: 'Contract', files: ['src/a.ts'] }], postedAt: '' },
+      [],
+    )
+    expect(none).toContain('Nothing is outside the layers right now')
+  })
+
+  it('the agent’s pick lists only what is switched on, yours included', () => {
+    const prompt = buildLayersRequestPrompt(
+      { repo, changeset: null },
+      null,
+      { kind: 'auto' },
+      settings,
+    )
+    expect(prompt).toContain('mine1 — Data and storage')
+    expect(prompt).toContain('concept — Concept')
+    expect(prompt).not.toContain('importance — Importance')
+    expect(prompt).toContain('yours to pick')
+  })
+
+  it('with every preset switched off, Concept is the one to follow', () => {
+    const off = { ...settings, disabled: BUILT_IN_PRESETS.map((p) => p.id).concat('mine1') }
+    const prompt = buildLayersRequestPrompt({ repo, changeset: null }, null, { kind: 'auto' }, off)
+    expect(prompt).toContain('the "Concept" preset')
+    expect(prompt).toContain('"preset": { "id": "concept" }')
+    expect(prompt).not.toContain('yours to pick')
+  })
+
+  it('a preset conversation carries the preset as it stands, the messages, and the two commands', () => {
+    const thread = {
+      presetId: 'mine1',
+      messages: [
+        { id: 'm1', author: 'reviewer' as const, text: 'tests first\nplease', at: 't' },
+        {
+          id: 'm2',
+          author: 'agent' as const,
+          text: 'Done',
+          at: 't',
+          change: { fields: ['instructions' as const], before: { instructions: 'old' } },
+        },
+        { id: 'm3', author: 'reviewer' as const, text: 'and no CSS', at: 't' },
+      ],
+    }
+    const mine = settings.presets[0]!
+    const prompt = buildPresetThreadPrompt({ repo, changeset: null }, 'mine1', mine, thread)
+    expect(prompt).toContain('"Data and storage" (id `mine1`), one of the reviewer')
+    expect(prompt).toContain('- Reviewer: tests first please')
+    expect(prompt).toContain('- You (you changed: instructions): Done')
+    expect(prompt).toContain('diffo preset update <id>')
+    expect(prompt).toContain('diffo preset reply <id>')
+    expect(prompt).toContain('"whenToUse"')
+    // A built-in is copied, never edited; a missing preset is made.
+    const builtIn = buildPresetThreadPrompt(
+      { repo, changeset: null },
+      'concept',
+      BUILT_IN_PRESETS[0]!,
+      { presetId: 'concept', messages: [] },
+    )
+    expect(builtIn).toContain('built in: it cannot be edited')
+    expect(builtIn).toContain('`concept-mine`')
+    const fresh = buildPresetThreadPrompt({ repo, changeset: null }, 'new1', null, {
+      presetId: 'new1',
+      messages: [{ id: 'm', author: 'reviewer', text: 'only the API', at: 't' }],
+    })
+    expect(fresh).toContain('There is no preset `new1` yet')
+  })
+})

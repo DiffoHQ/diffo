@@ -1,3 +1,4 @@
+import type { LayersPresetUse } from './presets.js'
 import type { FileChange, GhUser } from './types.js'
 
 export type ThreadState = 'open' | 'sent' | 'addressed' | 'resolved'
@@ -340,9 +341,14 @@ export interface Layer {
   title: string
   /** Markdown; a ```mermaid fence renders, same as the guide. */
   summary?: string
-  /** The files render collapsed — a rename, a call-site follow-through. Nothing
-   * else changes: fold, never hide. */
-  kind?: 'mechanical'
+  /** `mechanical`: the files render collapsed — a rename, a call-site
+   * follow-through. Nothing else changes: fold, never hide. `background`: how
+   * the change is done, not what the reviewer decides on — implementation the
+   * review layers already describe, tests, wiring. Listed whole; the lines a
+   * review layer highlights are that layer's, and a background layer holds
+   * what is left of its files (see `rowClaims`). The rail groups them last,
+   * folded, with their line count. */
+  kind?: LayerKind
   files: LayerFile[]
   /** What the agent chose, found, or ran into while making this step — the
    * handful of lines a reviewer reads before (or instead of) the diff. Most
@@ -387,9 +393,18 @@ export interface DecisionAt {
  */
 export type LayerFile = string | { path: string; note?: string; highlight?: string[] }
 
+export type LayerKind = 'mechanical' | 'background'
+
 export interface Layers {
   items: Layer[]
   postedAt: string
+  /** The preset the outline follows (see shared/presets.ts): a built-in or
+   * one of the reviewer's. Absent on an outline posted without one. */
+  preset?: LayersPresetUse
+  /** What the reviewer asked of these layers for this change only (see
+   * `parseLayersNote`): theirs, stamped by the server from the ask the post
+   * answers, never the agent's. With no `preset`, it was the whole ask. */
+  note?: string
 }
 
 /** A head-side line range on a layer file, inclusive, 1-based. */
@@ -452,9 +467,12 @@ export interface ReviewState {
   /**
    * The agent flagged at open that this read benefits from layers, without
    * writing them — generating them is heavy and happens on the reviewer's
-   * request. Cleared the moment layers are posted.
+   * request — and, when it named one, by which preset. A post answers it
+   * (`answered`): the nudges stop, and the preset is remembered, so the empty
+   * Layers tab still opens on it if the reviewer removes the layers. A preset
+   * the agent picked for a post is remembered the same way.
    */
-  layersSuggested?: { reason?: string }
+  layersSuggested?: { reason?: string; preset?: string; answered?: true }
   /**
    * What this changeset is, in a few words, as the agent named it when it
    * started polling. Exists for one job: telling a reviewer's tabs apart, all

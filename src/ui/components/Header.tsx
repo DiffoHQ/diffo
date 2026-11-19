@@ -260,7 +260,7 @@ export interface ChipWords {
 
 /** The activity strings the client composes (agentActivity, the outline), split
  * at the verb so the chip can set the two apart. */
-const ACTIVITY = /^(working on|answered|picked up|outlining) (.+)$/
+const ACTIVITY = /^(working on|answered|picked up|layering) (.+)$/
 
 const capital = (text: string) => text.charAt(0).toUpperCase() + text.slice(1)
 
@@ -519,6 +519,8 @@ export interface HeaderSettings {
   onSetCritter?: (on: boolean) => void
   /** Opens the Voice dialog: how the agent writes PR comments in the reviewer's name. */
   onShowVoice?: () => void
+  /** Opens the Layers dialog: what the layers are for — presets, the default. */
+  onShowLayers?: () => void
   onShowShortcuts?: () => void
   /** Opens the Privacy dialog, where the usage-data switch lives. */
   onShowPrivacy?: () => void
@@ -548,6 +550,7 @@ export function Header({
     onShowVoice,
     onShowShortcuts,
     onShowPrivacy,
+    onShowLayers,
   } = settings
   return (
     <header className="top">
@@ -695,9 +698,23 @@ export function Header({
                 </MenuItem>
               </>
             )}
-            {onShowShortcuts && (
+            {onShowLayers && (
               <>
                 {(onSetTheme || onSetCritter || onShowVoice) && <MenuSep />}
+                <MenuItem
+                  icon="list"
+                  onClick={() => {
+                    close()
+                    onShowLayers()
+                  }}
+                >
+                  Layers presets
+                </MenuItem>
+              </>
+            )}
+            {onShowShortcuts && (
+              <>
+                {(onSetTheme || onSetCritter || onShowVoice || onShowLayers) && <MenuSep />}
                 <MenuItem
                   icon="keys"
                   kbd="?"
@@ -712,7 +729,9 @@ export function Header({
             )}
             {onShowPrivacy && (
               <>
-                {(onSetTheme || onSetCritter || onShowVoice || onShowShortcuts) && <MenuSep />}
+                {(onSetTheme || onSetCritter || onShowVoice || onShowLayers || onShowShortcuts) && (
+                  <MenuSep />
+                )}
                 <MenuItem
                   icon="lock"
                   onClick={() => {

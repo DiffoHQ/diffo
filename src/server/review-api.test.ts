@@ -1658,7 +1658,10 @@ describe('POST /api/review/layers', () => {
     expect(await res.json()).toEqual({ suggested: true })
     expect(review.get().layersSuggested).toEqual({ reason: 'the parser change explains the rest' })
     await post(app, '/api/review/layers', { items: [{ title: 'A', files: ['app.ts'] }] })
-    expect(review.get().layersSuggested).toBeUndefined()
+    expect(review.get().layersSuggested).toEqual({
+      reason: 'the parser change explains the rest',
+      answered: true,
+    })
   })
 
   it('a suggestion after the post is refused, not recorded', async () => {
@@ -1721,7 +1724,7 @@ describe('the layers request loop', () => {
     const { app, queue } = setup()
     const res = await post(app, '/api/review/layers/request')
     expect(await res.json()).toMatchObject({ ok: true, request: 'queued', presence: 'waiting' })
-    expect(queue.take()).toEqual({ kind: 'layers' })
+    expect(queue.take()).toEqual({ kind: 'layers', ask: { kind: 'auto' } })
   })
 
   it('a refresh over an existing outline names it in the prompt', async () => {
@@ -1921,5 +1924,467 @@ describe('review api — the agent announces it opened the review', () => {
     const { app, queue } = setup()
     expect((await app.request('/api/agent/arrive', { method: 'POST' })).status).toBe(403)
     expect(queue.presence()).toBe('waiting')
+  })
+})
+
+describe('the layers request names what the layers are for', () => {
+  const settingsApp = (blob: unknown) => {
+    const root = tempRepo()
+    const store = new ChangesetStore(root, { kind: 'working-tree' })
+    const review = new ReviewStore(root, makeDb(root), { kind: 'working-tree' })
+    const queue = new DeliveryQueue()
+    const kv = new Map<string, string>([['layersPresets', JSON.stringify(blob)]])
+    const app = createApp(
+      {
+        root,
+        spec: { kind: 'working-tree' },
+        clientDir: '/nope',
+        uiSettings: {
+          get: (key) => kv.get(key) ?? null,
+          set: (key, value) => void kv.set(key, value),
+        },
+      },
+      store,
+      review,
+      queue,
+    )
+    return { app, queue, review }
+  }
+  const mine = {
+    id: 'mine1',
+    name: 'Data and storage',
+    blurb: 'types and keys',
+    whenToUse: 'A change that adds stored state.',
+    instructions: 'Type files whole.',
+  }
+
+  it('no body means the default: the agent picks, or the preset Settings names', async () => {
+    const auto = settingsApp({ presets: [mine], default: 'agent' })
+    await post(auto.app, '/api/review/layers/request')
+    expect(auto.queue.take()).toEqual({ kind: 'layers', ask: { kind: 'auto' } })
+    const named = settingsApp({ presets: [mine], default: 'mine1' })
+    await post(named.app, '/api/review/layers/request')
+    expect(named.queue.take()).toEqual({ kind: 'layers', ask: { kind: 'preset', id: 'mine1' } })
+    // A default that was switched off is the agent's pick again.
+    const off = settingsApp({ presets: [mine], disabled: ['mine1'], default: 'mine1' })
+    await post(off.app, '/api/review/layers/request')
+    expect(off.queue.take()).toEqual({ kind: 'layers', ask: { kind: 'auto' } })
+  })
+
+  it('a named preset must be active', async () => {
+    const { app, queue } = settingsApp({ presets: [mine], disabled: ['concept'] })
+    expect((await post(app, '/api/review/layers/request', { preset: 'concept' })).status).toBe(400)
+    expect((await post(app, '/api/review/layers/request', { preset: 'nope' })).status).toBe(400)
+    expect(queue.take()).toBeNull()
+    await post(app, '/api/review/layers/request', { preset: 'importance' })
+    expect(queue.take()).toEqual({ kind: 'layers', ask: { kind: 'preset', id: 'importance' } })
+  })
+
+  it('a later ask replaces a parked one, and the poll carries the ask', async () => {
+    const { app, queue } = settingsApp({ presets: [mine] })
+    await post(app, '/api/review/layers/request', { preset: 'importance' })
+    await post(app, '/api/review/layers/request', { preset: 'mine1' })
+    expect(queue.layersRequest()).toBe('queued')
+    const payload = (await (
+      await app.request('/api/agent/poll', { headers: { 'x-diffo-agent': 'cli' } })
+    ).json()) as { kind: string; prompt: string }
+    expect(payload.kind).toBe('layers')
+    expect(payload.prompt).toContain('picked the "Data and storage" preset')
+  })
+
+  it('a note for this change rides the ask, reaches the prompt, and is stamped on the post', async () => {
+    const { app, review, queue } = settingsApp({ presets: [mine] })
+    await post(app, '/api/review/layers/request', {
+      preset: 'importance',
+      note: '  start with the migration  ',
+    })
+    expect(queue.layersAsk()).toEqual({
+      kind: 'preset',
+      id: 'importance',
+      note: 'start with the migration',
+    })
+    const payload = await pollResult(
+      await app.request('/api/agent/poll', { headers: { 'x-diffo-agent': 'cli' } }),
+    )
+    expect(payload.prompt).toContain('the reviewer also asked: “start with the migration”')
+    // The note is the reviewer's: the server stamps it, whatever the agent sends.
+    await post(app, '/api/review/layers', {
+      items: [{ title: 'A', files: ['app.ts'] }],
+      preset: { id: 'importance' },
+      note: 'the agent’s own',
+    })
+    expect(review.get().layers).toMatchObject({
+      preset: { id: 'importance' },
+      note: 'start with the migration',
+    })
+    // A post nobody asked for keeps it; an ask without one clears it.
+    await post(app, '/api/review/layers', {
+      items: [{ title: 'A', files: ['app.ts'] }],
+      preset: { id: 'importance' },
+    })
+    expect(review.get().layers?.note).toBe('start with the migration')
+    await post(app, '/api/review/layers/request', { preset: 'importance' })
+    await pollResult(await app.request('/api/agent/poll', { headers: { 'x-diffo-agent': 'cli' } }))
+    await post(app, '/api/review/layers', {
+      items: [{ title: 'A', files: ['app.ts'] }],
+      preset: { id: 'importance' },
+    })
+    expect(review.get().layers?.note).toBeUndefined()
+  })
+
+  it('"add" is not a new split: the layers ride the prompt as they stand, and keep their preset and note', async () => {
+    const { app, review, queue } = settingsApp({ presets: [mine] })
+    const agentPoll = async () =>
+      pollResult(await app.request('/api/agent/poll', { headers: { 'x-diffo-agent': 'cli' } }))
+    // No layers yet: nothing to add to, so it is an ordinary ask.
+    await post(app, '/api/review/layers/request', { add: true })
+    expect(queue.layersAsk()).toEqual({ kind: 'auto' })
+    await post(app, '/api/review/layers/request', { preset: 'importance', note: 'tests last' })
+    await agentPoll()
+    await post(app, '/api/review/layers', {
+      items: [{ title: 'Contract', summary: 'What callers see.', files: ['app.ts'] }],
+      preset: { id: 'importance' },
+    })
+    await post(app, '/api/review/layers/request', { add: true, preset: 'mine1', note: 'ignored' })
+    expect(queue.layersAsk()).toEqual({ kind: 'add' })
+    const payload = await agentPoll()
+    expect(payload.kind).toBe('layers')
+    expect(payload.prompt).toContain('add what is outside the layers')
+    expect(payload.prompt).toContain('This is not a new split')
+    // The layers as posted, without the server's ids, and no preset to choose.
+    expect(payload.prompt).toContain(
+      '{"preset":{"id":"importance"},"layers":[{"title":"Contract","files":["app.ts"],"summary":"What callers see."}]}',
+    )
+    expect(payload.prompt).not.toContain('yours to pick')
+    // Whatever the agent sends, the layers follow what they did.
+    await post(app, '/api/review/layers', {
+      items: [
+        { title: 'Contract', summary: 'What callers see.', files: ['app.ts'] },
+        { title: 'Later', files: ['other.ts'] },
+      ],
+      preset: { id: 'concept' },
+    })
+    expect(review.get().layers).toMatchObject({ preset: { id: 'importance' }, note: 'tests last' })
+    expect(review.get().layers?.items).toHaveLength(2)
+  })
+
+  it('layers by the reviewer’s own words alone need the words, and follow no preset', async () => {
+    const { app, review, queue } = settingsApp({ presets: [mine] })
+    expect((await post(app, '/api/review/layers/request', { preset: null })).status).toBe(400)
+    expect(
+      (await post(app, '/api/review/layers/request', { preset: null, note: '  ' })).status,
+    ).toBe(400)
+    expect(queue.take()).toBeNull()
+    await post(app, '/api/review/layers/request', { preset: null, note: 'only the database' })
+    expect(queue.layersAsk()).toEqual({ kind: 'own', note: 'only the database' })
+    const payload = await pollResult(
+      await app.request('/api/agent/poll', { headers: { 'x-diffo-agent': 'cli' } }),
+    )
+    expect(payload.prompt).toContain('“only the database”')
+    expect(payload.prompt).toContain('Post without a "preset"')
+    // A preset the agent names anyway is not recorded: none was asked for.
+    await post(app, '/api/review/layers', {
+      items: [{ title: 'A', files: ['app.ts'] }],
+      preset: { id: 'importance' },
+    })
+    expect(review.get().layers?.preset).toBeUndefined()
+    expect(review.get().layers?.note).toBe('only the database')
+  })
+
+  it('a suggestion may name a preset that is on; one that is not is dropped, and the ack says so', async () => {
+    const { app, review } = settingsApp({ presets: [mine], disabled: ['importance'] })
+    const ok = await post(app, '/api/review/layers', {
+      suggest: true,
+      reason: 'mostly plumbing',
+      preset: 'concept',
+    })
+    expect(await ok.json()).toEqual({ suggested: true })
+    expect(review.get().layersSuggested).toEqual({ reason: 'mostly plumbing', preset: 'concept' })
+    const off = await post(app, '/api/review/layers', { suggest: true, preset: 'importance' })
+    expect(await off.json()).toEqual({
+      suggested: true,
+      note: 'no active layers preset "importance": suggested without one',
+    })
+    expect(review.get().layersSuggested).toEqual({})
+  })
+
+  it('a post records the preset it follows, as the agent sent it', async () => {
+    const { app, review } = settingsApp({ presets: [mine] })
+    const res = await post(app, '/api/review/layers', {
+      items: [{ title: 'A', files: ['app.ts'] }],
+      preset: { id: 'importance', picked: true, why: 'large feature' },
+    })
+    expect(res.status).toBe(200)
+    expect(review.get().layers?.preset).toEqual({
+      id: 'importance',
+      picked: true,
+      why: 'large feature',
+    })
+    // A bad preset is refused like a bad layer.
+    expect(
+      (
+        await post(app, '/api/review/layers', {
+          items: [{ title: 'A', files: ['app.ts'] }],
+          preset: { id: 'has space' },
+        })
+      ).status,
+    ).toBe(400)
+  })
+
+  it('a post naming a preset the reviewer does not have is kept, following none, and the ack says so', async () => {
+    const { app, review } = settingsApp({ presets: [mine], disabled: ['importance'] })
+    const gone = await post(app, '/api/review/layers', {
+      items: [{ title: 'A', files: ['app.ts'] }],
+      preset: { id: 'nope' },
+    })
+    expect(gone.status).toBe(200)
+    expect((await gone.json()).note).toBe('no layers preset "nope": posted as following none')
+    expect(review.get().layers?.items).toHaveLength(1)
+    expect(review.get().layers?.preset).toBeUndefined()
+    // One that is only switched off still has a name: it is recorded.
+    const off = await post(app, '/api/review/layers', {
+      items: [{ title: 'A', files: ['app.ts'] }],
+      preset: { id: 'importance' },
+    })
+    expect((await off.json()).note).toBeUndefined()
+    expect(review.get().layers?.preset).toEqual({ id: 'importance' })
+  })
+
+  it('a new conversation clears a preset’s messages; deleting the preset deletes them too', async () => {
+    const { app, queue } = settingsApp({ presets: [mine] })
+    const thread = async () =>
+      (
+        (await (await app.request('/api/presets/mine1/thread')).json()) as {
+          thread: { messages: unknown[] }
+        }
+      ).thread.messages
+    await post(app, '/api/presets/mine1/messages', { text: 'tests first' })
+    expect(await thread()).toHaveLength(1)
+    expect(queue.take()).toEqual({ kind: 'preset', id: 'mine1' })
+    // Cleared: the messages go, the parked message with them, the preset stays.
+    const cleared = await app.request('/api/presets/mine1/thread', { method: 'DELETE' })
+    expect(await cleared.json()).toMatchObject({ cleared: true, thread: { messages: [] } })
+    expect(await thread()).toHaveLength(0)
+    expect(queue.take()).toBeNull()
+    const list = (await (await app.request('/api/presets')).json()) as {
+      presets: Array<{ id: string }>
+    }
+    expect(list.presets.map((p) => p.id)).toContain('mine1')
+    expect(
+      await (await app.request('/api/presets/mine1/thread', { method: 'DELETE' })).json(),
+    ).toMatchObject({ cleared: false })
+    // Deleted from the dialog (a settings save without it): its conversation goes with it.
+    await post(app, '/api/presets/mine1/messages', { text: 'again' })
+    const saved = await app.request('/api/settings', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ layersPresets: { presets: [], disabled: [], default: 'agent' } }),
+    })
+    expect(saved.status).toBe(200)
+    expect(await thread()).toHaveLength(0)
+    expect(queue.take()).toBeNull()
+  })
+
+  it('the reviewer removes the outline: the layers go, and an ask on its way goes with them', async () => {
+    const { app, review, queue } = settingsApp({ presets: [mine] })
+    await post(app, '/api/review/layers', {
+      items: [{ title: 'A', files: ['app.ts'] }],
+      preset: { id: 'importance' },
+    })
+    expect(review.get().layers?.items).toHaveLength(1)
+    await post(app, '/api/review/layers/request', {})
+    expect(queue.layersRequest()).toBe('queued')
+    const removed = await app.request('/api/review/layers', { method: 'DELETE' })
+    expect(await removed.json()).toEqual({ removed: true })
+    expect(review.get().layers).toBeUndefined()
+    expect(queue.layersRequest()).toBeNull()
+    // Nothing to remove the second time; it is not an error.
+    const again = await app.request('/api/review/layers', { method: 'DELETE' })
+    expect(await again.json()).toEqual({ removed: false })
+  })
+
+  it('the reviewer talks to the agent about a preset; the agent answers, edits, and the edit can be undone', async () => {
+    const { app, queue } = settingsApp({ presets: [mine] })
+    const list = (await (await app.request('/api/presets')).json()) as {
+      presets: Array<{ id: string; on: boolean; builtIn: boolean }>
+      default: string
+    }
+    expect(list.presets.map((p) => p.id)).toEqual(['concept', 'importance', 'mine1'])
+    expect(list.default).toBe('agent')
+    // The reviewer's message is parked for the agent's next poll.
+    expect((await post(app, '/api/presets/mine1/messages', { text: '  ' })).status).toBe(400)
+    const sent = await post(app, '/api/presets/mine1/messages', { text: ' tests first ' })
+    expect(sent.status).toBe(200)
+    expect(queue.take()).toEqual({ kind: 'preset', id: 'mine1' })
+    const payload = (await (
+      await app.request('/api/agent/poll', { headers: { 'x-diffo-agent': 'cli' } })
+    ).json()) as { kind: string; prompt: string; next_step: string }
+    expect(payload.kind).toBe('preset')
+    expect(payload.prompt).toContain('- Reviewer: tests first')
+    expect(payload.next_step).toContain('diffo preset update')
+    expect(queue.take()).toBeNull()
+    // The agent's edit: only the fields it sends change; the message carries the
+    // change and the values before.
+    expect((await post(app, '/api/presets/mine1', { fields: {} })).status).toBe(400)
+    expect((await post(app, '/api/presets/concept', { fields: { name: 'x' } })).status).toBe(400)
+    const edited = await post(app, '/api/presets/mine1', {
+      fields: { instructions: 'Tests first, then type files whole.' },
+      message: 'Tests now lead.',
+    })
+    expect(edited.status).toBe(200)
+    const body = (await edited.json()) as {
+      preset: { instructions: string; name: string }
+      thread: { messages: Array<{ author: string; text: string; change?: unknown }> }
+    }
+    expect(body.preset).toMatchObject({
+      name: 'Data and storage',
+      instructions: 'Tests first, then type files whole.',
+    })
+    expect(body.thread.messages.map((m) => m.author)).toEqual(['reviewer', 'agent'])
+    expect(body.thread.messages[1]).toMatchObject({
+      text: 'Tests now lead.',
+      change: { fields: ['instructions'], before: { instructions: 'Type files whole.' } },
+    })
+    // A preset nobody has yet is made from the fields, with a name at least.
+    expect((await post(app, '/api/presets/new1', { fields: { blurb: 'b' } })).status).toBe(400)
+    const made = await post(app, '/api/presets/new1', {
+      fields: { name: 'API and disk', instructions: 'Routes first.' },
+      message: 'Made it.',
+    })
+    expect(made.status).toBe(200)
+    expect(
+      ((await made.json()) as { thread: { messages: Array<{ change?: { created?: boolean } }> } })
+        .thread.messages[0]?.change?.created,
+    ).toBe(true)
+    const settings = (await (await app.request('/api/settings')).json()) as {
+      layersPresets: { presets: Array<{ id: string; name: string }> }
+    }
+    expect(settings.layersPresets.presets.map((p) => p.name)).toEqual([
+      'Data and storage',
+      'API and disk',
+    ])
+    // The agent's plain reply changes nothing.
+    const replied = await post(app, '/api/presets/mine1/messages', {
+      author: 'agent',
+      text: 'Sure?',
+    })
+    expect(replied.status).toBe(200)
+    expect(queue.take()).toBeNull()
+    const thread = (await (await app.request('/api/presets/mine1/thread')).json()) as {
+      thread: { messages: Array<{ author: string }> }
+    }
+    expect(thread.thread.messages.map((m) => m.author)).toEqual(['reviewer', 'agent', 'agent'])
+  })
+
+  it('a copy the agent makes of a built-in is answered in the built-in’s conversation too', async () => {
+    const { app } = settingsApp({ presets: [mine] })
+    const thread = async (id: string) =>
+      (
+        (await (await app.request(`/api/presets/${id}/thread`)).json()) as {
+          thread: { messages: Array<{ author: string; text: string }> }
+        }
+      ).thread.messages
+    // A preset made with no built-in waiting says nothing anywhere else.
+    await post(app, '/api/presets/solo', { fields: { name: 'Solo' }, message: 'Made it.' })
+    expect(await thread('importance')).toEqual([])
+    // The reviewer asks for a change to a built-in; the agent can only copy it.
+    await post(app, '/api/presets/importance/messages', { text: 'make the budget 80 lines' })
+    const made = await post(app, '/api/presets/importance-80', {
+      fields: { name: 'Importance, 80 lines', instructions: 'As Importance, in 80 lines.' },
+      message: 'A copy with the smaller budget.',
+    })
+    expect(made.status).toBe(200)
+    expect((await thread('importance')).map((m) => [m.author, m.text])).toEqual([
+      ['reviewer', 'make the budget 80 lines'],
+      [
+        'agent',
+        'A copy with the smaller budget.\n\nThe copy is “Importance, 80 lines”, under your presets.',
+      ],
+    ])
+    // The copy's own conversation has the agent's line, once; a later edit
+    // of the copy is not said again in the built-in's.
+    expect((await thread('importance-80')).map((m) => m.text)).toEqual([
+      'A copy with the smaller budget.',
+    ])
+    await post(app, '/api/presets/importance-80', { fields: { blurb: 'short' }, message: 'x' })
+    expect(await thread('importance')).toHaveLength(2)
+  })
+
+  it('the reviewer’s first word about a new preset makes it: empty and offered nowhere until the agent writes it', async () => {
+    const { app } = settingsApp({ presets: [mine] })
+    const list = async () =>
+      (
+        (await (await app.request('/api/presets')).json()) as {
+          presets: Array<{ id: string; name: string; on: boolean }>
+        }
+      ).presets
+    const thread = async () =>
+      (
+        (await (await app.request('/api/presets/new-a/thread')).json()) as {
+          thread: { messages: Array<{ author: string; change?: { created?: boolean } }> }
+        }
+      ).thread.messages
+    expect((await post(app, '/api/presets/new-a/messages', { text: 'only the API' })).status).toBe(
+      200,
+    )
+    // A real preset from now on, so the conversation has a card to live on.
+    expect((await list()).find((p) => p.id === 'new-a')).toEqual(
+      expect.objectContaining({ name: 'New preset', on: false }),
+    )
+    // Empty, it cannot be asked for, and a second message starts nothing new.
+    expect((await post(app, '/api/review/layers/request', { preset: 'new-a' })).status).toBe(400)
+    await post(app, '/api/presets/new-a/messages', { text: 'and what is written to disk' })
+    expect((await list()).filter((p) => p.name === 'New preset')).toHaveLength(1)
+    // More started before the first is named are numbered, to tell them apart.
+    await post(app, '/api/presets/new-b/messages', { text: 'the database' })
+    await post(app, '/api/presets/new-c/messages', { text: 'the UI' })
+    expect((await list()).slice(-3).map((p) => p.name)).toEqual([
+      'New preset',
+      'New preset (1)',
+      'New preset (2)',
+    ])
+    const payload = (await (
+      await app.request('/api/agent/poll', { headers: { 'x-diffo-agent': 'cli' } })
+    ).json()) as { prompt: string }
+    expect(payload.prompt).toContain('is new and still empty')
+    expect(payload.prompt).toContain('- Reviewer: only the API')
+    // The agent writing it is making it: nothing before it to undo, and now it is offered.
+    const made = await post(app, '/api/presets/new-a', {
+      fields: { name: 'API and disk', instructions: 'Routes first.' },
+      message: 'Made it.',
+    })
+    expect(made.status).toBe(200)
+    expect((await thread()).at(-1)?.change).toMatchObject({ created: true, before: {} })
+    expect((await list()).find((p) => p.id === 'new-a')).toEqual(
+      expect.objectContaining({ name: 'API and disk', on: true }),
+    )
+    // Deleted, it takes its conversation with it.
+    const put = await app.request('/api/settings', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        layersPresets: { presets: [{ ...mine }], disabled: [], default: 'agent' },
+      }),
+    })
+    expect(put.status).toBe(200)
+    expect(await thread()).toEqual([])
+    expect((await list()).map((p) => p.id)).not.toContain('new-b')
+    // An agent answering late does not bring a deleted preset back, with an
+    // edit or with words.
+    const late = await post(app, '/api/presets/new-b', {
+      fields: { name: 'Database', instructions: 'Tables first.' },
+      message: 'Made it.',
+    })
+    expect(late.status).toBe(400)
+    expect(((await late.json()) as { error: string }).error).toContain('deleted this preset')
+    expect(
+      (await post(app, '/api/presets/new-b/messages', { author: 'agent', text: 'Which tables?' }))
+        .status,
+    ).toBe(400)
+    expect((await list()).map((p) => p.id)).not.toContain('new-b')
+    // A preset nobody ever had can still be made by the agent: a copy of a built-in.
+    expect(
+      (await post(app, '/api/presets/copy-1', { fields: { name: 'Concept (mine)' } })).status,
+    ).toBe(200)
   })
 })

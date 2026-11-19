@@ -453,7 +453,7 @@ describe('parseCliArgs — layers', () => {
     })
     expect(parseCliArgs(['layers', '--suggest'])).toEqual({
       kind: 'layers',
-      source: { kind: 'suggest', reason: null },
+      source: { kind: 'suggest', reason: null, preset: null },
     })
     expect(parseCliArgs(['layers'])).toMatchObject({ kind: 'error' })
     expect(parseCliArgs(['layers', '--json', '[]', '--stdin'])).toMatchObject({ kind: 'error' })
@@ -463,12 +463,28 @@ describe('parseCliArgs — layers', () => {
   it('--suggest takes one optional reason, cut to one line', () => {
     expect(parseCliArgs(['layers', '--suggest', 'the parser explains the rest\nmore'])).toEqual({
       kind: 'layers',
-      source: { kind: 'suggest', reason: 'the parser explains the rest' },
+      source: { kind: 'suggest', reason: 'the parser explains the rest', preset: null },
     })
     expect(parseCliArgs(['layers', '--suggest', ''])).toMatchObject({
-      source: { kind: 'suggest', reason: null },
+      source: { kind: 'suggest', reason: null, preset: null },
     })
     expect(parseCliArgs(['layers', '--suggest', 'a', 'b'])).toMatchObject({ kind: 'error' })
+  })
+
+  it('--suggest may name the preset that fits; a post never takes --preset', () => {
+    expect(
+      parseCliArgs(['layers', '--suggest', 'mostly plumbing', '--preset', 'importance']),
+    ).toEqual({
+      kind: 'layers',
+      source: { kind: 'suggest', reason: 'mostly plumbing', preset: 'importance' },
+    })
+    expect(parseCliArgs(['layers', '--suggest', '--preset', ' '])).toMatchObject({
+      source: { kind: 'suggest', reason: null, preset: null },
+    })
+    expect(parseCliArgs(['layers', '--json', '[]', '--preset', 'importance'])).toMatchObject({
+      kind: 'error',
+      message: expect.stringContaining('--preset goes with --suggest'),
+    })
   })
 
   it('the payload never rides as a positional, and an empty --json is an error', () => {
@@ -502,7 +518,54 @@ describe('parseCliArgs — layers', () => {
     expect(page).toMatch(/in this same response, right after sharing the URL/)
     expect(page).toMatch(/An open review with no attended poll is a broken state/)
     expect(page).toContain('diffo layers --suggest')
-    expect(page).toContain("diffo layers --json '<Layer[]>'")
+    expect(page).toContain("diffo layers --json '<post>'")
+  })
+})
+
+describe('parseCliArgs — preset', () => {
+  it('list, show, update (fields inline or piped, with a message) and reply', () => {
+    expect(parseCliArgs(['preset', 'list'])).toEqual({ kind: 'preset', action: { kind: 'list' } })
+    expect(parseCliArgs(['preset', 'show', 'a1'])).toEqual({
+      kind: 'preset',
+      action: { kind: 'show', id: 'a1' },
+    })
+    expect(
+      parseCliArgs(['preset', 'update', 'a1', '--json', '{"name":"A"}', '-m', 'Renamed']),
+    ).toEqual({
+      kind: 'preset',
+      action: {
+        kind: 'update',
+        id: 'a1',
+        source: { kind: 'json', text: '{"name":"A"}' },
+        message: 'Renamed',
+      },
+    })
+    expect(parseCliArgs(['preset', 'update', 'a1', '--stdin'])).toEqual({
+      kind: 'preset',
+      action: { kind: 'update', id: 'a1', source: { kind: 'stdin' }, message: null },
+    })
+    expect(parseCliArgs(['preset', 'reply', 'a1', '--message', 'Sure?'])).toEqual({
+      kind: 'preset',
+      action: { kind: 'reply', id: 'a1', message: 'Sure?' },
+    })
+    expect(parseCliArgs(['preset'])).toMatchObject({ kind: 'error', message: /list, show/ })
+    expect(parseCliArgs(['preset', 'list', 'a1'])).toMatchObject({ kind: 'error' })
+    expect(parseCliArgs(['preset', 'show'])).toMatchObject({
+      kind: 'error',
+      message: /needs the preset/,
+    })
+    expect(parseCliArgs(['preset', 'update', 'a1'])).toMatchObject({
+      kind: 'error',
+      message: /exactly one/,
+    })
+    expect(parseCliArgs(['preset', 'update', 'a1', '--json', ' '])).toMatchObject({
+      kind: 'error',
+      message: /needs/,
+    })
+    expect(parseCliArgs(['preset', 'nope', 'a1'])).toMatchObject({ kind: 'error' })
+    expect(parseCliArgs(['preset', '--help'])).toEqual({ kind: 'help', topic: 'preset' })
+    expect(helpFor('preset')).toContain('diffo preset update <id>')
+    expect(helpFor('agent')).toContain('diffo preset update')
   })
 })
 

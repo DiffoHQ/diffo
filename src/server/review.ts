@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto'
 import { resolve } from 'node:path'
 import { type LayerInput, parseLayersInput, parseSuggestReason } from '../shared/layers.js'
+import { type LayersPresetUse, parseLayersNote, parsePresetUse } from '../shared/presets.js'
 import {
   type Anchor,
   type AnchoredCommit,
@@ -424,26 +425,65 @@ export class ReviewStore {
    * Replace the reading plan — the whole list, never a merge, so the agent never
    * has to diff its own outline. Ids are minted here and kept for any layer
    * whose title matches an existing one: that is what holds the reviewer's
-   * active layer in place across a re-post. Posting also answers the suggestion,
-   * so it goes.
+   * active layer in place across a re-post. Posting also answers the
+   * suggestion: it stops nudging and stays as what the agent thinks fits, and
+   * a preset the agent picked for this post replaces it.
    */
-  setLayers(items: readonly LayerInput[]): Layers {
+  setLayers(
+    items: readonly LayerInput[],
+    follows: { preset?: LayersPresetUse; note?: string } = {},
+  ): Layers {
     const kept = new Map((this.state.layers?.items ?? []).map((l) => [l.title, l.id]))
     const layers: Layers = {
       items: items.map((item) => ({ id: kept.get(item.title) ?? randomUUID(), ...item })),
       postedAt: new Date().toISOString(),
+      ...(follows.preset ? { preset: follows.preset } : {}),
+      ...(follows.note ? { note: follows.note } : {}),
     }
-    const { layersSuggested: _suggested, ...rest } = this.state
-    this.state = { ...rest, layers, threads: reconcileLayerThreads(rest.threads, layers) }
+    const { layersSuggested: prior, ...rest } = this.state
+    const picked = follows.preset?.picked ? follows.preset : undefined
+    const suggested = picked
+      ? {
+          preset: picked.id,
+          ...(picked.why ? { reason: picked.why } : {}),
+          answered: true as const,
+        }
+      : prior
+        ? { ...prior, answered: true as const }
+        : undefined
+    this.state = {
+      ...rest,
+      layers,
+      ...(suggested ? { layersSuggested: suggested } : {}),
+      threads: reconcileLayerThreads(rest.threads, layers),
+    }
     this.commit()
     return layers
   }
 
-  /** The agent's flag at open: this read benefits from layers. Once layers exist
-   * the flag has nothing to add, so it is refused rather than recorded. */
-  suggestLayers(reason?: string): boolean {
+  /** The reviewer removed the outline. The layers go; a sent thread on one of
+   * them reads as addressed, as it does when a re-post drops its layer.
+   * False when there was no outline to remove. */
+  removeLayers(): boolean {
+    if (!this.state.layers) return false
+    const { layers: _layers, ...rest } = this.state
+    this.state = {
+      ...rest,
+      threads: reconcileLayerThreads(rest.threads, { items: [], postedAt: '' }),
+    }
+    this.commit()
+    return true
+  }
+
+  /** The agent's flag at open: this read benefits from layers, and, when it
+   * names one, by which preset. Once layers exist the flag has nothing to
+   * add, so it is refused rather than recorded. */
+  suggestLayers(reason?: string, preset?: string): boolean {
     if (this.state.layers) return false
-    this.state = { ...this.state, layersSuggested: reason ? { reason } : {} }
+    this.state = {
+      ...this.state,
+      layersSuggested: { ...(reason ? { reason } : {}), ...(preset ? { preset } : {}) },
+    }
     this.commit()
     return true
   }
@@ -866,8 +906,15 @@ export function parseReview(raw: string): ReviewState | null {
       : {}),
     ...(landed ? { landed } : {}),
     ...(layers ? { layers } : {}),
-    // A suggestion answered by a post has nothing left to say.
-    ...(layersSuggested && !layers ? { layersSuggested } : {}),
+    // Next to layers a suggestion is answered, whatever the file says: it is
+    // kept for what it names, and no longer nudges.
+    ...(layersSuggested
+      ? {
+          layersSuggested: layers
+            ? { ...layersSuggested, answered: true as const }
+            : layersSuggested,
+        }
+      : {}),
   }
 }
 
@@ -886,16 +933,32 @@ function normalizeLayers(value: unknown, now: string): Layers | null {
       ? ((item as { id: string }).id as string)
       : randomUUID(),
   )
+  // The preset is read back through the post's own validation; a bad one is
+  // dropped on its own, the list stays.
+  const use = parsePresetUse(l.preset)
+  const note = parseLayersNote(l.note)
   return {
     items: parsed.items.map((item, i) => ({ id: ids[i]!, ...item })),
     postedAt: typeof l.postedAt === 'string' ? l.postedAt : now,
+    ...(use.ok && use.use ? { preset: use.use } : {}),
+    ...(note ? { note } : {}),
   }
 }
 
-function normalizeSuggested(value: unknown): { reason?: string } | null {
+function normalizeSuggested(
+  value: unknown,
+): { reason?: string; preset?: string; answered?: true } | null {
   if (typeof value !== 'object' || value === null) return null
-  const reason = parseSuggestReason((value as { reason?: unknown }).reason)
-  return reason ? { reason } : {}
+  const v = value as { reason?: unknown; preset?: unknown; answered?: unknown }
+  const reason = parseSuggestReason(v.reason)
+  // The id goes through the post's own check; whether it is still a preset
+  // that is on is decided where it is shown.
+  const use = typeof v.preset === 'string' ? parsePresetUse({ id: v.preset }) : null
+  return {
+    ...(reason ? { reason } : {}),
+    ...(use?.ok && use.use ? { preset: use.use.id } : {}),
+    ...(v.answered === true ? { answered: true as const } : {}),
+  }
 }
 
 /** A landed marker without a sha can't be checked against history, so it is

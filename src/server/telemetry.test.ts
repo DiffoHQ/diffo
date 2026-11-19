@@ -305,10 +305,22 @@ describe('Telemetry payloads', () => {
 
   it('layers_requested carries the kind and two flags, only for a review opened reporting', () => {
     const { telemetry, sent } = armed()
-    telemetry.layersRequested({ kind: 'branch', suggested: true, refresh: false })
+    telemetry.layersRequested({
+      kind: 'branch',
+      suggested: true,
+      refresh: false,
+      preset: 'agent',
+      note: true,
+    })
     expect(sent).toEqual([])
     telemetry.reviewOpened({ kind: 'branch', agent: 'claude' })
-    telemetry.layersRequested({ kind: 'branch', suggested: true, refresh: false })
+    telemetry.layersRequested({
+      kind: 'branch',
+      suggested: true,
+      refresh: false,
+      preset: 'agent',
+      note: true,
+    })
     expect(sent.map((s) => s.body.event)).toEqual(['review_opened', 'layers_requested'])
     expect(sent[1]!.body.properties).toEqual({
       $lib: 'diffo',
@@ -323,12 +335,20 @@ describe('Telemetry payloads', () => {
       kind: 'branch',
       suggested: true,
       refresh: false,
+      preset: 'agent',
+      note: true,
     })
     // The review that showed the notice stays silent here too.
     const quiet = harness()
     quiet.telemetry.reviewOpened({ kind: 'tree', agent: 'claude' })
     quiet.telemetry.noticeShown()
-    quiet.telemetry.layersRequested({ kind: 'tree', suggested: false, refresh: true })
+    quiet.telemetry.layersRequested({
+      kind: 'tree',
+      suggested: false,
+      refresh: true,
+      preset: 'built-in',
+      note: false,
+    })
     expect(quiet.sent).toEqual([])
   })
 
