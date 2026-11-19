@@ -9,6 +9,28 @@ Until 1.0, minor versions may break things. When they do, the entry says how to 
 
 Nothing yet.
 
+## [0.27.0] — 2026-11-19
+
+### Added
+
+- **Layers presets.** "Layer by" in the Layers tab picks what the layers are
+  for: **Concept**, one idea per layer in the order the change was built, or
+  **Importance**, only the lines that matter most. You can also let the agent
+  choose and say why. **Manage presets** makes your own: write it by hand, or
+  describe it to your agent and it writes the preset, with an undo on every
+  edit. **Add instructions** gives the agent a note for this change only.
+- **Background layers.** Implementation, tests and docs that the agent marks
+  as background read in an **Other changes** section under **Key changes**,
+  folded until you open it.
+- **`diffo preset`** lets the agent list, show and edit presets, and
+  `diffo layers --suggest --preset <id>` names the preset that fits.
+
+### Changed
+
+- **The Layers rail's head names the preset** ("Layered by Importance") and
+  opens to why. The Overview moved from the list's first row to a book icon in
+  the head.
+
 ## [0.26.0] — 2026-11-17
 
 ### Changed
@@ -1005,7 +1027,8 @@ shipped in it, written as a starting point rather than a history.
 - **Guided reading** — splitting a large change into an ordered sequence of small,
   reviewable sections — is designed but not built.
 
-[Unreleased]: https://github.com/DiffoHQ/diffo/compare/v0.26.0...HEAD
+[Unreleased]: https://github.com/DiffoHQ/diffo/compare/v0.27.0...HEAD
+[0.27.0]: https://github.com/DiffoHQ/diffo/compare/v0.26.0...v0.27.0
 [0.26.0]: https://github.com/DiffoHQ/diffo/compare/v0.25.0...v0.26.0
 [0.25.0]: https://github.com/DiffoHQ/diffo/compare/v0.24.0...v0.25.0
 [0.24.0]: https://github.com/DiffoHQ/diffo/compare/v0.23.0...v0.24.0
