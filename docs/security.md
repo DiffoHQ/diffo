@@ -74,8 +74,9 @@ server at, `{port}` standing for the server's port:
 and the only one besides loopback that passes the `Host` and `Origin` checks, so
 another app behind the same proxy is still refused. Anyone who can reach the
 proxy can then read the review and send threads to the agent, so keep it
-private. The server reads `DIFFO_PUBLIC_URL` when it starts: after changing it,
-`diffo stop` the running server.
+private. `DIFFO_PUBLIC_URL` is read when the server starts, so a server that's
+already running needs a restart to pick up a change: `diffo stop`, then open the
+review again.
 
 ## The reviewed code is treated as hostile
 
