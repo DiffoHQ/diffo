@@ -10,28 +10,31 @@ export function apiUrl(port: number, path = ''): string {
   return `http://127.0.0.1:${port}${path}`
 }
 
-/** `DIFFO_REVIEW_URL` replaces the loopback address with the one a reverse
- * proxy serves this port at, `{port}` standing for the server's port. The
- * proxy's host must also be in `DIFFO_ALLOWED_HOSTS`, or the server refuses it. */
+/** The review link: the proxy's address under `DIFFO_PUBLIC_URL`, else loopback. */
 export function reviewUrl(port: number): string {
-  const template = process.env.DIFFO_REVIEW_URL?.trim()
-  return template ? template.replaceAll('{port}', String(port)) : `http://localhost:${port}`
+  return publicUrl(port)?.origin ?? `http://localhost:${port}`
 }
 
 /**
- * The hosts named in `DIFFO_ALLOWED_HOSTS`, beyond loopback, that the server's
- * Host and Origin guard accepts: comma-separated hostnames, no port. An entry
- * starting with a dot covers every subdomain under it (`.devbox.internal` covers
- * `diffo-4949.devbox.internal`) but not the bare domain itself.
+ * `DIFFO_PUBLIC_URL` is the address a reverse proxy serves this server at, with
+ * `{port}` standing for its port (`https://diffo-{port}.devbox.internal`). That
+ * one origin is the link diffo prints and the only non-loopback host the
+ * server's Host and Origin guard accepts. Undefined when unset; a value that
+ * isn't a bare http(s) origin throws rather than being half-used.
  */
-export function parseAllowedHosts(raw: string | undefined): { matches(host: string): boolean } {
-  const entries = (raw ?? '')
-    .split(',')
-    .map((entry) => entry.trim().toLowerCase())
-    .filter((entry) => entry !== '' && entry !== '.')
-  const exact = new Set(entries.filter((entry) => !entry.startsWith('.')))
-  const suffixes = entries.filter((entry) => entry.startsWith('.'))
-  return {
-    matches: (host) => exact.has(host) || suffixes.some((suffix) => host.endsWith(suffix)),
+export function publicUrl(port: number): URL | undefined {
+  const template = process.env.DIFFO_PUBLIC_URL?.trim()
+  if (!template) return undefined
+  let url: URL
+  try {
+    url = new URL(template.replaceAll('{port}', String(port)))
+  } catch {
+    throw new Error(`DIFFO_PUBLIC_URL is not a URL: ${template}`)
   }
+  if (!['http:', 'https:'].includes(url.protocol) || url.href !== `${url.origin}/`) {
+    throw new Error(
+      `DIFFO_PUBLIC_URL must be a scheme and host only, like https://diffo-{port}.devbox.internal`,
+    )
+  }
+  return url
 }

@@ -67,12 +67,15 @@ These guards have their own test file
 
 ### Reaching it through a proxy
 
-To open reviews from another device, put a reverse proxy you trust (on your
-private network or tailnet) in front of the loopback server and name its host in
-`DIFFO_ALLOWED_HOSTS`. Those hosts pass the `Host` and `Origin` checks; every
-other host is still refused. Anyone who can reach the proxy can then read the
-review and send threads to the agent, so keep it private.
-`DIFFO_REVIEW_URL` makes the printed link point at the proxy.
+To open reviews from another device, put a reverse proxy you trust in front of
+the loopback server and set `DIFFO_PUBLIC_URL` to the address it serves the
+server at, `{port}` standing for the server's port:
+`https://diffo-{port}.devbox.internal`. That one origin is the link diffo prints,
+and the only one besides loopback that passes the `Host` and `Origin` checks, so
+another app behind the same proxy is still refused. Anyone who can reach the
+proxy can then read the review and send threads to the agent, so keep it
+private. The server reads `DIFFO_PUBLIC_URL` when it starts: after changing it,
+`diffo stop` the running server.
 
 ## The reviewed code is treated as hostile
 
