@@ -1,3 +1,4 @@
+import { isLoadablePackComment } from '../../share/pack.js'
 import type { Anchor, ReviewMessage, ReviewThread } from '../../shared/review.js'
 import type { FileChange, PrInfo } from '../../shared/types.js'
 import type {
@@ -108,6 +109,9 @@ export function threadsFromGithub(
   })
   const conversation = imported
     .filter((t): t is Exclude<ImportedThread, ImportedInlineThread> => t.kind !== 'inline')
+    // A reading guide shared with `diffo share` arrives as the review's layers;
+    // as a comment it would only repeat them.
+    .filter((t) => !(t.kind === 'comment' && isLoadablePackComment(t.comments[0], pr)))
     .sort((a, b) => a.comments[0].at.localeCompare(b.comments[0].at))
   for (const t of conversation) {
     const message = messageFromComment(t.comments[0])

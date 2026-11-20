@@ -15,7 +15,9 @@ import { DiffoDb } from './server/db.js'
 import {
   findRepoRoot,
   getBranchName,
+  getHeadSha,
   getRemoteUrl,
+  listRemotes,
   MissingBaseError,
   mainRepoOf,
   suggestedBase,
@@ -42,6 +44,7 @@ import {
   POLL_NOW_FOREGROUND,
   POLL_STANCE,
   prOpenNote,
+  sharedLayersNote,
   TAB_TITLE,
 } from './server/prompt.js'
 import {
@@ -62,6 +65,8 @@ import {
 } from './serverLifecycle.js'
 import { apiUrl, reviewUrl } from './serverUrl.js'
 import { postRegisterHint, refreshInstalledSkills, runSetup } from './setup.js'
+import { findSharedPack, ownPackComment, packOf, renderShareComment } from './share/pack.js'
+import { shareCheck } from './share/where.js'
 import { parseLayersPost, type UncoveredRef } from './shared/layers.js'
 import { parsePresetPatch } from './shared/presets.js'
 import type { Layers, ReviewState } from './shared/review.js'
@@ -886,6 +891,123 @@ if (command.kind === 'preset') {
   process.exit(0)
 }
 
+/**
+ * The pull request `diffo share` posts on: the one named, else the one this
+ * review is of (a pull-request worktree), else the open pull request for this
+ * branch on the origin.
+ */
+async function sharePrRef(target: string | undefined, forge: GhClient): Promise<PrRef> {
+  // The URL as configured: an `insteadOf` rewrite names where git talks to,
+  // not which repository this is.
+  const origin =
+    listRemotes(repoPath).find((r) => r.name === 'origin')?.url ?? getRemoteUrl(repoPath)
+  const named = target ?? ownedPullRequest(repoPath)?.target
+  if (named !== undefined) {
+    const parsed = parseTarget(named, origin)
+    if (!parsed.ok) fail(parsed.error)
+    if (parsed.target.kind !== 'pr') {
+      fail(
+        `'${named}' is not a pull request; pass a link like https://github.com/owner/repo/pull/482`,
+      )
+    }
+    return parsed.target.ref
+  }
+  const repo = parseRemoteUrl(origin ?? '')
+  if (!repo)
+    fail(
+      'this repo has no GitHub origin to find the pull request on; name it: diffo share <PR URL>',
+    )
+  const branch = getBranchName(repoPath)
+  const auth = await forge.authStatus(repo.host)
+  if (!auth.ok) fail(auth.message)
+  let number: number | null
+  try {
+    number = await forge.findPrForBranch(repo, branch)
+  } catch (err) {
+    fail(`could not look up the pull request for ${branch}: ${(err as Error).message}`)
+  }
+  if (number === null) {
+    fail(
+      `no open pull request for branch '${branch}' on ${repo.owner}/${repo.repo}; push it and open one, or name it: diffo share <PR URL>`,
+    )
+  }
+  return { ...repo, number }
+}
+
+if (command.kind === 'share') {
+  const port = await requireServer()
+  const review = await fetchReviewState(port)
+  if (!review) fail('could not read the review from its server')
+  const layers = review.layers
+  if (!layers || layers.items.length === 0) {
+    fail('this review has no layers to share yet; post them first (`diffo help layers`)')
+  }
+  const forge = new GhClient()
+  const ref = await sharePrRef(command.target, forge)
+  const auth = await forge.authStatus(ref.host)
+  if (!auth.ok) fail(auth.message)
+  let fetched: Awaited<ReturnType<GhClient['fetchPr']>>
+  try {
+    fetched = await forge.fetchPr(ref)
+  } catch (err) {
+    fail(`could not read pull request #${ref.number}: ${(err as Error).message}`)
+  }
+  const { pr, threads } = fetched
+  // The layers name head-side lines of this checkout. Shared against any other
+  // commit they would point the reader at the wrong lines.
+  const head = getHeadSha(repoPath)
+  if (head !== pr.head.sha) {
+    fail(
+      `pull request #${pr.number} is at ${pr.head.sha.slice(0, 7)} but this checkout is at ${head?.slice(0, 7) ?? 'no commit'}; ` +
+        'the layers point at lines in this checkout, so push (or pull) until they match, then share',
+    )
+  }
+  const dirty = spawnSync('git', ['status', '--porcelain', '--untracked-files=no'], {
+    cwd: repoPath,
+    encoding: 'utf-8',
+  })
+  if (dirty.status !== 0 || dirty.stdout.trim() !== '') {
+    fail(
+      "this checkout has uncommitted changes, so its lines may not be the pull request's; commit and push them, then share",
+    )
+  }
+  const body = renderShareComment(ref, packOf(layers.items, pr.head.sha, new Date().toISOString()))
+  if (command.dryRun) {
+    console.log(body)
+    process.exit(0)
+  }
+  const existing = ownPackComment(threads, pr.viewer.login)
+  let url: string | undefined
+  try {
+    url = existing
+      ? ((await forge.updatePrComment(ref, existing.id, body)).url ?? existing.url)
+      : (await forge.addPrComment(ref, pr.nodeId, body)).url
+  } catch (err) {
+    fail(`could not post the guide on pull request #${pr.number}: ${(err as Error).message}`)
+  }
+  const db = new DiffoDb()
+  try {
+    const telemetry = cliTelemetry(db)
+    telemetry.layersShared({ update: existing !== null, layers: layers.items.length })
+    await telemetry.flush()
+  } catch {
+    // usage data never stands between the sender and the share
+  } finally {
+    db.close()
+  }
+  const n = layers.items.length
+  console.log(
+    `${existing ? 'updated' : 'shared'} ${n} ${n === 1 ? 'layer' : 'layers'} on pull request #${pr.number}${url ? `: ${url}` : ''}`,
+  )
+  console.log(
+    `to read it with these layers, the reviewer runs: npx -y @diffohq/diffo ${pr.url}` +
+      ' (in Claude Code: /diffo ' +
+      pr.url +
+      ')',
+  )
+  process.exit(0)
+}
+
 if (command.kind === 'end') {
   const port = await requireServer()
   const { status, body } = await postJson(port, '/api/agent/end', {})
@@ -952,6 +1074,12 @@ async function printAgentNextStep(port: number, pr?: PrInfo): Promise<void> {
     review && !review.layers && !review.layersSuggested ? await activePresetList(port) : []
   const layers = review ? layersNudge(review, D, presets) : null
   if (layers) console.log(`also: ${layers}`)
+  const shared = review?.layers?.shared
+  if (shared && review?.layers) {
+    console.log(
+      `also: ${sharedLayersNote(shared, review.layers.items.length, pr?.head.sha ?? null)}`,
+    )
+  }
 }
 
 /**
@@ -1006,8 +1134,9 @@ async function openPullRequest(
     fail(auth.message)
   }
   let pr: PrInfo
+  let threads: Awaited<ReturnType<GhClient['fetchPr']>>['threads']
   try {
-    pr = await forge.getPr(ref)
+    ;({ pr, threads } = await forge.fetchPr(ref))
   } catch (err) {
     await reportOpenFailure('pr_fetch')
     fail(
@@ -1065,7 +1194,17 @@ async function openPullRequest(
   process.stderr.write(
     `diffo: pull request #${pr.number} "${pr.title}" by @${pr.author.login}, ${prepared.created ? 'checked out at' : 'worktree at'} ${prepared.path}\n`,
   )
-  return { prepared, pr, context: { ref, forge, mainRepo, baseBranch } }
+  const shared = findSharedPack(threads, pr)
+  if (shared) {
+    process.stderr.write(
+      `diffo: found @${shared.from.by}'s reading guide on the pull request (${shared.layers.length} layers)\n`,
+    )
+  }
+  return {
+    prepared,
+    pr,
+    context: { ref, forge, mainRepo, baseBranch, ...(shared ? { shared } : {}) },
+  }
 }
 
 // What the server watches. A branch target is a spec; a pull-request target is
@@ -1189,7 +1328,16 @@ try {
     clientDir,
     root,
     spec,
-    ...(prOpen ? { pr: { ...prOpen.context, info: prOpen.pr } } : {}),
+    ...(prOpen
+      ? { pr: { ...prOpen.context, info: prOpen.pr } }
+      : {
+          // The URL as configured: an `insteadOf` rewrite names where git
+          // talks to, not which repository this is.
+          canShare: shareCheck(
+            () => listRemotes(root).find((r) => r.name === 'origin')?.url ?? getRemoteUrl(root),
+            new GhClient(),
+          ),
+        }),
   })
 } catch (err) {
   if (err instanceof MissingBaseError) {

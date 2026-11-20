@@ -17,11 +17,13 @@ import {
   CHECKS_QUERY,
   COMMENTS_QUERY,
   PR_QUERY,
+  PRS_FOR_BRANCH_QUERY,
   RESOLVE_THREAD,
   REVIEWS_QUERY,
   SUBMIT_REVIEW,
   THREADS_QUERY,
   UNRESOLVE_THREAD,
+  UPDATE_COMMENT,
 } from './queries.js'
 
 // The GitHub client, and the only place in Diffo that reaches the network — and
@@ -336,6 +338,32 @@ export class GhClient implements ForgeClient {
     return { commentId: n.id, ...(n.url ? { url: n.url } : {}) }
   }
 
+  async updatePrComment(ref: PrRef, commentId: string, body: string): Promise<{ url?: string }> {
+    const data = await this.graphql<{
+      updateIssueComment: { issueComment: { id: string; url?: string } }
+    }>(ref.host, UPDATE_COMMENT, { id: commentId, body })
+    const c = data.updateIssueComment.issueComment
+    return c.url ? { url: c.url } : {}
+  }
+
+  async findPrForBranch(
+    repo: { host: string; owner: string; repo: string },
+    branch: string,
+  ): Promise<number | null> {
+    const data = await this.graphql<{
+      repository: { pullRequests: { nodes: Json[] } } | null
+    }>(repo.host, PRS_FOR_BRANCH_QUERY, { owner: repo.owner, name: repo.repo, branch })
+    // A same-named branch on a fork is someone else's pull request.
+    const own = (data.repository?.pullRequests.nodes ?? []).find((n) => {
+      const head = n.headRepository as { owner?: { login?: string }; name?: string } | null
+      return (
+        head?.owner?.login?.toLowerCase() === repo.owner.toLowerCase() &&
+        head?.name?.toLowerCase() === repo.repo.toLowerCase()
+      )
+    })
+    return typeof own?.number === 'number' ? own.number : null
+  }
+
   async setThreadResolved(ref: PrRef, threadId: string, resolved: boolean): Promise<void> {
     await this.graphql(ref.host, resolved ? RESOLVE_THREAD : UNRESOLVE_THREAD, { threadId })
   }
@@ -424,5 +452,6 @@ function comment(raw: Json, atField: 'createdAt' | 'submittedAt'): ImportedComme
     body: String(raw.body ?? ''),
     at: String(raw[atField] ?? ''),
     ...(typeof raw.url === 'string' ? { url: raw.url } : {}),
+    ...(typeof raw.authorAssociation === 'string' ? { association: raw.authorAssociation } : {}),
   }
 }

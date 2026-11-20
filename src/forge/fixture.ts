@@ -127,6 +127,22 @@ export class FixtureForge implements ForgeClient {
     return { commentId }
   }
 
+  async updatePrComment(ref: PrRef, commentId: string, body: string): Promise<{ url?: string }> {
+    this.record('updatePrComment', [ref, commentId, body])
+    const thread = this.threads.find((t) => t.kind === 'comment' && t.id === commentId)
+    if (thread?.kind === 'comment') thread.comments[0].body = body
+    return { url: `${this.pr.url}#issuecomment-${commentId}` }
+  }
+
+  /** The branch a test says has a pull request: the fixture's own head. */
+  async findPrForBranch(
+    repo: { host: string; owner: string; repo: string },
+    branch: string,
+  ): Promise<number | null> {
+    this.record('findPrForBranch', [repo, branch])
+    return branch === this.pr.head.ref ? this.pr.number : null
+  }
+
   async setThreadResolved(ref: PrRef, threadId: string, resolved: boolean): Promise<void> {
     this.record('setThreadResolved', [ref, threadId, resolved])
     const thread = this.threads.find((t) => t.kind === 'inline' && t.id === threadId)

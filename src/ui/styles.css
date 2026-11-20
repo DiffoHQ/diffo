@@ -5682,6 +5682,35 @@ select.input {
   color: var(--ink-2);
 }
 
+.fin-share {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--s-3);
+  font-size: var(--t-13);
+  color: var(--ink);
+  cursor: pointer;
+}
+
+.fin-share input {
+  margin-top: 3px;
+  accent-color: var(--accent);
+}
+
+.fin-share > span {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.fin-share b {
+  font-weight: 600;
+}
+
+.fin-share-why {
+  font-size: var(--t-12);
+  color: var(--ink-3);
+}
+
 .fin-sect-why {
   font-size: var(--t-12);
   color: var(--ink-3);

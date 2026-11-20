@@ -1010,10 +1010,14 @@ function Review() {
   )
 
   const finishReview = useCallback(
-    async (deliver: boolean, closing?: { note: string; event?: ReviewEvent }) => {
+    async (
+      deliver: boolean,
+      closing?: { note: string; event?: ReviewEvent; shareLayers?: boolean },
+    ) => {
       const payload: Coverage = {
         ...coverage,
         ...(closing && closing.note.trim() !== '' ? { note: closing.note.trim() } : {}),
+        ...(closing?.shareLayers ? { shareLayers: true } : {}),
       }
       const {
         prompt,
@@ -2099,6 +2103,7 @@ function Review() {
                     preset={presetChip}
                     presets={layerPresets}
                     note={layersNote}
+                    sharedBy={review?.layers?.shared?.by}
                     onAsk={agentAttached ? requestLayers : undefined}
                     onOpenPresets={() => setLayersDialog(true)}
                   />

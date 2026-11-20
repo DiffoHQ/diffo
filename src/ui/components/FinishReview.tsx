@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import {
   type Anchor,
   anchorSpan,
@@ -39,12 +39,25 @@ export function FinishReview({
   onReopen?: (threadId: string) => Promise<unknown>
   onFinish: (
     deliver: boolean,
-    closing: { note: string; event?: ReviewEvent },
+    closing: { note: string; event?: ReviewEvent; shareLayers?: boolean },
   ) => Promise<{ delivered: boolean; prompt: string }>
   onInvite: () => void
   onClose: () => void
 }) {
-  const preview = useFinishPreview(true, coverage)
+  const [share, setShare] = useState(false)
+  // The server says whether this review can post its layers on a PR (layers,
+  // and a GitHub origin `gh` can post to). Held across refetches: ticking the
+  // box changes the preview's query, and the box must not blink out meanwhile.
+  const [canShareLayers, setCanShareLayers] = useState(false)
+  const shareLayers = canShareLayers && share
+  // The preview prompt is the one Finish sends, share errand included.
+  const preview = useFinishPreview(
+    true,
+    shareLayers ? { ...coverage, shareLayers: true } : coverage,
+  )
+  useEffect(() => {
+    if (preview.data) setCanShareLayers(preview.data.canShareLayers === true)
+  }, [preview.data])
   const [done, setDone] = useState<'copied' | 'delivered' | null>(null)
   const [failed, setFailed] = useState(false)
   const [manual, setManual] = useState<string | null>(null)
@@ -74,7 +87,7 @@ export function FinishReview({
   const finish = (deliver: boolean) => {
     setFailed(false)
     setBusy(true)
-    onFinish(deliver, { note })
+    onFinish(deliver, { note, ...(shareLayers ? { shareLayers: true } : {}) })
       .then(async ({ delivered, prompt }) => {
         if (delivered && deliver) return onClose()
         setDone('copied')
@@ -265,6 +278,19 @@ export function FinishReview({
             onChange={(e) => setNote(e.target.value)}
           />
         </div>
+      )}
+
+      {!done && canShareLayers && (
+        <label className="fin-share">
+          <input type="checkbox" checked={share} onChange={(e) => setShare(e.target.checked)} />
+          <span>
+            <b>Post these layers on the pull request</b>
+            <span className="fin-share-why">
+              Your agent adds one comment to the PR, now or right after it opens one. Reviewers get
+              this reading order on GitHub, or loaded in Diffo. Anyone who can see the PR sees it.
+            </span>
+          </span>
+        </label>
       )}
 
       {peeked && preview.data && <pre className="invite-prompt">{preview.data.prompt}</pre>}
