@@ -6,6 +6,7 @@ import { type Context, Hono } from 'hono'
 import { stream, streamSSE } from 'hono/streaming'
 import { SRC_STAMP } from '../devStamp.js'
 import type { ForgeClient, PrRef, ReviewEvent } from '../forge/types.js'
+import { parseAllowedHosts } from '../serverUrl.js'
 import { findHunk, translateHunkAnchor } from '../shared/anchors.js'
 import {
   describeUncovered,
@@ -202,14 +203,18 @@ export function createApp(
   // pointed at evil.com (rebound to 127.0.0.1) still reaches it with `Host` and
   // `Origin` of evil.com — so accept only loopback Hosts and reject non-loopback
   // Origins, or any web page could read repo files and inject review threads.
+  // DIFFO_ALLOWED_HOSTS names extra hosts a reverse proxy in front of this
+  // loopback server answers to: they pass both checks, and nothing else does.
   const LOOPBACK = new Set(['localhost', '127.0.0.1', '[::1]', '::1'])
+  const allowedHosts = parseAllowedHosts(process.env.DIFFO_ALLOWED_HOSTS)
+  const isAllowedName = (host: string): boolean => LOOPBACK.has(host) || allowedHosts.matches(host)
   const isLoopbackHost = (value: string): boolean => {
     // Strip a trailing :port — for a bracketed IPv6 host that means everything
     // after the closing bracket, never the colons inside it.
     const host = value.startsWith('[')
       ? value.replace(/^(\[[^\]]*\])(?::\d+)?$/, '$1')
       : value.replace(/:\d+$/, '')
-    return LOOPBACK.has(host.toLowerCase())
+    return isAllowedName(host.toLowerCase())
   }
   app.use('*', async (c, next) => {
     // No Host header is not a free pass: HTTP/1.1 requires one, so its absence
@@ -226,7 +231,7 @@ export function createApp(
       } catch {
         return c.text('Forbidden: malformed Origin', 403)
       }
-      if (!LOOPBACK.has(originHost.toLowerCase())) {
+      if (!isAllowedName(originHost.toLowerCase())) {
         return c.text('Forbidden: cross-origin request', 403)
       }
     }
