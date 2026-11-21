@@ -65,6 +65,19 @@ localhost service:
 These guards have their own test file
 ([`security.test.ts`](https://github.com/DiffoHQ/diffo/blob/main/src/server/security.test.ts)).
 
+### Reaching it through a proxy
+
+To open reviews from another device, put a reverse proxy you trust in front of
+the loopback server and set `DIFFO_PUBLIC_URL` to the address it serves the
+server at, `{port}` standing for the server's port:
+`https://diffo-{port}.devbox.internal`. That one origin is the link diffo prints,
+and the only one besides loopback that passes the `Host` and `Origin` checks, so
+another app behind the same proxy is still refused. Anyone who can reach the
+proxy can then read the review and send threads to the agent, so keep it
+private. `DIFFO_PUBLIC_URL` is read when the server starts, so a server that's
+already running needs a restart to pick up a change: `diffo stop`, then open the
+review again.
+
 ## The reviewed code is treated as hostile
 
 Diffo exists to read code nobody has vetted yet, so repo content must never

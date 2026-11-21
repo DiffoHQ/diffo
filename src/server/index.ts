@@ -6,6 +6,7 @@ import { type Context, Hono } from 'hono'
 import { stream, streamSSE } from 'hono/streaming'
 import { SRC_STAMP } from '../devStamp.js'
 import type { ForgeClient, PrRef, ReviewEvent } from '../forge/types.js'
+import { publicUrl } from '../serverUrl.js'
 import type { FoundPack } from '../share/pack.js'
 import { findHunk, translateHunkAnchor } from '../shared/anchors.js'
 import {
@@ -177,6 +178,9 @@ export interface ServerContext {
   /** Set when the server was opened on a pull request: the forge to talk to,
    * which PR, and the user's checkout the worktree (`root`) hangs off. */
   pr?: PrContext
+  /** The port it listens on; with `DIFFO_PUBLIC_URL`, it names the one proxy
+   * host this server answers to. */
+  port?: number
   /** Could `diffo share` post from this repo (a GitHub origin `gh` is signed in
    * to)? Finish offers to share only then. Absent ⇒ never. */
   canShare?: () => Promise<boolean>
@@ -217,31 +221,43 @@ export function createApp(
   // pointed at evil.com (rebound to 127.0.0.1) still reaches it with `Host` and
   // `Origin` of evil.com — so accept only loopback Hosts and reject non-loopback
   // Origins, or any web page could read repo files and inject review threads.
+  // DIFFO_PUBLIC_URL adds exactly one more: the origin a reverse proxy serves
+  // this server at. Its host passes the Host check and its full origin the
+  // Origin check; a sibling app behind the same proxy passes neither.
   const LOOPBACK = new Set(['localhost', '127.0.0.1', '[::1]', '::1'])
-  const isLoopbackHost = (value: string): boolean => {
+  const pub = ctx.port === undefined ? undefined : publicUrl(ctx.port)
+  const isAllowedHost = (value: string): boolean => {
     // Strip a trailing :port — for a bracketed IPv6 host that means everything
     // after the closing bracket, never the colons inside it.
     const host = value.startsWith('[')
       ? value.replace(/^(\[[^\]]*\])(?::\d+)?$/, '$1')
       : value.replace(/:\d+$/, '')
-    return LOOPBACK.has(host.toLowerCase())
+    if (LOOPBACK.has(host.toLowerCase())) return true
+    if (!pub) return false
+    // Parse it as the proxy's own scheme would, so case and a default port
+    // (`:443` on https) compare equal.
+    try {
+      return new URL(`${pub.protocol}//${value}`).host === pub.host
+    } catch {
+      return false
+    }
   }
   app.use('*', async (c, next) => {
     // No Host header is not a free pass: HTTP/1.1 requires one, so its absence
     // means a hand-rolled request. Fall back to the URL's own host.
     const host = c.req.header('host') ?? new URL(c.req.url).host
-    if (!isLoopbackHost(host)) {
+    if (!isAllowedHost(host)) {
       return c.text('Forbidden: unexpected Host header', 403)
     }
     const origin = c.req.header('origin')
     if (origin !== undefined) {
-      let originHost: string
+      let originUrl: URL
       try {
-        originHost = new URL(origin).hostname
+        originUrl = new URL(origin)
       } catch {
         return c.text('Forbidden: malformed Origin', 403)
       }
-      if (!LOOPBACK.has(originHost.toLowerCase())) {
+      if (!LOOPBACK.has(originUrl.hostname.toLowerCase()) && originUrl.origin !== pub?.origin) {
         return c.text('Forbidden: cross-origin request', 403)
       }
     }

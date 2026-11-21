@@ -367,6 +367,7 @@ An unrecognised command is an error with a suggestion (`diffo repyl` offers
 | `DIFFO_SERVER_LOG` | Where a background server writes its log. Default `~/.diffo/logs/<repo>-<hash>.log` |
 | `DIFFO_TELEMETRY_DISABLED` | Set to `1` to send no [usage data](/telemetry). `DO_NOT_TRACK=1` and `CI` do the same |
 | `DIFFO_TELEMETRY_DEBUG` | Set to `1` to write every usage-data payload to the server log before it is sent |
+| `DIFFO_PUBLIC_URL` | The address a reverse proxy serves the server at, with `{port}` for its port: `https://diffo-{port}.devbox.internal`. diffo prints it as the review link and accepts that host alongside loopback. Read at server start. See [Security](/security#reaching-it-through-a-proxy) |
 | `DIFFO_DAEMON` | Internal. Set by the CLI on the server it spawns; don't set it yourself |
 
 ## Exit codes
