@@ -91,6 +91,25 @@ function thread(over: Partial<ReviewThread> = {}): ReviewThread {
 }
 
 describe('buildThreadPrompt', () => {
+  it('replays an artifact as a one-line stand-in, never its html', () => {
+    const prompt = buildThreadPrompt(
+      thread({
+        messages: [
+          {
+            id: 'm0',
+            author: 'agent',
+            text: 'see\n\n```artifact title="Flow"\n<svg>secret-markup</svg>\n```',
+            at: '2026-08-03T00:00:00Z',
+          },
+          { id: 'm1', author: 'reviewer', text: 'nice', at: '2026-08-03T00:00:00Z' },
+        ],
+      }),
+      { repo },
+    )
+    expect(prompt).toContain('[artifact "Flow"')
+    expect(prompt).not.toContain('secret-markup')
+  })
+
   it('carries anchor, thread id, code context, messages, and the CLI protocol', () => {
     const prompt = buildThreadPrompt(thread(), { repo })
     expect(prompt).toContain('src/a.ts:12 (new side)')
@@ -877,7 +896,7 @@ describe('the open-time guide nudge', () => {
   it('asks for a guide when the review has none', () => {
     const nudge = guideNudge(false)!
     expect(nudge).toContain('guide')
-    expect(nudge).toContain('```mermaid')
+    expect(nudge).toContain('```artifact')
     // The URL goes out first; the guide is written while the reviewer opens
     // the page — never the other way round, which is what made opens slow.
     expect(nudge.indexOf('share the URL')).toBeLessThan(nudge.indexOf('post a guide'))

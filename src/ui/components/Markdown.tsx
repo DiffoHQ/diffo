@@ -1,4 +1,5 @@
 import { memo, useEffect, useRef } from 'react'
+import { renderArtifactsIn } from '../artifacts.js'
 import { renderMarkdown, renderMarkdownDoc } from '../markdown.js'
 import { linkDiagramRefs, renderMermaidIn } from '../mermaid.js'
 
@@ -20,17 +21,23 @@ import { linkDiagramRefs, renderMermaidIn } from '../mermaid.js'
  * which tears the upgraded mermaid figure back to its raw fence — so typing in
  * a reply box made every diagram in the card re-render and the page jump.
  * Bailing out here keeps the DOM untouched unless the text itself changed.
+ * The same holds for artifact frames, which a re-apply would reload.
  */
 export const Markdown = memo(function Markdown({
   text,
   className,
   docPath,
   paths,
+  artifactOwner,
 }: {
   text: string
   className: string
   docPath?: string
   paths?: readonly string[]
+  /** Who wrote this text, as `messageOwner` / `layerOwner` encode it — set
+   * only for the agent's text. Only then do its artifacts render (anything
+   * else shows the fence as code), and their breakage is reported back. */
+  artifactOwner?: string
 }) {
   const body = useRef<HTMLDivElement>(null)
   const html = docPath === undefined ? renderMarkdown(text) : renderMarkdownDoc(text, docPath)
@@ -39,6 +46,9 @@ export const Markdown = memo(function Markdown({
     const el = body.current
     if (!el) return
     const pass = async () => {
+      // Only the agent's own text becomes pages. A fence anywhere else — a
+      // repo README, a pull request's comments, the reviewer's own — stays code.
+      if (artifactOwner) renderArtifactsIn(el, artifactOwner)
       await renderMermaidIn(el)
       if (paths) linkDiagramRefs(el, paths)
     }
@@ -52,7 +62,7 @@ export const Markdown = memo(function Markdown({
     })
     settle.observe(el, { childList: true, subtree: true })
     return () => settle.disconnect()
-  }, [html, paths])
+  }, [html, paths, artifactOwner])
   return (
     // biome-ignore lint/security/noDangerouslySetInnerHtml: renderMarkdown sanitises through DOMPurify
     <div ref={body} className={className} dangerouslySetInnerHTML={{ __html: html }} />

@@ -4225,6 +4225,179 @@ tr:hover .line-range-glyph {
   margin-bottom: var(--s-1);
 }
 
+/* Artifacts — an agent-written page in a sandboxed frame (src/ui/artifacts.ts).
+ * The card is chrome around a stage; the stage takes the frame's measured height,
+ * capped by the artifact's size, and the full view shows the rest. */
+.markdown .artifact-card {
+  margin: var(--s-2) 0;
+  border: 1px solid var(--hair);
+  border-radius: var(--r);
+  background: var(--fill);
+  overflow: hidden;
+  max-width: none;
+}
+
+.artifact-head {
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+  min-height: 34px;
+  padding: 4px 6px 4px 12px;
+  font-size: var(--t-12);
+}
+
+.artifact-title {
+  font-weight: 600;
+  font-size: var(--t-13);
+  color: var(--ink);
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.artifact-tag {
+  flex: none;
+  font-size: var(--t-11);
+  color: var(--ink-3);
+  border: 1px solid var(--hair);
+  border-radius: var(--r-pill);
+  padding: 0 7px;
+  line-height: 17px;
+  white-space: nowrap;
+}
+
+.artifact-open {
+  margin-left: auto;
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  height: 24px;
+  padding: 0 9px;
+  border: 1px solid var(--hair);
+  border-radius: var(--r-sm);
+  background: var(--paper);
+  color: var(--ink-2);
+  font: inherit;
+  font-size: var(--t-12);
+  cursor: pointer;
+}
+
+.artifact-open:hover {
+  color: var(--ink);
+  border-color: var(--hair-2);
+}
+
+.artifact-stage {
+  position: relative;
+  overflow: hidden;
+  background: var(--paper);
+  border-top: 1px solid var(--hair);
+  transition: height var(--dur) var(--ease-out);
+}
+
+/* The agent's box at its own size, scaled to the stage from its top-left. */
+.artifact-frame {
+  position: absolute;
+  top: 0;
+  left: 0;
+  display: block;
+  border: 0;
+  background: transparent;
+  transform-origin: 0 0;
+}
+
+.artifact-overflows .artifact-stage::after {
+  content: "";
+  position: absolute;
+  inset: auto 0 0 0;
+  height: 36px;
+  background: linear-gradient(transparent, var(--paper));
+  pointer-events: none;
+}
+
+/* A page's thumbnail: a picture of the page that opens it. */
+.artifact-thumb .artifact-frame {
+  pointer-events: none;
+}
+
+.artifact-thumb-open {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  border: 0;
+  background: transparent;
+  cursor: zoom-in;
+}
+
+.artifact-thumb-open:focus-visible {
+  outline: 2px solid var(--acc);
+  outline-offset: -2px;
+}
+
+.artifact-more {
+  display: block;
+  width: 100%;
+  padding: 6px;
+  border: 0;
+  border-top: 1px solid var(--hair);
+  background: var(--fill);
+  color: var(--acc);
+  font: inherit;
+  font-size: var(--t-12);
+  cursor: pointer;
+}
+
+.artifact-more:hover {
+  background: var(--fill-2);
+}
+
+.artifact-issues {
+  padding: 6px 12px;
+  border-top: 1px solid var(--hair);
+  background: var(--danger-wash);
+  color: var(--danger);
+  font-size: var(--t-12);
+  overflow-wrap: anywhere;
+}
+
+.artifact-open[hidden],
+.artifact-more[hidden],
+.artifact-issues[hidden] {
+  display: none;
+}
+
+/* A layer's prose stays a measure wide; its artifact takes the header's width. */
+.ch-head-about:has(.artifact-card) {
+  max-width: none;
+  align-items: stretch;
+}
+
+.ch-head-about:has(.artifact-card) .ch-summary > :not(.artifact-card) {
+  max-width: 72ch;
+}
+
+/* .modal sets its own width later in this file; two classes win regardless. */
+.modal.artifact-full {
+  width: min(1440px, 100%);
+  height: 100%;
+}
+
+.artifact-full .modal-body {
+  flex: 1;
+  padding: 0 var(--s-4) var(--s-4);
+  overflow: hidden;
+}
+
+.artifact-full-frame {
+  flex: 1;
+  width: 100%;
+  border: 1px solid var(--hair);
+  border-radius: var(--r);
+  background: var(--paper);
+}
+
 /* Document scale for the preview modal — the base .markdown sizes are tuned for
  * comment cards, where a heading is a label, not a chapter break. */
 .md-doc {

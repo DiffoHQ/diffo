@@ -8,6 +8,12 @@ import { SRC_STAMP } from '../devStamp.js'
 import type { ForgeClient, PrRef, ReviewEvent } from '../forge/types.js'
 import { findHunk, translateHunkAnchor } from '../shared/anchors.js'
 import {
+  checkArtifacts,
+  findArtifacts,
+  parseArtifactReport,
+  REPORT_ISSUES_MAX,
+} from '../shared/artifacts.js'
+import {
   describeUncovered,
   parseLayersPost,
   parseSuggestReason,
@@ -82,6 +88,7 @@ import { removeWorktree } from './pr/worktree.js'
 import { DELETED, PresetStore } from './presets.js'
 import {
   answeredByAgent,
+  buildArtifactsPrompt,
   buildClearedPrompt,
   buildCoalescedPrompt,
   buildConnectAsk,
@@ -471,6 +478,43 @@ export function createApp(
     return files.length === 1 ? agentAnchor(files[0]!, null) : { kind: 'changeset' }
   }
 
+  // An agent artifact broke in the reviewer's browser (src/ui/artifacts.ts):
+  // queue it for the agent's next poll. Only the agent's own text counts —
+  // a reviewer's preview is theirs to fix — and each distinct issue once.
+  const artifactIssuesSeen = new Map<string, Set<string>>()
+  app.post('/api/review/artifacts/issues', async (c) => {
+    if (!review) return c.json({ error: 'review unavailable' }, 503)
+    const report = parseArtifactReport(await c.req.json().catch(() => null))
+    if (!report) return c.json({ error: 'need {owner, index, title, issues}' }, 400)
+    const state = review.get()
+    let source: string | undefined
+    if (report.owner.kind === 'message') {
+      const { threadId, messageId } = report.owner
+      const m = state.threads
+        .find((t) => t.id === threadId)
+        ?.messages.find((x) => x.id === messageId)
+      if (m?.author === 'agent') source = m.text
+    } else {
+      const { layerId } = report.owner
+      source = state.layers?.items.find((l) => l.id === layerId)?.summary
+    }
+    if (source === undefined) return c.json({ error: 'no agent text with that artifact' }, 404)
+    const found = findArtifacts(source)[report.index]
+    if (!found) return c.json({ error: 'no artifact at that index' }, 404)
+    const key = `${JSON.stringify(report.owner)}#${report.index}`
+    // Each artifact gets REPORT_ISSUES_MAX distinct issues for the life of
+    // the server: a page that reports in a loop costs the agent one batch.
+    const seen = artifactIssuesSeen.get(key) ?? new Set<string>()
+    const fresh = report.issues
+      .filter((i) => !seen.has(i))
+      .slice(0, Math.max(0, REPORT_ISSUES_MAX - seen.size))
+    if (fresh.length === 0) return c.json({ queued: false })
+    for (const i of fresh) seen.add(i)
+    artifactIssuesSeen.set(key, seen)
+    queue?.enqueueArtifact({ ...report, title: found.info.title ?? report.title, issues: fresh })
+    return c.json({ queued: Boolean(queue) })
+  })
+
   app.post('/api/review/threads', async (c) => {
     if (!review) return c.json({ error: 'review unavailable' }, 503)
     const body = await c.req.json().catch(() => null)
@@ -479,6 +523,8 @@ export function createApp(
     // The agent speaks in file/line coordinates, not anchors: it has no hunk ids,
     // and the ladder below turns "this file, this line" into the best live anchor.
     if (body?.author === 'agent') {
+      const art = checkArtifacts(text).errors
+      if (art.length > 0) return c.json({ error: art.join('; ') }, 400)
       const file =
         typeof body?.file === 'string' && body.file.trim() !== '' ? body.file.trim() : null
       const line =
@@ -906,6 +952,8 @@ export function createApp(
       if (!review.get().threads.some((t) => t.id === id)) {
         return c.json({ error: 'no such thread' }, 404)
       }
+      const art = checkArtifacts(text).errors
+      if (art.length > 0) return c.json({ error: art.join('; ') }, 400)
       // Refresh the OWNER's clock, never retarget it: a reply from a second session
       // must not point the liveness watch at its harness (delivery.ts `noteSession`).
       queue?.noteSession(parseSessionPid(c.req.header('x-diffo-session-pid')))
@@ -1331,6 +1379,19 @@ export function createApp(
         kind: 'cleared' as const,
         threadIds: [] as string[],
         prompt: buildClearedPrompt({ repo: repoInfo(), changeset: store?.get() ?? null }),
+      }
+    }
+    if (snapshot.kind === 'artifacts') {
+      return {
+        status: 'feedback' as const,
+        kind: 'artifacts' as const,
+        threadIds: [] as string[],
+        prompt: buildArtifactsPrompt(
+          { repo: repoInfo(), changeset: store?.get() ?? null },
+          snapshot.reports,
+          threads,
+          review?.get().layers,
+        ),
       }
     }
     if (snapshot.kind === 'submitted') {

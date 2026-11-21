@@ -1,6 +1,7 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { type Anchor, isPublic, type LineRange, type ReviewThread } from '../../shared/review.js'
 import type { DiffLine, FileChange, Hunk } from '../../shared/types.js'
+import { layerOwner } from '../artifacts.js'
 import { copyText } from '../clipboard.js'
 import { changedLineCount, type StubReason, stubReason } from '../diffStub.js'
 import { isFileViewed } from '../fileMarks.js'
@@ -396,6 +397,7 @@ function LayerHead({
                     text={summary}
                     className="cmt-body markdown ch-summary"
                     paths={layer.knownPaths}
+                    artifactOwner={layer.id === null ? undefined : layerOwner(layer.id)}
                   />
                 </div>
               )}

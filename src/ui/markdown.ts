@@ -1,5 +1,6 @@
 import DOMPurify from 'dompurify'
 import { marked } from 'marked'
+import { DEFAULT_ARTIFACT_SIZE, isArtifactInfo, parseArtifactInfo } from '../shared/artifacts.js'
 
 /**
  * Comment bodies render markdown, because agent replies *arrive* as markdown —
@@ -12,6 +13,36 @@ import { marked } from 'marked'
 marked.setOptions({
   gfm: true,
   breaks: true,
+})
+
+const escapeHtml = (s: string) =>
+  s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;')
+
+/** Marks the <pre>s this renderer made from a fence, so the artifact pass
+ * never upgrades one a comment typed as raw HTML: the value is random per page
+ * load, and nothing a writer types can know it. */
+export const ARTIFACT_MARK = Array.from(
+  globalThis.crypto.getRandomValues(new Uint8Array(12)),
+  (x) => x.toString(16).padStart(2, '0'),
+).join('')
+
+/** An ```artifact fence keeps its info string — marked drops everything after
+ * the first word — as data attributes on the <pre>, for the artifact pass
+ * (src/ui/artifacts.ts) to read. The HTML itself stays escaped code text until
+ * that pass hands it to a sandboxed frame; it never touches this document. */
+marked.use({
+  renderer: {
+    code(token) {
+      const info = token.lang ?? ''
+      if (!isArtifactInfo(info)) return false
+      const { title, size } = parseArtifactInfo(info)
+      const text = token.text.replace(/\n$/, '')
+      return (
+        `<pre data-artifact="${ARTIFACT_MARK}" data-artifact-title="${escapeHtml(title ?? '')}" data-artifact-size="${size ?? DEFAULT_ARTIFACT_SIZE}">` +
+        `<code class="language-artifact">${escapeHtml(text)}</code></pre>\n`
+      )
+    },
+  },
 })
 
 /** Exactly what a review comment needs, and nothing that can navigate or run. */
