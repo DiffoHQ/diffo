@@ -48,7 +48,7 @@ export const OUTLINE_STALL_MS = 3 * 60_000
  * cut off by the agent's harness) before the agent is told to stop and ask
  * the user whether to keep listening: an unattended agent re-polling all
  * night spends tokens on nobody. */
-export const QUIET_POLL_LIMIT = 10
+export const QUIET_POLL_LIMIT = 20
 
 export type BatchCloseReason = 'repoll' | 'ended' | 'gone'
 

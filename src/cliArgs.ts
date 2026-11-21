@@ -117,7 +117,7 @@ The loop:
    every other poll is a plain \`diffo poll\`.
    Killed or timed out? Re-run it; feedback is held in the review, not the
    poll. The one exception is \`"status": "quiet"\`: the reviewer sent
-   nothing through ten polls in a row, so stop, ask the user whether to keep
+   nothing through twenty polls in a row, so stop, ask the user whether to keep
    listening, and re-poll only on a yes.
 3. Guide: post one only when the changeset needs orientation:
    ${GUIDE.when}.
@@ -388,7 +388,7 @@ attended: ${POLL_STANCE}. A payload that reaches a process nobody is
 listening to never reaches you.
 Safe to re-run any time: feedback is held in the review itself, so
 nothing is lost when a poll is killed or times out; the next poll gets it.
-After ten polls in a row with nothing from the reviewer (timed out or killed),
+After twenty polls in a row with nothing from the reviewer (timed out or killed),
 the next one returns {"status":"quiet"} at once: stop re-polling, ask the user
 whether to keep listening, and poll again only on a yes.
 

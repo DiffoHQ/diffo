@@ -181,7 +181,7 @@ the connection alive; a single poll is capped at **30 minutes**.
 ```
 
 `status` is one of `feedback` (the only one that carries work), `timeout`,
-`quiet` (ten polls in a row brought nothing from the reviewer: stop and ask the
+`quiet` (twenty polls in a row brought nothing from the reviewer: stop and ask the
 user whether to keep listening), `superseded` (another session took the
 review), or `ended`. A `feedback`
 payload's `kind` is `threads` (individual sends), `finish` (the reviewer is done
