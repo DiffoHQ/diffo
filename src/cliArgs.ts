@@ -116,7 +116,9 @@ The loop:
    read: ${TAB_TITLE.shape} (${TAB_TITLE.examples}). Send it ${TAB_TITLE.when};
    every other poll is a plain \`diffo poll\`.
    Killed or timed out? Re-run it; feedback is held in the review, not the
-   poll.
+   poll. The one exception is \`"status": "quiet"\`: the reviewer sent
+   nothing through ten polls in a row, so stop, ask the user whether to keep
+   listening, and re-poll only on a yes.
 3. Guide: post one only when the changeset needs orientation:
    ${GUIDE.when}.
    Right after sharing the URL, while the reviewer opens the page, post ONE
@@ -174,7 +176,9 @@ The loop:
 
 Rules:
 - An open review with no attended poll is a broken state: never end a turn
-  in it. Ending every message with the URL does not make up for it.
+  in it. Ending every message with the URL does not make up for it. The only
+  exception is a quiet poll: end the turn asking the user whether to keep
+  listening.
 - Make no edits nobody asked for; the reviewer is mid-read, and an unrelated
   edit moves the diff under them. Edits the user asks for in chat are theirs
   to ask for: do them, attached — attaching never waits for chat work.
@@ -384,6 +388,9 @@ attended: ${POLL_STANCE}. A payload that reaches a process nobody is
 listening to never reaches you.
 Safe to re-run any time: feedback is held in the review itself, so
 nothing is lost when a poll is killed or times out; the next poll gets it.
+After ten polls in a row with nothing from the reviewer (timed out or killed),
+the next one returns {"status":"quiet"} at once: stop re-polling, ask the user
+whether to keep listening, and poll again only on a yes.
 
 --title is ${TAB_TITLE.what}: ${TAB_TITLE.why}. Write it the way it is read:
 ${TAB_TITLE.shape} (${TAB_TITLE.examples}). Send it ${TAB_TITLE.when}; the

@@ -80,6 +80,7 @@ One JSON object, discriminated by `status`:
 | --- | --- |
 | `feedback` | Work is waiting. The only status that carries any |
 | `timeout` | The 30-minute cap on this poll closed. Nothing is lost; poll again |
+| `quiet` | Ten polls in a row brought nothing from the reviewer (timed out, or cut off by the harness). Stop, ask the user whether to keep listening, and re-poll only on a yes; the next poll starts a fresh count |
 | `superseded` | Another session took the review. Do not re-poll |
 | `ended` | The agent side detached with `diffo end`. Do not re-poll |
 
