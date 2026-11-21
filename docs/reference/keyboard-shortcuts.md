@@ -9,9 +9,10 @@ The review UI is keyboard-first. Press `?` in the review for this sheet.
 | `j` / `k` | Next / previous hunk |
 | `J` / `K` | Next / previous file |
 | `n` | Next unreviewed file, rolling into the next layer or commit when the current one is read |
-| `]` / `[` | Next / previous layer (when the agent has posted [layers](/agents#layers)), or commit when the Layers tab reads [by commit](/guide/commits) |
+| `]` / `[` | Next / previous layer (when the agent has posted [layers](/agents#layers)), or commit on the [Commits tab](/guide/commits) |
 | `.` | Next decision in this layer: opens its card and lands on the first place it names (see [Decisions](/guide/layers#decisions)) |
 | `/` | Filter files |
+| `⌘K` | Jump to a layer, file, thread or action by typing part of its name |
 
 ## Read
 
@@ -21,7 +22,8 @@ The review UI is keyboard-first. Press `?` in the review for this sheet.
 | `h` | Hide reviewed files |
 | `u` | Unified / split |
 | `o` | Collapse / expand file |
-| `b` | Show / hide the file list |
+| `b` | Show / hide the sidebar. Hidden, it leaves a strip of layer numbers |
+| `z` | Focus: hide the sidebar and give the page the full width |
 
 ## Comment
 

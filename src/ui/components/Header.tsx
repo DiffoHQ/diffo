@@ -510,6 +510,8 @@ export interface HeaderReview {
   /** Public drafts among them: Finish also submits to GitHub. */
   publicDrafts?: number
   onFinishReview?: () => void
+  /** Opens the command palette (⌘K). */
+  onOpenPalette?: () => void
 }
 
 export interface HeaderSettings {
@@ -534,7 +536,15 @@ export function Header({
   review = {},
   settings = {},
   starAsk,
+  bar,
+  nav,
 }: {
+  /** The reading pane's bar, docked: progress, the pager and the View menu
+   * sit in this bar, so the shell has one bar and not two. */
+  bar?: ReactNode
+  /** The sidebar's switch: the bar's first control, at the edge of the panel
+   * it opens and shuts. */
+  nav?: { hidden: boolean; onToggle: () => void }
   changeset: Changeset
   agent?: HeaderAgent
   review?: HeaderReview
@@ -542,7 +552,7 @@ export function Header({
   /** The one-time GitHub-star ask, said by the critter (or on its own without one). */
   starAsk?: StarAsk
 }) {
-  const { openComments = 0, publicDrafts = 0, onFinishReview } = review
+  const { openComments = 0, publicDrafts = 0, onFinishReview, onOpenPalette } = review
   // The chip's face is the companion's seat; it is empty while the companion is out.
   const seat = useRef<HTMLSpanElement>(null)
   const [companionAway, setCompanionAway] = useState(false)
@@ -559,6 +569,18 @@ export function Header({
   } = settings
   return (
     <header className="top">
+      {nav && (
+        <button
+          type="button"
+          className="pane-icon top-nav"
+          onClick={nav.onToggle}
+          data-tip={`${nav.hidden ? 'Show' : 'Hide'} the sidebar (b)`}
+          aria-label={`${nav.hidden ? 'Show' : 'Hide'} the sidebar`}
+          aria-pressed={!nav.hidden}
+        >
+          <Icon name="sidebar" size="md" />
+        </button>
+      )}
       <span className="mark">
         <LivingMark size={36} />
         <span className="wordmark" role="img" aria-label="Diffo">
@@ -585,6 +607,7 @@ export function Header({
       </span>
       {changeset.pr && <PrChips pr={changeset.pr} />}
       <Comparison changeset={changeset} />
+      {bar}
       {agent.presence && critter ? (
         <CritterTrack
           presence={agent.presence}
@@ -617,6 +640,17 @@ export function Header({
           faceAway={critter && companionAway}
           onHover={critter ? () => setSummon((n) => n + 1) : undefined}
         />
+      )}
+      {onOpenPalette && (
+        <button
+          type="button"
+          className="btn btn-ghost btn-icon"
+          onClick={onOpenPalette}
+          aria-label="Jump to a layer, file, thread or action"
+          data-tip="Jump to… (⌘K)"
+        >
+          <Icon name="search" size="md" />
+        </button>
       )}
       {onFinishReview && (
         <button

@@ -1,14 +1,13 @@
 # Read it commit by commit
 
-The Files tab folds every commit into one diff. The Layers tab can also read
-the branch the way it was written: one commit at a time, oldest first, each
-against its parent.
+The Files tab folds every commit into one diff. The Commits tab reads the
+branch the way it was written: one commit at a time, oldest first, each against
+its parent.
 
-## Steps or commits
+## The Commits tab
 
-On a branch review, the Layers tab carries a switch: **Steps**, the agent's
-layers, or **Commits**. Steps is where the tab opens; switch to Commits to
-read the branch as it was written, layers or not.
+On a branch review the rail has a **Commits** tab beside Layers, Files and
+Threads. Open it to read the branch as it was written, layers or not.
 
 Each row is a commit: subject, short sha, author, age and size. Uncommitted
 edits follow as a last row. Picking a row narrows the pane to that commit's own

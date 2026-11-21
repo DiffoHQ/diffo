@@ -19,11 +19,13 @@ describe('Shortcuts', () => {
       '[',
       '.',
       '/',
+      '⌘K',
       'v',
       'h',
       'u',
       'o',
       'b',
+      'z',
       'c',
       'drag ↓',
       '⇧ click',
@@ -34,7 +36,7 @@ describe('Shortcuts', () => {
     expect(screen.getByText('Move')).toBeTruthy()
     expect(screen.getByText('Read')).toBeTruthy()
     expect(screen.getByText('Comment')).toBeTruthy()
-    expect(screen.getByText('Show / hide the file list')).toBeTruthy()
+    expect(screen.getByText('Show / hide the sidebar')).toBeTruthy()
   })
 
   it('has a way out — the sheet is not a trap', () => {

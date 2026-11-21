@@ -13,6 +13,7 @@ const GROUPS: { name: string; keys: [string, string][] }[] = [
       ['[', 'Previous layer or commit'],
       ['.', 'Next decision in this layer'],
       ['/', 'Filter files'],
+      ['⌘K', 'Jump to a layer, file, thread or action'],
     ],
   },
   {
@@ -22,7 +23,8 @@ const GROUPS: { name: string; keys: [string, string][] }[] = [
       ['h', 'Hide reviewed files'],
       ['u', 'Unified / split'],
       ['o', 'Collapse / expand file'],
-      ['b', 'Show / hide the file list'],
+      ['b', 'Show / hide the sidebar'],
+      ['z', 'Focus: just the page'],
     ],
   },
   {

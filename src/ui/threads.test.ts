@@ -4,6 +4,7 @@ import {
   agentActivity,
   byFile,
   byTurn,
+  firstLine,
   holdsAttention,
   involves,
   isUnsent,
@@ -487,5 +488,24 @@ describe('involves', () => {
   it('without a login, only your own words count', () => {
     expect(involves(thread([said('@reviewer-x?', 'sam')]), null)).toBe(false)
     expect(involves(thread([wrote('mine')]), null)).toBe(true)
+  })
+})
+
+describe('firstLine', () => {
+  it('skips blank lines and takes the first with text', () => {
+    expect(firstLine('\n\n  hello there\nsecond')).toBe('hello there')
+  })
+
+  it('is plain text: a preview drops the marks nothing will render', () => {
+    expect(firstLine('### Update cards')).toBe('Update cards')
+    expect(firstLine('**Diffo 2.0, first slice.** The review `screen`')).toBe(
+      'Diffo 2.0, first slice. The review screen',
+    )
+    expect(firstLine('- a list item')).toBe('a list item')
+    expect(firstLine('> quoted')).toBe('quoted')
+  })
+
+  it('leaves arithmetic and globs alone', () => {
+    expect(firstLine('2 * 3 is 6, and src/*.ts')).toBe('2 * 3 is 6, and src/*.ts')
   })
 })

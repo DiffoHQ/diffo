@@ -1,16 +1,18 @@
 /* ============================================================
-   INK — the palette. Chrome is achromatic, so the code and its diff are the
-   only coloured things on the page.
+   INK — the palette. Chrome is warm and nearly achromatic, so the code and its
+   diff are the only strongly coloured things on the page. Nothing is pure black
+   or pure white.
 
-   Three accent roles that never merge:
-     --acc    interactive — selection, focus, the reviewer's own identity.
-     --brand  the product's green: the primary action, Viewed and progress. It is the diff's + colour worn by the chrome — the
-              same green a reviewer already reads on GitHub's Submit review — and
-              it is never used for anything else; secondary actions stay in ink.
-     --attn   attention — changed-since-read, agent in flight. Amber, the one
-              other hue in the chrome.
-   --here is the one muted green outside them: an agent that is here and
-   listening, on the chip's face and the companion. Never an action.
+   Three planes: --canvas (the shell the rail and the conversation sit on),
+   --paper (the page being read), --raised (what floats above the page).
+
+   Four roles that never merge:
+     --solid  the one primary action. Ink, not a hue.
+     --acc    focus — where you are: selection, links, anchors, focus rings.
+     --brand  read — progress, Viewed, an agent that is present. It is the
+              diff's + colour, so it is never a button.
+     --attn   attention — changed-since-read, drafts, agent in flight. Amber.
+   --here is the muted green of an agent that is here and listening.
 
    --add / --del may also appear in the rail, on a file's git status (`+` born,
    `−` died) and nowhere else — always doubled by shape, so nothing depends on
@@ -18,72 +20,70 @@
    ============================================================ */
 
 :root {
-  /* --- neutrals: a ground, one grey, three inks, two hairlines --- */
-  --paper: #ffffff;
-  --fill: #f5f5f7;
-  --fill-2: #ebebed;
-  --ink: #1d1d1f;
-  --ink-2: #515154;
-  --ink-3: #6e6e73;
-  --hair: #e5e5e7;
-  --hair-2: #f0f0f2;
+  --canvas: #f4f3f0;
+  --paper: #fdfcfb;
+  --raised: #ffffff;
+  --fill: #f1efeb;
+  --fill-2: #e7e5df;
+  --ink: #1f1d1a;
+  --ink-2: #55524c;
+  --ink-3: #6b675f;
+  --hair: #e4e2dc;
+  --hair-2: #eeece7;
+  --acc: #3d4ccf;
+  --acc-fg: #ffffff;
+  --acc-wash: #eceefb;
+  --acc-line: #c5caf2;
+  --solid: #1f1d1a;
+  --solid-hover: #38352f;
+  --solid-fg: #fdfcfb;
+  --brand: #1a7f37;
+  --brand-solid: #1f883d;
+  --brand-fg: #ffffff;
+  --brand-wash: rgba(31, 136, 61, 0.1);
+  --brand-line: rgba(31, 136, 61, 0.45);
+  --attn: #8a5700;
+  /* the GitHub star the critter holds up (StarAsk.tsx) */
+  --star: #d29a00;
+  --attn-wash: #f7eedb;
+  --attn-line: #e6cfa0;
+  --here: #3d8a5c;
+  --here-line: rgba(61, 138, 92, 0.42);
+  --add: #1f883d;
+  --add-tint: rgba(46, 160, 67, 0.06);
+  --add-row: rgba(46, 160, 67, 0.13);
+  --add-word: rgba(46, 160, 67, 0.32);
+  --patch-add-bg: #dafbe1;
+  --patch-add-fg: #116329;
+  --patch-del-bg: #ffebe9;
+  --patch-del-fg: #82071e;
+  --del: #cf222e;
+  --del-tint: rgba(248, 81, 73, 0.05);
+  --del-row: rgba(248, 81, 73, 0.11);
+  --del-word: rgba(248, 81, 73, 0.28);
+  --danger: #cf222e;
+  --danger-wash: #fdeded;
+  --dir-ico: #6b675f;
+  --exp-wash: #f4f3f0;
+  --exp-ink: #6b675f;
+  --exp-hover: #3d4ccf;
+  --exp-hover-fg: #ffffff;
+  --lift: 0 1px 2px rgba(31, 29, 26, 0.05), 0 8px 24px -12px rgba(31, 29, 26, 0.12);
+  --lift-lg: 0 24px 64px -20px rgba(31, 29, 26, 0.28);
 
   /* --- motion: one curve, two speeds. Every animated property uses these. --- */
   --ease-out: cubic-bezier(0.22, 0.7, 0.2, 1);
   --dur: 0.14s; /* hovers, fades */
   --dur-move: 0.24s; /* things that travel: the rail, folds, modals */
 
-  /* --- role 1: interactive --- */
-  --acc: #1d1d1f;
-  --acc-fg: #ffffff;
-  --acc-wash: #edeef0;
-  --acc-line: #c9c4d6;
-
-  /* --- role 2: brand. The diff's + colour: the primary action and progress. --- */
-  --brand: #1a7f37;
-  --brand-solid: #1f883d;
-  --brand-fg: #ffffff;
-  --brand-wash: rgba(31, 136, 61, 0.1);
-  --brand-line: rgba(31, 136, 61, 0.45);
-
-  /* --- role 3: attention. The only other hue in the chrome. --- */
-  --attn: #9a6206;
-  /* the GitHub star the critter holds up (StarAsk.tsx) */
-  --star: #d29a00;
-  --attn-wash: #faf1e2;
-  --attn-line: #e6cfa0;
-  --here: #3d8a5c;
-  --here-line: rgba(61, 138, 92, 0.42);
-
-  /* ---------- the diff: the one place colour is the content ---------- */
-  --add: #248a3d;
-  --add-tint: rgba(36, 138, 61, 0.055);
-  --add-row: rgba(36, 138, 61, 0.1);
-  --add-word: rgba(36, 138, 61, 0.22);
-  --patch-add-bg: #dafbe1;
-  --patch-add-fg: #116329;
-  --patch-del-bg: #ffebe9;
-  --patch-del-fg: #82071e;
-  --del: #c9252d;
-  --del-tint: rgba(201, 37, 45, 0.05);
-  --del-row: rgba(201, 37, 45, 0.085);
-  --del-word: rgba(201, 37, 45, 0.2);
-  --danger: #c9252d;
-  --danger-wash: #fdeded;
-
-  --dir-ico: #3f7fc9;
-
-  /* --- gap expanders: the one deliberate GitHub-ism, blue like the original --- */
-  --exp-wash: #ddf4ff;
-  --exp-ink: #0969da;
-  --exp-hover: #0969da;
-  --exp-hover-fg: #ffffff;
-
-  /* --- type: sans everywhere except code, paths, keyboard hints --- */
+  /* --- type: three voices. Serif is what was written to be read (layer titles,
+     summaries, guides); sans is the chrome; mono is code, paths, key hints. --- */
   --sans:
-    -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", Roboto, Helvetica, Arial,
+    "Geist Variable", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial,
     sans-serif;
-  --mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+  --mono:
+    "Geist Mono Variable", ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+  --serif: "Newsreader Variable", "Iowan Old Style", Georgia, serif;
 
   --t-11: 11px; /* positions, counts, badges */
   --t-12: 12px; /* metadata */
@@ -105,13 +105,13 @@
 
   --conv: min(100%, 1040px);
 
+  /* Concentric: a child's radius never exceeds its parent's. */
+  --r-xs: 4px; /* keycaps, chips */
   --r-sm: 6px; /* icon buttons, inputs, small controls */
-  --r: 10px; /* cards, menus */
-  --r-lg: 16px; /* modals */
-  --r-pill: 999px; /* buttons, chips */
-
-  --lift: 0 1px 2px rgba(0, 0, 0, 0.04), 0 12px 32px -16px rgba(0, 0, 0, 0.14);
-  --lift-lg: 0 24px 64px -20px rgba(0, 0, 0, 0.28);
+  --r: 10px; /* threads, menus */
+  --r-card: 12px; /* the page */
+  --r-lg: 14px; /* modals */
+  --r-pill: 8px; /* buttons, rows — the name is historical; nothing is a pill now */
 
   --bg: var(--paper);
   --bg-subtle: var(--fill);
@@ -132,148 +132,163 @@
  */
 @media (prefers-color-scheme: dark) {
   :root {
-    --paper: #000000;
-    --fill: #1c1c1e;
-    --fill-2: #2c2c2e;
-    --ink: #f5f5f7;
-    --ink-2: #c7c7cc;
-    --ink-3: #8e8e93;
-    --hair: #2c2c2e;
-    --hair-2: #1f1f21;
-    --acc: #f5f5f7;
-    --acc-fg: #000000;
-    --acc-wash: #262234;
-    --acc-line: #403b54;
-    --brand: #3fb950;
+    --canvas: #161513;
+    --paper: #1d1c1a;
+    --raised: #262522;
+    --fill: #272623;
+    --fill-2: #33312d;
+    --ink: #efede9;
+    --ink-2: #c2bfb8;
+    --ink-3: #9c988f;
+    --hair: #33312d;
+    --hair-2: #2a2926;
+    --acc: #96a2ff;
+    --acc-fg: #14131f;
+    --acc-wash: #262a4a;
+    --acc-line: #40467a;
+    --solid: #efede9;
+    --solid-hover: #ffffff;
+    --solid-fg: #161513;
+    --brand: #56c271;
     --brand-solid: #238636;
     --brand-fg: #ffffff;
     --brand-wash: rgba(63, 185, 80, 0.14);
     --brand-line: rgba(63, 185, 80, 0.5);
-    --attn: #e0a83c;
+    --attn: #e0b050;
     /* the GitHub star the critter holds up (StarAsk.tsx) */
     --star: #f2c94c;
-    --attn-wash: #2a2214;
+    --attn-wash: #372d16;
     --attn-line: #5c4818;
     --here: #5cb87e;
     --here-line: rgba(92, 184, 126, 0.45);
-    --add: #30d158;
-    --add-tint: rgba(48, 209, 88, 0.075);
-    --add-row: rgba(48, 209, 88, 0.13);
-    --add-word: rgba(48, 209, 88, 0.28);
+    --add: #3fb950;
+    --add-tint: rgba(46, 160, 67, 0.08);
+    --add-row: rgba(46, 160, 67, 0.17);
+    --add-word: rgba(46, 160, 67, 0.4);
     --patch-add-bg: #033a16;
     --patch-add-fg: #aff5b4;
     --patch-del-bg: #67060c;
     --patch-del-fg: #ffdcd7;
-    --del: #ff453a;
-    --del-tint: rgba(255, 69, 58, 0.07);
-    --del-row: rgba(255, 69, 58, 0.12);
-    --del-word: rgba(255, 69, 58, 0.26);
-    --danger: #ff453a;
+    --del: #f85149;
+    --del-tint: rgba(248, 81, 73, 0.07);
+    --del-row: rgba(248, 81, 73, 0.14);
+    --del-word: rgba(248, 81, 73, 0.38);
+    --danger: #f85149;
     --danger-wash: #2a1211;
-    --dir-ico: #64a9f2;
-    --exp-wash: rgba(56, 139, 253, 0.16);
-    --exp-ink: #4493f8;
-    --exp-hover: #1f6feb;
-    --exp-hover-fg: #ffffff;
-    --lift: 0 1px 2px rgba(0, 0, 0, 0.5), 0 12px 32px -16px rgba(0, 0, 0, 0.8);
-    --lift-lg: 0 24px 64px -20px rgba(0, 0, 0, 0.85);
+    --dir-ico: #9c988f;
+    --exp-wash: #161513;
+    --exp-ink: #9c988f;
+    --exp-hover: #96a2ff;
+    --exp-hover-fg: #14131f;
+    --lift: 0 1px 2px rgba(0, 0, 0, 0.4), 0 12px 32px -16px rgba(0, 0, 0, 0.7);
+    --lift-lg: 0 24px 64px -20px rgba(0, 0, 0, 0.8);
   }
 }
 
 :root[data-theme="dark"] {
-  --paper: #000000;
-  --fill: #1c1c1e;
-  --fill-2: #2c2c2e;
-  --ink: #f5f5f7;
-  --ink-2: #c7c7cc;
-  --ink-3: #8e8e93;
-  --hair: #2c2c2e;
-  --hair-2: #1f1f21;
-  --acc: #f5f5f7;
-  --acc-fg: #000000;
-  --acc-wash: #262234;
-  --acc-line: #403b54;
-  --brand: #3fb950;
+  --canvas: #161513;
+  --paper: #1d1c1a;
+  --raised: #262522;
+  --fill: #272623;
+  --fill-2: #33312d;
+  --ink: #efede9;
+  --ink-2: #c2bfb8;
+  --ink-3: #9c988f;
+  --hair: #33312d;
+  --hair-2: #2a2926;
+  --acc: #96a2ff;
+  --acc-fg: #14131f;
+  --acc-wash: #262a4a;
+  --acc-line: #40467a;
+  --solid: #efede9;
+  --solid-hover: #ffffff;
+  --solid-fg: #161513;
+  --brand: #56c271;
   --brand-solid: #238636;
   --brand-fg: #ffffff;
   --brand-wash: rgba(63, 185, 80, 0.14);
   --brand-line: rgba(63, 185, 80, 0.5);
-  --attn: #e0a83c;
+  --attn: #e0b050;
   /* the GitHub star the critter holds up (StarAsk.tsx) */
   --star: #f2c94c;
-  --attn-wash: #2a2214;
+  --attn-wash: #372d16;
   --attn-line: #5c4818;
   --here: #5cb87e;
   --here-line: rgba(92, 184, 126, 0.45);
-  --add: #30d158;
-  --add-tint: rgba(48, 209, 88, 0.075);
-  --add-row: rgba(48, 209, 88, 0.13);
-  --add-word: rgba(48, 209, 88, 0.28);
+  --add: #3fb950;
+  --add-tint: rgba(46, 160, 67, 0.08);
+  --add-row: rgba(46, 160, 67, 0.17);
+  --add-word: rgba(46, 160, 67, 0.4);
   --patch-add-bg: #033a16;
   --patch-add-fg: #aff5b4;
   --patch-del-bg: #67060c;
   --patch-del-fg: #ffdcd7;
-  --del: #ff453a;
-  --del-tint: rgba(255, 69, 58, 0.07);
-  --del-row: rgba(255, 69, 58, 0.12);
-  --del-word: rgba(255, 69, 58, 0.26);
-  --danger: #ff453a;
+  --del: #f85149;
+  --del-tint: rgba(248, 81, 73, 0.07);
+  --del-row: rgba(248, 81, 73, 0.14);
+  --del-word: rgba(248, 81, 73, 0.38);
+  --danger: #f85149;
   --danger-wash: #2a1211;
-  --dir-ico: #64a9f2;
-  --exp-wash: rgba(56, 139, 253, 0.16);
-  --exp-ink: #4493f8;
-  --exp-hover: #1f6feb;
-  --exp-hover-fg: #ffffff;
-  --lift: 0 1px 2px rgba(0, 0, 0, 0.5), 0 12px 32px -16px rgba(0, 0, 0, 0.8);
-  --lift-lg: 0 24px 64px -20px rgba(0, 0, 0, 0.85);
+  --dir-ico: #9c988f;
+  --exp-wash: #161513;
+  --exp-ink: #9c988f;
+  --exp-hover: #96a2ff;
+  --exp-hover-fg: #14131f;
+  --lift: 0 1px 2px rgba(0, 0, 0, 0.4), 0 12px 32px -16px rgba(0, 0, 0, 0.7);
+  --lift-lg: 0 24px 64px -20px rgba(0, 0, 0, 0.8);
 }
 
 :root[data-theme="light"] {
-  --paper: #ffffff;
-  --fill: #f5f5f7;
-  --fill-2: #ebebed;
-  --ink: #1d1d1f;
-  --ink-2: #515154;
-  --ink-3: #6e6e73;
-  --hair: #e5e5e7;
-  --hair-2: #f0f0f2;
-  --acc: #1d1d1f;
+  --canvas: #f4f3f0;
+  --paper: #fdfcfb;
+  --raised: #ffffff;
+  --fill: #f1efeb;
+  --fill-2: #e7e5df;
+  --ink: #1f1d1a;
+  --ink-2: #55524c;
+  --ink-3: #6b675f;
+  --hair: #e4e2dc;
+  --hair-2: #eeece7;
+  --acc: #3d4ccf;
   --acc-fg: #ffffff;
-  --acc-wash: #edeef0;
-  --acc-line: #c9c4d6;
+  --acc-wash: #eceefb;
+  --acc-line: #c5caf2;
+  --solid: #1f1d1a;
+  --solid-hover: #38352f;
+  --solid-fg: #fdfcfb;
   --brand: #1a7f37;
   --brand-solid: #1f883d;
   --brand-fg: #ffffff;
   --brand-wash: rgba(31, 136, 61, 0.1);
   --brand-line: rgba(31, 136, 61, 0.45);
-  --attn: #9a6206;
+  --attn: #8a5700;
   /* the GitHub star the critter holds up (StarAsk.tsx) */
   --star: #d29a00;
-  --attn-wash: #faf1e2;
+  --attn-wash: #f7eedb;
   --attn-line: #e6cfa0;
   --here: #3d8a5c;
   --here-line: rgba(61, 138, 92, 0.42);
-  --add: #248a3d;
-  --add-tint: rgba(36, 138, 61, 0.055);
-  --add-row: rgba(36, 138, 61, 0.1);
-  --add-word: rgba(36, 138, 61, 0.22);
+  --add: #1f883d;
+  --add-tint: rgba(46, 160, 67, 0.06);
+  --add-row: rgba(46, 160, 67, 0.13);
+  --add-word: rgba(46, 160, 67, 0.32);
   --patch-add-bg: #dafbe1;
   --patch-add-fg: #116329;
   --patch-del-bg: #ffebe9;
   --patch-del-fg: #82071e;
-  --del: #c9252d;
-  --del-tint: rgba(201, 37, 45, 0.05);
-  --del-row: rgba(201, 37, 45, 0.085);
-  --del-word: rgba(201, 37, 45, 0.2);
-  --danger: #c9252d;
+  --del: #cf222e;
+  --del-tint: rgba(248, 81, 73, 0.05);
+  --del-row: rgba(248, 81, 73, 0.11);
+  --del-word: rgba(248, 81, 73, 0.28);
+  --danger: #cf222e;
   --danger-wash: #fdeded;
-  --dir-ico: #3f7fc9;
-  --exp-wash: #ddf4ff;
-  --exp-ink: #0969da;
-  --exp-hover: #0969da;
+  --dir-ico: #6b675f;
+  --exp-wash: #f4f3f0;
+  --exp-ink: #6b675f;
+  --exp-hover: #3d4ccf;
   --exp-hover-fg: #ffffff;
-  --lift: 0 1px 2px rgba(0, 0, 0, 0.04), 0 12px 32px -16px rgba(0, 0, 0, 0.14);
-  --lift-lg: 0 24px 64px -20px rgba(0, 0, 0, 0.28);
+  --lift: 0 1px 2px rgba(31, 29, 26, 0.05), 0 8px 24px -12px rgba(31, 29, 26, 0.12);
+  --lift-lg: 0 24px 64px -20px rgba(31, 29, 26, 0.28);
 }
 
 * {
@@ -292,8 +307,10 @@ body {
   font-size: var(--t-14);
   line-height: 1.55;
   letter-spacing: -0.005em;
-  background: var(--paper);
+  background: var(--canvas);
   color: var(--ink);
+  -webkit-font-smoothing: antialiased;
+  font-feature-settings: "liga" 0;
 }
 
 /* ---------- icons ---------- */
@@ -340,15 +357,20 @@ body {
   display: flex;
   align-items: center;
   gap: var(--s-6);
-  height: 53px;
+  height: 48px;
   flex-shrink: 0;
   padding: 0 var(--s-6);
-  border-bottom: 1px solid var(--hair);
   white-space: nowrap;
+}
+
+/* The sidebar's switch, pulled in so it sits over the sidebar's own edge. */
+.top-nav {
+  margin: 0 calc(-1 * var(--s-3)) 0 calc(-1 * var(--s-1));
 }
 
 .mark {
   display: flex;
+  flex: none;
   align-items: center;
   gap: var(--s-3);
   font-size: var(--t-15);
@@ -726,6 +748,8 @@ body {
   display: flex;
   flex: 1;
   min-height: 0;
+  /* The shell: rail and conversation sit on the canvas, the page is a card. */
+  padding: 0 var(--s-5) var(--s-5);
 }
 
 /* ---------- the rail: the queue ---------- */
@@ -734,7 +758,7 @@ body {
   /* Set per-session by the resize handle; the fallback is the designed width. */
   width: var(--rail-w, 264px);
   flex-shrink: 0;
-  border-right: 1px solid var(--hair);
+  margin-right: var(--s-3);
   display: flex;
   flex-direction: column;
   min-height: 0;
@@ -753,7 +777,7 @@ body {
 .nav-hidden .rail {
   width: 0;
   opacity: 0;
-  border-right-color: transparent;
+  margin-right: 0;
   pointer-events: none;
   visibility: hidden;
   transition:
@@ -789,6 +813,65 @@ body {
 .rail-resize:hover::after,
 .rail-resize:active::after {
   background: var(--acc);
+}
+
+/* ---------- the strip: what the folded rail leaves behind ---------- */
+
+.strip {
+  flex: none;
+  width: 28px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--s-1);
+  padding-top: 2px;
+  overflow: hidden;
+}
+
+.strip-plan {
+  margin-right: var(--s-3);
+}
+
+/* A layer's number in the rail, in the serif: the chapter numeral. */
+.row-num {
+  margin-right: 6px;
+  font-family: var(--serif);
+  font-size: var(--t-15);
+  font-weight: 500;
+  color: var(--ink-3);
+}
+
+[aria-current="true"] .row-num {
+  color: var(--acc);
+}
+
+.strip-num {
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border: 0;
+  border-radius: var(--r-sm);
+  background: none;
+  color: var(--ink-3);
+  font-family: var(--serif);
+  font-size: var(--t-15);
+  line-height: 1;
+  cursor: pointer;
+}
+
+.strip-num:hover {
+  background: var(--fill-2);
+  color: var(--ink);
+}
+
+.strip-num[aria-current="true"] {
+  color: var(--acc);
+  background: var(--acc-wash);
+}
+
+.strip-num:focus-visible {
+  outline: 2px solid var(--acc);
+  outline-offset: -2px;
 }
 
 .rail-search {
@@ -892,11 +975,11 @@ body {
 
 .tabs {
   display: flex;
-  gap: 2px;
-  margin: 10px 12px 6px;
+  gap: 0;
+  margin: 4px 0 8px;
   padding: 2px;
-  background: var(--fill);
-  border-radius: var(--r-sm);
+  background: var(--fill-2);
+  border-radius: var(--r-pill);
   flex: none;
 }
 
@@ -910,14 +993,15 @@ body {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: 5px;
-  padding: 5px 6px;
+  gap: 3px;
+  padding: 4px 2px;
   border: none;
-  border-radius: 4px;
+  border-radius: var(--r-sm);
   background: none;
   font: inherit;
   font-size: var(--t-12);
-  color: var(--ink-3);
+  font-weight: 500;
+  color: var(--ink-2);
   cursor: pointer;
   white-space: nowrap;
 }
@@ -925,7 +1009,7 @@ body {
 .tab[aria-selected="true"] {
   background: var(--paper);
   color: var(--ink);
-  font-weight: 600;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.08);
 }
 
 .tab-n {
@@ -1207,8 +1291,8 @@ body {
   background: var(--attn);
 }
 
-/* The Layers tab's two orders — the agent's steps or git's commits — as a
-   segmented control under the tab strip: one segment is always lit. */
+/* A small segmented control: one segment is always lit. The layer card's
+   reading-order switch uses it. */
 .src-seg {
   display: flex;
   gap: 2px;
@@ -1724,6 +1808,11 @@ body {
   scrollbar-gutter: stable;
   scrollbar-width: thin;
   scrollbar-color: var(--hair) transparent;
+  min-width: 0;
+  background: var(--paper);
+  border: 1px solid var(--hair);
+  border-radius: var(--r-card);
+  box-shadow: var(--lift);
 }
 
 /* The sweep corrects scrollTop by hand for the height it removes above the viewport
@@ -1744,6 +1833,11 @@ body {
   padding-top: var(--s-6);
 }
 
+/* The bar is docked in the shell's top bar: the page starts at its own top. */
+.reading-pane-nobar .reading-col {
+  padding-top: var(--s-3);
+}
+
 /* ---------- the burndown bar ---------- */
 
 .pane-bar {
@@ -1758,6 +1852,38 @@ body {
   padding: 0 var(--s-8);
   background: var(--paper);
   border-bottom: 1px solid var(--hair);
+}
+
+/* Docked in the shell's top bar: no lid of its own, and it gives way before
+   the comparison beside it does. */
+.pane-bar-top {
+  position: static;
+  flex: 0 1 auto;
+  min-width: 0;
+  height: auto;
+  padding: 0;
+  background: none;
+  border: 0;
+}
+
+.pane-bar-top .pane-left,
+.pane-bar-top .pane-at {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Docked, the pager is two arrows: the titles are in their tooltips and in
+   the plan beside the page. */
+.pane-bar-top .ch-pager-t,
+.pane-bar-top .ch-pager .kbd {
+  display: none;
+}
+
+.pane-view {
+  width: auto;
+  gap: 3px;
+  padding: 0 5px;
 }
 
 .pane-left {
@@ -2024,6 +2150,10 @@ body {
 
 .reading-pane-barred .file-header {
   top: 36px;
+}
+
+.reading-pane-nobar .file-header {
+  top: 0;
 }
 
 .empty-acts {
@@ -2667,9 +2797,10 @@ body {
 /* ---------- the file card ---------- */
 
 .file-section {
-  margin-bottom: var(--s-6);
-  border: 1px solid var(--hair);
-  border-radius: var(--r);
+  /* A band across the page, edge to edge, not a card inside the card. */
+  margin: 0 calc(-1 * var(--s-8)) var(--s-6);
+  border: solid var(--hair);
+  border-width: 1px 0;
   /* `clip`, never `hidden`: hidden makes this box the sticky containing block, which
    * silently disables the file header's stickiness. clip keeps the rounded-corner
    * clipping without creating a scroll container. */
@@ -2687,8 +2818,8 @@ body {
   align-items: center;
   gap: var(--s-3);
   min-height: 42px;
-  padding: 5px var(--s-3) 5px var(--s-2);
-  background: var(--fill);
+  padding: 5px var(--s-5) 5px var(--s-4);
+  background: var(--paper);
   border-bottom: 1px solid var(--hair);
   position: sticky;
   top: 0;
@@ -3706,6 +3837,14 @@ tr:hover .line-range-glyph {
 
 .reading-pane-barred .file-section .thread {
   scroll-margin-top: 86px;
+}
+
+.reading-pane-nobar .thread {
+  scroll-margin-top: var(--s-3);
+}
+
+.reading-pane-nobar .file-section .thread {
+  scroll-margin-top: 50px;
 }
 
 .thread-resolved {
@@ -4938,18 +5077,17 @@ tr:hover .line-range-glyph {
   outline-offset: 2px;
 }
 
-/* The primary action is green — the brand's, and the convention a reviewer
-   already knows from Submit review on GitHub. Everything else stays ink.
-   It is a tint, not a solid block: green type on a green wash reads as the
-   main action without shouting, and leaves room for the choice beside it. */
+/* The primary action is solid ink: the one filled button on the screen. It is
+   deliberately not green — green is the diff's + and the mark of what has been
+   read, and a button in that colour reads as part of the diff. */
 .btn-primary {
-  background: color-mix(in srgb, var(--brand) 14%, var(--paper));
-  color: var(--brand);
-  font-weight: 600;
+  background: var(--solid);
+  color: var(--solid-fg);
+  font-weight: 500;
 }
 
 .btn-primary:hover:not(:disabled) {
-  background: color-mix(in srgb, var(--brand) 24%, var(--paper));
+  background: var(--solid-hover);
 }
 
 /* The second choice next to a primary: paper with a real hairline, so it
@@ -5700,6 +5838,114 @@ tr:hover .line-range-glyph {
 }
 
 /* ---------- modals ---------- */
+
+/* ---------- the command palette ---------- */
+
+.palette-scrim {
+  position: fixed;
+  inset: 0;
+  z-index: 45;
+  display: flex;
+  justify-content: center;
+  align-items: flex-start;
+  padding: 14vh var(--s-6) var(--s-6);
+  background: rgba(0, 0, 0, 0.35);
+  animation: fade-in 0.12s ease both;
+}
+
+.palette {
+  width: min(560px, 100%);
+  max-height: 60vh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  background: var(--raised);
+  color: var(--ink);
+  border: 1px solid var(--hair);
+  border-radius: var(--r-lg);
+  box-shadow: var(--lift-lg);
+  font-size: var(--t-13);
+}
+
+.palette-field {
+  display: flex;
+  align-items: center;
+  gap: var(--s-3);
+  padding: var(--s-5) var(--s-6);
+  border-bottom: 1px solid var(--hair);
+  color: var(--ink-3);
+}
+
+.palette-input {
+  flex: 1;
+  min-width: 0;
+  border: 0;
+  outline: none;
+  background: none;
+  color: var(--ink);
+  font: inherit;
+  font-size: var(--t-15);
+}
+
+.palette-input::placeholder {
+  color: var(--ink-3);
+}
+
+.palette-list {
+  overflow-y: auto;
+  padding: var(--s-2);
+  scrollbar-width: thin;
+}
+
+.palette-group {
+  padding: var(--s-3) var(--s-4) var(--s-1);
+  font-family: var(--mono);
+  font-size: var(--t-11);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+}
+
+.palette-row {
+  display: flex;
+  align-items: baseline;
+  gap: var(--s-3);
+  padding: var(--s-2) var(--s-4);
+  border-radius: var(--r-sm);
+  cursor: pointer;
+}
+
+.palette-row[aria-selected="true"] {
+  background: var(--acc-wash);
+}
+
+.palette-label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.palette-hint {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: var(--mono);
+  font-size: var(--t-12);
+  color: var(--ink-3);
+}
+
+.palette-row .kbd {
+  margin-left: auto;
+}
+
+.palette-none {
+  padding: var(--s-6);
+  color: var(--ink-3);
+  text-align: center;
+}
 
 .modal-backdrop {
   position: fixed;
@@ -7568,12 +7814,11 @@ i.q-now {
    — when the agent wrote any — its decisions, a ledger the width of the
    card. The step's own conversation, if there is one, closes the card under
    a rule. */
+/* The chapter opening: no frame of its own — it is the top of the page, set in
+   the serif, and the files follow it on the same surface. */
 .ch-head {
-  margin-bottom: var(--s-6);
-  padding: 12px 20px 16px;
-  border: 1px solid var(--hair);
-  border-radius: var(--r);
-  background: var(--paper);
+  margin-bottom: var(--s-7);
+  padding: 14px 14px 4px;
 }
 
 .ch-head-top {
@@ -7586,10 +7831,12 @@ i.q-now {
 }
 
 .ch-head-kicker {
+  font-family: var(--mono);
   font-size: var(--t-11);
   color: var(--ink-3);
   font-variant-numeric: tabular-nums;
-  letter-spacing: 0.01em;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
 }
 
 /* Flush with the card's edge optically: the ghost button's own padding
@@ -7604,10 +7851,12 @@ i.q-now {
 }
 
 .ch-head h2 {
-  margin: 2px 0 0;
-  font-size: 20px;
-  line-height: 1.3;
-  font-weight: 600;
+  margin: 4px 0 0;
+  max-width: 28em;
+  font-family: var(--serif);
+  font-size: 30px;
+  line-height: 1.2;
+  font-weight: 500;
   letter-spacing: -0.015em;
   color: var(--ink);
 }
@@ -7632,9 +7881,10 @@ i.q-now {
 
 .ch-head .ch-summary {
   padding-left: 0;
-  font-size: var(--t-14);
+  font-family: var(--serif);
+  font-size: 17px;
   color: var(--ink-2);
-  line-height: 1.5;
+  line-height: 1.6;
 }
 
 .ch-head .ch-summary p {
@@ -7646,9 +7896,9 @@ i.q-now {
 }
 
 .ch-head .ch-summary a {
-  color: var(--exp-ink);
+  color: var(--acc);
   text-decoration: none;
-  border-bottom: 1px solid var(--exp-wash);
+  border-bottom: 1px solid var(--acc-line);
 }
 
 .ch-head-files {

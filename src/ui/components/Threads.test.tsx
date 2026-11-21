@@ -360,7 +360,7 @@ describe('ThreadCard', () => {
       />,
     )
     const text = document.querySelector('.thread-collapsed-text')
-    expect(text?.textContent).toBe('### Update cards show untitled fallback')
+    expect(text?.textContent).toBe('Update cards show untitled fallback')
   })
 
   it('a folded open thread peeks only the first line, for the same reason', () => {
@@ -376,7 +376,7 @@ describe('ThreadCard', () => {
     )
     fireEvent.click(screen.getByRole('button', { name: 'collapse this thread' }))
     expect(document.querySelector('.thread-shut-peek')!.textContent).toBe(
-      '### Update cards show untitled fallback',
+      'Update cards show untitled fallback',
     )
   })
 

@@ -38,7 +38,51 @@ import { CommentBox, type ReviewActions, ThreadList } from './Threads.js'
 
 export type ViewMode = 'unified' | 'split'
 
+/** The pane's bar, from the pane's controls. The pane draws it at its own top,
+ * or — with `barElsewhere` — the shell draws it in the top bar, docked. */
+export function ControlsBar({
+  controls,
+  docked = false,
+}: {
+  controls: PaneControls
+  docked?: boolean
+}) {
+  return (
+    <PaneBar
+      navHidden={controls.navHidden}
+      // Docked, the shell draws the sidebar's switch itself, at its own edge.
+      onToggleNav={docked ? undefined : controls.onToggleNav}
+      left={controls.left}
+      total={controls.total}
+      hunksRead={controls.hunksRead}
+      hunksTotal={controls.hunksTotal}
+      hunkAt={controls.hunkAt}
+      hunkCount={controls.hunkCount}
+      query={controls.query}
+      onClearQuery={controls.onClearQuery}
+      hideReviewed={controls.hideReviewed}
+      onHideReviewed={controls.onHideReviewed}
+      hideTests={controls.hideTests}
+      onHideTests={controls.onHideTests}
+      testCount={controls.testCount}
+      onlyChanged={controls.onlyChanged}
+      onOnlyChanged={controls.onOnlyChanged}
+      changedCount={controls.changedCount}
+      viewMode={controls.viewMode}
+      onSetViewMode={controls.onSetViewMode}
+      allCollapsed={controls.allCollapsed}
+      onToggleCollapseAll={controls.onToggleCollapseAll}
+      stats={controls.stats}
+      layer={controls.layer}
+      docked={docked}
+    />
+  )
+}
+
 export interface PaneControls {
+  /** The bar is drawn outside the pane (the shell's top bar): the pane draws
+   * none, and its sticky lids stop making room for one. */
+  barElsewhere?: boolean
   navHidden?: boolean
   onToggleNav?: () => void
   left: number
@@ -1803,35 +1847,13 @@ export function ReadingPane({
   )
 
   return (
-    <div className={`reading-pane${controls ? ' reading-pane-barred' : ''}`} ref={paneRef}>
-      {controls && (
-        <PaneBar
-          navHidden={controls.navHidden}
-          onToggleNav={controls.onToggleNav}
-          left={controls.left}
-          total={controls.total}
-          hunksRead={controls.hunksRead}
-          hunksTotal={controls.hunksTotal}
-          hunkAt={controls.hunkAt}
-          hunkCount={controls.hunkCount}
-          query={controls.query}
-          onClearQuery={controls.onClearQuery}
-          hideReviewed={controls.hideReviewed}
-          onHideReviewed={controls.onHideReviewed}
-          hideTests={controls.hideTests}
-          onHideTests={controls.onHideTests}
-          testCount={controls.testCount}
-          onlyChanged={controls.onlyChanged}
-          onOnlyChanged={controls.onOnlyChanged}
-          changedCount={controls.changedCount}
-          viewMode={controls.viewMode}
-          onSetViewMode={controls.onSetViewMode}
-          allCollapsed={controls.allCollapsed}
-          onToggleCollapseAll={controls.onToggleCollapseAll}
-          stats={controls.stats}
-          layer={controls.layer}
-        />
-      )}
+    <div
+      className={`reading-pane${controls ? ' reading-pane-barred' : ''}${
+        controls?.barElsewhere ? ' reading-pane-nobar' : ''
+      }`}
+      ref={paneRef}
+    >
+      {controls && !controls.barElsewhere && <ControlsBar controls={controls} />}
       <div className="reading-col">
         {/* Above even the changeset notes: the stale guide sits in there, and this
             banner is the reason it reads stale. */}

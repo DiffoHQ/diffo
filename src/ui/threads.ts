@@ -137,11 +137,24 @@ export interface ThreadItem {
  * default and carries a count; without, its body offers to outline. */
 export type PanelTab = 'layers' | 'files' | 'threads'
 
+/** The two sources the `layers` panel reads from: the agent's steps, or git's commits. */
+export type LayerSourceKind = 'steps' | 'commits'
+
+/** The rail's tabs. Layers and Commits are both the `layers` panel, read from
+ * different sources: the agent's steps, or git's commits. */
+export type RailView = 'layers' | 'files' | 'threads' | 'commits'
+
 /** The first non-blank line, trimmed: what a collapsed card or rail row shows
  * for a body that may run to paragraphs (a bot's review comment, say). */
 export function firstLine(text: string): string {
   for (const line of text.split('\n')) {
-    const t = line.trim()
+    // A one-line preview is plain text: the marks that would have styled the
+    // line (a heading's #, **bold**, `code`) are noise once nothing renders them.
+    const t = line
+      .trim()
+      .replace(/^(#{1,6}|>|[-*+])\s+/, '')
+      .replace(/\*\*|__|`/g, '')
+      .trim()
     if (t !== '') return t
   }
   return ''
