@@ -1,15 +1,18 @@
 import { parseArgs } from 'node:util'
 import {
+  ARTIFACT,
   CLI_COMMANDS,
   GUIDE,
   GUIDE_CLASSDEFS,
   HELP_AGENT_PR,
   LAYERS,
+  PICTURE,
   POLL_NOW,
   POLL_NOW_FOREGROUND,
   POLL_STANCE,
   TAB_TITLE,
 } from './server/prompt.js'
+import { parseBox, SIZE_HELP } from './shared/artifacts.js'
 import { parseSuggestReason } from './shared/layers.js'
 import { PRESET_NAME_MAX } from './shared/presets.js'
 import { normalizeTitle } from './shared/review.js'
@@ -64,6 +67,7 @@ For the agent (the AI that wrote the change):
   end                Detach from the review politely
   help agent         The agent's whole protocol on one page
   help guide         The guide comment — the map of the change — with an example
+  help artifact      The HTML page an agent draws in a comment, guide or layer
 
 Options (for opening the review):
   --base <branch>    Review everything since forking from <branch>
@@ -122,6 +126,9 @@ The loop:
    How much: ${GUIDE.budget}.
    ${GUIDE.stance}.
    Legend: ${GUIDE.legend}; \`diffo help guide\` has them, and one example.
+   Picture: ${PICTURE.pick}.
+   An artifact is ${ARTIFACT.syntax}; \`diffo help artifact\` has the
+   frame's contract and the craft — read it before your first one.
    It lands live at the top of their review; never hold the URL back for it.
    If the changeset later shifts under the guide, ${GUIDE.update}.
 4. Layers: offer them when the changeset reads better in order:
@@ -149,8 +156,8 @@ The loop:
 5. Act: \`[issue]\` threads want a code change; \`[question]\` threads want an
    answer in the reply and no edit. Your edits reach the reviewer live.
 6. Reply: \`diffo reply <threadId> --message "<text>"\` (pipe long replies on
-   stdin), concise, addressed to the reviewer. Markdown renders; a
-   \`\`\`mermaid fence draws a diagram. A reply that only promises a
+   stdin), concise, addressed to the reviewer. Markdown renders, and so do
+   pictures (${PICTURE.pick}). A reply that only promises a
    follow-up ("I'll investigate and report back") goes out with \`--more\`, so
    the reviewer keeps seeing you at work, and the real answer follows as a
    plain reply before the next poll.
@@ -201,22 +208,29 @@ Say each part in plain words a reader meets cold, "worth checking as you
 read", "safe to skip", never a label of your own like "Hold:" that they
 would have to decode.
 
-One shape that works, not THE shape: a rename needs no diagram, a one-file
-change needs no checks, and headings are optional.
+One shape that works, not THE shape: a rename needs no picture, a one-file
+change needs no checks, and headings are optional. Picture: ${PICTURE.pick}.
+Post it on stdin through a file: write it, \`diffo artifact preview <file>\`,
+then \`diffo comment < <file>\`; \`diffo help artifact\` has the frame's
+contract and the craft.
 
   A huge tool result could overflow the model's context. This caps it at the
   model boundary and adds \`read_tool_result\` so the model can page the
   rest — nothing is stored, the text is recomputed on read.
 
-  \`\`\`mermaid
-  flowchart LR
-    E[tool.execute] --> W[withToolResultCap]:::new
-    W -->|over budget: slice + notice| P[provider]
-    M[read_tool_result]:::new --> R[resolveFullToolResult]:::new
-    R --> S[SDK steps · raw output]
-    T[island-chat-transport.ts · prepareStep]:::changed --> W
-    ${GUIDE_CLASSDEFS[0]}
-    ${GUIDE_CLASSDEFS[1]}
+  \`\`\`artifact title="Where a tool result is capped, and how the rest is read" size=s
+  <style>
+    .row{display:flex;align-items:center;gap:8px;font:13px var(--sans);flex-wrap:wrap}
+    .n{border:1.5px solid var(--hair);border-radius:8px;padding:5px 10px;background:var(--fill)}
+    .new{border-color:var(--diffo-new)} .changed{border-color:var(--diffo-changed)}
+    .a{color:var(--ink-3)} .row+.row{margin-top:12px}
+  </style>
+  <div class="row"><span class="n">tool.execute</span><span class="a">→</span>
+    <span class="n new">withToolResultCap</span><span class="a">→ over budget: slice + notice →</span>
+    <span class="n">provider</span></div>
+  <div class="row"><span class="n new">read_tool_result</span><span class="a">→</span>
+    <span class="n new">resolveFullToolResult</span><span class="a">→</span>
+    <span class="n">SDK steps · raw output</span></div>
   \`\`\`
 
   Worth checking as you read: the capper and the reader must agree, byte for
@@ -226,6 +240,75 @@ change needs no checks, and headings are optional.
 
   Safe to skip: four \`tool-*\` display components moved only because a prop
   went dead.`,
+  artifact: `diffo help artifact: an HTML page you draw for the reviewer
+
+Usage: diffo artifact preview <file> [--size <box>] [--title "…"] [--out <dir>]
+
+An artifact is ${ARTIFACT.what}. It works anywhere markdown does: the
+guide, a reply, a comment, a layer's summary.
+
+When: ${ARTIFACT.when}.
+
+Write it as a fenced block, ${ARTIFACT.syntax}:
+
+  \`\`\`artifact title="Retry backoff, before and after" size=m
+  …your page…
+  \`\`\`
+
+The title is required: it heads the card and names the artifact back to
+you. HTML that itself contains a \`\`\` line needs a longer opener
+(\`\`\`\`artifact … \`\`\`\`). Three per text at most.
+
+The box: ${ARTIFACT.box}.
+Views: ${ARTIFACT.views}.
+A page: ${ARTIFACT.page}.
+
+The frame:
+- ${ARTIFACT.frame}.
+- ${ARTIFACT.look}.
+
+Craft:
+${ARTIFACT.craft.map((c) => `- ${c}.`).join('\n')}
+- ${ARTIFACT.truth}.
+
+Check it: ${ARTIFACT.preview}. It needs no review open and no repo; it
+takes the message file (every \`\`\`artifact in it) or a whole .html page
+(--size and --title then say what the fence would).
+${ARTIFACT.post}.
+After posting: ${ARTIFACT.feedback}.
+
+Example — a reply showing what a change does to retry timing. The card shows
+the two timelines; the full view adds the numbers:
+
+  cat > /tmp/reply.md <<'EOF'
+  Backoff is exponential now, capped at 8s — the old fixed 1s retry hammered
+  the server during an outage:
+
+  \`\`\`artifact title="Retries during a 20s outage, before and after" size=720x150
+  <style>
+    .lane{display:grid;grid-template-columns:72px 1fr;align-items:center;gap:10px;margin:8px 0}
+    .lane b{font:500 12px var(--sans);color:var(--ink-2)}
+    .track{position:relative;height:18px;border-bottom:1px solid var(--hair)}
+    .hit{position:absolute;bottom:0;width:3px;height:14px;border-radius:2px}
+    .old .hit{background:var(--del)} .new .hit{background:var(--diffo-new)}
+    .facts{display:none;margin-top:14px;font:12px var(--mono);color:var(--ink-2)}
+    [data-view=full] .facts{display:block}
+  </style>
+  <div class="lane old"><b>before</b><div class="track" id="old"></div></div>
+  <div class="lane new"><b>after</b><div class="track" id="new"></div></div>
+  <div class="facts">before: 20 calls, 1s apart · after: 5 calls, waiting 1s, 2s, 4s, 8s, then the error surfaces</div>
+  <script>
+    const put = (id, times) => times.forEach((t) => {
+      const el = document.createElement('i'); el.className = 'hit'
+      el.style.left = (t / 24 * 100) + '%'; document.getElementById(id).append(el)
+    })
+    put('old', Array.from({ length: 20 }, (_, i) => i))
+    put('new', [0, 1, 3, 7, 15])
+  </script>
+  \`\`\`
+  EOF
+  diffo artifact preview /tmp/reply.md     # look at the screenshots
+  diffo reply t-4 < /tmp/reply.md`,
   pr: `diffo pr: review a GitHub pull request
 
 Usage: diffo <PR URL | owner/repo#N | #N | N> [--no-open] [--foreground] [-p <port>]
@@ -336,8 +419,8 @@ unsure, lean toward attaching; the reviewer would rather dismiss it than
 type it. It appears under your reply with Add as PR comment draft / Edit / Dismiss;
 nothing posts until the reviewer submits. Your evidence goes in --message,
 never in the comment. \`diffo help agent\` says when to attach one.
-Messages render GitHub-flavored markdown; a \`\`\`mermaid fence renders as a
-diagram in the review.
+Messages render GitHub-flavored markdown; a \`\`\`artifact fence renders an
+HTML page you write (\`diffo help artifact\`), a \`\`\`mermaid fence a diagram.
 
 Output: {"ok":true,"threadId":"t-3","state":"…","next_step":"…"}
 
@@ -361,8 +444,8 @@ reply they take hands the thread to you like any other.
 reviewer would leave the author about this: same rules as on \`reply\`. For a
 finding you can show (a case you ran, a call site the change misses), not
 for a hunch.
-Messages render GitHub-flavored markdown; a \`\`\`mermaid fence renders as a
-diagram in the review.
+Messages render GitHub-flavored markdown; a \`\`\`artifact fence renders an
+HTML page you write (\`diffo help artifact\`), a \`\`\`mermaid fence a diagram.
 
 Output: {"ok":true,"threadId":"t-1","next_step":"…"}
 
@@ -388,7 +471,7 @@ says so.
 
 Each layer is ${LAYERS.what}.
 Summary: ${LAYERS.summary}.
-Diagram: ${LAYERS.diagram}:
+Picture: ${LAYERS.diagram}:
 
   ${GUIDE_CLASSDEFS[0]}
   ${GUIDE_CLASSDEFS[1]}
@@ -574,6 +657,15 @@ export type CliCommand =
   | { kind: 'share'; target?: string; dryRun: boolean }
   | { kind: 'setup' }
   | { kind: 'telemetry'; action: 'status' | 'on' | 'off' }
+  | {
+      kind: 'artifact-preview'
+      /** A file to read, or null for stdin. */
+      file: string | null
+      /** Set for a whole .html page; read off the fence otherwise. */
+      size: string | null
+      title: string | null
+      out: string | null
+    }
   | { kind: 'status'; json: boolean }
   | { kind: 'stop' }
   | { kind: 'error'; message: string }
@@ -605,6 +697,7 @@ const VERBS = new Set([
   'end',
   'setup',
   'telemetry',
+  'artifact',
   'status',
   'stop',
   'clean',
@@ -658,7 +751,8 @@ function parseHelp(rest: string[]): CliCommand {
   const topic = rest[0]
   if (rest.length > 1) return { kind: 'error', message: 'help takes at most one command' }
   if (topic === undefined || topic === 'help') return { kind: 'help' }
-  if (topic !== 'agent' && topic !== 'guide' && !VERBS.has(topic)) return unknownCommand(topic)
+  if (topic !== 'agent' && topic !== 'guide' && topic !== 'artifact' && !VERBS.has(topic))
+    return unknownCommand(topic)
   return { kind: 'help', topic }
 }
 
@@ -921,6 +1015,42 @@ function parseCleanVerb(rest: string[]): CliCommand {
   }
 }
 
+function parseArtifactVerb(rest: string[]): CliCommand {
+  const parsed = tryParse(() =>
+    parseArgs({
+      args: rest,
+      allowPositionals: true,
+      options: {
+        size: { type: 'string' },
+        title: { type: 'string' },
+        out: { type: 'string' },
+        help: { type: 'boolean', short: 'h' },
+      },
+    }),
+  )
+  if (!parsed.ok) return { kind: 'error', message: parsed.message }
+  const { values, positionals } = parsed.value
+  if (values.help || positionals.length === 0) return { kind: 'help', topic: 'artifact' }
+  if (positionals[0] !== 'preview') {
+    return {
+      kind: 'error',
+      message: `artifact takes one action: preview (got '${positionals[0]}')`,
+    }
+  }
+  if (positionals.length > 2) return { kind: 'error', message: 'artifact preview takes one file' }
+  const size = values.size ?? null
+  if (size !== null && parseBox(size) === null) {
+    return { kind: 'error', message: `--size is ${SIZE_HELP}` }
+  }
+  return {
+    kind: 'artifact-preview',
+    file: positionals[1] ?? null,
+    size,
+    title: values.title?.trim() || null,
+    out: values.out ?? null,
+  }
+}
+
 function parseTelemetryVerb(rest: string[]): CliCommand {
   const parsed = tryParse(() =>
     parseArgs({
@@ -968,6 +1098,7 @@ function parseVerb(verb: string, rest: string[]): CliCommand {
   if (verb === 'preset') return parsePresetVerb(rest)
   if (verb === 'clean') return parseCleanVerb(rest)
   if (verb === 'telemetry') return parseTelemetryVerb(rest)
+  if (verb === 'artifact') return parseArtifactVerb(rest)
   if (verb === 'share') return parseShareVerb(rest)
   const parsed = tryParse(() =>
     parseArgs({

@@ -2463,3 +2463,101 @@ describe('the layers request names what the layers are for', () => {
     ).toBe(200)
   })
 })
+
+describe('review API — artifacts', () => {
+  const art = '```artifact title="Timeline" size=s\n<svg></svg>\n```'
+
+  it('refuses an agent post whose artifact the reviewer would see broken', async () => {
+    const { app } = setup()
+    const res = await post(app, '/api/review/threads', {
+      author: 'agent',
+      text: 'look:\n\n```artifact\n<p>x</p>\n```',
+    })
+    expect(res.status).toBe(400)
+    expect(((await res.json()) as { error: string }).error).toMatch(/needs a title/)
+  })
+
+  it('queues a broken agent artifact for the next poll, once per issue', async () => {
+    const { app, review } = setup()
+    const created = await post(app, '/api/review/threads', {
+      author: 'agent',
+      text: `guide\n\n${art}`,
+    })
+    const thread = (await created.json()) as ReviewThread
+    const owner = { kind: 'message', threadId: thread.id, messageId: thread.messages[0]!.id }
+    const report = {
+      owner,
+      index: 0,
+      title: 'ignored',
+      view: 'card',
+      issues: ['TypeError: x is undefined'],
+    }
+    const first = await post(app, '/api/review/artifacts/issues', report)
+    expect(await first.json()).toEqual({ queued: true })
+    const again = await post(app, '/api/review/artifacts/issues', report)
+    expect(await again.json()).toEqual({ queued: false })
+
+    const polled = await pollResult(
+      await app.request('/api/agent/poll', { headers: { 'x-diffo-agent': 'cli' } }),
+    )
+    expect(polled.kind).toBe('artifacts')
+    expect(polled.prompt).toContain('"Timeline" in your guide')
+    expect(polled.prompt).toContain('TypeError: x is undefined')
+    expect(polled.prompt).toContain(`reply ${thread.id}`)
+    expect(polled.next_step).toMatch(/fixed version/)
+    expect(review.get().threads).toHaveLength(1)
+
+    const replied = await post(app, `/api/review/threads/${thread.id}/messages`, {
+      author: 'agent',
+      text: `fixed\n\n${art}`,
+    })
+    const reply = ((await replied.json()) as { thread: ReviewThread }).thread.messages.at(-1)!
+    await post(app, '/api/review/artifacts/issues', {
+      owner: { kind: 'message', threadId: thread.id, messageId: reply.id },
+      index: 0,
+      issues: ['still broken'],
+    })
+    const again2 = await pollResult(
+      await app.request('/api/agent/poll', { headers: { 'x-diffo-agent': 'cli' } }),
+    )
+    expect(again2.prompt).toContain('your reply under the guide')
+  })
+
+  it('takes reports only for artifacts the agent wrote', async () => {
+    const { app } = setup()
+    const created = await post(app, '/api/review/threads', {
+      anchor: { kind: 'changeset' },
+      text: art,
+    })
+    const thread = (await created.json()) as ReviewThread
+    const owner = { kind: 'message', threadId: thread.id, messageId: thread.messages[0]!.id }
+    const res = await post(app, '/api/review/artifacts/issues', {
+      owner,
+      index: 0,
+      issues: ['boom'],
+    })
+    expect(res.status).toBe(404)
+    const bad = await post(app, '/api/review/artifacts/issues', { owner, index: 0 })
+    expect(bad.status).toBe(400)
+  })
+
+  it('reports a layer summary artifact by its layer', async () => {
+    const { app, review } = setup()
+    await post(app, '/api/review/layers', {
+      items: [{ title: 'Parser', summary: `the parser\n\n${art}`, files: ['app.ts'] }],
+    })
+    const layerId = review.get().layers!.items[0]!.id
+    expect(review.get().layers!.items[0]!.summary).toContain('<svg></svg>')
+    const res = await post(app, '/api/review/artifacts/issues', {
+      owner: { kind: 'layer', layerId },
+      index: 0,
+      issues: ['rendered blank'],
+    })
+    expect(await res.json()).toEqual({ queued: true })
+    const polled = await pollResult(
+      await app.request('/api/agent/poll', { headers: { 'x-diffo-agent': 'cli' } }),
+    )
+    expect(polled.prompt).toContain('the summary of layer "Parser"')
+    expect(polled.prompt).toContain('layers --stdin')
+  })
+})

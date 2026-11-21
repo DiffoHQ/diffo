@@ -2,6 +2,7 @@ import { createHash } from 'node:crypto'
 import { gunzipSync, gzipSync } from 'node:zlib'
 import { prUrl } from '../forge/target.js'
 import type { ImportedComment, ImportedThread, PrRef } from '../forge/types.js'
+import { withoutArtifacts } from '../shared/artifacts.js'
 import { type LayerInput, parseLayersInput } from '../shared/layers.js'
 import {
   type Layer,
@@ -54,7 +55,7 @@ export function packOf(layers: readonly Layer[], sha: string, postedAt: string):
     v: 1,
     sha,
     postedAt,
-    layers: layers.map(({ id: _id, ...rest }) => rest),
+    layers: layers.map(({ id: _id, ...rest }) => withoutArtifacts(rest)),
   }
 }
 

@@ -141,6 +141,17 @@ describe('a shared reading guide', () => {
     )
     expect(packed.layers).toEqual([{ title: 'One', files: ['a.ts'] }])
   })
+
+  it('leaves artifacts behind: they run only for the reviewer of the agent that drew them', () => {
+    const summary =
+      'Before.\n\n```artifact title="The rule" size=s\n<script>x()</script>\n```\n\nAfter.'
+    const packed = packOf(
+      [{ id: 'x1', title: 'One', files: ['a.ts'], summary }],
+      SHA,
+      '2026-11-20T10:00:00.000Z',
+    )
+    expect(packed.layers[0]?.summary).toBe('Before.\n\n_(picture: The rule)_\n\nAfter.')
+  })
 })
 
 describe('whose guide is loaded', () => {

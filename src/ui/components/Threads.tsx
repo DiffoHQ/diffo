@@ -14,6 +14,7 @@ import {
   type ThreadState,
   untouchedAgentVoice,
 } from '../../shared/review.js'
+import { messageOwner } from '../artifacts.js'
 import { linkPaths, type RefLinks, refClickTarget } from '../layers.js'
 import { timeAgo } from '../markdown.js'
 import { usePr } from '../prMode.js'
@@ -206,8 +207,8 @@ function submitOnCmdEnter(e: React.KeyboardEvent, submit: () => void) {
 /** A message body. With `links`, a code span naming a changeset file — and a
  * diagram node naming one — becomes a jump into the review: the guide is a map,
  * and a map you can click is navigation. */
-function Body({ text, links }: { text: string; links?: RefLinks }) {
-  if (!links) return <Markdown className="cmt-body markdown" text={text} />
+function Body({ text, links, owner }: { text: string; links?: RefLinks; owner?: string }) {
+  if (!links) return <Markdown className="cmt-body markdown" text={text} artifactOwner={owner} />
   const onClick = (e: React.MouseEvent) => {
     const ref = refClickTarget(e.target as Element)
     if (!ref) return
@@ -222,6 +223,7 @@ function Body({ text, links }: { text: string; links?: RefLinks }) {
         className="cmt-body markdown"
         text={linkPaths(text, links.paths)}
         paths={links.paths}
+        artifactOwner={owner}
       />
     </div>
   )
@@ -1049,7 +1051,11 @@ export function ThreadCard({
                       </div>
                     </div>
                   ) : (
-                    <Body text={m.text} links={links} />
+                    <Body
+                      text={m.text}
+                      links={links}
+                      owner={m.author === 'agent' ? messageOwner(thread.id, m.id) : undefined}
+                    />
                   )}
                   {m.author === 'agent' && m.prComment && (
                     <SuggestedPrComment

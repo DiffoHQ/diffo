@@ -33,6 +33,7 @@ import {
 } from './api.js'
 import { copyText } from './clipboard.js'
 import { AgentNotices } from './components/AgentNotices.js'
+import { ArtifactViewer } from './components/ArtifactViewer.js'
 import { ClearThreads } from './components/ClearThreads.js'
 import { CommitRail, commitProgress } from './components/CommitRail.js'
 import { FinishReview } from './components/FinishReview.js'
@@ -2322,6 +2323,7 @@ function Review() {
             onClose={() => setPrivacyOpen(false)}
           />
         )}
+        <ArtifactViewer />
         {shortcutsOpen && <Shortcuts onClose={() => setShortcutsOpen(false)} />}
         {voiceOpen && (
           <Voice

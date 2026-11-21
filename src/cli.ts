@@ -6,6 +6,7 @@ import { homedir } from 'node:os'
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { detectHarness, detectSessionPid } from './agentSession.js'
+import { findChrome, htmlTitle, previewArtifacts } from './artifactPreview.js'
 import { helpFor, parseCliArgs } from './cliArgs.js'
 import { SRC_STAMP } from './devStamp.js'
 import { GhClient } from './forge/github/gh.js'
@@ -67,6 +68,7 @@ import { apiUrl, reviewUrl } from './serverUrl.js'
 import { postRegisterHint, refreshInstalledSkills, runSetup } from './setup.js'
 import { findSharedPack, ownPackComment, packOf, renderShareComment } from './share/pack.js'
 import { shareCheck } from './share/where.js'
+import { boxOf, checkArtifacts, describeArtifact } from './shared/artifacts.js'
 import { parseLayersPost, type UncoveredRef } from './shared/layers.js'
 import { parsePresetPatch } from './shared/presets.js'
 import type { Layers, ReviewState } from './shared/review.js'
@@ -195,6 +197,56 @@ if (command.kind === 'help') {
 if (command.kind === 'version') {
   console.log(VERSION)
   process.exit(0)
+}
+
+// Needs no repo and no server: it renders a file.
+if (command.kind === 'artifact-preview') {
+  if (command.file === null && process.stdin.isTTY) {
+    fail(
+      'artifact preview needs the text: a file (the message you are about to post, or a .html page), or pipe it on stdin',
+    )
+  }
+  let text: string
+  try {
+    text = command.file === null ? await readStdin() : readFileSync(command.file, 'utf-8')
+  } catch (err) {
+    fail(`artifact preview: can't read ${command.file}: ${(err as Error).message}`)
+  }
+  const chrome = findChrome()
+  if (!chrome) {
+    fail(
+      "artifact preview needs Chrome, Chromium, Edge or Brave on this machine, and found none. Point DIFFO_CHROME at one, or post without a preview — the reviewer's browser still reports what breaks.",
+    )
+  }
+  const asHtml =
+    command.file !== null && /\.html?$/i.test(command.file)
+      ? {
+          title: command.title ?? htmlTitle(text, command.file),
+          box: boxOf(command.size),
+        }
+      : undefined
+  const result = await previewArtifacts(chrome, text, {
+    ...(asHtml ? { asHtml } : {}),
+    ...(command.out ? { dir: resolve(command.out) } : {}),
+  })
+  if (result.artifacts.length === 0) {
+    fail(
+      result.errors.length > 0
+        ? `artifact preview: ${result.errors.join('; ')}`
+        : 'artifact preview: no ```artifact fence in that text — pass the message you are about to post, or a .html page',
+    )
+  }
+  const post = command.file === null ? '<the same text on stdin>' : `< ${command.file}`
+  console.log(
+    JSON.stringify({
+      ok: result.errors.length === 0,
+      ...(result.errors.length > 0 ? { errors: result.errors } : {}),
+      ...(result.warnings.length > 0 ? { warnings: result.warnings } : {}),
+      artifacts: result.artifacts,
+      next_step: `Look at each screenshot now (read the PNGs) as the reviewer will see them: does the card make its point without opening, is it readable in light and dark, is anything clipped, overlapping, squeezed or empty? Fix what you see${result.artifacts.some((a) => a.issues.length > 0) ? ' and every listed issue' : ''} in one pass, then post it from the same file (\`diffo comment ${post}\` or \`diffo reply <threadId> ${post}\`). Preview once more only if an issue was listed or your fix moved the layout — two runs at most.`,
+    }),
+  )
+  process.exit(result.errors.length === 0 ? 0 : 1)
 }
 
 if (command.kind === 'setup') {
@@ -691,12 +743,36 @@ if (command.kind === 'poll') {
   process.exit(0)
 }
 
+/**
+ * The artifact preflight (see shared/artifacts.ts): a fence the reviewer would
+ * see broken is refused here, before it leaves the machine; what merely won't
+ * work (a CDN script, a fetch) is posted and named back in the ack.
+ */
+function artifactPreflight(verb: string, texts: string[]): Record<string, unknown> {
+  const found: string[] = []
+  const warnings: string[] = []
+  for (const text of texts) {
+    const check = checkArtifacts(text)
+    if (check.errors.length > 0) fail(`${verb} refused: ${check.errors.join('; ')}`)
+    found.push(...check.artifacts.map(describeArtifact))
+    warnings.push(...check.warnings)
+  }
+  if (found.length === 0) return {}
+  return {
+    artifacts: found,
+    ...(warnings.length > 0 ? { artifact_warnings: warnings } : {}),
+    artifact_note:
+      'renders in a sandboxed frame when the reviewer opens it; if it throws or draws nothing there, your next poll says so',
+  }
+}
+
 if (command.kind === 'reply') {
   if (command.message === null && process.stdin.isTTY) {
     fail('reply needs a message: pass --message "<text>" or pipe it on stdin')
   }
   const message = (command.message ?? (await readStdin())).trim()
   if (!message) fail('reply needs a message: pass --message "<text>" or pipe it on stdin')
+  const art = artifactPreflight('reply', [message])
   const port = await requireServer()
   const { status, body } = await postJson(
     port,
@@ -719,6 +795,7 @@ if (command.kind === 'reply') {
       ok: true,
       threadId: thread.id,
       state: thread.state,
+      ...art,
       ...(command.prComment ? { prComment: 'suggested' } : {}),
       next_step: command.more
         ? ACK_NEXT_STEP.replyMore
@@ -736,6 +813,7 @@ if (command.kind === 'comment') {
   }
   const message = (command.message ?? (await readStdin())).trim()
   if (!message) fail('comment needs a message: pass --message "<text>" or pipe it on stdin')
+  const art = artifactPreflight('comment', [message])
   const port = await requireServer()
   const { status, body } = await postJson(port, '/api/review/threads', {
     author: 'agent',
@@ -753,6 +831,7 @@ if (command.kind === 'comment') {
     JSON.stringify({
       ok: true,
       threadId: thread.id,
+      ...art,
       ...(command.prComment ? { prComment: 'suggested' } : {}),
       next_step: command.prComment ? ACK_NEXT_STEP.commentPrComment : ACK_NEXT_STEP.comment,
     }),
@@ -796,6 +875,10 @@ if (command.kind === 'layers') {
   const parsed = parseLayersPost(raw)
   if (!parsed.ok) fail(`layers: ${parsed.error}`)
   const { items, preset } = parsed.post
+  const art = artifactPreflight(
+    'layers',
+    items.map((l) => l.summary ?? ''),
+  )
   const { status, body } = await postJson(port, '/api/review/layers', {
     items,
     ...(preset ? { preset } : {}),
@@ -811,6 +894,7 @@ if (command.kind === 'layers') {
     JSON.stringify({
       ok: true,
       layers: layers.items.length,
+      ...art,
       ...(uncovered.length > 0 ? { uncovered } : {}),
       ...(note ? { note } : {}),
       next_step: uncovered.length === 0 ? ACK_NEXT_STEP.layers : layersIncompleteStep(uncovered),

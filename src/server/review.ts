@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto'
 import { resolve } from 'node:path'
+import { withoutArtifacts } from '../shared/artifacts.js'
 import { type LayerInput, parseLayersInput, parseSuggestReason } from '../shared/layers.js'
 import { type LayersPresetUse, parseLayersNote, parsePresetUse } from '../shared/presets.js'
 import {
@@ -479,7 +480,8 @@ export class ReviewStore {
     ) {
       return false
     }
-    this.setLayers(items, { shared: from })
+    // A pack is someone else's text: an artifact in it would run here.
+    this.setLayers(items.map(withoutArtifacts), { shared: from })
     return true
   }
 

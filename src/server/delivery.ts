@@ -1,3 +1,4 @@
+import { type ArtifactReport, REPORT_ISSUES_MAX } from '../shared/artifacts.js'
 import type { Coverage } from '../shared/review.js'
 
 export type Presence = 'waiting' | 'listening' | 'working'
@@ -73,6 +74,7 @@ export type Snapshot =
   | { kind: 'preset'; id: string }
   | { kind: 'cleared' }
   | { kind: 'submitted'; submitted: Submitted }
+  | { kind: 'artifacts'; reports: ArtifactReport[] }
 
 /** The reviewer submitted the pull-request review: context for the agent, no
  * work owed. */
@@ -127,6 +129,9 @@ interface ScopePending {
   presets: Set<string>
   /** The reviewer submitted the PR review — one notice, the newest wins. */
   submitted: Submitted | null
+  /** The agent's artifacts that broke in the reviewer's browser, oldest
+   * first. Work the agent owes, but its own: behind the reviewer's words. */
+  artifacts: ArtifactReport[]
   /** The request was delivered and the outline is owed: epoch ms of the
    * delivery, or null. Per scope like the request itself — a branch switch
    * must not carry "outlining" to a review nobody asked about. No batch and no
@@ -291,6 +296,7 @@ export class DeliveryQueue {
         outlining: null,
         asked: null,
         submitted: null,
+        artifacts: [],
       }
       this.buckets.set(this.scope, bucket)
     }
@@ -569,6 +575,26 @@ export class DeliveryQueue {
     if (queued) this.notify()
   }
 
+  /** An agent artifact broke in the reviewer's browser. Reports for the same
+   * artifact merge, so a poll names each broken artifact once. */
+  enqueueArtifact(report: ArtifactReport): void {
+    const bucket = this.bucket()
+    const same = bucket.artifacts.findIndex(
+      (r) => r.index === report.index && JSON.stringify(r.owner) === JSON.stringify(report.owner),
+    )
+    if (same >= 0) {
+      const prev = bucket.artifacts[same]!
+      const issues = [
+        ...prev.issues,
+        ...report.issues.filter((i) => !prev.issues.includes(i)),
+      ].slice(0, REPORT_ISSUES_MAX)
+      bucket.artifacts[same] = { ...prev, issues }
+    } else bucket.artifacts.push({ ...report, issues: report.issues.slice(0, REPORT_ISSUES_MAX) })
+    const queued = this.waiter === null
+    this.wake()
+    if (queued) this.notify()
+  }
+
   /** The reviewer cleared a preset's conversation, or deleted the preset: a
    * message about it still parked for the agent has nothing left to answer. */
   dropPreset(id: string): void {
@@ -715,7 +741,8 @@ export class DeliveryQueue {
         bucket.cleared ||
         bucket.layers !== null ||
         bucket.presets.size > 0 ||
-        bucket.submitted !== null)
+        bucket.submitted !== null ||
+        bucket.artifacts.length > 0)
     )
   }
 
@@ -742,6 +769,9 @@ export class DeliveryQueue {
     // A preset is a few lines of writing: ahead of the outline, which is heavy.
     const presetId = bucket.presets.values().next().value
     if (presetId !== undefined) return { kind: 'preset', id: presetId }
+    // A broken artifact is the agent's own mess, a quick fix: after what the
+    // reviewer said, ahead of the heavy outline.
+    if (bucket.artifacts.length > 0) return { kind: 'artifacts', reports: [...bucket.artifacts] }
     // The outline is heavy work: it waits behind replies the reviewer is
     // already owed, and ahead of the cleared heads-up, which owes nothing.
     if (bucket.layers !== null) return { kind: 'layers', ask: bucket.layers }
@@ -776,6 +806,13 @@ export class DeliveryQueue {
       // is what the grace window already models.
       const bucket = this.buckets.get(this.scope)
       if (bucket) bucket.cleared = false
+      this.armGrace()
+      this.notify()
+      return
+    }
+    if (snapshot.kind === 'artifacts') {
+      const bucket = this.buckets.get(this.scope)
+      if (bucket) bucket.artifacts = bucket.artifacts.filter((r) => !snapshot.reports.includes(r))
       this.armGrace()
       this.notify()
       return
