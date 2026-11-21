@@ -3,7 +3,7 @@
 // client and its tests read the same text.
 
 const REVIEW_FIELDS = 'id state submittedAt body url author { login avatarUrl }'
-const COMMENT_FIELDS = 'id body createdAt url author { login avatarUrl }'
+const COMMENT_FIELDS = 'id body createdAt url authorAssociation author { login avatarUrl }'
 
 export const PR_QUERY = `
 query($owner: String!, $name: String!, $number: Int!) {
@@ -150,6 +150,23 @@ export const ADD_COMMENT = `
 mutation($subjectId: ID!, $body: String!) {
   addComment(input: { subjectId: $subjectId, body: $body }) {
     commentEdge { node { id url } }
+  }
+}`
+
+export const UPDATE_COMMENT = `
+mutation($id: ID!, $body: String!) {
+  updateIssueComment(input: { id: $id, body: $body }) {
+    issueComment { id url }
+  }
+}`
+
+/** The open pull requests whose head is this branch, newest first. */
+export const PRS_FOR_BRANCH_QUERY = `
+query($owner: String!, $name: String!, $branch: String!) {
+  repository(owner: $owner, name: $name) {
+    pullRequests(headRefName: $branch, states: OPEN, first: 5, orderBy: { field: CREATED_AT, direction: DESC }) {
+      nodes { number headRepository { owner { login } name } }
+    }
   }
 }`
 

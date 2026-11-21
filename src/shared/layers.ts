@@ -1,3 +1,4 @@
+import { capProse, checkArtifacts } from './artifacts.js'
 import { type LayersPresetUse, parsePresetUse } from './presets.js'
 import {
   DECISION_PLACES,
@@ -288,7 +289,14 @@ export function parseLayersInput(raw: unknown): LayersParse {
     if (l.summary !== undefined && typeof l.summary !== 'string') {
       return { ok: false, error: `${where} ("${title}"): "summary" must be a markdown string` }
     }
-    const summary = typeof l.summary === 'string' ? l.summary.trim().slice(0, SUMMARY_CAP) : ''
+    const rawSummary = typeof l.summary === 'string' ? l.summary.trim() : ''
+    const art = checkArtifacts(rawSummary)
+    if (art.errors.length > 0) {
+      return { ok: false, error: `${where} ("${title}") summary: ${art.errors[0]}` }
+    }
+    // The cap counts prose only: slicing through an artifact fence would hand
+    // the reviewer half a page.
+    const summary = capProse(rawSummary, SUMMARY_CAP)
     if (l.kind !== undefined && l.kind !== 'mechanical' && l.kind !== 'background') {
       return {
         ok: false,

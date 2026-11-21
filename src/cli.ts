@@ -6,6 +6,7 @@ import { homedir } from 'node:os'
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { detectHarness, detectSessionPid } from './agentSession.js'
+import { findChrome, htmlTitle, previewArtifacts } from './artifactPreview.js'
 import { helpFor, parseCliArgs } from './cliArgs.js'
 import { SRC_STAMP } from './devStamp.js'
 import { GhClient } from './forge/github/gh.js'
@@ -15,7 +16,9 @@ import { DiffoDb } from './server/db.js'
 import {
   findRepoRoot,
   getBranchName,
+  getHeadSha,
   getRemoteUrl,
+  listRemotes,
   MissingBaseError,
   mainRepoOf,
   suggestedBase,
@@ -42,6 +45,7 @@ import {
   POLL_NOW_FOREGROUND,
   POLL_STANCE,
   prOpenNote,
+  sharedLayersNote,
   TAB_TITLE,
 } from './server/prompt.js'
 import {
@@ -62,6 +66,9 @@ import {
 } from './serverLifecycle.js'
 import { apiUrl, reviewUrl } from './serverUrl.js'
 import { postRegisterHint, refreshInstalledSkills, runSetup } from './setup.js'
+import { findSharedPack, ownPackComment, packOf, renderShareComment } from './share/pack.js'
+import { shareCheck } from './share/where.js'
+import { boxOf, checkArtifacts, describeArtifact } from './shared/artifacts.js'
 import { parseLayersPost, type UncoveredRef } from './shared/layers.js'
 import { parsePresetPatch } from './shared/presets.js'
 import type { Layers, ReviewState } from './shared/review.js'
@@ -190,6 +197,56 @@ if (command.kind === 'help') {
 if (command.kind === 'version') {
   console.log(VERSION)
   process.exit(0)
+}
+
+// Needs no repo and no server: it renders a file.
+if (command.kind === 'artifact-preview') {
+  if (command.file === null && process.stdin.isTTY) {
+    fail(
+      'artifact preview needs the text: a file (the message you are about to post, or a .html page), or pipe it on stdin',
+    )
+  }
+  let text: string
+  try {
+    text = command.file === null ? await readStdin() : readFileSync(command.file, 'utf-8')
+  } catch (err) {
+    fail(`artifact preview: can't read ${command.file}: ${(err as Error).message}`)
+  }
+  const chrome = findChrome()
+  if (!chrome) {
+    fail(
+      "artifact preview needs Chrome, Chromium, Edge or Brave on this machine, and found none. Point DIFFO_CHROME at one, or post without a preview — the reviewer's browser still reports what breaks.",
+    )
+  }
+  const asHtml =
+    command.file !== null && /\.html?$/i.test(command.file)
+      ? {
+          title: command.title ?? htmlTitle(text, command.file),
+          box: boxOf(command.size),
+        }
+      : undefined
+  const result = await previewArtifacts(chrome, text, {
+    ...(asHtml ? { asHtml } : {}),
+    ...(command.out ? { dir: resolve(command.out) } : {}),
+  })
+  if (result.artifacts.length === 0) {
+    fail(
+      result.errors.length > 0
+        ? `artifact preview: ${result.errors.join('; ')}`
+        : 'artifact preview: no ```artifact fence in that text — pass the message you are about to post, or a .html page',
+    )
+  }
+  const post = command.file === null ? '<the same text on stdin>' : `< ${command.file}`
+  console.log(
+    JSON.stringify({
+      ok: result.errors.length === 0,
+      ...(result.errors.length > 0 ? { errors: result.errors } : {}),
+      ...(result.warnings.length > 0 ? { warnings: result.warnings } : {}),
+      artifacts: result.artifacts,
+      next_step: `Look at each screenshot now (read the PNGs) as the reviewer will see them: does the card make its point without opening, is it readable in light and dark, is anything clipped, overlapping, squeezed or empty? Fix what you see${result.artifacts.some((a) => a.issues.length > 0) ? ' and every listed issue' : ''} in one pass, then post it from the same file (\`diffo comment ${post}\` or \`diffo reply <threadId> ${post}\`). Preview once more only if an issue was listed or your fix moved the layout — two runs at most.`,
+    }),
+  )
+  process.exit(result.errors.length === 0 ? 0 : 1)
 }
 
 if (command.kind === 'setup') {
@@ -686,12 +743,36 @@ if (command.kind === 'poll') {
   process.exit(0)
 }
 
+/**
+ * The artifact preflight (see shared/artifacts.ts): a fence the reviewer would
+ * see broken is refused here, before it leaves the machine; what merely won't
+ * work (a CDN script, a fetch) is posted and named back in the ack.
+ */
+function artifactPreflight(verb: string, texts: string[]): Record<string, unknown> {
+  const found: string[] = []
+  const warnings: string[] = []
+  for (const text of texts) {
+    const check = checkArtifacts(text)
+    if (check.errors.length > 0) fail(`${verb} refused: ${check.errors.join('; ')}`)
+    found.push(...check.artifacts.map(describeArtifact))
+    warnings.push(...check.warnings)
+  }
+  if (found.length === 0) return {}
+  return {
+    artifacts: found,
+    ...(warnings.length > 0 ? { artifact_warnings: warnings } : {}),
+    artifact_note:
+      'renders in a sandboxed frame when the reviewer opens it; if it throws or draws nothing there, your next poll says so',
+  }
+}
+
 if (command.kind === 'reply') {
   if (command.message === null && process.stdin.isTTY) {
     fail('reply needs a message: pass --message "<text>" or pipe it on stdin')
   }
   const message = (command.message ?? (await readStdin())).trim()
   if (!message) fail('reply needs a message: pass --message "<text>" or pipe it on stdin')
+  const art = artifactPreflight('reply', [message])
   const port = await requireServer()
   const { status, body } = await postJson(
     port,
@@ -714,6 +795,7 @@ if (command.kind === 'reply') {
       ok: true,
       threadId: thread.id,
       state: thread.state,
+      ...art,
       ...(command.prComment ? { prComment: 'suggested' } : {}),
       next_step: command.more
         ? ACK_NEXT_STEP.replyMore
@@ -731,6 +813,7 @@ if (command.kind === 'comment') {
   }
   const message = (command.message ?? (await readStdin())).trim()
   if (!message) fail('comment needs a message: pass --message "<text>" or pipe it on stdin')
+  const art = artifactPreflight('comment', [message])
   const port = await requireServer()
   const { status, body } = await postJson(port, '/api/review/threads', {
     author: 'agent',
@@ -748,6 +831,7 @@ if (command.kind === 'comment') {
     JSON.stringify({
       ok: true,
       threadId: thread.id,
+      ...art,
       ...(command.prComment ? { prComment: 'suggested' } : {}),
       next_step: command.prComment ? ACK_NEXT_STEP.commentPrComment : ACK_NEXT_STEP.comment,
     }),
@@ -791,6 +875,10 @@ if (command.kind === 'layers') {
   const parsed = parseLayersPost(raw)
   if (!parsed.ok) fail(`layers: ${parsed.error}`)
   const { items, preset } = parsed.post
+  const art = artifactPreflight(
+    'layers',
+    items.map((l) => l.summary ?? ''),
+  )
   const { status, body } = await postJson(port, '/api/review/layers', {
     items,
     ...(preset ? { preset } : {}),
@@ -806,6 +894,7 @@ if (command.kind === 'layers') {
     JSON.stringify({
       ok: true,
       layers: layers.items.length,
+      ...art,
       ...(uncovered.length > 0 ? { uncovered } : {}),
       ...(note ? { note } : {}),
       next_step: uncovered.length === 0 ? ACK_NEXT_STEP.layers : layersIncompleteStep(uncovered),
@@ -886,6 +975,123 @@ if (command.kind === 'preset') {
   process.exit(0)
 }
 
+/**
+ * The pull request `diffo share` posts on: the one named, else the one this
+ * review is of (a pull-request worktree), else the open pull request for this
+ * branch on the origin.
+ */
+async function sharePrRef(target: string | undefined, forge: GhClient): Promise<PrRef> {
+  // The URL as configured: an `insteadOf` rewrite names where git talks to,
+  // not which repository this is.
+  const origin =
+    listRemotes(repoPath).find((r) => r.name === 'origin')?.url ?? getRemoteUrl(repoPath)
+  const named = target ?? ownedPullRequest(repoPath)?.target
+  if (named !== undefined) {
+    const parsed = parseTarget(named, origin)
+    if (!parsed.ok) fail(parsed.error)
+    if (parsed.target.kind !== 'pr') {
+      fail(
+        `'${named}' is not a pull request; pass a link like https://github.com/owner/repo/pull/482`,
+      )
+    }
+    return parsed.target.ref
+  }
+  const repo = parseRemoteUrl(origin ?? '')
+  if (!repo)
+    fail(
+      'this repo has no GitHub origin to find the pull request on; name it: diffo share <PR URL>',
+    )
+  const branch = getBranchName(repoPath)
+  const auth = await forge.authStatus(repo.host)
+  if (!auth.ok) fail(auth.message)
+  let number: number | null
+  try {
+    number = await forge.findPrForBranch(repo, branch)
+  } catch (err) {
+    fail(`could not look up the pull request for ${branch}: ${(err as Error).message}`)
+  }
+  if (number === null) {
+    fail(
+      `no open pull request for branch '${branch}' on ${repo.owner}/${repo.repo}; push it and open one, or name it: diffo share <PR URL>`,
+    )
+  }
+  return { ...repo, number }
+}
+
+if (command.kind === 'share') {
+  const port = await requireServer()
+  const review = await fetchReviewState(port)
+  if (!review) fail('could not read the review from its server')
+  const layers = review.layers
+  if (!layers || layers.items.length === 0) {
+    fail('this review has no layers to share yet; post them first (`diffo help layers`)')
+  }
+  const forge = new GhClient()
+  const ref = await sharePrRef(command.target, forge)
+  const auth = await forge.authStatus(ref.host)
+  if (!auth.ok) fail(auth.message)
+  let fetched: Awaited<ReturnType<GhClient['fetchPr']>>
+  try {
+    fetched = await forge.fetchPr(ref)
+  } catch (err) {
+    fail(`could not read pull request #${ref.number}: ${(err as Error).message}`)
+  }
+  const { pr, threads } = fetched
+  // The layers name head-side lines of this checkout. Shared against any other
+  // commit they would point the reader at the wrong lines.
+  const head = getHeadSha(repoPath)
+  if (head !== pr.head.sha) {
+    fail(
+      `pull request #${pr.number} is at ${pr.head.sha.slice(0, 7)} but this checkout is at ${head?.slice(0, 7) ?? 'no commit'}; ` +
+        'the layers point at lines in this checkout, so push (or pull) until they match, then share',
+    )
+  }
+  const dirty = spawnSync('git', ['status', '--porcelain', '--untracked-files=no'], {
+    cwd: repoPath,
+    encoding: 'utf-8',
+  })
+  if (dirty.status !== 0 || dirty.stdout.trim() !== '') {
+    fail(
+      "this checkout has uncommitted changes, so its lines may not be the pull request's; commit and push them, then share",
+    )
+  }
+  const body = renderShareComment(ref, packOf(layers.items, pr.head.sha, new Date().toISOString()))
+  if (command.dryRun) {
+    console.log(body)
+    process.exit(0)
+  }
+  const existing = ownPackComment(threads, pr.viewer.login)
+  let url: string | undefined
+  try {
+    url = existing
+      ? ((await forge.updatePrComment(ref, existing.id, body)).url ?? existing.url)
+      : (await forge.addPrComment(ref, pr.nodeId, body)).url
+  } catch (err) {
+    fail(`could not post the guide on pull request #${pr.number}: ${(err as Error).message}`)
+  }
+  const db = new DiffoDb()
+  try {
+    const telemetry = cliTelemetry(db)
+    telemetry.layersShared({ update: existing !== null, layers: layers.items.length })
+    await telemetry.flush()
+  } catch {
+    // usage data never stands between the sender and the share
+  } finally {
+    db.close()
+  }
+  const n = layers.items.length
+  console.log(
+    `${existing ? 'updated' : 'shared'} ${n} ${n === 1 ? 'layer' : 'layers'} on pull request #${pr.number}${url ? `: ${url}` : ''}`,
+  )
+  console.log(
+    `to read it with these layers, the reviewer runs: npx -y @diffohq/diffo ${pr.url}` +
+      ' (in Claude Code: /diffo ' +
+      pr.url +
+      ')',
+  )
+  process.exit(0)
+}
+
 if (command.kind === 'end') {
   const port = await requireServer()
   const { status, body } = await postJson(port, '/api/agent/end', {})
@@ -952,6 +1158,12 @@ async function printAgentNextStep(port: number, pr?: PrInfo): Promise<void> {
     review && !review.layers && !review.layersSuggested ? await activePresetList(port) : []
   const layers = review ? layersNudge(review, D, presets) : null
   if (layers) console.log(`also: ${layers}`)
+  const shared = review?.layers?.shared
+  if (shared && review?.layers) {
+    console.log(
+      `also: ${sharedLayersNote(shared, review.layers.items.length, pr?.head.sha ?? null)}`,
+    )
+  }
 }
 
 /**
@@ -1006,8 +1218,9 @@ async function openPullRequest(
     fail(auth.message)
   }
   let pr: PrInfo
+  let threads: Awaited<ReturnType<GhClient['fetchPr']>>['threads']
   try {
-    pr = await forge.getPr(ref)
+    ;({ pr, threads } = await forge.fetchPr(ref))
   } catch (err) {
     await reportOpenFailure('pr_fetch')
     fail(
@@ -1065,7 +1278,17 @@ async function openPullRequest(
   process.stderr.write(
     `diffo: pull request #${pr.number} "${pr.title}" by @${pr.author.login}, ${prepared.created ? 'checked out at' : 'worktree at'} ${prepared.path}\n`,
   )
-  return { prepared, pr, context: { ref, forge, mainRepo, baseBranch } }
+  const shared = findSharedPack(threads, pr)
+  if (shared) {
+    process.stderr.write(
+      `diffo: found @${shared.from.by}'s reading guide on the pull request (${shared.layers.length} layers)\n`,
+    )
+  }
+  return {
+    prepared,
+    pr,
+    context: { ref, forge, mainRepo, baseBranch, ...(shared ? { shared } : {}) },
+  }
 }
 
 // What the server watches. A branch target is a spec; a pull-request target is
@@ -1189,7 +1412,16 @@ try {
     clientDir,
     root,
     spec,
-    ...(prOpen ? { pr: { ...prOpen.context, info: prOpen.pr } } : {}),
+    ...(prOpen
+      ? { pr: { ...prOpen.context, info: prOpen.pr } }
+      : {
+          // The URL as configured: an `insteadOf` rewrite names where git
+          // talks to, not which repository this is.
+          canShare: shareCheck(
+            () => listRemotes(root).find((r) => r.name === 'origin')?.url ?? getRemoteUrl(root),
+            new GhClient(),
+          ),
+        }),
   })
 } catch (err) {
   if (err instanceof MissingBaseError) {

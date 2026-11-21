@@ -405,6 +405,23 @@ export interface Layers {
    * `parseLayersNote`): theirs, stamped by the server from the ask the post
    * answers, never the agent's. With no `preset`, it was the whole ask. */
   note?: string
+  /** Set when the layers arrived in a reading guide someone shared on the pull
+   * request (`diffo share`), not from this review's own agent. A post of this
+   * review's own replaces them, and the field goes with them. */
+  shared?: SharedLayersFrom
+}
+
+/** Where shared layers came from: the pull-request comment that carries them. */
+export interface SharedLayersFrom {
+  /** The GitHub login that posted the guide. */
+  by: string
+  /** The head commit the layers' line ranges were written against. */
+  sha: string
+  /** The comment's node id, and when the guide inside it was made: together,
+   * what tells a re-shared guide from the one already loaded. */
+  commentId: string
+  postedAt: string
+  url?: string
 }
 
 /** A head-side line range on a layer file, inclusive, 1-based. */
@@ -533,6 +550,10 @@ export interface Coverage {
   commentedUnread?: string[]
   filteredOut?: string[]
   note?: string
+  /** The author asked the agent to post the layers on the pull request as a
+   * reading guide (`diffo share`), now or once the PR is open. Branch reviews
+   * with layers only; the server drops it anywhere else. */
+  shareLayers?: true
 }
 
 export interface OutgoingThread {

@@ -23,6 +23,10 @@ export interface ImportedComment {
   body: string
   at: string
   url?: string
+  /** GitHub's word for who the author is to the repository: `OWNER`,
+   * `MEMBER`, `COLLABORATOR`, `CONTRIBUTOR`, `NONE`, … Read on the
+   * conversation's comments only. */
+  association?: string
 }
 
 /** An inline review thread on the pull request. */
@@ -101,6 +105,14 @@ export interface ForgeClient {
     prNodeId: string,
     body: string,
   ): Promise<{ commentId: string; url?: string }>
+  /** Rewrite a general comment of the viewer's own, in place. */
+  updatePrComment(ref: PrRef, commentId: string, body: string): Promise<{ url?: string }>
+  /** The open pull request whose head is `branch` in this same repository,
+   * or null when there is none. */
+  findPrForBranch(
+    repo: { host: string; owner: string; repo: string },
+    branch: string,
+  ): Promise<number | null>
   setThreadResolved(ref: PrRef, threadId: string, resolved: boolean): Promise<void>
   submitReview(
     ref: PrRef,

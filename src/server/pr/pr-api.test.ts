@@ -6,6 +6,7 @@ import { afterEach, describe, expect, it } from 'vitest'
 import { FixtureForge, fixturePr } from '../../forge/fixture.js'
 import { threadsFromGithub } from '../../forge/github/map.js'
 import type { ImportedThread, PrRef } from '../../forge/types.js'
+import { renderShareComment } from '../../share/pack.js'
 import type { ReviewThread } from '../../shared/review.js'
 import { DiffoDb } from '../db.js'
 import { DeliveryQueue } from '../delivery.js'
@@ -799,6 +800,65 @@ describe('a pull request in the review API', () => {
     forge.pr.state = 'merged'
     await puller.tick()
     expect(review.get().landed?.subject).toBe('Retry flaky uploads (with jitter)')
+  })
+
+  it("the puller loads a reading guide shared on the PR as the layers, and never over the review's own", async () => {
+    const { store, review, db, forge, root } = setup()
+    const guide = (postedAt: string, title: string) =>
+      renderShareComment(REF, {
+        v: 1,
+        sha: 'a'.repeat(40),
+        postedAt,
+        layers: [{ title, summary: 'The bump.', files: ['app.ts'] }],
+      })
+    forge.threads.push({
+      kind: 'comment',
+      id: 'IC_guide',
+      comments: [
+        {
+          id: 'IC_guide',
+          user: { login: 'mira-k', avatarUrl: '' },
+          body: guide('2026-11-20T10:00:00.000Z', 'The constant'),
+          at: '2026-11-20T10:00:00Z',
+        },
+      ],
+    })
+    const log: string[] = []
+    const puller = new PrPuller({
+      forge,
+      ref: REF,
+      mainRepo: root,
+      worktree: root,
+      baseBranch: 'main',
+      store,
+      review,
+      db,
+      log: (m) => log.push(m),
+    })
+    await puller.tick()
+    expect(review.get().layers?.items.map((l) => l.title)).toEqual(['The constant'])
+    expect(review.get().layers?.shared).toMatchObject({ by: 'mira-k', commentId: 'IC_guide' })
+    expect(log).toContain("layers loaded from @mira-k's reading guide")
+    // The guide arrives as layers; it is not repeated as a conversation comment.
+    expect(review.get().threads.some((t) => t.id === 'gh:IC_guide')).toBe(false)
+    // The same guide on the next tick changes nothing; a re-share replaces it.
+    const postedAt = review.get().layers?.postedAt
+    await puller.tick()
+    expect(review.get().layers?.postedAt).toBe(postedAt)
+    const thread = forge.threads.find((t) => t.id === 'IC_guide')!
+    if (thread.kind === 'comment') {
+      thread.comments[0].body = guide('2026-11-21T10:00:00.000Z', 'The constant, again')
+    }
+    await puller.tick()
+    expect(review.get().layers?.items.map((l) => l.title)).toEqual(['The constant, again'])
+    // Layers this review's own agent posted win, and a later share leaves them be.
+    review.setLayers([{ title: 'Mine', files: ['app.ts'] }])
+    if (thread.kind === 'comment') {
+      thread.comments[0].body = guide('2026-11-22T10:00:00.000Z', 'Theirs')
+    }
+    await puller.tick()
+    expect(review.get().layers?.items.map((l) => l.title)).toEqual(['Mine'])
+    expect(review.get().layers?.shared).toBeUndefined()
   })
 
   it('the puller says once that it cannot fetch, however many ticks it fails on', async () => {

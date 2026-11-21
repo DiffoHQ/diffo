@@ -7,7 +7,14 @@ import { stream, streamSSE } from 'hono/streaming'
 import { SRC_STAMP } from '../devStamp.js'
 import type { ForgeClient, PrRef, ReviewEvent } from '../forge/types.js'
 import { publicUrl } from '../serverUrl.js'
+import type { FoundPack } from '../share/pack.js'
 import { findHunk, translateHunkAnchor } from '../shared/anchors.js'
+import {
+  checkArtifacts,
+  findArtifacts,
+  parseArtifactReport,
+  REPORT_ISSUES_MAX,
+} from '../shared/artifacts.js'
 import {
   describeUncovered,
   parseLayersPost,
@@ -83,6 +90,7 @@ import { removeWorktree } from './pr/worktree.js'
 import { DELETED, PresetStore } from './presets.js'
 import {
   answeredByAgent,
+  buildArtifactsPrompt,
   buildClearedPrompt,
   buildCoalescedPrompt,
   buildConnectAsk,
@@ -173,6 +181,9 @@ export interface ServerContext {
   /** The port it listens on; with `DIFFO_PUBLIC_URL`, it names the one proxy
    * host this server answers to. */
   port?: number
+  /** Could `diffo share` post from this repo (a GitHub origin `gh` is signed in
+   * to)? Finish offers to share only then. Absent ⇒ never. */
+  canShare?: () => Promise<boolean>
 }
 
 export interface PrContext {
@@ -184,6 +195,10 @@ export interface PrContext {
   /** The pull request as the open read it, so the changeset carries it before
    * the puller's first tick — a first tick that waits on the network. */
   info?: PrInfo
+  /** A reading guide shared on the pull request, as the open found it: loaded
+   * before the server listens, so the agent's first read of the review already
+   * sees the layers. The puller keeps it current after that. */
+  shared?: FoundPack
   /** Pull GitHub state now (tests, and the reviewer's refresh). */
   refresh?: () => Promise<void>
 }
@@ -413,7 +428,11 @@ export function createApp(
   app.post('/api/telemetry/opened', async (c) => {
     const body = await c.req.json().catch(() => null)
     const armed =
-      ctx.telemetry?.reviewOpened({ kind: reviewKind(), agent: agentNameOf(body?.agent) }) ?? false
+      ctx.telemetry?.reviewOpened({
+        kind: reviewKind(),
+        agent: agentNameOf(body?.agent),
+        ...(ctx.pr ? { sharedLayers: review?.get().layers?.shared !== undefined } : {}),
+      }) ?? false
     return c.json({ ok: true, armed })
   })
 
@@ -487,6 +506,43 @@ export function createApp(
     return files.length === 1 ? agentAnchor(files[0]!, null) : { kind: 'changeset' }
   }
 
+  // An agent artifact broke in the reviewer's browser (src/ui/artifacts.ts):
+  // queue it for the agent's next poll. Only the agent's own text counts —
+  // a reviewer's preview is theirs to fix — and each distinct issue once.
+  const artifactIssuesSeen = new Map<string, Set<string>>()
+  app.post('/api/review/artifacts/issues', async (c) => {
+    if (!review) return c.json({ error: 'review unavailable' }, 503)
+    const report = parseArtifactReport(await c.req.json().catch(() => null))
+    if (!report) return c.json({ error: 'need {owner, index, title, issues}' }, 400)
+    const state = review.get()
+    let source: string | undefined
+    if (report.owner.kind === 'message') {
+      const { threadId, messageId } = report.owner
+      const m = state.threads
+        .find((t) => t.id === threadId)
+        ?.messages.find((x) => x.id === messageId)
+      if (m?.author === 'agent') source = m.text
+    } else {
+      const { layerId } = report.owner
+      source = state.layers?.items.find((l) => l.id === layerId)?.summary
+    }
+    if (source === undefined) return c.json({ error: 'no agent text with that artifact' }, 404)
+    const found = findArtifacts(source)[report.index]
+    if (!found) return c.json({ error: 'no artifact at that index' }, 404)
+    const key = `${JSON.stringify(report.owner)}#${report.index}`
+    // Each artifact gets REPORT_ISSUES_MAX distinct issues for the life of
+    // the server: a page that reports in a loop costs the agent one batch.
+    const seen = artifactIssuesSeen.get(key) ?? new Set<string>()
+    const fresh = report.issues
+      .filter((i) => !seen.has(i))
+      .slice(0, Math.max(0, REPORT_ISSUES_MAX - seen.size))
+    if (fresh.length === 0) return c.json({ queued: false })
+    for (const i of fresh) seen.add(i)
+    artifactIssuesSeen.set(key, seen)
+    queue?.enqueueArtifact({ ...report, title: found.info.title ?? report.title, issues: fresh })
+    return c.json({ queued: Boolean(queue) })
+  })
+
   app.post('/api/review/threads', async (c) => {
     if (!review) return c.json({ error: 'review unavailable' }, 503)
     const body = await c.req.json().catch(() => null)
@@ -495,6 +551,8 @@ export function createApp(
     // The agent speaks in file/line coordinates, not anchors: it has no hunk ids,
     // and the ladder below turns "this file, this line" into the best live anchor.
     if (body?.author === 'agent') {
+      const art = checkArtifacts(text).errors
+      if (art.length > 0) return c.json({ error: art.join('; ') }, 400)
       const file =
         typeof body?.file === 'string' && body.file.trim() !== '' ? body.file.trim() : null
       const line =
@@ -922,6 +980,8 @@ export function createApp(
       if (!review.get().threads.some((t) => t.id === id)) {
         return c.json({ error: 'no such thread' }, 404)
       }
+      const art = checkArtifacts(text).errors
+      if (art.length > 0) return c.json({ error: art.join('; ') }, 400)
       // Refresh the OWNER's clock, never retarget it: a reply from a second session
       // must not point the liveness watch at its harness (delivery.ts `noteSession`).
       queue?.noteSession(parseSessionPid(c.req.header('x-diffo-session-pid')))
@@ -1125,7 +1185,26 @@ export function createApp(
       ...(changedFiles !== undefined ? { changedFiles } : {}),
       ...(commentedUnread !== undefined ? { commentedUnread } : {}),
       ...(note !== undefined ? { note } : {}),
+      // Kept only when sharing is possible at all: `gateShare` decides.
+      ...(src.shareLayers === true ? { shareLayers: true as const } : {}),
     }
+  }
+
+  /** Only the author shares, and only what is here to share, where it can be
+   * shared: a branch review (a PR review reads someone's PR, it never posts
+   * one) with layers of its own, in a repo whose origin `gh` can post to. */
+  const shareable = async (): Promise<boolean> =>
+    !ctx.pr &&
+    (review?.get().layers?.items.length ?? 0) > 0 &&
+    ctx.canShare !== undefined &&
+    (await ctx.canShare().catch(() => false))
+
+  const gateShare = async (coverage: Coverage): Promise<Coverage> => {
+    if (coverage.shareLayers && !(await shareable())) {
+      const { shareLayers: _dropped, ...rest } = coverage
+      return rest
+    }
+    return coverage
   }
 
   // The threads Finish and the poll speak about: on the current changeset, and
@@ -1202,13 +1281,14 @@ export function createApp(
   app.post('/api/review/finish/preview', async (c) => {
     if (!review) return c.json({ error: 'review unavailable' }, 503)
     const body = await c.req.json().catch(() => null)
-    const coverage = parseCoverage(body?.coverage)
+    const coverage = await gateShare(parseCoverage(body?.coverage))
     const before = review.get().threads
     const batch = projectClosingNote(activeThreads(projectFinish(before)), coverage)
     const pr = store?.get().pr
     const leg = ctx.pr ? planPublicLeg(before, store?.get().files ?? []) : null
     return c.json({
       outgoing: outgoing(batch, before),
+      canShareLayers: await shareable(),
       prompt: buildFinishPrompt(
         batch,
         { repo: repoInfo(), changeset: store?.get() ?? null },
@@ -1231,7 +1311,7 @@ export function createApp(
   app.post('/api/review/finish', async (c) => {
     if (!review) return c.json({ error: 'review unavailable' }, 503)
     const body = await c.req.json().catch(() => null)
-    const coverage = parseCoverage(body?.coverage)
+    const coverage = await gateShare(parseCoverage(body?.coverage))
     const deliver = body?.deliver !== false
     // The GitHub leg runs first and alone decides whether anything public
     // happens: an event names the submit, and the closing note is its body.
@@ -1303,6 +1383,7 @@ export function createApp(
       ),
       layers: (review.get().layers?.items.length ?? 0) > 0,
       ...(event !== null ? { event } : {}),
+      ...(coverage.shareLayers ? { shareLayers: true } : {}),
     })
     ctx.uiSettings?.set('finishes', String(finishCount() + 1))
     return c.json({
@@ -1347,6 +1428,19 @@ export function createApp(
         kind: 'cleared' as const,
         threadIds: [] as string[],
         prompt: buildClearedPrompt({ repo: repoInfo(), changeset: store?.get() ?? null }),
+      }
+    }
+    if (snapshot.kind === 'artifacts') {
+      return {
+        status: 'feedback' as const,
+        kind: 'artifacts' as const,
+        threadIds: [] as string[],
+        prompt: buildArtifactsPrompt(
+          { repo: repoInfo(), changeset: store?.get() ?? null },
+          snapshot.reports,
+          threads,
+          review?.get().layers,
+        ),
       }
     }
     if (snapshot.kind === 'submitted') {
@@ -1838,6 +1932,12 @@ export function startServer(options: ServerContext & { port: number }) {
   // routes call. Started after the listeners below, so its first import lands
   // on a review that is already reconciling.
   if (options.pr?.info) store.setPr(options.pr.info)
+  if (
+    options.pr?.shared &&
+    review.applySharedLayers(options.pr.shared.layers, options.pr.shared.from)
+  ) {
+    log(`layers loaded from @${options.pr.shared.from.by}'s reading guide`)
+  }
   const puller = options.pr
     ? new PrPuller({
         forge: options.pr.forge,

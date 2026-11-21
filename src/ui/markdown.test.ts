@@ -1,11 +1,31 @@
 // @vitest-environment jsdom
 import { describe, expect, it } from 'vitest'
-import { renderMarkdown, renderMarkdownDoc, shortAgo } from './markdown.js'
+import { ARTIFACT_MARK, renderMarkdown, renderMarkdownDoc, shortAgo } from './markdown.js'
 
 const at = (msAgo: number) => new Date(NOW - msAgo).toISOString()
 const NOW = Date.parse('2026-08-15T12:00:00Z')
 
 describe('renderMarkdown', () => {
+  it('keeps an artifact fence as escaped code, with its title and size as data attributes', () => {
+    const html = renderMarkdown(
+      'see:\n\n```artifact title="Before <vs> after" size=l\n<b onclick="x()">hi</b>\n```',
+    )
+    expect(html).toContain(`data-artifact="${ARTIFACT_MARK}"`)
+    expect(html).toContain('data-artifact-title="Before &lt;vs&gt; after"')
+    expect(html).toContain('data-artifact-size="l"')
+    expect(html).toContain(
+      '<code class="language-artifact">&lt;b onclick="x()"&gt;hi&lt;/b&gt;</code>',
+    )
+    expect(html).not.toContain('<b onclick')
+  })
+
+  it('defaults an artifact to size m, and leaves an html fence as plain code', () => {
+    expect(renderMarkdown('```artifact title=x\n<p>a</p>\n```')).toContain('data-artifact-size="m"')
+    const html = renderMarkdown('```html\n<p>a</p>\n```')
+    expect(html).not.toContain('data-artifact')
+    expect(html).toContain('<code class="language-html">')
+  })
+
   it('keeps the language marker on fenced code — the mermaid pass keys off it', () => {
     const html = renderMarkdown('```mermaid\nflowchart LR\n  a --> b\n```')
     expect(html).toContain('<code class="language-mermaid">')
@@ -102,5 +122,14 @@ describe('fragment links', () => {
     expect(html).toContain('href="#diffo-file:src%2Fa.ts:3"')
     expect(html).not.toMatch(/href="#diffo-file[^>]*target=/)
     expect(html).toMatch(/href="https:\/\/x.test"[^>]*target="_blank"/)
+  })
+})
+
+describe('artifact marking', () => {
+  it('never marks a <pre data-artifact> typed as raw HTML', () => {
+    const html = renderMarkdown(
+      '<pre data-artifact="x" data-artifact-title="t"><code>&lt;p&gt;</code></pre>',
+    )
+    expect(html).not.toContain(`data-artifact="${ARTIFACT_MARK}"`)
   })
 })

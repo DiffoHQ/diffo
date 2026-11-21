@@ -199,6 +199,32 @@ describe('FinishReview — coverage', () => {
     await waitFor(() => expect(onClose).toHaveBeenCalled())
   })
 
+  it('offers to post the layers on the PR only when the server says it can, and off by default', async () => {
+    show()
+    await screen.findByText(/Split the presence fix out/)
+    expect(screen.queryByText('Post these layers on the pull request')).toBeNull()
+    cleanup()
+
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(
+        async () =>
+          new Response(
+            JSON.stringify({ outgoing: OUTGOING, prompt: PROMPT, canShareLayers: true }),
+          ),
+      ),
+    )
+    const onFinish = vi.fn(async () => ({ delivered: true, prompt: PROMPT }))
+    show({ onFinish })
+    const box = (await screen.findByRole('checkbox', {
+      name: /Post these layers on the pull request/,
+    })) as HTMLInputElement
+    expect(box.checked).toBe(false)
+    fireEvent.click(box)
+    fireEvent.click(screen.getByRole('button', { name: /Finish & send/ }))
+    expect(onFinish).toHaveBeenCalledWith(true, { note: '', shareLayers: true })
+  })
+
   it('the copy path stays up — an unconfirmed clipboard is the whole risk there', async () => {
     const onFinish = vi.fn(async () => ({ delivered: false, prompt: PROMPT }))
     const onClose = vi.fn()

@@ -187,6 +187,18 @@ describe('parseLayersInput', () => {
     expect(note.length).toBeLessThanOrEqual(200)
     expect(note.endsWith('…')).toBe(true)
   })
+  it('counts the summary cap on prose only, so an artifact is never cut in half', () => {
+    const html = `<svg>${'<g/>'.repeat(2000)}</svg>`
+    const summary = `short prose\n\n\`\`\`artifact title="Shape"\n${html}\n\`\`\``
+    const [layer] = ok([{ title: 'A', summary, files: ['a.ts'] }])
+    expect(layer!.summary).toBe(summary)
+  })
+
+  it('refuses a summary whose artifact is broken', () => {
+    const res = parseLayersInput([{ title: 'A', summary: '```artifact\n<p>x', files: ['a.ts'] }])
+    expect(res.ok).toBe(false)
+    expect(!res.ok && res.error).toMatch(/summary: artifact .* never closed/)
+  })
 })
 
 describe('parseSuggestReason', () => {
