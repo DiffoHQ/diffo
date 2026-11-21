@@ -1,5 +1,6 @@
 import { threadsFromGithub } from '../../forge/github/map.js'
 import type { ForgeClient, PrRef } from '../../forge/types.js'
+import { findSharedPack } from '../../share/pack.js'
 import type { PrInfo } from '../../shared/types.js'
 import type { DiffoDb } from '../db.js'
 import type { ReviewStore } from '../review.js'
@@ -126,6 +127,12 @@ export class PrPuller {
       threadsFromGithub(pr, imported, store.get().files),
     )
     if (added > 0 || updated > 0) log?.(`github conversation: ${added} new, ${updated} updated`)
+    // A reading guide shared on the pull request becomes the layers, unless
+    // this review has its own (`applySharedLayers` decides).
+    const shared = findSharedPack(imported, pr)
+    if (shared && review.applySharedLayers(shared.layers, shared.from)) {
+      log?.(`layers loaded from @${shared.from.by}'s reading guide`)
+    }
     if (pr.state !== 'open' && !this.closedNoted) {
       this.closedNoted = true
       db.markWorktreeClosed(this.deps.worktree)

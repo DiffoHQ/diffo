@@ -302,7 +302,11 @@ export function describeArtifact(a: FoundArtifact): string {
 /** The text with each closed artifact fence swapped for a one-line stand-in.
  * Prompts replay the agent's own messages back to it; the HTML is its own
  * output, already known, and kilobytes of it per round are pure cost. */
-export function stripArtifacts(text: string): string {
+export function stripArtifacts(
+  text: string,
+  as: (a: FoundArtifact) => string = (a) =>
+    `[${describeArtifact(a)} — rendered for the reviewer; its HTML is not repeated here]`,
+): string {
   text = normalizeNewlines(text)
   const found = findArtifacts(text).filter((a) => a.closed)
   if (found.length === 0) return text
@@ -310,10 +314,24 @@ export function stripArtifacts(text: string): string {
   let at = 0
   for (const a of found) {
     out += text.slice(at, a.start)
-    out += `[${describeArtifact(a)} — rendered for the reviewer; its HTML is not repeated here]`
+    out += as(a)
     at = a.end
   }
   return out + text.slice(at)
+}
+
+/**
+ * Layers on their way to someone else — a reading guide shared on a pull
+ * request, or one read back from it. An artifact runs only for the reviewer
+ * of the agent that drew it, so it never travels: a line naming it stays in
+ * its place. Unclosed fences go too, as plain text.
+ */
+export function withoutArtifacts<T extends { summary?: string }>(layer: T): T {
+  if (!layer.summary || findArtifacts(layer.summary).length === 0) return layer
+  const named = stripArtifacts(layer.summary, (a) =>
+    a.info.title ? `_(picture: ${a.info.title})_` : '_(picture)_',
+  )
+  return { ...layer, summary: named.replace(/^ {0,3}(`{3,}|~{3,})\s*artifact\b.*$/gm, '') }
 }
 
 /** Length of the prose around the artifacts — what a prose cap should count. */

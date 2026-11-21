@@ -166,6 +166,14 @@ export function durationBucket(ms: number): string {
 export interface OpenedProps {
   kind: ReviewKind
   agent: AgentName
+  /** A pull request opened with layers someone shared on it (`diffo share`). */
+  sharedLayers?: boolean
+}
+
+export interface SharedProps {
+  /** The guide comment was edited in place rather than posted new. */
+  update: boolean
+  layers: number
 }
 
 export interface FinishedProps {
@@ -176,6 +184,8 @@ export interface FinishedProps {
   layers: boolean
   /** The GitHub event a pull-request review submitted, when it did. */
   event?: string
+  /** The author asked the agent to share the layers on the pull request. */
+  shareLayers?: boolean
 }
 
 /**
@@ -307,7 +317,13 @@ export class Telemetry {
     const armed = this.armed()
     this.armedReview = armed
     this.openedAt = this.now()
-    if (armed) this.send('review_opened', { kind: props.kind, agent: props.agent })
+    if (armed) {
+      this.send('review_opened', {
+        kind: props.kind,
+        agent: props.agent,
+        ...(props.sharedLayers !== undefined ? { shared_layers: props.sharedLayers } : {}),
+      })
+    }
     return armed
   }
 
@@ -322,6 +338,12 @@ export class Telemetry {
       preset: props.preset,
       note: props.note,
     })
+  }
+
+  /** `diffo share` posted a reading guide on a pull request. */
+  layersShared(props: SharedProps): void {
+    if (!this.armed()) return
+    this.send('layers_shared', { update: props.update, layers: props.layers })
   }
 
   /** An open that never became a review. Sent only under the same gate as an open. */
@@ -345,6 +367,7 @@ export class Telemetry {
       comments: props.comments,
       layers: props.layers,
       ...(props.event ? { event: props.event } : {}),
+      ...(props.shareLayers ? { share_layers: true } : {}),
       ...(this.openedAt !== undefined
         ? { duration: durationBucket(this.now() - this.openedAt) }
         : {}),

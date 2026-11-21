@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto'
 import { resolve } from 'node:path'
+import { withoutArtifacts } from '../shared/artifacts.js'
 import { type LayerInput, parseLayersInput, parseSuggestReason } from '../shared/layers.js'
 import { type LayersPresetUse, parseLayersNote, parsePresetUse } from '../shared/presets.js'
 import {
@@ -22,6 +23,7 @@ import {
   type ReviewMessage,
   type ReviewState,
   type ReviewThread,
+  type SharedLayersFrom,
   seenByAgent,
   THREAD_INTENTS,
   type ThreadCapture,
@@ -431,7 +433,7 @@ export class ReviewStore {
    */
   setLayers(
     items: readonly LayerInput[],
-    follows: { preset?: LayersPresetUse; note?: string } = {},
+    follows: { preset?: LayersPresetUse; note?: string; shared?: SharedLayersFrom } = {},
   ): Layers {
     const kept = new Map((this.state.layers?.items ?? []).map((l) => [l.title, l.id]))
     const layers: Layers = {
@@ -439,6 +441,7 @@ export class ReviewStore {
       postedAt: new Date().toISOString(),
       ...(follows.preset ? { preset: follows.preset } : {}),
       ...(follows.note ? { note: follows.note } : {}),
+      ...(follows.shared ? { shared: follows.shared } : {}),
     }
     const { layersSuggested: prior, ...rest } = this.state
     const picked = follows.preset?.picked ? follows.preset : undefined
@@ -459,6 +462,27 @@ export class ReviewStore {
     }
     this.commit()
     return layers
+  }
+
+  /**
+   * A reading guide shared on the pull request becomes this review's layers,
+   * unless the review already has its own: an outline this review's agent
+   * posted always wins, and a guide never overwrites it. A guide already loaded
+   * is replaced only by a newer share of it. Returns whether the layers changed.
+   */
+  applySharedLayers(items: readonly LayerInput[], from: SharedLayersFrom): boolean {
+    const current = this.state.layers
+    if (current && !current.shared) return false
+    if (
+      current?.shared &&
+      current.shared.commentId === from.commentId &&
+      current.shared.postedAt === from.postedAt
+    ) {
+      return false
+    }
+    // A pack is someone else's text: an artifact in it would run here.
+    this.setLayers(items.map(withoutArtifacts), { shared: from })
+    return true
   }
 
   /** The reviewer removed the outline. The layers go; a sent thread on one of
@@ -937,12 +961,27 @@ function normalizeLayers(value: unknown, now: string): Layers | null {
   // dropped on its own, the list stays.
   const use = parsePresetUse(l.preset)
   const note = parseLayersNote(l.note)
+  const shared = normalizeShared(l.shared)
   return {
     items: parsed.items.map((item, i) => ({ id: ids[i]!, ...item })),
     postedAt: typeof l.postedAt === 'string' ? l.postedAt : now,
     ...(use.ok && use.use ? { preset: use.use } : {}),
     ...(note ? { note } : {}),
+    ...(shared ? { shared } : {}),
   }
+}
+
+function normalizeShared(value: unknown): SharedLayersFrom | null {
+  if (typeof value !== 'object' || value === null) return null
+  const v = value as Record<string, unknown>
+  const str = (k: string) => (typeof v[k] === 'string' && v[k] !== '' ? (v[k] as string) : null)
+  const by = str('by')
+  const sha = str('sha')
+  const commentId = str('commentId')
+  const postedAt = str('postedAt')
+  if (!by || !sha || !commentId || !postedAt) return null
+  const url = str('url')
+  return { by, sha, commentId, postedAt, ...(url ? { url } : {}) }
 }
 
 function normalizeSuggested(

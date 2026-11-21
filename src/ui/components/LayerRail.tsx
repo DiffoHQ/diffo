@@ -304,9 +304,13 @@ export function LayerRail({
   onRemove,
   presets,
   note,
+  sharedBy,
   onAsk,
 }: {
   layers: readonly ResolvedLayer[]
+  /** The GitHub login whose reading guide these layers came from (`diffo
+   * share`), when they were not this review's own agent's. */
+  sharedBy?: string
   activeIndex: number
   onPick: (index: number) => void
   viewed: ReadonlySet<string>
@@ -561,6 +565,13 @@ export function LayerRail({
               <span className="lr-title-by">Layered by</span>
               <span className="lr-title">{preset ? preset.name : 'your instructions'}</span>
             </button>
+          ) : sharedBy ? (
+            <span
+              className="lr-title lr-title-plain"
+              title={`Shared on the pull request by @${sharedBy}, with diffo share`}
+            >
+              Layers <span className="lr-title-by">from @{sharedBy}</span>
+            </span>
           ) : (
             <span className="lr-title lr-title-plain">Layers</span>
           )}

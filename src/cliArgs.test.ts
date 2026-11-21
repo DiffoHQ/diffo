@@ -587,3 +587,17 @@ describe('parseCliArgs — telemetry', () => {
     expect(parseCliArgs(['telemetr'])).toMatchObject({ kind: 'error' })
   })
 })
+
+describe('parseCliArgs — share', () => {
+  it('shares this review, a named pull request, or prints the comment with --dry-run', () => {
+    expect(parseCliArgs(['share'])).toEqual({ kind: 'share', dryRun: false })
+    expect(parseCliArgs(['share', '#482', '--dry-run'])).toEqual({
+      kind: 'share',
+      target: '#482',
+      dryRun: true,
+    })
+    expect(parseCliArgs(['share', '--help'])).toEqual({ kind: 'help', topic: 'share' })
+    expect(parseCliArgs(['share', '1', '2'])).toMatchObject({ kind: 'error' })
+    expect(helpFor('share')).toContain('diffo share [<pull request>] [--dry-run]')
+  })
+})

@@ -7,7 +7,7 @@ import { type OutgoingThread, type ReviewThread, undeliveredThreadIds } from '..
 import { DiffoDb } from './db.js'
 import { DeliveryQueue } from './delivery.js'
 import { createApp } from './index.js'
-import { buildConnectAsk } from './prompt.js'
+import { buildConnectAsk, CLI_COMMANDS } from './prompt.js'
 import { ReviewStore } from './review.js'
 import { ChangesetStore } from './store.js'
 
@@ -364,6 +364,57 @@ describe('review API', () => {
     expect(body.threads[0]!.state).toBe('sent')
     expect(body.prompt).toContain('1/3 hunks read')
     expect(body.prompt).toContain('b.ts')
+  })
+
+  it('a share errand rides the finish only with layers, in a repo that can share', async () => {
+    const shareApp = (canShare?: () => Promise<boolean>) => {
+      const root = tempRepo()
+      return createApp(
+        {
+          root,
+          spec: { kind: 'working-tree' },
+          clientDir: '/nope',
+          ...(canShare ? { canShare } : {}),
+        },
+        new ChangesetStore(root, { kind: 'working-tree' }),
+        new ReviewStore(root, makeDb(root), { kind: 'working-tree' }),
+        new DeliveryQueue(),
+      )
+    }
+    const coverage = { viewedHunks: 1, totalHunks: 1, skippedFiles: [], shareLayers: true }
+    const layers = { items: [{ title: 'Contract', files: ['a.ts'] }] }
+    type Preview = { prompt: string; canShareLayers: boolean }
+
+    // A Bitbucket or GitLab origin, or no gh: never offered, never sent.
+    const elsewhere = shareApp(async () => false)
+    await post(elsewhere, '/api/review/layers', layers)
+    const offered = (await (
+      await post(elsewhere, '/api/review/finish/preview', { coverage })
+    ).json()) as Preview
+    expect(offered.canShareLayers).toBe(false)
+    expect(offered.prompt).not.toContain(CLI_COMMANDS.share)
+    const sent = (await (await post(elsewhere, '/api/review/finish', { coverage })).json()) as {
+      prompt: string
+    }
+    expect(sent.prompt).not.toContain(CLI_COMMANDS.share)
+
+    const app = shareApp(async () => true)
+    const bare = (await (await post(app, '/api/review/finish', { coverage })).json()) as {
+      prompt: string
+    }
+    expect(bare.prompt).not.toContain(CLI_COMMANDS.share)
+
+    await post(app, '/api/review/layers', layers)
+    const preview = (await (
+      await post(app, '/api/review/finish/preview', { coverage })
+    ).json()) as Preview
+    expect(preview.canShareLayers).toBe(true)
+    expect(preview.prompt).toContain(CLI_COMMANDS.share)
+    const res = (await (await post(app, '/api/review/finish', { coverage })).json()) as {
+      prompt: string
+    }
+    expect(res.prompt).toContain(`run \`${CLI_COMMANDS.share}\``)
+    expect(res.prompt).toContain('right after you open one')
   })
 
   it('each finish counts toward the star nudge, across reviews', async () => {
