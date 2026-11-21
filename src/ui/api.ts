@@ -183,6 +183,9 @@ export interface PublicPreview {
 export interface FinishPreview {
   outgoing: OutgoingThread[]
   prompt: string
+  /** Finish may offer to post the layers on the PR: a branch review with
+   * layers, in a repo whose GitHub origin `gh` can post to. */
+  canShareLayers?: boolean
   public?: PublicPreview
 }
 

@@ -228,6 +228,22 @@ describe('prompt context (A1)', () => {
     expect(prompt.indexOf('id: t-note')).toBeLessThan(prompt.indexOf('id: t-1'))
   })
 
+  it('a finish that asks for the layers on the PR tells the agent when and how to share', () => {
+    const coverage = { viewedHunks: 2, totalHunks: 2, skippedFiles: [] }
+    const plain = buildFinishPrompt([], { repo, changeset: null }, coverage)
+    expect(plain).not.toContain(CLI_COMMANDS.share)
+    const asked = buildFinishPrompt(
+      [],
+      { repo, changeset: null },
+      { ...coverage, shareLayers: true },
+    )
+    expect(asked).toContain(`run \`${CLI_COMMANDS.share}\``)
+    expect(asked).toContain('right after you open one')
+    expect(asked).toContain('post fresh layers before sharing')
+    // Still the green light: the errand rides on top of it.
+    expect(asked).toContain('green light')
+  })
+
   it('an empty finish over a fully-read changeset is a green light — and only that one', () => {
     const clean = buildFinishPrompt(
       [],

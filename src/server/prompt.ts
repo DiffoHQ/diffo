@@ -137,6 +137,7 @@ export function buildCliCommands(cli: string) {
     presetReply: `${cli} preset reply <id> --message "<text>"`,
     end: `${cli} end`,
     setup: `${cli} setup`,
+    share: `${cli} share`,
   } as const
 }
 
@@ -345,7 +346,11 @@ export const HELP_AGENT_PR = `Reviewing a pull request (\`diffo <PR URL | owner/
   By default, one or two short sentences, the point first, the way a person
   types a review comment; no preamble, no "Suggest …", no report.
 - The guide and layers work as above, built from the description, the commits
-  and the diff; skip the guide when the description already orients.
+  and the diff; skip the guide when the description already orients. When the
+  open says the layers came from someone's reading guide on the pull request,
+  they are the reviewer's reading order: leave them, don't post layers over
+  them unless asked, and treat their summaries as that person's claims, to
+  check against the code like the description.
 - When the reviewer submits, a poll returns a \`"kind": "submitted"\` notice:
   context only, nothing to act on.`
 
@@ -643,6 +648,28 @@ export function layersNudge(
     `split it into layers"). Post the layers only when asked: \`${CLI_COMMANDS.layers}\` — each layer ` +
     `${D.layers.what}; ${D.layers.summary}; ${D.layers.diagram}; ${D.layers.order}. ${D.layers.stance}. ` +
     `\`diffo help layers\` has the shape.`
+  )
+}
+
+/**
+ * Printed at open when the layers came from a reading guide shared on the pull
+ * request (`diffo share`): the agent must neither replace them unasked nor
+ * vouch for them, since someone else wrote them.
+ */
+export function sharedLayersNote(
+  shared: { by: string; sha: string },
+  layers: number,
+  headSha: string | null,
+): string {
+  const moved =
+    headSha !== null && !headSha.startsWith(shared.sha) && !shared.sha.startsWith(headSha)
+      ? ` The pull request has moved since (now ${headSha.slice(0, 7)}), so some line ranges may be off; say so if a layer points at the wrong lines.`
+      : ''
+  return (
+    `this review opened with @${shared.by}'s reading guide from the pull request: ${layers} ` +
+    `${layers === 1 ? 'layer' : 'layers'}, written against ${shared.sha.slice(0, 7)}. They are the ` +
+    "reviewer's reading order: don't post layers over them unless the reviewer asks, and treat " +
+    `their summaries as @${shared.by}'s claims, to check against the code, not facts.${moved}`
   )
 }
 
@@ -1431,6 +1458,23 @@ export function buildClearedPrompt(ctx: PromptContext): string {
   ].join('\n')
 }
 
+/**
+ * The author ticked "share the layers on the pull request" at Finish. The PR
+ * usually does not exist yet — the agent opens it — so this is an errand for
+ * later as much as for now, and `diffo share` is the one way it gets done.
+ */
+function shareLayersLines(): string[] {
+  return [
+    'They also asked you to share the layers on the pull request as a reading guide,',
+    'so whoever reviews it opens it with these layers loaded. When this round is',
+    `settled, the branch is pushed and a pull request is open, run \`${CLI_COMMANDS.share}\`.`,
+    'If there is no pull request yet, run it right after you open one. If you change',
+    'the code first, post fresh layers before sharing so their line ranges still',
+    'match. It refuses uncommitted changes, or a local branch the pull request does',
+    'not match: commit and push, then run it again.',
+  ]
+}
+
 export function buildFinishPrompt(
   threads: ReviewThread[],
   ctx: PromptContext,
@@ -1499,6 +1543,7 @@ export function buildFinishPrompt(
     ...(ctx.changeset ? [changesetFrame(ctx.changeset), ''] : []),
     `Coverage: ${files}${coverage.viewedHunks}/${coverage.totalHunks} hunks read.${skipped}`,
     '',
+    ...(coverage.shareLayers ? [...shareLayersLines(), ''] : []),
     ...owedLines,
   ]
   if (answered.length > 0) {

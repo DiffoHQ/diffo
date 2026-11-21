@@ -6,6 +6,7 @@ import { type Context, Hono } from 'hono'
 import { stream, streamSSE } from 'hono/streaming'
 import { SRC_STAMP } from '../devStamp.js'
 import type { ForgeClient, PrRef, ReviewEvent } from '../forge/types.js'
+import type { FoundPack } from '../share/pack.js'
 import { findHunk, translateHunkAnchor } from '../shared/anchors.js'
 import {
   describeUncovered,
@@ -169,6 +170,9 @@ export interface ServerContext {
   /** Set when the server was opened on a pull request: the forge to talk to,
    * which PR, and the user's checkout the worktree (`root`) hangs off. */
   pr?: PrContext
+  /** Could `diffo share` post from this repo (a GitHub origin `gh` is signed in
+   * to)? Finish offers to share only then. Absent ⇒ never. */
+  canShare?: () => Promise<boolean>
 }
 
 export interface PrContext {
@@ -180,6 +184,10 @@ export interface PrContext {
   /** The pull request as the open read it, so the changeset carries it before
    * the puller's first tick — a first tick that waits on the network. */
   info?: PrInfo
+  /** A reading guide shared on the pull request, as the open found it: loaded
+   * before the server listens, so the agent's first read of the review already
+   * sees the layers. The puller keeps it current after that. */
+  shared?: FoundPack
   /** Pull GitHub state now (tests, and the reviewer's refresh). */
   refresh?: () => Promise<void>
 }
@@ -397,7 +405,11 @@ export function createApp(
   app.post('/api/telemetry/opened', async (c) => {
     const body = await c.req.json().catch(() => null)
     const armed =
-      ctx.telemetry?.reviewOpened({ kind: reviewKind(), agent: agentNameOf(body?.agent) }) ?? false
+      ctx.telemetry?.reviewOpened({
+        kind: reviewKind(),
+        agent: agentNameOf(body?.agent),
+        ...(ctx.pr ? { sharedLayers: review?.get().layers?.shared !== undefined } : {}),
+      }) ?? false
     return c.json({ ok: true, armed })
   })
 
@@ -1109,7 +1121,26 @@ export function createApp(
       ...(changedFiles !== undefined ? { changedFiles } : {}),
       ...(commentedUnread !== undefined ? { commentedUnread } : {}),
       ...(note !== undefined ? { note } : {}),
+      // Kept only when sharing is possible at all: `gateShare` decides.
+      ...(src.shareLayers === true ? { shareLayers: true as const } : {}),
     }
+  }
+
+  /** Only the author shares, and only what is here to share, where it can be
+   * shared: a branch review (a PR review reads someone's PR, it never posts
+   * one) with layers of its own, in a repo whose origin `gh` can post to. */
+  const shareable = async (): Promise<boolean> =>
+    !ctx.pr &&
+    (review?.get().layers?.items.length ?? 0) > 0 &&
+    ctx.canShare !== undefined &&
+    (await ctx.canShare().catch(() => false))
+
+  const gateShare = async (coverage: Coverage): Promise<Coverage> => {
+    if (coverage.shareLayers && !(await shareable())) {
+      const { shareLayers: _dropped, ...rest } = coverage
+      return rest
+    }
+    return coverage
   }
 
   // The threads Finish and the poll speak about: on the current changeset, and
@@ -1186,13 +1217,14 @@ export function createApp(
   app.post('/api/review/finish/preview', async (c) => {
     if (!review) return c.json({ error: 'review unavailable' }, 503)
     const body = await c.req.json().catch(() => null)
-    const coverage = parseCoverage(body?.coverage)
+    const coverage = await gateShare(parseCoverage(body?.coverage))
     const before = review.get().threads
     const batch = projectClosingNote(activeThreads(projectFinish(before)), coverage)
     const pr = store?.get().pr
     const leg = ctx.pr ? planPublicLeg(before, store?.get().files ?? []) : null
     return c.json({
       outgoing: outgoing(batch, before),
+      canShareLayers: await shareable(),
       prompt: buildFinishPrompt(
         batch,
         { repo: repoInfo(), changeset: store?.get() ?? null },
@@ -1215,7 +1247,7 @@ export function createApp(
   app.post('/api/review/finish', async (c) => {
     if (!review) return c.json({ error: 'review unavailable' }, 503)
     const body = await c.req.json().catch(() => null)
-    const coverage = parseCoverage(body?.coverage)
+    const coverage = await gateShare(parseCoverage(body?.coverage))
     const deliver = body?.deliver !== false
     // The GitHub leg runs first and alone decides whether anything public
     // happens: an event names the submit, and the closing note is its body.
@@ -1287,6 +1319,7 @@ export function createApp(
       ),
       layers: (review.get().layers?.items.length ?? 0) > 0,
       ...(event !== null ? { event } : {}),
+      ...(coverage.shareLayers ? { shareLayers: true } : {}),
     })
     ctx.uiSettings?.set('finishes', String(finishCount() + 1))
     return c.json({
@@ -1822,6 +1855,12 @@ export function startServer(options: ServerContext & { port: number }) {
   // routes call. Started after the listeners below, so its first import lands
   // on a review that is already reconciling.
   if (options.pr?.info) store.setPr(options.pr.info)
+  if (
+    options.pr?.shared &&
+    review.applySharedLayers(options.pr.shared.layers, options.pr.shared.from)
+  ) {
+    log(`layers loaded from @${options.pr.shared.from.by}'s reading guide`)
+  }
   const puller = options.pr
     ? new PrPuller({
         forge: options.pr.forge,

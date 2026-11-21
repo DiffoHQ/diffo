@@ -34,6 +34,9 @@ For the reviewer:
   status             Show this repo's review server, if one is running
                      (--json for a machine-readable answer)
   stop               Stop this repo's review server
+  share [<PR>]       Post this review's layers on its pull request as a
+                     reading guide; opening that PR in diffo loads them
+                     (--dry-run prints the comment instead)
   clean              Remove the worktrees diffo made for pull requests whose
                      review is over (--force takes dirty ones, and ones a
                      running server still serves; --all takes every one)
@@ -135,6 +138,10 @@ The loop:
    ${LAYERS.stance}. The ask names a preset — what the layers are for — or
    lists the presets to pick from; follow it, and post the preset's id.
    ${LAYERS.replace}. \`diffo help layers\` has the shape.
+   To hand the layers to someone else (the user asks to share the review, or
+   to prepare it for a teammate): \`diffo share\` posts them on the pull
+   request as a reading guide, public to everyone who can see it; run it only
+   when asked, and \`--dry-run\` shows the comment first.
    A \`"kind": "preset"\` payload is the reviewer talking to you about a
    preset in the Layers presets dialog: edit it with \`diffo preset update <id>
    --json '{…}' --message "…"\` or answer with \`diffo preset reply <id>\`,
@@ -247,6 +254,31 @@ Examples:
   diffo https://github.com/acme/widgets/pull/482
   diffo acme/widgets#482
   diffo 482                    (in a clone of acme/widgets)`,
+  share: `diffo share: post this review's layers on its pull request
+
+Usage: diffo share [<pull request>] [--dry-run]
+
+Posts the review's layers as one comment on the pull request: a reading guide
+anyone can open on GitHub, with the layers inside it. Whoever opens that pull
+request in Diffo (\`diffo <PR URL>\`) gets the layers loaded in their review,
+so you can prepare a review and hand it to someone. Run it again after the
+layers change and it edits the same comment instead of posting a second one.
+
+The pull request is the one this review is of, or the open pull request for
+this branch; name it to pick another. The layers point at lines, so this
+checkout must be at the pull request's head with nothing uncommitted: push
+first. The comment is public to everyone who can see the pull request, and
+is posted as you, through \`gh\`.
+
+Only layers shared by the pull request's author, by the reader themself, or
+by a repository member or collaborator are loaded. A reader's own layers are
+never replaced.
+
+Options:
+  --dry-run    Print the comment instead of posting it
+
+Example:
+  diffo share --dry-run`,
   clean: `diffo clean: remove the worktrees diffo made for pull requests
 
 Usage: diffo clean [--force] [--all]
@@ -539,6 +571,7 @@ export type CliCommand =
   | { kind: 'layers'; source: LayersSource }
   | { kind: 'preset'; action: PresetAction }
   | { kind: 'end' }
+  | { kind: 'share'; target?: string; dryRun: boolean }
   | { kind: 'setup' }
   | { kind: 'telemetry'; action: 'status' | 'on' | 'off' }
   | { kind: 'status'; json: boolean }
@@ -575,6 +608,7 @@ const VERBS = new Set([
   'status',
   'stop',
   'clean',
+  'share',
   'pr',
 ])
 
@@ -905,11 +939,36 @@ function parseTelemetryVerb(rest: string[]): CliCommand {
   return { kind: 'telemetry', action }
 }
 
+function parseShareVerb(rest: string[]): CliCommand {
+  const parsed = tryParse(() =>
+    parseArgs({
+      args: rest,
+      allowPositionals: true,
+      options: {
+        'dry-run': { type: 'boolean', default: false },
+        help: { type: 'boolean', short: 'h' },
+      },
+    }),
+  )
+  if (!parsed.ok) return { kind: 'error', message: parsed.message }
+  const { values, positionals } = parsed.value
+  if (values.help) return { kind: 'help', topic: 'share' }
+  if (positionals.length > 1)
+    return { kind: 'error', message: 'share takes at most one pull request' }
+  const target = positionals[0]
+  return {
+    kind: 'share',
+    ...(target !== undefined ? { target } : {}),
+    dryRun: values['dry-run'] === true,
+  }
+}
+
 function parseVerb(verb: string, rest: string[]): CliCommand {
   if (verb === 'layers') return parseLayersVerb(rest)
   if (verb === 'preset') return parsePresetVerb(rest)
   if (verb === 'clean') return parseCleanVerb(rest)
   if (verb === 'telemetry') return parseTelemetryVerb(rest)
+  if (verb === 'share') return parseShareVerb(rest)
   const parsed = tryParse(() =>
     parseArgs({
       args: rest,
