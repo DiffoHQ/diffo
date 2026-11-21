@@ -9,6 +9,27 @@ Until 1.0, minor versions may break things. When they do, the entry says how to 
 
 Nothing yet.
 
+## [0.29.0] — 2026-11-21
+
+### Added
+
+- **Agents draw pictures.** A guide, reply, comment or layer summary can carry
+  a small HTML page in an ```artifact fence. It renders as a sandboxed card
+  with no network access and opens to a full view. The CLI checks it before it
+  posts, and the agent hears through its poll when it breaks in your browser.
+  `diffo artifact preview` screenshots it first.
+- **Share layers on the pull request.** `diffo share` posts a review's layers
+  as one comment on the branch's pull request: an outline linking into the
+  Files tab, plus a prompt to paste into a coding agent. Opening that pull
+  request in Diffo loads the layers. Finish offers it on a branch review with
+  layers.
+- **Serve a review through a reverse proxy.** Set `DIFFO_PUBLIC_URL` (`{port}`
+  is templated) and diffo prints it as the review link. It is the only origin
+  besides loopback the server accepts. It is read at server start.
+- **An agent left attached stops after 20 quiet polls.** Instead of
+  re-polling all night, it asks you whether to keep listening. The review
+  stays open, and anything you send meanwhile waits for the next poll.
+
 ## [0.28.0] — 2026-11-19
 
 ### Added
@@ -1043,7 +1064,8 @@ shipped in it, written as a starting point rather than a history.
 - **Guided reading** — splitting a large change into an ordered sequence of small,
   reviewable sections — is designed but not built.
 
-[Unreleased]: https://github.com/DiffoHQ/diffo/compare/v0.28.0...HEAD
+[Unreleased]: https://github.com/DiffoHQ/diffo/compare/v0.29.0...HEAD
+[0.29.0]: https://github.com/DiffoHQ/diffo/compare/v0.28.0...v0.29.0
 [0.28.0]: https://github.com/DiffoHQ/diffo/compare/v0.27.0...v0.28.0
 [0.27.0]: https://github.com/DiffoHQ/diffo/compare/v0.26.0...v0.27.0
 [0.26.0]: https://github.com/DiffoHQ/diffo/compare/v0.25.0...v0.26.0
