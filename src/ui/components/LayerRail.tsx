@@ -171,6 +171,11 @@ function LayerRow({
         }}
       >
         <span className="row-name">
+          {label === undefined && layer.number !== null && (
+            <span className="row-num" aria-hidden="true">
+              {layer.number}
+            </span>
+          )}
           <span className="row-base">{label ?? layer.title}</span>
         </span>
         <span className="ch-sub">

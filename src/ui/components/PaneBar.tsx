@@ -1,4 +1,5 @@
 import { Icon } from './Icon.js'
+import { Menu, MenuItem, MenuLabel, MenuSep } from './Menu.js'
 import type { ViewMode } from './ReadingPane.js'
 
 /**
@@ -48,7 +49,11 @@ export function PaneBar({
   onToggleCollapseAll,
   stats,
   layer,
+  docked = false,
 }: {
+  /** Drawn in the shell's top bar instead of at the pane's own top: the same
+   * controls, with the filters and the layout folded into one View menu. */
+  docked?: boolean
   navHidden?: boolean
   onToggleNav?: () => void
   left: number
@@ -105,8 +110,25 @@ export function PaneBar({
   // In layer mode the size is the layer's; the changeset's total belongs to
   // the Files tab, where the whole change is what is being read.
   const size = layer ? layer.stats : stats
+  const filtersOn =
+    (!layer && onlyChanged ? 1 : 0) + (!layer && hideReviewed ? 1 : 0) + (hideTests ? 1 : 0)
+  // The rail's typed filter, echoed: with the rail folded it is the only trace
+  // of why files are missing, so it shows in both forms of the bar.
+  const queryChip = !layer && trimmedQuery !== '' && onClearQuery && (
+    <button
+      type="button"
+      className="pane-q"
+      title={`Showing only files matching “${trimmedQuery}”; click to clear`}
+      aria-label={`Clear the file filter “${trimmedQuery}”`}
+      onClick={onClearQuery}
+    >
+      <Icon name="search" size="sm" />
+      <span className="pane-q-word">{trimmedQuery}</span>
+      <Icon name="x" size="sm" />
+    </button>
+  )
   return (
-    <div className="pane-bar">
+    <div className={`pane-bar${docked ? ' pane-bar-top' : ''}`}>
       {onToggleNav && (
         <button
           type="button"
@@ -155,81 +177,152 @@ export function PaneBar({
           hunk {hunkAt} / {hunkCount}
         </span>
       )}
-      <span className="grow" />
-      {/* In layer mode the outline is the narrowing, so the filters that narrow
+      {docked ? (
+        <>
+          {queryChip}
+          <Menu
+            label="View options"
+            tip="Layout and filters"
+            triggerClassName="pane-icon pane-view"
+            trigger={
+              <>
+                <Icon name="filter" size="md" />
+                {filtersOn > 0 && <span className="tab-dot" aria-hidden="true" />}
+              </>
+            }
+          >
+            {(close) => (
+              <>
+                <MenuLabel>Layout</MenuLabel>
+                <MenuItem
+                  icon="unified"
+                  kbd="u"
+                  checked={viewMode === 'unified'}
+                  onClick={() => {
+                    close()
+                    onSetViewMode('unified')
+                  }}
+                >
+                  Unified
+                </MenuItem>
+                <MenuItem
+                  icon="split"
+                  checked={viewMode === 'split'}
+                  onClick={() => {
+                    close()
+                    onSetViewMode('split')
+                  }}
+                >
+                  Split
+                </MenuItem>
+                {(showTests || (!layer && (showChanged || showReviewed))) && (
+                  <>
+                    <MenuSep />
+                    <MenuLabel>Hide</MenuLabel>
+                  </>
+                )}
+                {!layer && showChanged && (
+                  <MenuItem checked={onlyChanged} onClick={() => onOnlyChanged(!onlyChanged)}>
+                    {changedCount > 0
+                      ? `Everything but ${changedCount} since review`
+                      : 'Everything but changes since review'}
+                  </MenuItem>
+                )}
+                {!layer && showReviewed && (
+                  <MenuItem
+                    kbd="h"
+                    checked={hideReviewed}
+                    onClick={() => onHideReviewed(!hideReviewed)}
+                  >
+                    {done > 0 ? `${done} reviewed` : 'Reviewed files'}
+                  </MenuItem>
+                )}
+                {showTests && (
+                  <MenuItem checked={hideTests} onClick={() => onHideTests(!hideTests)}>
+                    {testCount > 0 ? tests : 'Test files'}
+                  </MenuItem>
+                )}
+                <MenuSep />
+                <MenuItem
+                  icon="fold"
+                  onClick={() => {
+                    close()
+                    onToggleCollapseAll()
+                  }}
+                >
+                  {allCollapsed ? 'Expand all files' : 'Collapse all files'}
+                </MenuItem>
+              </>
+            )}
+          </Menu>
+        </>
+      ) : (
+        <>
+          <span className="grow" />
+          {/* In layer mode the outline is the narrowing, so the filters that narrow
           — the typed word, since, reviewed — step aside. Hide tests stays: it
           retires a category of file, which the outline has no opinion on. */}
-      {!layer && trimmedQuery !== '' && onClearQuery && (
-        <button
-          type="button"
-          className="pane-q"
-          title={`Showing only files matching “${trimmedQuery}”; click to clear`}
-          aria-label={`Clear the file filter “${trimmedQuery}”`}
-          onClick={onClearQuery}
-        >
-          <Icon name="search" size="sm" />
-          <span className="pane-q-word">{trimmedQuery}</span>
-          <Icon name="x" size="sm" />
-        </button>
+          {queryChip}
+          {!layer && showChanged && (
+            <Switch
+              on={onlyChanged}
+              onChange={onOnlyChanged}
+              label={changedCount > 0 ? `Only ${changedCount} since review` : 'Only since review'}
+              onLabel={changedCount > 0 ? `only ${changedCount} since review` : undefined}
+            />
+          )}
+          {!layer && showReviewed && (
+            <Switch
+              on={hideReviewed}
+              onChange={onHideReviewed}
+              label={done > 0 ? `Hide ${done} reviewed` : 'Hide reviewed'}
+              onLabel={done > 0 ? `${done} reviewed hidden` : undefined}
+            />
+          )}
+          {showTests && (
+            <Switch
+              on={hideTests}
+              onChange={onHideTests}
+              label={testCount > 0 ? `Hide ${tests}` : 'Hide tests'}
+              onLabel={testCount > 0 ? `${tests} hidden` : undefined}
+            />
+          )}
+          <span className="pane-sep" />
+          {/* biome-ignore lint/a11y/useSemanticElements: a a fieldset would bring a legend and its own box */}
+          <span className="pane-modes" role="group" aria-label="Diff layout">
+            <button
+              type="button"
+              className="pane-icon"
+              aria-pressed={viewMode === 'unified'}
+              data-tip="Unified diff (u)"
+              aria-label="Unified diff"
+              onClick={() => onSetViewMode('unified')}
+            >
+              <Icon name="unified" size="sm" />
+            </button>
+            <button
+              type="button"
+              className="pane-icon"
+              aria-pressed={viewMode === 'split'}
+              data-tip="Split diff (u)"
+              aria-label="Split diff"
+              onClick={() => onSetViewMode('split')}
+            >
+              <Icon name="split" size="sm" />
+            </button>
+          </span>
+          <button
+            type="button"
+            className="pane-icon"
+            aria-pressed={allCollapsed}
+            data-tip={`${allCollapsed ? 'Expand' : 'Collapse'} all files`}
+            aria-label={`${allCollapsed ? 'Expand' : 'Collapse'} all files`}
+            onClick={onToggleCollapseAll}
+          >
+            <Icon name="fold" size="sm" />
+          </button>
+        </>
       )}
-      {!layer && showChanged && (
-        <Switch
-          on={onlyChanged}
-          onChange={onOnlyChanged}
-          label={changedCount > 0 ? `Only ${changedCount} since review` : 'Only since review'}
-          onLabel={changedCount > 0 ? `only ${changedCount} since review` : undefined}
-        />
-      )}
-      {!layer && showReviewed && (
-        <Switch
-          on={hideReviewed}
-          onChange={onHideReviewed}
-          label={done > 0 ? `Hide ${done} reviewed` : 'Hide reviewed'}
-          onLabel={done > 0 ? `${done} reviewed hidden` : undefined}
-        />
-      )}
-      {showTests && (
-        <Switch
-          on={hideTests}
-          onChange={onHideTests}
-          label={testCount > 0 ? `Hide ${tests}` : 'Hide tests'}
-          onLabel={testCount > 0 ? `${tests} hidden` : undefined}
-        />
-      )}
-      <span className="pane-sep" />
-      {/* biome-ignore lint/a11y/useSemanticElements: a a fieldset would bring a legend and its own box */}
-      <span className="pane-modes" role="group" aria-label="Diff layout">
-        <button
-          type="button"
-          className="pane-icon"
-          aria-pressed={viewMode === 'unified'}
-          data-tip="Unified diff (u)"
-          aria-label="Unified diff"
-          onClick={() => onSetViewMode('unified')}
-        >
-          <Icon name="unified" size="sm" />
-        </button>
-        <button
-          type="button"
-          className="pane-icon"
-          aria-pressed={viewMode === 'split'}
-          data-tip="Split diff (u)"
-          aria-label="Split diff"
-          onClick={() => onSetViewMode('split')}
-        >
-          <Icon name="split" size="sm" />
-        </button>
-      </span>
-      <button
-        type="button"
-        className="pane-icon"
-        aria-pressed={allCollapsed}
-        data-tip={`${allCollapsed ? 'Expand' : 'Collapse'} all files`}
-        aria-label={`${allCollapsed ? 'Expand' : 'Collapse'} all files`}
-        onClick={onToggleCollapseAll}
-      >
-        <Icon name="fold" size="sm" />
-      </button>
       {layer && (layer.prev || layer.next) && (
         <>
           <span className="pane-sep" />

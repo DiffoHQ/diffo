@@ -35,13 +35,13 @@ import { copyText } from './clipboard.js'
 import { AgentNotices } from './components/AgentNotices.js'
 import { ArtifactViewer } from './components/ArtifactViewer.js'
 import { ClearThreads } from './components/ClearThreads.js'
+import { CommandPalette } from './components/CommandPalette.js'
 import { CommitRail, commitProgress } from './components/CommitRail.js'
 import { FinishReview } from './components/FinishReview.js'
 import { Header } from './components/Header.js'
 import { Icon, IconSprite } from './components/Icon.js'
 import { InviteAgent } from './components/InviteAgent.js'
 import { LayerRail } from './components/LayerRail.js'
-import { LayerSource, type LayerSourceKind } from './components/LayerSource.js'
 import type { LayersAskInput } from './components/LayersAsk.js'
 import { LayersEmpty, type LayersEmptyState } from './components/LayersEmpty.js'
 import { LayersPresets } from './components/LayersPresets.js'
@@ -51,14 +51,17 @@ import { Monitor } from './components/Monitor.js'
 import { Nav, treeOrder } from './components/Nav.js'
 import { Privacy } from './components/Privacy.js'
 import {
+  ControlsBar,
   type ElsewhereStep,
   type FilePart,
   type LayerView,
+  type PaneControls,
   ReadingPane,
   type ReviewComments,
   type ViewMode,
 } from './components/ReadingPane.js'
 import { Shortcuts } from './components/Shortcuts.js'
+import { PlanStrip } from './components/Strips.js'
 import { SubmitReview } from './components/SubmitReview.js'
 import { type JumpTarget, SymbolHoverLayer } from './components/SymbolHover.js'
 import { TelemetryNotice } from './components/TelemetryNotice.js'
@@ -92,6 +95,7 @@ import {
 } from './layers.js'
 import { computeDelta, EMPTY_DELTA } from './liveDelta.js'
 import { timeAgo } from './markdown.js'
+import type { PaletteItem } from './palette.js'
 import { notifyPresetsChanged, useLayersPresets } from './presetsPref.js'
 import { PrContext } from './prMode.js'
 import { isTestFile, useReviewFilter } from './reviewFilter.js'
@@ -104,7 +108,9 @@ import {
   agentActivity,
   byFile,
   isUnsent,
+  type LayerSourceKind,
   type PanelTab,
+  type RailView,
   shortAnchor,
   type ThreadItem,
   threadItems,
@@ -121,6 +127,9 @@ const queryClient = new QueryClient()
 const RAIL_DEFAULT = 264
 /** Below this the rail starts folded — half of a laptop screen, roughly. */
 const NARROW_WINDOW = 800
+const EMPTY_LAYERS: readonly ResolvedLayer[] = []
+/** Below this a split diff and the rail do not both fit: split folds the rail. */
+const SPLIT_NEEDS_RAIL_FOLDED = 1500
 const RAIL_MIN = 200
 const RAIL_MAX = 520
 const clampRail = (w: number) => Math.min(RAIL_MAX, Math.max(RAIL_MIN, w))
@@ -339,6 +348,26 @@ function Review() {
     if (stored !== null) return stored === '1'
     return window.innerWidth < NARROW_WINDOW
   })
+  // Focus is the page alone: both sides step out for as long as it is on, and
+  // come back exactly as they were. A mode, not a preference — never stored.
+  const [focusMode, setFocusMode] = useState(false)
+  // A split diff needs the width: on anything but a wide window it folds the
+  // rail, and going back to unified returns it — unless the reviewer has moved
+  // the rail themselves in between, which `toggleNav` records by clearing this.
+  const foldedForSplit = useRef(false)
+  // biome-ignore lint/correctness/useExhaustiveDependencies: only the mode flipping does this; the rail's own state must not re-run it
+  useEffect(() => {
+    if (viewMode === 'split') {
+      if (!navHidden && window.innerWidth < SPLIT_NEEDS_RAIL_FOLDED) {
+        foldedForSplit.current = true
+        setNavHidden(true)
+      }
+    } else if (foldedForSplit.current) {
+      foldedForSplit.current = false
+      setNavHidden(false)
+    }
+  }, [viewMode])
+
   const [railWidth, setRailWidth] = useState(() => {
     const stored = Number(localStorage.getItem('diffo:ui:railWidth'))
     return stored > 0 ? clampRail(stored) : RAIL_DEFAULT
@@ -380,6 +409,18 @@ function Review() {
   )
   const [clearOpen, setClearOpen] = useState(false)
   const [shortcutsOpen, setShortcutsOpen] = useState(false)
+  const [paletteOpen, setPaletteOpen] = useState(false)
+  // ⌘K / Ctrl-K, from anywhere — a text box included: it is how you leave one.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && !e.altKey && !e.shiftKey && e.key.toLowerCase() === 'k') {
+        e.preventDefault()
+        setPaletteOpen((open) => !open)
+      }
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [])
   const [inviteOpen, setInviteOpen] = useState(false)
   const [theme, setTheme] = useTheme()
   const [critter, setCritter] = useCritter()
@@ -523,6 +564,14 @@ function Review() {
   const layerSource: LayerSourceKind =
     commitsOffered && sourcePick === 'commits' ? 'commits' : 'steps'
   const commitSource = panel === 'layers' && layerSource === 'commits'
+  // The rail's three tabs over those two pieces of state.
+  const railView: RailView =
+    panel === 'files' || panel === 'threads' ? panel : commitSource ? 'commits' : 'layers'
+  const setRailView = useCallback((view: RailView) => {
+    if (view === 'files' || view === 'threads') return setPanel(view)
+    setPanel('layers')
+    setSourcePick(view === 'commits' ? 'commits' : 'steps')
+  }, [])
   const inLayers = layerMode && panel === 'layers' && !commitSource
   const paneLayerActive = inLayers ? activeLayer : undefined
   useEffect(() => {
@@ -1095,6 +1144,7 @@ function Review() {
   const navChosen = useRef(localStorage.getItem('diffo:ui:navHidden') !== null)
   const toggleNav = useCallback(() => {
     navChosen.current = true
+    foldedForSplit.current = false
     setNavHidden((prev) => !prev)
   }, [])
   // Persist in an effect, not inside the setState updater — updaters must be pure
@@ -1635,6 +1685,8 @@ function Review() {
         setViewMode((m) => (m === 'unified' ? 'split' : 'unified'))
       } else if (action === 'toggle-nav') {
         toggleNav()
+      } else if (action === 'toggle-focus') {
+        setFocusMode((on) => !on)
       } else if (action === 'focus-search') {
         // The box lives on the rail's Files tab — summon both, so `/` works with
         // the rail collapsed or the Threads tab up. The tick lets Nav focus its
@@ -1973,11 +2025,163 @@ function Review() {
     )
   }
   if (!data) return null
+  // Composed only while the palette is up: it reads half the review.
+  const paletteItems: PaletteItem[] = !paletteOpen
+    ? []
+    : [
+        {
+          id: 'a:finish',
+          group: 'Actions',
+          label: data.pr ? 'Submit review' : 'Finish review',
+          run: () => setFinishOpen(true),
+        },
+        {
+          id: 'a:next',
+          group: 'Actions',
+          label: 'Next unreviewed file',
+          kbd: 'n',
+          run: nextUnreviewed,
+        },
+        {
+          id: 'a:layout',
+          group: 'Actions',
+          label: viewMode === 'unified' ? 'Split diff' : 'Unified diff',
+          kbd: 'u',
+          run: () => setViewMode(viewMode === 'unified' ? 'split' : 'unified'),
+        },
+        {
+          id: 'a:focus',
+          group: 'Actions',
+          label: focusMode ? 'Leave focus' : 'Focus: just the page',
+          kbd: 'z',
+          run: () => setFocusMode(!focusMode),
+        },
+        {
+          id: 'a:plan',
+          group: 'Actions',
+          label: `${navHidden ? 'Show' : 'Hide'} the sidebar`,
+          kbd: 'b',
+          run: toggleNav,
+        },
+        {
+          id: 'a:reviewed',
+          group: 'Actions',
+          label: `${filter.hideReviewed ? 'Show' : 'Hide'} reviewed files`,
+          kbd: 'h',
+          run: () => filter.setHideReviewed(!filter.hideReviewed),
+        },
+        {
+          id: 'a:invite',
+          group: 'Actions',
+          label: 'Invite your agent',
+          run: () => setInviteOpen(true),
+        },
+        ...(['light', 'dark', 'system'] as const).map((t) => ({
+          id: `a:theme:${t}`,
+          group: 'Actions' as const,
+          label: `Theme: ${t}`,
+          run: () => setTheme(t),
+        })),
+        {
+          id: 'a:shortcuts',
+          group: 'Actions',
+          label: 'Keyboard shortcuts',
+          kbd: '?',
+          run: () => setShortcutsOpen(true),
+        },
+        ...(layerMode
+          ? shownLayers.map((layer, index) => ({
+              id: `l:${layer.id ?? index}`,
+              group: 'Layers' as const,
+              label: layer.number === null ? layer.title : `${layer.number}. ${layer.title}`,
+              hint: `${layer.files.length} ${layer.files.length === 1 ? 'file' : 'files'}`,
+              run: () => {
+                setRailView('layers')
+                goLayer(index)
+              },
+            }))
+          : []),
+        ...[...items, ...pastItems].map((item) => ({
+          id: `t:${item.thread.id}`,
+          group: 'Threads' as const,
+          label: item.question,
+          ...(item.path ? { hint: item.path } : {}),
+          run: () => openThread(threadTarget(item, item.gone === true)),
+        })),
+        ...allFiles.map((file) => {
+          const cut = file.path.lastIndexOf('/')
+          return {
+            id: `f:${file.path}`,
+            group: 'Files' as const,
+            label: file.path.slice(cut + 1),
+            ...(cut === -1 ? {} : { hint: file.path.slice(0, cut) }),
+            run: () => pickFile(file.path),
+          }
+        }),
+      ]
+  const paneControls: PaneControls = {
+    barElsewhere: true,
+    layer: commitSource ? commitBar : paneLayer,
+    navHidden,
+    onToggleNav: toggleNav,
+    left: fileProgress.total - fileProgress.viewed,
+    total: fileProgress.total,
+    hunksRead: progress.viewed,
+    hunksTotal: progress.total,
+    hunkAt: selectedId ? hunkOrder.findIndex((h) => h.id === selectedId) + 1 : 0,
+    hunkCount: hunkOrder.length,
+    query: filter.query,
+    onClearQuery: () => filter.setQuery(''),
+    hiddenQuery: inLayers || inCommits ? 0 : filter.hiddenQuery,
+    hideReviewed: filter.hideReviewed,
+    onHideReviewed: filter.setHideReviewed,
+    hideTests: filter.hideTests,
+    onHideTests: filter.setHideTests,
+    testCount: filter.testCount,
+    onlyChanged: filter.onlyChanged,
+    onOnlyChanged: filter.setOnlyChanged,
+    changedCount: filter.changedCount,
+    // In layer mode the pane is the layer, and only Hide tests reaches
+    // it — so the foot of the pane counts that layer's hidden tests
+    // and nothing the flat list would have hidden.
+    hiddenTests: inCommits ? 0 : inLayers ? (paneLayerActive?.hidden ?? 0) : filter.hiddenTests,
+    hiddenReviewed: inLayers || inCommits ? 0 : filter.hiddenReviewed,
+    hiddenUnchanged: inLayers || inCommits ? 0 : filter.hiddenUnchanged,
+    pinned: filter.pinned,
+    onSweep: filter.unpin,
+    onShowAll: filter.showAll,
+    scopeLeft: filter.scope.left,
+    scopeTotal: filter.scope.total,
+    excludedTests: filter.scope.excludedTests,
+    excludedUnchanged: filter.scope.excludedUnchanged,
+    onIncludeExcluded: () => {
+      if (filter.scope.excludedTests > 0) filter.setHideTests(false)
+      if (filter.scope.excludedUnchanged > 0) setOnlyChanged(false)
+    },
+    onFinish: () => setFinishOpen(true),
+    stats: data.stats,
+    unsent: openComments,
+    viewMode,
+    onSetViewMode: setViewMode,
+    allCollapsed: collapsed.size >= data.files.length && data.files.length > 0,
+    onToggleCollapseAll: () =>
+      setCollapsed((prev) =>
+        prev.size >= data.files.length ? new Set() : new Set(data.files.map((f) => f.path)),
+      ),
+  }
   return (
     <PrContext.Provider value={pr}>
       <div className="layout">
         <Header
           starAsk={starAsk}
+          bar={<ControlsBar controls={paneControls} docked />}
+          nav={{
+            hidden: navHidden || focusMode,
+            onToggle: () => {
+              if (focusMode) setFocusMode(false)
+              else toggleNav()
+            },
+          }}
           changeset={data}
           agent={{
             presence,
@@ -2021,6 +2225,7 @@ function Review() {
             openComments,
             publicDrafts,
             onFinishReview: () => setFinishOpen(true),
+            onOpenPalette: () => setPaletteOpen(true),
           }}
           settings={{
             theme,
@@ -2035,91 +2240,104 @@ function Review() {
         />
         <div
           ref={bodyRef}
-          className={`body${navHidden ? ' nav-hidden' : ''}${railDragging ? ' rail-dragging' : ''}`}
+          className={`body${navHidden || focusMode ? ' nav-hidden' : ''}${railDragging ? ' rail-dragging' : ''}`}
           style={{ '--rail-w': `${railWidthRef.current}px` } as CSSProperties}
         >
+          {(navHidden || focusMode) && inLayers && (
+            <PlanStrip
+              layers={inLayers ? shownLayers : EMPTY_LAYERS}
+              activeIndex={onOverview ? -1 : activeIndex}
+              onPick={goLayer}
+            />
+          )}
           <LeftPanel
-            tab={panel}
-            onSetTab={setPanel}
+            view={railView}
+            onSetView={setRailView}
             fileCount={data.files.length}
-            wantsYou={wantsYou}
-            threadCount={liveThreads}
-            settledCount={settledThreads}
             layerCount={layerMode ? layerCount : null}
             layersSuggested={
               review?.layersSuggested !== undefined && !review.layersSuggested.answered
             }
+            commitCount={commitsOffered ? realCommits.length : null}
+            threadCount={liveThreads}
+            settledCount={settledThreads}
+            wantsYou={wantsYou}
+            threads={
+              <ThreadRail
+                items={items}
+                pastItems={pastItems}
+                pr={pr !== null}
+                selectedThreadId={openThreadId}
+                totalThreads={review?.threads.length ?? 0}
+                onOpen={(item) => openThread(threadTarget(item, item.gone === true))}
+                onResolve={reviewActions.resolve}
+                onReopen={reviewActions.reopen}
+                onDelete={reviewActions.remove}
+                onClearAll={() => setClearOpen(true)}
+              />
+            }
+            commits={
+              <CommitRail
+                commits={commitList}
+                filesBySha={commitDiffs}
+                activeSha={activeCommit?.sha ?? null}
+                onPick={goCommit}
+                viewed={viewed}
+                threads={threadsByPath}
+                messageThreads={partition.byCommit}
+                loading={commitsQuery.isLoading}
+                error={commitsQuery.error ? (commitsQuery.error as Error).message : undefined}
+                selectedPath={selectedPath}
+                onPickFile={pickFile}
+                onToggleFileViewed={toggleFileViewed}
+                onMarkCommitFiles={markCommitFiles}
+                onClearCommitFiles={clearCommitFiles}
+              />
+            }
             layers={
-              <>
-                {commitsOffered && (
-                  <LayerSource
-                    source={layerSource}
-                    onPick={setSourcePick}
-                    stepCount={layerMode ? layerCount : null}
-                    commitCount={realCommits.length}
-                  />
-                )}
-                {layerSource === 'commits' ? (
-                  <CommitRail
-                    commits={commitList}
-                    filesBySha={commitDiffs}
-                    activeSha={activeCommit?.sha ?? null}
-                    onPick={goCommit}
-                    viewed={viewed}
-                    threads={threadsByPath}
-                    messageThreads={partition.byCommit}
-                    loading={commitsQuery.isLoading}
-                    error={commitsQuery.error ? (commitsQuery.error as Error).message : undefined}
-                    selectedPath={selectedPath}
-                    onPickFile={pickFile}
-                    onToggleFileViewed={toggleFileViewed}
-                    onMarkCommitFiles={markCommitFiles}
-                    onClearCommitFiles={clearCommitFiles}
-                  />
-                ) : layerMode ? (
-                  <LayerRail
-                    layers={shownLayers}
-                    activeIndex={activeIndex}
-                    onPick={goLayer}
-                    viewed={viewed}
-                    guide={guide}
-                    description={description}
-                    overviewActive={onOverview}
-                    onOpenGuide={hasOverview ? goOverview : undefined}
-                    threads={fileThreads}
-                    attention={fileAttention}
-                    changed={sinceLastReview.changed}
-                    selectedPath={selectedPath}
-                    onPickFile={pickFile}
-                    onToggleFileViewed={toggleLayerFile}
-                    onMarkFiles={(paths, layer) => markLayerFiles(paths, layer, true)}
-                    onClearFiles={(paths, layer) => markLayerFiles(paths, layer, false)}
-                    onAskFile={(path) => {
-                      revealFile(path)
-                      setComposeFilePath(path)
-                    }}
-                    onRefresh={agentAttached ? () => requestLayers(standingAsk) : undefined}
-                    onRemove={() => void reviewApi.removeLayers().catch(() => {})}
-                    request={agentAttached ? layersRequest : null}
-                    preset={presetChip}
-                    presets={layerPresets}
-                    note={layersNote}
-                    sharedBy={review?.layers?.shared?.by}
-                    onAsk={agentAttached ? requestLayers : undefined}
-                    onOpenPresets={() => setLayersDialog(true)}
-                  />
-                ) : (
-                  <LayersEmpty
-                    state={layersEmptyState}
-                    onOutline={(ask) => requestLayers(ask)}
-                    onInvite={() => setInviteOpen(true)}
-                    presets={layerPresets}
-                    defaultPreset={presetDefault(presetsPref.settings)}
-                    onManagePresets={() => setLayersDialog(true)}
-                    suggested={suggestedLayers}
-                  />
-                )}
-              </>
+              layerMode ? (
+                <LayerRail
+                  layers={shownLayers}
+                  activeIndex={activeIndex}
+                  onPick={goLayer}
+                  viewed={viewed}
+                  guide={guide}
+                  description={description}
+                  overviewActive={onOverview}
+                  onOpenGuide={hasOverview ? goOverview : undefined}
+                  threads={fileThreads}
+                  attention={fileAttention}
+                  changed={sinceLastReview.changed}
+                  selectedPath={selectedPath}
+                  onPickFile={pickFile}
+                  onToggleFileViewed={toggleLayerFile}
+                  onMarkFiles={(paths, layer) => markLayerFiles(paths, layer, true)}
+                  onClearFiles={(paths, layer) => markLayerFiles(paths, layer, false)}
+                  onAskFile={(path) => {
+                    revealFile(path)
+                    setComposeFilePath(path)
+                  }}
+                  onRefresh={agentAttached ? () => requestLayers(standingAsk) : undefined}
+                  onRemove={() => void reviewApi.removeLayers().catch(() => {})}
+                  request={agentAttached ? layersRequest : null}
+                  preset={presetChip}
+                  presets={layerPresets}
+                  note={layersNote}
+                  sharedBy={review?.layers?.shared?.by}
+                  onAsk={agentAttached ? requestLayers : undefined}
+                  onOpenPresets={() => setLayersDialog(true)}
+                />
+              ) : (
+                <LayersEmpty
+                  state={layersEmptyState}
+                  onOutline={(ask) => requestLayers(ask)}
+                  onInvite={() => setInviteOpen(true)}
+                  presets={layerPresets}
+                  defaultPreset={presetDefault(presetsPref.settings)}
+                  onManagePresets={() => setLayersDialog(true)}
+                  suggested={suggestedLayers}
+                />
+              )
             }
             files={
               <Nav
@@ -2149,20 +2367,6 @@ function Review() {
                 onHideTests={filter.setHideTests}
                 onlyChanged={onlyChanged}
                 onOnlyChanged={setOnlyChanged}
-              />
-            }
-            threads={
-              <ThreadRail
-                items={items}
-                pastItems={pastItems}
-                pr={pr !== null}
-                selectedThreadId={openThreadId}
-                totalThreads={review?.threads.length ?? 0}
-                onOpen={(item) => openThread(threadTarget(item, item.gone === true))}
-                onResolve={reviewActions.resolve}
-                onReopen={reviewActions.reopen}
-                onDelete={reviewActions.remove}
-                onClearAll={() => setClearOpen(true)}
               />
             }
           />
@@ -2201,61 +2405,7 @@ function Review() {
             onLoadMore={loadMoreFiles}
             layer={commitSource ? commitView : layerView}
             overview={!inCommits && inLayers && onOverview}
-            controls={{
-              layer: commitSource ? commitBar : paneLayer,
-              navHidden,
-              onToggleNav: toggleNav,
-              left: fileProgress.total - fileProgress.viewed,
-              total: fileProgress.total,
-              hunksRead: progress.viewed,
-              hunksTotal: progress.total,
-              hunkAt: selectedId ? hunkOrder.findIndex((h) => h.id === selectedId) + 1 : 0,
-              hunkCount: hunkOrder.length,
-              query: filter.query,
-              onClearQuery: () => filter.setQuery(''),
-              hiddenQuery: inLayers || inCommits ? 0 : filter.hiddenQuery,
-              hideReviewed: filter.hideReviewed,
-              onHideReviewed: filter.setHideReviewed,
-              hideTests: filter.hideTests,
-              onHideTests: filter.setHideTests,
-              testCount: filter.testCount,
-              onlyChanged: filter.onlyChanged,
-              onOnlyChanged: filter.setOnlyChanged,
-              changedCount: filter.changedCount,
-              // In layer mode the pane is the layer, and only Hide tests reaches
-              // it — so the foot of the pane counts that layer's hidden tests
-              // and nothing the flat list would have hidden.
-              hiddenTests: inCommits
-                ? 0
-                : inLayers
-                  ? (paneLayerActive?.hidden ?? 0)
-                  : filter.hiddenTests,
-              hiddenReviewed: inLayers || inCommits ? 0 : filter.hiddenReviewed,
-              hiddenUnchanged: inLayers || inCommits ? 0 : filter.hiddenUnchanged,
-              pinned: filter.pinned,
-              onSweep: filter.unpin,
-              onShowAll: filter.showAll,
-              scopeLeft: filter.scope.left,
-              scopeTotal: filter.scope.total,
-              excludedTests: filter.scope.excludedTests,
-              excludedUnchanged: filter.scope.excludedUnchanged,
-              onIncludeExcluded: () => {
-                if (filter.scope.excludedTests > 0) filter.setHideTests(false)
-                if (filter.scope.excludedUnchanged > 0) setOnlyChanged(false)
-              },
-              onFinish: () => setFinishOpen(true),
-              stats: data.stats,
-              unsent: openComments,
-              viewMode,
-              onSetViewMode: setViewMode,
-              allCollapsed: collapsed.size >= data.files.length && data.files.length > 0,
-              onToggleCollapseAll: () =>
-                setCollapsed((prev) =>
-                  prev.size >= data.files.length
-                    ? new Set()
-                    : new Set(data.files.map((f) => f.path)),
-                ),
-            }}
+            controls={paneControls}
             viewed={viewed}
             onToggleFileViewed={toggleViewedHere}
             selectedId={selectedId}
@@ -2325,6 +2475,9 @@ function Review() {
         )}
         <ArtifactViewer />
         {shortcutsOpen && <Shortcuts onClose={() => setShortcutsOpen(false)} />}
+        {paletteOpen && (
+          <CommandPalette items={paletteItems} onClose={() => setPaletteOpen(false)} />
+        )}
         {voiceOpen && (
           <Voice
             voice={voicePref.voice}

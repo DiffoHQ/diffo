@@ -8,25 +8,24 @@ afterEach(cleanup)
 const panel = (over: Partial<Parameters<typeof LeftPanel>[0]> = {}) =>
   render(
     <LeftPanel
-      tab="files"
-      onSetTab={vi.fn()}
+      view="files"
+      onSetView={vi.fn()}
       fileCount={14}
       threadCount={3}
-      wantsYou={0}
       layers={<div data-testid="layers" />}
       files={<div data-testid="files" />}
+      commits={<div data-testid="commits" />}
       threads={<div data-testid="threads" />}
       {...over}
     />,
   )
 
-describe('LeftPanel — the Layers tab', () => {
-  it('is always present, last, and carries no count without layers', () => {
+const tabNames = () => screen.getAllByRole('tab').map((t) => t.textContent?.trim())
+
+describe('LeftPanel — the reading plan', () => {
+  it('leads with Layers, which carries no count without layers', () => {
     panel()
-    const tabs = screen.getAllByRole('tab').map((t) => t.textContent?.trim())
-    expect(tabs[0]).toMatch(/^Files/)
-    expect(tabs[1]).toMatch(/^Threads/)
-    expect(tabs[2]).toBe('Layers')
+    expect(tabNames()).toEqual(['Layers', 'Files 14', 'Threads 3'])
     expect(screen.getByRole('tab', { name: /Layers/ }).querySelector('.tab-n')).toBeNull()
   })
 
@@ -43,15 +42,38 @@ describe('LeftPanel — the Layers tab', () => {
     expect(screen.getByRole('tab', { name: /Layers/ }).querySelector('.tab-dot')).toBeNull()
   })
 
-  it('shows its body when selected, and reports the switch', () => {
-    const onSetTab = vi.fn()
-    const { unmount } = panel({ onSetTab })
+  it('offers Commits only when the branch has some to step through', () => {
+    const { unmount } = panel()
+    expect(screen.queryByRole('tab', { name: /Commits/ })).toBeNull()
+    unmount()
+    panel({ commitCount: 4 })
+    expect(tabNames()).toEqual(['Layers', 'Files 14', 'Threads 3', 'Commits 4'])
+  })
+
+  it('lists the threads in a tab of their own, with a dot when one waits on you', () => {
+    const { unmount } = panel({ view: 'threads' })
+    expect(screen.getByTestId('threads')).toBeTruthy()
+    expect(screen.getByRole('tab', { name: /Threads/ }).querySelector('.tab-dot')).toBeNull()
+    unmount()
+    panel({ wantsYou: 2 })
+    expect(screen.getByRole('tab', { name: /Threads/ }).querySelector('.tab-dot')).toBeTruthy()
+  })
+
+  it('shows one body at a time, and reports the switch', () => {
+    const onSetView = vi.fn()
+    const { unmount } = panel({ onSetView, commitCount: 2 })
+    expect(screen.getByTestId('files')).toBeTruthy()
     expect(screen.queryByTestId('layers')).toBeNull()
     fireEvent.click(screen.getByRole('tab', { name: /Layers/ }))
-    expect(onSetTab).toHaveBeenCalledWith('layers')
+    expect(onSetView).toHaveBeenCalledWith('layers')
+    fireEvent.click(screen.getByRole('tab', { name: /Commits/ }))
+    expect(onSetView).toHaveBeenCalledWith('commits')
     unmount()
-    panel({ tab: 'layers' })
+    panel({ view: 'layers' })
     expect(screen.getByTestId('layers')).toBeTruthy()
     expect(screen.queryByTestId('files')).toBeNull()
+    cleanup()
+    panel({ view: 'commits', commitCount: 2 })
+    expect(screen.getByTestId('commits')).toBeTruthy()
   })
 })

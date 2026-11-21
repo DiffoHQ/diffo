@@ -324,8 +324,8 @@ describe('LeftPanel', () => {
   const panel = (tab: 'files' | 'threads', wantsYou: number, onSetTab = vi.fn()) =>
     render(
       <LeftPanel
-        tab={tab}
-        onSetTab={onSetTab}
+        view={tab}
+        onSetView={onSetTab}
         fileCount={22}
         threadCount={6}
         wantsYou={wantsYou}
@@ -357,8 +357,8 @@ describe('LeftPanel', () => {
   it('accounts for the settled ones the count leaves out', () => {
     render(
       <LeftPanel
-        tab="threads"
-        onSetTab={vi.fn()}
+        view="threads"
+        onSetView={vi.fn()}
         fileCount={22}
         threadCount={3}
         settledCount={8}
