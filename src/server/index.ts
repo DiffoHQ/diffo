@@ -65,7 +65,7 @@ import {
   listCommits,
 } from './commits.js'
 import { DiffoDb, type ServerRecord } from './db.js'
-import { DeliveryQueue, type LayersAsk, type Snapshot } from './delivery.js'
+import { DeliveryQueue, type LayersAsk, QUIET_POLL_LIMIT, type Snapshot } from './delivery.js'
 import {
   getBaseFileBytes,
   getCommitSubject,
@@ -152,6 +152,19 @@ const POLL_HEARTBEAT_MS = 15_000
  */
 const POLL_MAX_MS = 30 * 60_000
 
+/** What a poll says when the reviewer has been quiet for `QUIET_POLL_LIMIT`
+ * polls in a row: stop, and let the user decide whether to keep listening. */
+function quietPayload(limit: number): string {
+  return JSON.stringify({
+    status: 'quiet',
+    message:
+      `the reviewer has sent nothing through the last ${limit} polls, so stop listening instead ` +
+      'of re-polling: end your turn by asking the user, in one short line, whether to keep ' +
+      'listening (yes or no), and re-run `diffo poll` only on a yes. The review stays open and ' +
+      'nothing is lost: anything the reviewer sends meanwhile is held and arrives on the next poll.',
+  })
+}
+
 /** How long after listening the daemon starts the machine-wide database sweep:
  * past the first page load, which is what the sweep must never delay. */
 const MAINTENANCE_DELAY_MS = 5_000
@@ -169,6 +182,8 @@ export interface ServerContext {
   clientDir: string
   pollHeartbeatMs?: number
   pollMaxMs?: number
+  /** Overrides `QUIET_POLL_LIMIT` (tests). */
+  pollQuietLimit?: number
   onShutdownRequest?: () => void
   onListenError?: (err: NodeJS.ErrnoException) => void
   idle?: IdleMonitor
@@ -1508,6 +1523,10 @@ export function createApp(
     // re-polling through a long review never has to repeat itself.
     const title = normalizeTitle(c.req.query('title'))
     if (title) review.setTitle(title)
+    // Counted at the start, not at the timeout: a harness that cuts polls off
+    // early never sees a timeout, and those are the polls that run all night.
+    const quietLimit = ctx.pollQuietLimit ?? QUIET_POLL_LIMIT
+    if (queue.beginPoll(quietLimit) === 'quiet') return c.body(quietPayload(quietLimit))
     const heartbeatMs = ctx.pollHeartbeatMs ?? POLL_HEARTBEAT_MS
     return stream(c, async (s) => {
       let aborted = false
@@ -1547,6 +1566,10 @@ export function createApp(
           if (aborted) return
           if (!settled) {
             release()
+            if (queue.pollTimedOutQuiet(quietLimit)) {
+              await s.write(quietPayload(quietLimit))
+              return
+            }
             await s.write(
               JSON.stringify({
                 status: 'timeout',

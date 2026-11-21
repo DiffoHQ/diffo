@@ -1161,3 +1161,60 @@ describe('DeliveryQueue — the layers request', () => {
     expect(q.presence()).toBe('waiting')
   })
 })
+
+describe('DeliveryQueue quiet polls', () => {
+  it('after `limit` polls with nothing from the reviewer, the next one is told to stop', () => {
+    const q = new DeliveryQueue()
+    for (let i = 0; i < 3; i++) expect(q.beginPoll(3)).toBe('listen')
+    expect(q.beginPoll(3)).toBe('quiet')
+    // The streak starts over: the re-poll the user said yes to listens again.
+    expect(q.beginPoll(3)).toBe('listen')
+  })
+
+  it('the poll that times out as the last of the streak is the one that stops', () => {
+    const q = new DeliveryQueue()
+    q.beginPoll(2)
+    expect(q.pollTimedOutQuiet(2)).toBe(false)
+    q.beginPoll(2)
+    expect(q.pollTimedOutQuiet(2)).toBe(true)
+    expect(q.presenceDetail()).toMatchObject({ state: 'waiting', reason: 'disconnected' })
+    expect(q.beginPoll(2)).toBe('listen')
+  })
+
+  it('anything delivered resets the streak', () => {
+    const q = new DeliveryQueue()
+    q.beginPoll(2)
+    q.beginPoll(2)
+    q.enqueueThreads(['t1'])
+    q.confirm(q.take()!, ['t1'])
+    expect(q.beginPoll(2)).toBe('listen')
+    expect(q.beginPoll(2)).toBe('listen')
+    expect(q.beginPoll(2)).toBe('quiet')
+  })
+
+  it('a quiet stop releases a cut-off poll still attached, so feedback waits for the next', async () => {
+    const q = new DeliveryQueue()
+    q.beginPoll(1)
+    const lingering = q.attach()
+    expect(q.beginPoll(1)).toBe('quiet')
+    expect(await lingering).toBe('superseded')
+    expect(q.hasListener()).toBe(false)
+  })
+
+  it('feedback already waiting is never held back by the limit', () => {
+    const q = new DeliveryQueue()
+    q.beginPoll(1)
+    q.enqueueThreads(['t1'])
+    expect(q.beginPoll(1)).toBe('listen')
+  })
+
+  it('a different session starts its own streak', () => {
+    const q = new DeliveryQueue(undefined, undefined, { isAlive: () => true })
+    q.claimSession(1234)
+    q.beginPoll(1)
+    q.claimSession(5678)
+    expect(q.beginPoll(1)).toBe('listen')
+    q.claimSession(5678)
+    expect(q.beginPoll(1)).toBe('quiet')
+  })
+})

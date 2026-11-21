@@ -44,6 +44,12 @@ export const BATCH_SETTLE_MS = 2_000
  * stop, and nothing else ends the wait: no re-poll, no reply clock. */
 export const OUTLINE_STALL_MS = 3 * 60_000
 
+/** Polls in a row that may end with nothing from the reviewer (timed out, or
+ * cut off by the agent's harness) before the agent is told to stop and ask
+ * the user whether to keep listening: an unattended agent re-polling all
+ * night spends tokens on nobody. */
+export const QUIET_POLL_LIMIT = 20
+
 export type BatchCloseReason = 'repoll' | 'ended' | 'gone'
 
 export interface BatchClosed {
@@ -170,6 +176,9 @@ export class DeliveryQueue {
 
   private owner: number | null = null
 
+  /** Polls started since the reviewer last sent anything (see `QUIET_POLL_LIMIT`). */
+  private quietPolls = 0
+
   /** The session pid that last received the full reply protocol. Later
    * deliveries to the same session carry the compact form — the full text is
    * the loop's largest recurring token cost. A takeover (new pid) or an
@@ -270,6 +279,8 @@ export class DeliveryQueue {
   claimSession(pid: number | null): number | null {
     const claimant = DeliveryQueue.clean(pid)
     const previous = this.ownerConnected() ? this.owner : null
+    // A different session is a fresh listener: the quiet streak was not its own.
+    if (claimant !== this.owner) this.quietPolls = 0
     this.owner = claimant
     return previous !== null && previous !== claimant ? previous : null
   }
@@ -705,6 +716,41 @@ export class DeliveryQueue {
     })
   }
 
+  /**
+   * A poll is starting. 'quiet' when the last `limit` polls all ended with
+   * nothing from the reviewer and nothing is waiting now: the agent should stop
+   * and ask the user. Answering 'quiet' starts the streak over, so the re-poll
+   * the user says yes to listens again.
+   */
+  beginPoll(limit: number = QUIET_POLL_LIMIT): 'listen' | 'quiet' {
+    if (!this.hasPending() && this.quietPolls >= limit) {
+      this.wentQuiet()
+      return 'quiet'
+    }
+    this.quietPolls++
+    return 'listen'
+  }
+
+  /** A poll ran to its time cap empty. True when it was the last one the
+   * streak allows: say 'quiet' now instead of sending the agent back. */
+  pollTimedOutQuiet(limit: number = QUIET_POLL_LIMIT): boolean {
+    if (this.quietPolls < limit) return false
+    this.wentQuiet()
+    return true
+  }
+
+  /** The agent was told to stop and ask the user: it is not coming back on its
+   * own, so the reviewer sees it gone rather than "re-polling" for good. */
+  private wentQuiet(): void {
+    this.quietPolls = 0
+    // A cut-off poll whose process lingers is still attached; feedback must not
+    // reach it now that nobody reads it — it waits for the next real poll.
+    this.releaseWaiter('superseded')
+    this.clearGrace()
+    this.lastDetach = 'disconnected'
+    this.notify()
+  }
+
   private releaseWaiter(outcome: AttachOutcome | null): void {
     const waiter = this.waiter
     this.waiter = null
@@ -785,6 +831,7 @@ export class DeliveryQueue {
   /** The poll response for this snapshot was fully written — NOW it counts as
    * delivered. Clears exactly what the snapshot covered. */
   confirm(snapshot: Snapshot, deliveredThreadIds: string[]): void {
+    this.quietPolls = 0
     if (snapshot.kind === 'layers') {
       const bucket = this.bucket()
       bucket.layers = null

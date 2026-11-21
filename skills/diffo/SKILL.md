@@ -98,7 +98,8 @@ details travel with the CLI itself. Three steps:
   `&`, `disown`, or a fire-and-forget process: a payload that reaches a
   process nobody is listening to never reaches you. If a poll is killed or
   times out, just re-run it — nothing the reviewer sent is lost: it is held
-  in the review itself, so it outlives the poll, and the server too.
+  in the review itself, so it outlives the poll, and the server too. Status
+  `quiet` is the exception: stop and ask the user whether to keep listening.
 - While attached, make no edits nobody asked for — the diff moves under the
   reviewer's reading position. Edits the user asks for in chat are theirs:
   do them, attached; attaching never waits for chat work. Replies belong in review threads

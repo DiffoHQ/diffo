@@ -2,7 +2,7 @@ import { execFileSync } from 'node:child_process'
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { homedir, tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
-import { afterEach, describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { type OutgoingThread, type ReviewThread, undeliveredThreadIds } from '../shared/review.js'
 import { DiffoDb } from './db.js'
 import { DeliveryQueue } from './delivery.js'
@@ -44,13 +44,25 @@ function makeDb(root: string): DiffoDb {
   return new DiffoDb(join(dbDir, 'diffo.db'))
 }
 
-function setup(pollHeartbeatMs?: number, batchSettleMs?: number, pollMaxMs?: number) {
+function setup(
+  pollHeartbeatMs?: number,
+  batchSettleMs?: number,
+  pollMaxMs?: number,
+  pollQuietLimit?: number,
+) {
   const root = tempRepo()
   const store = new ChangesetStore(root, { kind: 'working-tree' })
   const review = new ReviewStore(root, makeDb(root), { kind: 'working-tree' })
   const queue = new DeliveryQueue(undefined, undefined, {}, batchSettleMs)
   const app = createApp(
-    { root, spec: { kind: 'working-tree' }, clientDir: '/nope', pollHeartbeatMs, pollMaxMs },
+    {
+      root,
+      spec: { kind: 'working-tree' },
+      clientDir: '/nope',
+      pollHeartbeatMs,
+      pollMaxMs,
+      pollQuietLimit,
+    },
     store,
     review,
     queue,
@@ -1503,6 +1515,36 @@ describe('the poll window', () => {
     expect(queue.hasListener()).toBe(false)
     // Sent away, not gone: it re-polls next, and the reviewer keeps an agent meanwhile.
     expect(queue.presenceDetail()).toMatchObject({ state: 'working', reason: 'repolling' })
+  })
+
+  it('after the quiet limit, the timing-out poll tells the agent to stop and ask the user', async () => {
+    const { app, queue } = setup(5, undefined, 20, 2)
+    const poll = async () =>
+      pollResult(await app.request('/api/agent/poll', { headers: { 'x-diffo-agent': 'cli' } }))
+
+    expect((await poll()).status).toBe('timeout')
+    const quiet = await poll()
+    expect(quiet.status).toBe('quiet')
+    expect(String(quiet.message)).toMatch(/asking the user/)
+    expect(String(quiet.message)).toMatch(/only on a yes/)
+    // Not coming back on its own: the reviewer is not told it is re-polling.
+    expect(queue.presenceDetail()).toMatchObject({ state: 'waiting', reason: 'disconnected' })
+    // The user said yes: the re-poll listens again.
+    expect((await poll()).status).toBe('timeout')
+  })
+
+  it('polls a harness cut off count too: the next one stops at once', async () => {
+    const { app, queue } = setup(5, undefined, 5_000, 2)
+    for (let i = 0; i < 2; i++) {
+      const res = await app.request('/api/agent/poll', { headers: { 'x-diffo-agent': 'cli' } })
+      const reader = res.body!.getReader()
+      await reader.read() // a heartbeat: the poll is live
+      await reader.cancel() // and the harness kills it, no timeout ever written
+      await vi.waitFor(() => expect(queue.hasListener()).toBe(false))
+    }
+    const res = await app.request('/api/agent/poll', { headers: { 'x-diffo-agent': 'cli' } })
+    expect((await pollResult(res)).status).toBe('quiet')
+    expect(queue.hasListener()).toBe(false)
   })
 
   it('delivers feedback that arrives inside the window, window untouched', async () => {

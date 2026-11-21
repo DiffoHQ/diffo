@@ -181,7 +181,9 @@ the connection alive; a single poll is capped at **30 minutes**.
 ```
 
 `status` is one of `feedback` (the only one that carries work), `timeout`,
-`superseded` (another session took the review), or `ended`. A `feedback`
+`quiet` (twenty polls in a row brought nothing from the reviewer: stop and ask the
+user whether to keep listening), `superseded` (another session took the
+review), or `ended`. A `feedback`
 payload's `kind` is `threads` (individual sends), `finish` (the reviewer is done
 reading), `layers` (the reviewer asked for layers; see
 [`diffo layers`](#diffo-layers)), or `cleared` (they started the review over).
