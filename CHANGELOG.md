@@ -9,6 +9,31 @@ Until 1.0, minor versions may break things. When they do, the entry says how to 
 
 Nothing yet.
 
+## [0.30.0] — 2026-11-21
+
+### Added
+
+- **A command palette.** `⌘K` (or the search button in the top bar) jumps to an
+  action, layer, thread or file by typing part of its name.
+- **Focus.** `z` hides the sidebar and gives the page the full width; `z` again
+  brings it back.
+
+### Changed
+
+- **A new look.** A warm palette in both themes, with Geist, Geist Mono and
+  Newsreader bundled in place of the system fonts. The page you read is a card
+  on a canvas, and a layer opens with its title and summary set in a serif.
+- **One top bar.** Progress, the layer pager and the sidebar toggle moved into
+  the header. Unified / split, collapse all and the hide filters are in a
+  **View** menu there; `u` and `h` still work.
+- **Commits is its own tab.** The rail reads Layers, Files, Threads, Commits;
+  the Steps / Commits switch under Layers is gone.
+- **A hidden sidebar leaves a strip** of layer numbers, and a split diff folds
+  the sidebar on windows under 1500px.
+- **Finish review is no longer green.** The primary button is ink; green means
+  only added lines and what you have read.
+- **One-line thread previews are plain text**, without Markdown marks.
+
 ## [0.29.0] — 2026-11-21
 
 ### Added
@@ -1064,7 +1089,8 @@ shipped in it, written as a starting point rather than a history.
 - **Guided reading** — splitting a large change into an ordered sequence of small,
   reviewable sections — is designed but not built.
 
-[Unreleased]: https://github.com/DiffoHQ/diffo/compare/v0.29.0...HEAD
+[Unreleased]: https://github.com/DiffoHQ/diffo/compare/v0.30.0...HEAD
+[0.30.0]: https://github.com/DiffoHQ/diffo/compare/v0.29.0...v0.30.0
 [0.29.0]: https://github.com/DiffoHQ/diffo/compare/v0.28.0...v0.29.0
 [0.28.0]: https://github.com/DiffoHQ/diffo/compare/v0.27.0...v0.28.0
 [0.27.0]: https://github.com/DiffoHQ/diffo/compare/v0.26.0...v0.27.0
