@@ -7,6 +7,10 @@ Until 1.0, minor versions may break things. When they do, the entry says how to 
 
 ## [Unreleased]
 
+Nothing yet.
+
+## [0.31.0] — 2026-11-22
+
 ### Changed
 
 - **Layer titles and summaries are set in Geist.** The serif made a layer read
@@ -1093,7 +1097,8 @@ shipped in it, written as a starting point rather than a history.
 - **Guided reading** — splitting a large change into an ordered sequence of small,
   reviewable sections — is designed but not built.
 
-[Unreleased]: https://github.com/DiffoHQ/diffo/compare/v0.30.0...HEAD
+[Unreleased]: https://github.com/DiffoHQ/diffo/compare/v0.31.0...HEAD
+[0.31.0]: https://github.com/DiffoHQ/diffo/compare/v0.30.0...v0.31.0
 [0.30.0]: https://github.com/DiffoHQ/diffo/compare/v0.29.0...v0.30.0
 [0.29.0]: https://github.com/DiffoHQ/diffo/compare/v0.28.0...v0.29.0
 [0.28.0]: https://github.com/DiffoHQ/diffo/compare/v0.27.0...v0.28.0
