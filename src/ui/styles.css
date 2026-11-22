@@ -2797,10 +2797,11 @@ body {
 /* ---------- the file card ---------- */
 
 .file-section {
-  /* A band across the page, edge to edge, not a card inside the card. */
-  margin: 0 calc(-1 * var(--s-8)) var(--s-6);
-  border: solid var(--hair);
-  border-width: 1px 0;
+  /* One file, one card: a border all the way round and a tinted header, with
+     clear air to the next, so where a file starts and ends is never a guess. */
+  margin-bottom: var(--s-7);
+  border: 1px solid var(--hair);
+  border-radius: var(--r);
   /* `clip`, never `hidden`: hidden makes this box the sticky containing block, which
    * silently disables the file header's stickiness. clip keeps the rounded-corner
    * clipping without creating a scroll container. */
@@ -2818,8 +2819,8 @@ body {
   align-items: center;
   gap: var(--s-3);
   min-height: 42px;
-  padding: 5px var(--s-5) 5px var(--s-4);
-  background: var(--paper);
+  padding: 5px var(--s-3) 5px var(--s-2);
+  background: var(--fill);
   border-bottom: 1px solid var(--hair);
   position: sticky;
   top: 0;
