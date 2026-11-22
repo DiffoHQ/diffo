@@ -3,8 +3,8 @@ import type { RailView } from '../threads.js'
 
 /**
  * The plan: the left of the three zones. It answers one question — in what
- * order am I reading this change? — the agent's layers, the flat
- * file tree, or git's commits — and holds the list of the review's threads,
+ * order am I reading this change? — by layers (the agent's
+ * steps, or git's commits) or by the flat file tree — and holds the list of the review's threads,
  * which themselves sit inline in the diff, on the code they are about.
  */
 export function LeftPanel({
@@ -13,13 +13,11 @@ export function LeftPanel({
   fileCount,
   layerCount = null,
   layersSuggested = false,
-  commitCount = null,
   threadCount,
   settledCount = 0,
   wantsYou = 0,
   layers,
   files,
-  commits,
   threads,
 }: {
   view: RailView
@@ -30,9 +28,6 @@ export function LeftPanel({
   layerCount?: number | null
   /** The agent flagged that this read benefits from layers: an amber dot. */
   layersSuggested?: boolean
-  /** Commits on the branch under review; null when there are none to step
-   * through, and the tab is not offered. */
-  commitCount?: number | null
   /** Threads still going; the settled ones are in the tab's hover. */
   threadCount: number
   settledCount?: number
@@ -40,7 +35,6 @@ export function LeftPanel({
   wantsYou?: number
   layers?: ReactNode
   files: ReactNode
-  commits?: ReactNode
   threads: ReactNode
 }) {
   return (
@@ -85,26 +79,8 @@ export function LeftPanel({
           {wantsYou > 0 && <span className="tab-dot" aria-hidden="true" />}
           Threads <span className="tab-n">{threadCount}</span>
         </button>
-        {commitCount !== null && (
-          <button
-            type="button"
-            role="tab"
-            className="tab"
-            aria-selected={view === 'commits'}
-            onClick={() => onSetView('commits')}
-            title="The branch's commits, oldest first, each against its parent"
-          >
-            Commits <span className="tab-n">{commitCount}</span>
-          </button>
-        )}
       </div>
-      {view === 'layers'
-        ? layers
-        : view === 'commits'
-          ? commits
-          : view === 'threads'
-            ? threads
-            : files}
+      {view === 'layers' ? layers : view === 'threads' ? threads : files}
     </nav>
   )
 }

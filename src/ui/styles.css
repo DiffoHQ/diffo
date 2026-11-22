@@ -975,8 +975,8 @@ body {
 
 .tabs {
   display: flex;
-  gap: 0;
-  margin: 4px 0 8px;
+  gap: 2px;
+  margin: 4px 4px 8px;
   padding: 2px;
   background: var(--fill-2);
   border-radius: var(--r-pill);
@@ -993,13 +993,13 @@ body {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: 3px;
-  padding: 4px 2px;
+  gap: 5px;
+  padding: 4px 6px;
   border: none;
   border-radius: var(--r-sm);
   background: none;
   font: inherit;
-  font-size: var(--t-12);
+  font-size: var(--t-13);
   font-weight: 500;
   color: var(--ink-2);
   cursor: pointer;
@@ -1292,7 +1292,8 @@ body {
 }
 
 /* A small segmented control: one segment is always lit. The layer card's
-   reading-order switch uses it. */
+   reading-order switch uses it, and so does the Layers tab's Steps / Commits
+   switch, in the quieter form below. */
 .src-seg {
   display: flex;
   gap: 2px;
@@ -1336,6 +1337,29 @@ body {
 .src-chip:focus-visible {
   outline: 2px solid var(--acc);
   outline-offset: -1px;
+}
+
+/* In the rail the switch sits right under the tabs, so it is words, not a
+   second box: two boxed controls stacked read as two rows of tabs. */
+.src-seg-rail {
+  gap: var(--s-5);
+  margin: 0 12px 6px;
+  padding: 0;
+  background: none;
+}
+
+.src-seg-rail .src-chip {
+  flex: none;
+  height: 22px;
+  padding: 0;
+  border-radius: 0;
+  border-bottom: 2px solid transparent;
+}
+
+.src-seg-rail .src-chip[aria-checked="true"] {
+  background: none;
+  box-shadow: none;
+  border-bottom-color: var(--ink);
 }
 
 .rail-scroll {

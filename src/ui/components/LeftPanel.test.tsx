@@ -14,7 +14,6 @@ const panel = (over: Partial<Parameters<typeof LeftPanel>[0]> = {}) =>
       threadCount={3}
       layers={<div data-testid="layers" />}
       files={<div data-testid="files" />}
-      commits={<div data-testid="commits" />}
       threads={<div data-testid="threads" />}
       {...over}
     />,
@@ -42,12 +41,10 @@ describe('LeftPanel — the reading plan', () => {
     expect(screen.getByRole('tab', { name: /Layers/ }).querySelector('.tab-dot')).toBeNull()
   })
 
-  it('offers Commits only when the branch has some to step through', () => {
-    const { unmount } = panel()
+  it('is three tabs, never more: commits are a switch inside Layers', () => {
+    panel({ layerCount: 4 })
+    expect(tabNames()).toEqual(['Layers 4', 'Files 14', 'Threads 3'])
     expect(screen.queryByRole('tab', { name: /Commits/ })).toBeNull()
-    unmount()
-    panel({ commitCount: 4 })
-    expect(tabNames()).toEqual(['Layers', 'Files 14', 'Threads 3', 'Commits 4'])
   })
 
   it('lists the threads in a tab of their own, with a dot when one waits on you', () => {
@@ -61,19 +58,14 @@ describe('LeftPanel — the reading plan', () => {
 
   it('shows one body at a time, and reports the switch', () => {
     const onSetView = vi.fn()
-    const { unmount } = panel({ onSetView, commitCount: 2 })
+    const { unmount } = panel({ onSetView })
     expect(screen.getByTestId('files')).toBeTruthy()
     expect(screen.queryByTestId('layers')).toBeNull()
     fireEvent.click(screen.getByRole('tab', { name: /Layers/ }))
     expect(onSetView).toHaveBeenCalledWith('layers')
-    fireEvent.click(screen.getByRole('tab', { name: /Commits/ }))
-    expect(onSetView).toHaveBeenCalledWith('commits')
     unmount()
     panel({ view: 'layers' })
     expect(screen.getByTestId('layers')).toBeTruthy()
     expect(screen.queryByTestId('files')).toBeNull()
-    cleanup()
-    panel({ view: 'commits', commitCount: 2 })
-    expect(screen.getByTestId('commits')).toBeTruthy()
   })
 })

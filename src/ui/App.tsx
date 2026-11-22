@@ -42,6 +42,7 @@ import { Header } from './components/Header.js'
 import { Icon, IconSprite } from './components/Icon.js'
 import { InviteAgent } from './components/InviteAgent.js'
 import { LayerRail } from './components/LayerRail.js'
+import { LayerSource } from './components/LayerSource.js'
 import type { LayersAskInput } from './components/LayersAsk.js'
 import { LayersEmpty, type LayersEmptyState } from './components/LayersEmpty.js'
 import { LayersPresets } from './components/LayersPresets.js'
@@ -110,7 +111,6 @@ import {
   isUnsent,
   type LayerSourceKind,
   type PanelTab,
-  type RailView,
   shortAnchor,
   type ThreadItem,
   threadItems,
@@ -564,14 +564,6 @@ function Review() {
   const layerSource: LayerSourceKind =
     commitsOffered && sourcePick === 'commits' ? 'commits' : 'steps'
   const commitSource = panel === 'layers' && layerSource === 'commits'
-  // The rail's three tabs over those two pieces of state.
-  const railView: RailView =
-    panel === 'files' || panel === 'threads' ? panel : commitSource ? 'commits' : 'layers'
-  const setRailView = useCallback((view: RailView) => {
-    if (view === 'files' || view === 'threads') return setPanel(view)
-    setPanel('layers')
-    setSourcePick(view === 'commits' ? 'commits' : 'steps')
-  }, [])
   const inLayers = layerMode && panel === 'layers' && !commitSource
   const paneLayerActive = inLayers ? activeLayer : undefined
   useEffect(() => {
@@ -2096,7 +2088,8 @@ function Review() {
               label: layer.number === null ? layer.title : `${layer.number}. ${layer.title}`,
               hint: `${layer.files.length} ${layer.files.length === 1 ? 'file' : 'files'}`,
               run: () => {
-                setRailView('layers')
+                setPanel('layers')
+                setSourcePick('steps')
                 goLayer(index)
               },
             }))
@@ -2251,14 +2244,13 @@ function Review() {
             />
           )}
           <LeftPanel
-            view={railView}
-            onSetView={setRailView}
+            view={panel}
+            onSetView={setPanel}
             fileCount={data.files.length}
             layerCount={layerMode ? layerCount : null}
             layersSuggested={
               review?.layersSuggested !== undefined && !review.layersSuggested.answered
             }
-            commitCount={commitsOffered ? realCommits.length : null}
             threadCount={liveThreads}
             settledCount={settledThreads}
             wantsYou={wantsYou}
@@ -2276,68 +2268,77 @@ function Review() {
                 onClearAll={() => setClearOpen(true)}
               />
             }
-            commits={
-              <CommitRail
-                commits={commitList}
-                filesBySha={commitDiffs}
-                activeSha={activeCommit?.sha ?? null}
-                onPick={goCommit}
-                viewed={viewed}
-                threads={threadsByPath}
-                messageThreads={partition.byCommit}
-                loading={commitsQuery.isLoading}
-                error={commitsQuery.error ? (commitsQuery.error as Error).message : undefined}
-                selectedPath={selectedPath}
-                onPickFile={pickFile}
-                onToggleFileViewed={toggleFileViewed}
-                onMarkCommitFiles={markCommitFiles}
-                onClearCommitFiles={clearCommitFiles}
-              />
-            }
             layers={
-              layerMode ? (
-                <LayerRail
-                  layers={shownLayers}
-                  activeIndex={activeIndex}
-                  onPick={goLayer}
-                  viewed={viewed}
-                  guide={guide}
-                  description={description}
-                  overviewActive={onOverview}
-                  onOpenGuide={hasOverview ? goOverview : undefined}
-                  threads={fileThreads}
-                  attention={fileAttention}
-                  changed={sinceLastReview.changed}
-                  selectedPath={selectedPath}
-                  onPickFile={pickFile}
-                  onToggleFileViewed={toggleLayerFile}
-                  onMarkFiles={(paths, layer) => markLayerFiles(paths, layer, true)}
-                  onClearFiles={(paths, layer) => markLayerFiles(paths, layer, false)}
-                  onAskFile={(path) => {
-                    revealFile(path)
-                    setComposeFilePath(path)
-                  }}
-                  onRefresh={agentAttached ? () => requestLayers(standingAsk) : undefined}
-                  onRemove={() => void reviewApi.removeLayers().catch(() => {})}
-                  request={agentAttached ? layersRequest : null}
-                  preset={presetChip}
-                  presets={layerPresets}
-                  note={layersNote}
-                  sharedBy={review?.layers?.shared?.by}
-                  onAsk={agentAttached ? requestLayers : undefined}
-                  onOpenPresets={() => setLayersDialog(true)}
-                />
-              ) : (
-                <LayersEmpty
-                  state={layersEmptyState}
-                  onOutline={(ask) => requestLayers(ask)}
-                  onInvite={() => setInviteOpen(true)}
-                  presets={layerPresets}
-                  defaultPreset={presetDefault(presetsPref.settings)}
-                  onManagePresets={() => setLayersDialog(true)}
-                  suggested={suggestedLayers}
-                />
-              )
+              <>
+                {commitsOffered && (
+                  <LayerSource
+                    source={layerSource}
+                    onPick={setSourcePick}
+                    stepCount={layerMode ? layerCount : null}
+                    commitCount={realCommits.length}
+                  />
+                )}
+                {layerSource === 'commits' ? (
+                  <CommitRail
+                    commits={commitList}
+                    filesBySha={commitDiffs}
+                    activeSha={activeCommit?.sha ?? null}
+                    onPick={goCommit}
+                    viewed={viewed}
+                    threads={threadsByPath}
+                    messageThreads={partition.byCommit}
+                    loading={commitsQuery.isLoading}
+                    error={commitsQuery.error ? (commitsQuery.error as Error).message : undefined}
+                    selectedPath={selectedPath}
+                    onPickFile={pickFile}
+                    onToggleFileViewed={toggleFileViewed}
+                    onMarkCommitFiles={markCommitFiles}
+                    onClearCommitFiles={clearCommitFiles}
+                  />
+                ) : layerMode ? (
+                  <LayerRail
+                    layers={shownLayers}
+                    activeIndex={activeIndex}
+                    onPick={goLayer}
+                    viewed={viewed}
+                    guide={guide}
+                    description={description}
+                    overviewActive={onOverview}
+                    onOpenGuide={hasOverview ? goOverview : undefined}
+                    threads={fileThreads}
+                    attention={fileAttention}
+                    changed={sinceLastReview.changed}
+                    selectedPath={selectedPath}
+                    onPickFile={pickFile}
+                    onToggleFileViewed={toggleLayerFile}
+                    onMarkFiles={(paths, layer) => markLayerFiles(paths, layer, true)}
+                    onClearFiles={(paths, layer) => markLayerFiles(paths, layer, false)}
+                    onAskFile={(path) => {
+                      revealFile(path)
+                      setComposeFilePath(path)
+                    }}
+                    onRefresh={agentAttached ? () => requestLayers(standingAsk) : undefined}
+                    onRemove={() => void reviewApi.removeLayers().catch(() => {})}
+                    request={agentAttached ? layersRequest : null}
+                    preset={presetChip}
+                    presets={layerPresets}
+                    note={layersNote}
+                    sharedBy={review?.layers?.shared?.by}
+                    onAsk={agentAttached ? requestLayers : undefined}
+                    onOpenPresets={() => setLayersDialog(true)}
+                  />
+                ) : (
+                  <LayersEmpty
+                    state={layersEmptyState}
+                    onOutline={(ask) => requestLayers(ask)}
+                    onInvite={() => setInviteOpen(true)}
+                    presets={layerPresets}
+                    defaultPreset={presetDefault(presetsPref.settings)}
+                    onManagePresets={() => setLayersDialog(true)}
+                    suggested={suggestedLayers}
+                  />
+                )}
+              </>
             }
             files={
               <Nav
