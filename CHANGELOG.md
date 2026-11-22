@@ -7,7 +7,14 @@ Until 1.0, minor versions may break things. When they do, the entry says how to 
 
 ## [Unreleased]
 
-Nothing yet.
+### Changed
+
+- **Each file is its own card again.** A border all the way round, a tinted
+  header and more space between files, so where one file ends and the next
+  starts is easy to see.
+- **The rail is back to three tabs.** Layers, Files, Threads. Commits is a
+  **Steps / Commits** switch inside the Layers tab, shown when the branch has
+  commits.
 
 ## [0.31.0] — 2026-11-22
 

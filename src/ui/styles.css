@@ -975,8 +975,8 @@ body {
 
 .tabs {
   display: flex;
-  gap: 0;
-  margin: 4px 0 8px;
+  gap: 2px;
+  margin: 4px 4px 8px;
   padding: 2px;
   background: var(--fill-2);
   border-radius: var(--r-pill);
@@ -993,13 +993,13 @@ body {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: 3px;
-  padding: 4px 2px;
+  gap: 5px;
+  padding: 4px 6px;
   border: none;
   border-radius: var(--r-sm);
   background: none;
   font: inherit;
-  font-size: var(--t-12);
+  font-size: var(--t-13);
   font-weight: 500;
   color: var(--ink-2);
   cursor: pointer;
@@ -1292,7 +1292,8 @@ body {
 }
 
 /* A small segmented control: one segment is always lit. The layer card's
-   reading-order switch uses it. */
+   reading-order switch uses it, and so does the Layers tab's Steps / Commits
+   switch, in the quieter form below. */
 .src-seg {
   display: flex;
   gap: 2px;
@@ -1336,6 +1337,29 @@ body {
 .src-chip:focus-visible {
   outline: 2px solid var(--acc);
   outline-offset: -1px;
+}
+
+/* In the rail the switch sits right under the tabs, so it is words, not a
+   second box: two boxed controls stacked read as two rows of tabs. */
+.src-seg-rail {
+  gap: var(--s-5);
+  margin: 0 12px 6px;
+  padding: 0;
+  background: none;
+}
+
+.src-seg-rail .src-chip {
+  flex: none;
+  height: 22px;
+  padding: 0;
+  border-radius: 0;
+  border-bottom: 2px solid transparent;
+}
+
+.src-seg-rail .src-chip[aria-checked="true"] {
+  background: none;
+  box-shadow: none;
+  border-bottom-color: var(--ink);
 }
 
 .rail-scroll {
@@ -2797,10 +2821,11 @@ body {
 /* ---------- the file card ---------- */
 
 .file-section {
-  /* A band across the page, edge to edge, not a card inside the card. */
-  margin: 0 calc(-1 * var(--s-8)) var(--s-6);
-  border: solid var(--hair);
-  border-width: 1px 0;
+  /* One file, one card: a border all the way round and a tinted header, with
+     clear air to the next, so where a file starts and ends is never a guess. */
+  margin-bottom: var(--s-7);
+  border: 1px solid var(--hair);
+  border-radius: var(--r);
   /* `clip`, never `hidden`: hidden makes this box the sticky containing block, which
    * silently disables the file header's stickiness. clip keeps the rounded-corner
    * clipping without creating a scroll container. */
@@ -2818,8 +2843,8 @@ body {
   align-items: center;
   gap: var(--s-3);
   min-height: 42px;
-  padding: 5px var(--s-5) 5px var(--s-4);
-  background: var(--paper);
+  padding: 5px var(--s-3) 5px var(--s-2);
+  background: var(--fill);
   border-bottom: 1px solid var(--hair);
   position: sticky;
   top: 0;
@@ -10381,6 +10406,13 @@ span.elsewhere-go {
   min-width: 0;
 }
 
+/* With the Steps / Commits switch in the row, the switch takes the row and
+   what the layers follow is a quiet name at its end. */
+.lr-head-row > .src-seg-rail {
+  flex: none;
+  margin: 0 auto 0 var(--s-3);
+}
+
 /* The title takes the row; the "more" and the fold keep to its end. */
 .lr-head-row > .lr-preset,
 .lr-head-row > .lr-title-plain {
@@ -10620,6 +10652,22 @@ span.elsewhere-go {
   margin-left: auto;
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
+}
+
+/* The list's heading when the head row is the Steps / Commits switch's: what
+   the layers follow, opening to why. */
+.lr-sec-by {
+  margin-top: var(--s-2);
+  cursor: default;
+}
+
+.lr-sec-by-name {
+  color: var(--ink);
+  font-weight: 600;
+}
+
+.lr-sec-by:hover {
+  color: var(--ink-3);
 }
 
 .lr-sec-since {

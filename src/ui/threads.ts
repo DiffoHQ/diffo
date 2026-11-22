@@ -142,7 +142,7 @@ export type LayerSourceKind = 'steps' | 'commits'
 
 /** The rail's tabs. Layers and Commits are both the `layers` panel, read from
  * different sources: the agent's steps, or git's commits. */
-export type RailView = 'layers' | 'files' | 'threads' | 'commits'
+export type RailView = 'layers' | 'files' | 'threads'
 
 /** The first non-blank line, trimmed: what a collapsed card or rail row shows
  * for a body that may run to paragraphs (a bot's review comment, say). */

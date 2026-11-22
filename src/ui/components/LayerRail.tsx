@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState } from 'react'
+import { type ReactNode, useMemo, useRef, useState } from 'react'
 import { AGENT_PICKS } from '../../shared/presets.js'
 import type { ReviewThread } from '../../shared/review.js'
 import type { FileChange } from '../../shared/types.js'
@@ -311,7 +311,12 @@ export function LayerRail({
   note,
   sharedBy,
   onAsk,
+  source,
 }: {
+  /** The Steps / Commits switch, when the branch has commits to read by. With
+   * it the head row is the switch's, and what the layers follow is the list's
+   * heading, not a second title under a second control. */
+  source?: ReactNode
   layers: readonly ResolvedLayer[]
   /** The GitHub login whose reading guide these layers came from (`diffo
    * share`), when they were not this review's own agent's. */
@@ -551,6 +556,49 @@ export function LayerRail({
     { marks: 0, done: 0 },
   )
   const inFlight = request === 'outlining' || request === 'queued'
+  const byName = preset ? preset.name : 'your instructions'
+  // The same three facts the head's fold shows, as one line for the hover.
+  const byWhy = [
+    preset && preset.blurb !== ''
+      ? `${preset.blurb.charAt(0).toUpperCase()}${preset.blurb.slice(1)}${/[.?!]$/.test(preset.blurb) ? '' : '.'}`
+      : '',
+    preset
+      ? preset.picked || preset.suggested
+        ? `The agent ${preset.picked ? 'picked' : 'suggested'} it${preset.why ? `: ${preset.why.replace(/[.?!]+$/, '')}` : ''}.`
+        : 'You picked it.'
+      : '',
+    note ? `${preset ? 'Your note: ' : ''}${note}` : '',
+  ]
+    .filter(Boolean)
+    .join(' ')
+  // With the switch in the head row, what the layers follow is the list's own
+  // heading, in the register of its other section labels.
+  const listBy = source !== undefined && source !== null && Boolean(preset || note)
+  // What the layers follow, in full: what the preset shows, who picked it, the
+  // reviewer's note, under the head's title.
+  const about = (preset || note) && (
+    <div className="lr-about">
+      {preset && preset.blurb !== '' && (
+        <p className="lr-about-blurb">
+          {preset.blurb.charAt(0).toUpperCase() + preset.blurb.slice(1)}
+          {/[.?!]$/.test(preset.blurb) ? '' : '.'}
+        </p>
+      )}
+      {preset && (
+        <p className="lr-about-by">
+          {preset.picked || preset.suggested
+            ? `The agent ${preset.picked ? 'picked' : 'suggested'} it${preset.why ? `: ${preset.why}` : ''}.`
+            : 'You picked it.'}
+        </p>
+      )}
+      {note && (
+        <p className="lr-about-note">
+          {preset && <span className="lr-note-cap">Your note: </span>}
+          {note}
+        </p>
+      )}
+    </div>
+  )
   return (
     <>
       {/* The head: one row. What the layers follow is its title, and it opens
@@ -559,7 +607,8 @@ export function LayerRail({
           line under the list. */}
       <div className="lr-head">
         <div className="lr-head-row">
-          {preset || note ? (
+          {source}
+          {source ? null : preset || note ? (
             <button
               type="button"
               className="lr-preset"
@@ -648,7 +697,7 @@ export function LayerRail({
           {/* The fold sits at the row's end, in the column the layers below
               have their own chevrons in. A second target for the mouse: the
               title is the control. */}
-          {(preset || note) && (
+          {!source && (preset || note) && (
             <button
               type="button"
               className="lr-head-chev"
@@ -666,29 +715,7 @@ export function LayerRail({
         </div>
         {/* What the layers follow, in full, only when asked for: the head
             itself stays one line, whatever the reviewer's note runs to. */}
-        {aboutOpen && (preset || note) && (
-          <div className="lr-about">
-            {preset && preset.blurb !== '' && (
-              <p className="lr-about-blurb">
-                {preset.blurb.charAt(0).toUpperCase() + preset.blurb.slice(1)}
-                {/[.?!]$/.test(preset.blurb) ? '' : '.'}
-              </p>
-            )}
-            {preset && (
-              <p className="lr-about-by">
-                {preset.picked || preset.suggested
-                  ? `The agent ${preset.picked ? 'picked' : 'suggested'} it${preset.why ? `: ${preset.why}` : ''}.`
-                  : 'You picked it.'}
-              </p>
-            )}
-            {note && (
-              <p className="lr-about-note">
-                {preset && <span className="lr-note-cap">Your note: </span>}
-                {note}
-              </p>
-            )}
-          </div>
-        )}
+        {!source && aboutOpen && about}
         {request !== null && (
           <div className="lr-status" aria-live="polite">
             {request === 'stalled' ? (
@@ -739,6 +766,20 @@ export function LayerRail({
         )}
       </div>
       <div className="rail-scroll">
+        {listBy && (
+          // A label, not a control: what it says in full is on hover, so the
+          // list starts at the first layer and nothing here folds.
+          <div
+            className="lr-sec lr-sec-by"
+            role="note"
+            aria-label={`Layered by ${byName}. ${byWhy}`}
+            data-tip={byWhy}
+          >
+            <span className="lr-sec-name">
+              Layered by <span className="lr-sec-by-name">{byName}</span>
+            </span>
+          </div>
+        )}
         {sectioned &&
           sectionRow(
             'read',
