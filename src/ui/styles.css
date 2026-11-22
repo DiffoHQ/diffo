@@ -76,14 +76,13 @@
   --dur: 0.14s; /* hovers, fades */
   --dur-move: 0.24s; /* things that travel: the rail, folds, modals */
 
-  /* --- type: three voices. Serif is what was written to be read (layer titles,
-     summaries, guides); sans is the chrome; mono is code, paths, key hints. --- */
+  /* --- type: two voices. Sans is everything written for a person, chrome and
+     prose alike; mono is code, paths, key hints. --- */
   --sans:
     "Geist Variable", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial,
     sans-serif;
   --mono:
     "Geist Mono Variable", ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
-  --serif: "Newsreader Variable", "Iowan Old Style", Georgia, serif;
 
   --t-11: 11px; /* positions, counts, badges */
   --t-12: 12px; /* metadata */
@@ -832,12 +831,11 @@ body {
   margin-right: var(--s-3);
 }
 
-/* A layer's number in the rail, in the serif: the chapter numeral. */
+/* A layer's number in the rail. */
 .row-num {
   margin-right: 6px;
-  font-family: var(--serif);
-  font-size: var(--t-15);
-  font-weight: 500;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
   color: var(--ink-3);
 }
 
@@ -853,8 +851,10 @@ body {
   border-radius: var(--r-sm);
   background: none;
   color: var(--ink-3);
-  font-family: var(--serif);
-  font-size: var(--t-15);
+  font: inherit;
+  font-size: var(--t-13);
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
   line-height: 1;
   cursor: pointer;
 }
@@ -7814,8 +7814,8 @@ i.q-now {
    — when the agent wrote any — its decisions, a ledger the width of the
    card. The step's own conversation, if there is one, closes the card under
    a rule. */
-/* The chapter opening: no frame of its own — it is the top of the page, set in
-   the serif, and the files follow it on the same surface. */
+/* The layer's opening: no frame of its own — it is the top of the page, and
+   the files follow it on the same surface. */
 .ch-head {
   margin-bottom: var(--s-7);
   padding: 14px 14px 4px;
@@ -7852,11 +7852,10 @@ i.q-now {
 
 .ch-head h2 {
   margin: 4px 0 0;
-  max-width: 28em;
-  font-family: var(--serif);
-  font-size: 30px;
-  line-height: 1.2;
-  font-weight: 500;
+  max-width: 34em;
+  font-size: 22px;
+  line-height: 28px;
+  font-weight: 600;
   letter-spacing: -0.015em;
   color: var(--ink);
 }
@@ -7881,10 +7880,9 @@ i.q-now {
 
 .ch-head .ch-summary {
   padding-left: 0;
-  font-family: var(--serif);
-  font-size: 17px;
+  font-size: var(--t-14);
   color: var(--ink-2);
-  line-height: 1.6;
+  line-height: 22px;
 }
 
 .ch-head .ch-summary p {

@@ -5,8 +5,6 @@ import { TooltipLayer } from './components/Tooltip.js'
 import { applyTheme, loadTheme } from './theme.js'
 import '@fontsource-variable/geist'
 import '@fontsource-variable/geist-mono'
-import '@fontsource-variable/newsreader'
-import '@fontsource-variable/newsreader/wght-italic.css'
 import './styles.css'
 
 // Before the first render, or a stored light/dark choice flashes the system palette

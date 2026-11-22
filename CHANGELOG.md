@@ -7,7 +7,11 @@ Until 1.0, minor versions may break things. When they do, the entry says how to 
 
 ## [Unreleased]
 
-Nothing yet.
+### Changed
+
+- **Layer titles and summaries are set in Geist.** The serif made a layer read
+  like a chapter of a story; it now reads like the rest of the review. The
+  serif font is no longer bundled.
 
 ## [0.30.0] — 2026-11-21
 
