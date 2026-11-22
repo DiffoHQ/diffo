@@ -10406,6 +10406,13 @@ span.elsewhere-go {
   min-width: 0;
 }
 
+/* With the Steps / Commits switch in the row, the switch takes the row and
+   what the layers follow is a quiet name at its end. */
+.lr-head-row > .src-seg-rail {
+  flex: none;
+  margin: 0 auto 0 var(--s-3);
+}
+
 /* The title takes the row; the "more" and the fold keep to its end. */
 .lr-head-row > .lr-preset,
 .lr-head-row > .lr-title-plain {
@@ -10645,6 +10652,22 @@ span.elsewhere-go {
   margin-left: auto;
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
+}
+
+/* The list's heading when the head row is the Steps / Commits switch's: what
+   the layers follow, opening to why. */
+.lr-sec-by {
+  margin-top: var(--s-2);
+  cursor: default;
+}
+
+.lr-sec-by-name {
+  color: var(--ink);
+  font-weight: 600;
+}
+
+.lr-sec-by:hover {
+  color: var(--ink-3);
 }
 
 .lr-sec-since {

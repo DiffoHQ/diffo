@@ -2112,6 +2112,14 @@ function Review() {
           }
         }),
       ]
+  const layerSwitch = commitsOffered ? (
+    <LayerSource
+      source={layerSource}
+      onPick={setSourcePick}
+      stepCount={layerMode ? layerCount : null}
+      commitCount={realCommits.length}
+    />
+  ) : null
   const paneControls: PaneControls = {
     barElsewhere: true,
     layer: commitSource ? commitBar : paneLayer,
@@ -2270,14 +2278,9 @@ function Review() {
             }
             layers={
               <>
-                {commitsOffered && (
-                  <LayerSource
-                    source={layerSource}
-                    onPick={setSourcePick}
-                    stepCount={layerMode ? layerCount : null}
-                    commitCount={realCommits.length}
-                  />
-                )}
+                {/* With layers up, the switch rides in their head row; on its
+                    own it is the one row above the commits or the offer. */}
+                {layerSwitch && !(layerSource === 'steps' && layerMode) && layerSwitch}
                 {layerSource === 'commits' ? (
                   <CommitRail
                     commits={commitList}
@@ -2326,6 +2329,7 @@ function Review() {
                     sharedBy={review?.layers?.shared?.by}
                     onAsk={agentAttached ? requestLayers : undefined}
                     onOpenPresets={() => setLayersDialog(true)}
+                    source={layerSwitch}
                   />
                 ) : (
                   <LayersEmpty

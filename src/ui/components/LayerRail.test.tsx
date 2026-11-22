@@ -848,3 +848,44 @@ describe('LayerRail — presets and background', () => {
     expect(rows()).toHaveLength(resolved.length)
   })
 })
+
+describe('LayerRail — one head row with the Steps / Commits switch', () => {
+  it('gives the head row to the switch, and heads the list with what the layers follow', () => {
+    render(
+      <LayerRail
+        layers={[]}
+        activeIndex={0}
+        onPick={vi.fn()}
+        viewed={new Set()}
+        preset={{ name: 'Concept', blurb: 'one idea per layer' }}
+        source={<div data-testid="switch" />}
+      />,
+    )
+    const row = document.querySelector('.lr-head-row')!
+    expect(row.firstElementChild).toBe(screen.getByTestId('switch'))
+    expect(row.querySelector('.lr-preset')).toBeNull()
+    expect(document.querySelector('.lr-head-chev')).toBeNull()
+    const by = document.querySelector('.rail-scroll')!.firstElementChild as HTMLElement
+    expect(by.classList.contains('lr-sec-by')).toBe(true)
+    expect(by.textContent).toBe('Layered by Concept')
+    // A label with its explanation on hover: nothing to click, nothing folds.
+    expect(by.tagName).toBe('DIV')
+    expect(by.querySelector('.chevron')).toBeNull()
+    expect(by.getAttribute('data-tip')).toBe('One idea per layer. You picked it.')
+    expect(document.querySelector('.lr-about')).toBeNull()
+  })
+
+  it('without the switch the head reads as it always did', () => {
+    render(
+      <LayerRail
+        layers={[]}
+        activeIndex={0}
+        onPick={vi.fn()}
+        viewed={new Set()}
+        preset={{ name: 'Concept', blurb: 'one idea per layer' }}
+      />,
+    )
+    expect(document.querySelector('.lr-preset')?.textContent).toBe('Layered byConcept')
+    expect(document.querySelector('.lr-head-chev')).toBeTruthy()
+  })
+})
