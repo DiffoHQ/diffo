@@ -25,6 +25,18 @@ The review UI is keyboard-first. Press `?` in the review for this sheet.
 | `b` | Show / hide the sidebar. Hidden, it leaves a strip of layer numbers |
 | `z` | Focus: hide the sidebar and give the page the full width |
 
+## In a graph
+
+A graph that the agent drew opens on a canvas. These keys work there.
+
+| Key | Action |
+| --- | --- |
+| `↓` / `↑` | Next / previous card, in the agent's order |
+| `→` / `←` | Show the arrows out of the selected card, or the arrows into it |
+| `1` … `9` | Follow the arrow with that number |
+| `↵` | Mark the selected card viewed, or go into the box in focus |
+| `esc` | Go up one level, then close the graph |
+
 ## Comment
 
 | Key | Action |

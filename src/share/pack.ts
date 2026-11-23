@@ -3,6 +3,7 @@ import { gunzipSync, gzipSync } from 'node:zlib'
 import { prUrl } from '../forge/target.js'
 import type { ImportedComment, ImportedThread, PrRef } from '../forge/types.js'
 import { withoutArtifacts } from '../shared/artifacts.js'
+import { withoutGraphs } from '../shared/graphs.js'
 import { type LayerInput, parseLayersInput } from '../shared/layers.js'
 import {
   type Layer,
@@ -55,7 +56,7 @@ export function packOf(layers: readonly Layer[], sha: string, postedAt: string):
     v: 1,
     sha,
     postedAt,
-    layers: layers.map(({ id: _id, ...rest }) => withoutArtifacts(rest)),
+    layers: layers.map(({ id: _id, ...rest }) => withoutGraphs(withoutArtifacts(rest))),
   }
 }
 

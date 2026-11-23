@@ -2,6 +2,7 @@ import { parseArgs } from 'node:util'
 import {
   ARTIFACT,
   CLI_COMMANDS,
+  GRAPH,
   GUIDE,
   GUIDE_CLASSDEFS,
   HELP_AGENT_PR,
@@ -68,6 +69,7 @@ For the agent (the AI that wrote the change):
   help agent         The agent's whole protocol on one page
   help guide         The guide comment — the map of the change — with an example
   help artifact      The HTML page an agent draws in a comment, guide or layer
+  help graph         The graph of cards and arrows an agent writes as data
 
 Options (for opening the review):
   --base <branch>    Review everything since forking from <branch>
@@ -244,6 +246,58 @@ contract and the craft.
 
   Safe to skip: four \`tool-*\` display components moved only because a prop
   went dead.`,
+  graph: `diffo help graph: cards and arrows that Diffo draws for the reviewer
+
+A graph is ${GRAPH.what}. It works anywhere markdown does: the guide, a
+reply, a comment, a layer's summary.
+
+When: ${GRAPH.when}.
+
+Write it as ${GRAPH.syntax}.
+Only "cards" is required. The title is required: it heads the card and names
+the graph back to you. Three per text at most.
+
+A card is one of three kinds, told by its key:
+${GRAPH.cards.map((c) => `- ${c}.`).join('\n')}
+
+The rest:
+${GRAPH.rest.map((c) => `- ${c}.`).join('\n')}
+
+A place is "path", "path:line" or "path:from-to". The lines are those of the
+new side of the diff, from 1. The title is in double quotes, with no double
+quote in it.
+
+Craft:
+${GRAPH.craft.map((c) => `- ${c}.`).join('\n')}
+- ${GRAPH.truth}.
+
+After posting: ${GRAPH.feedback}.
+
+Example — a guide for a change that makes Save write through a queue:
+
+  cat > /tmp/guide.md <<'EOF'
+  Save no longer writes to the disk itself. It puts the document on a queue,
+  and one worker writes, so two saves cannot interleave.
+
+  \`\`\`graph title="A save, from the button to the disk"
+  {
+    "cards": [
+      { "id": "user", "note": "The reviewer", "text": "Presses Save." },
+      { "id": "save", "hunk": "src/save.ts:12-40", "title": "save()" },
+      { "id": "queue", "hunk": "src/queue.ts:1-58", "title": "WriteQueue" },
+      { "id": "disk", "code": "src/disk.ts:80-95", "title": "writeFile()" }
+    ],
+    "boxes": [{ "title": "Server", "color": "blue", "cards": ["save", "queue", "disk"] }],
+    "arrows": [
+      { "from": "user", "to": "save", "label": "presses Save" },
+      { "from": "save", "to": "queue", "label": "enqueues the document" },
+      { "from": "queue", "to": "disk", "label": "writes, one at a time" }
+    ],
+    "order": ["save", "queue", "disk"]
+  }
+  \`\`\`
+  EOF
+  diffo comment < /tmp/guide.md`,
   artifact: `diffo help artifact: an HTML page you draw for the reviewer
 
 Usage: diffo artifact preview <file> [--size <box>] [--title "…"] [--out <dir>]
@@ -427,7 +481,8 @@ type it. It appears under your reply with Add as PR comment draft / Edit / Dismi
 nothing posts until the reviewer submits. Your evidence goes in --message,
 never in the comment. \`diffo help agent\` says when to attach one.
 Messages render GitHub-flavored markdown; a \`\`\`artifact fence renders an
-HTML page you write (\`diffo help artifact\`), a \`\`\`mermaid fence a diagram.
+HTML page you write (\`diffo help artifact\`), a \`\`\`graph fence cards and
+arrows that Diffo draws (\`diffo help graph\`), a \`\`\`mermaid fence a diagram.
 
 Output: {"ok":true,"threadId":"t-3","state":"…","next_step":"…"}
 
@@ -452,7 +507,8 @@ reviewer would leave the author about this: same rules as on \`reply\`. For a
 finding you can show (a case you ran, a call site the change misses), not
 for a hunch.
 Messages render GitHub-flavored markdown; a \`\`\`artifact fence renders an
-HTML page you write (\`diffo help artifact\`), a \`\`\`mermaid fence a diagram.
+HTML page you write (\`diffo help artifact\`), a \`\`\`graph fence cards and
+arrows that Diffo draws (\`diffo help graph\`), a \`\`\`mermaid fence a diagram.
 
 Output: {"ok":true,"threadId":"t-1","next_step":"…"}
 
@@ -758,7 +814,13 @@ function parseHelp(rest: string[]): CliCommand {
   const topic = rest[0]
   if (rest.length > 1) return { kind: 'error', message: 'help takes at most one command' }
   if (topic === undefined || topic === 'help') return { kind: 'help' }
-  if (topic !== 'agent' && topic !== 'guide' && topic !== 'artifact' && !VERBS.has(topic))
+  if (
+    topic !== 'agent' &&
+    topic !== 'guide' &&
+    topic !== 'artifact' &&
+    topic !== 'graph' &&
+    !VERBS.has(topic)
+  )
     return unknownCommand(topic)
   return { kind: 'help', topic }
 }

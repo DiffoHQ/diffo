@@ -15,6 +15,7 @@ import {
   parseArtifactReport,
   REPORT_ISSUES_MAX,
 } from '../shared/artifacts.js'
+import { checkGraphs } from '../shared/graphs.js'
 import {
   describeUncovered,
   parseLayersPost,
@@ -566,7 +567,7 @@ export function createApp(
     // The agent speaks in file/line coordinates, not anchors: it has no hunk ids,
     // and the ladder below turns "this file, this line" into the best live anchor.
     if (body?.author === 'agent') {
-      const art = checkArtifacts(text).errors
+      const art = [...checkArtifacts(text).errors, ...checkGraphs(text).errors]
       if (art.length > 0) return c.json({ error: art.join('; ') }, 400)
       const file =
         typeof body?.file === 'string' && body.file.trim() !== '' ? body.file.trim() : null
@@ -995,7 +996,7 @@ export function createApp(
       if (!review.get().threads.some((t) => t.id === id)) {
         return c.json({ error: 'no such thread' }, 404)
       }
-      const art = checkArtifacts(text).errors
+      const art = [...checkArtifacts(text).errors, ...checkGraphs(text).errors]
       if (art.length > 0) return c.json({ error: art.join('; ') }, 400)
       // Refresh the OWNER's clock, never retarget it: a reply from a second session
       // must not point the liveness watch at its harness (delivery.ts `noteSession`).

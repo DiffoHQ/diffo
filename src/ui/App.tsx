@@ -38,6 +38,7 @@ import { ClearThreads } from './components/ClearThreads.js'
 import { CommandPalette } from './components/CommandPalette.js'
 import { CommitRail, commitProgress } from './components/CommitRail.js'
 import { FinishReview } from './components/FinishReview.js'
+import { GraphViewer } from './components/GraphViewer.js'
 import { Header } from './components/Header.js'
 import { Icon, IconSprite } from './components/Icon.js'
 import { InviteAgent } from './components/InviteAgent.js'
@@ -2479,6 +2480,23 @@ function Review() {
           />
         )}
         <ArtifactViewer />
+        <GraphViewer
+          files={allFiles}
+          comments={paneComments}
+          viewed={viewed}
+          onSetMarks={setMarks}
+          onOpenHunk={(id) => {
+            setSelectedId(id)
+            // The graph closes first: the list is behind it.
+            requestAnimationFrame(() =>
+              requestAnimationFrame(() =>
+                document
+                  .querySelector(`[data-hunk-id="${CSS.escape(id)}"]`)
+                  ?.scrollIntoView({ behavior: 'instant', block: 'center' }),
+              ),
+            )
+          }}
+        />
         {shortcutsOpen && <Shortcuts onClose={() => setShortcutsOpen(false)} />}
         {paletteOpen && (
           <CommandPalette items={paletteItems} onClose={() => setPaletteOpen(false)} />

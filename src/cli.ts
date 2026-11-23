@@ -69,10 +69,17 @@ import { postRegisterHint, refreshInstalledSkills, runSetup } from './setup.js'
 import { findSharedPack, ownPackComment, packOf, renderShareComment } from './share/pack.js'
 import { shareCheck } from './share/where.js'
 import { boxOf, checkArtifacts, describeArtifact } from './shared/artifacts.js'
+import {
+  checkGraphs,
+  describeGraph,
+  findGraphs,
+  graphProblems,
+  parseGraph,
+} from './shared/graphs.js'
 import { parseLayersPost, type UncoveredRef } from './shared/layers.js'
 import { parsePresetPatch } from './shared/presets.js'
 import type { Layers, ReviewState } from './shared/review.js'
-import type { ChangesetSpec as CliSpec, PrInfo } from './shared/types.js'
+import type { ChangesetSpec as CliSpec, FileChange, PrInfo } from './shared/types.js'
 import { VERSION } from './version.js'
 
 const command = parseCliArgs(process.argv.slice(2))
@@ -751,18 +758,54 @@ if (command.kind === 'poll') {
 function artifactPreflight(verb: string, texts: string[]): Record<string, unknown> {
   const found: string[] = []
   const warnings: string[] = []
+  const graphs: string[] = []
   for (const text of texts) {
     const check = checkArtifacts(text)
     if (check.errors.length > 0) fail(`${verb} refused: ${check.errors.join('; ')}`)
     found.push(...check.artifacts.map(describeArtifact))
     warnings.push(...check.warnings)
+    // A graph (see shared/graphs.ts) has the same preflight: a graph that
+    // would show broken is refused, with each problem named.
+    const drawn = checkGraphs(text)
+    if (drawn.errors.length > 0) fail(`${verb} refused: ${drawn.errors.join('; ')}`)
+    graphs.push(...drawn.graphs.map(describeGraph))
+    warnings.push(...drawn.warnings)
   }
-  if (found.length === 0) return {}
   return {
-    artifacts: found,
+    ...(found.length > 0
+      ? {
+          artifacts: found,
+          artifact_note:
+            'renders in a sandboxed frame when the reviewer opens it; if it throws or draws nothing there, your next poll says so',
+        }
+      : {}),
+    ...(graphs.length > 0 ? { graphs } : {}),
     ...(warnings.length > 0 ? { artifact_warnings: warnings } : {}),
-    artifact_note:
-      'renders in a sandboxed frame when the reviewer opens it; if it throws or draws nothing there, your next poll says so',
+  }
+}
+
+/**
+ * The cards of the posted graphs that name code the review does not have. The
+ * post is in already: the graph draws with the gap in the card. This tells
+ * the agent, so it posts a fixed one.
+ */
+async function graphPlaceProblems(port: number, texts: string[]): Promise<Record<string, unknown>> {
+  const graphs = texts.flatMap((text) => findGraphs(text))
+  if (graphs.length === 0) return {}
+  const { status, body } = await getJson(port, '/api/changeset')
+  const files = status === 200 ? (body as { files?: FileChange[] } | null)?.files : undefined
+  if (!files) return {}
+  const problems = graphs.flatMap((g) => {
+    const parsed = parseGraph(g.json)
+    return parsed.ok
+      ? graphProblems(parsed.graph, files).map((p) => `graph "${g.info.title ?? ''}" ${p}`)
+      : []
+  })
+  if (problems.length === 0) return {}
+  return {
+    graph_problems: problems,
+    graph_note:
+      'the graph is in the review, and these cards show a gap in place of code — post it again with the places fixed',
   }
 }
 
@@ -796,6 +839,7 @@ if (command.kind === 'reply') {
       threadId: thread.id,
       state: thread.state,
       ...art,
+      ...(await graphPlaceProblems(port, [message])),
       ...(command.prComment ? { prComment: 'suggested' } : {}),
       next_step: command.more
         ? ACK_NEXT_STEP.replyMore
@@ -832,6 +876,7 @@ if (command.kind === 'comment') {
       ok: true,
       threadId: thread.id,
       ...art,
+      ...(await graphPlaceProblems(port, [message])),
       ...(command.prComment ? { prComment: 'suggested' } : {}),
       next_step: command.prComment ? ACK_NEXT_STEP.commentPrComment : ACK_NEXT_STEP.comment,
     }),
@@ -895,6 +940,10 @@ if (command.kind === 'layers') {
       ok: true,
       layers: layers.items.length,
       ...art,
+      ...(await graphPlaceProblems(
+        port,
+        items.map((l) => l.summary ?? ''),
+      )),
       ...(uncovered.length > 0 ? { uncovered } : {}),
       ...(note ? { note } : {}),
       next_step: uncovered.length === 0 ? ACK_NEXT_STEP.layers : layersIncompleteStep(uncovered),
