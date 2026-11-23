@@ -9,6 +9,25 @@ Until 1.0, minor versions may break things. When they do, the entry says how to 
 
 Nothing yet.
 
+## [0.33.0] — 2026-11-23
+
+### Changed
+
+- **A layer's size counts only the lines it highlights.** The +/− in the
+  sidebar, the section totals and the pane bar count the lines a layer is
+  about, not every line of the hunks it shows.
+- **The "lines" view folds to the highlight.** A layer's highlighted lines
+  show with 3 lines of context; the rest fold into bands that unfold on
+  click, in unified and split views.
+
+### Fixed
+
+- **The header holds up at narrow widths.** Zoomed in or on a small screen,
+  the pull request title shortens with "…" instead of running under the
+  progress bar.
+- **Rail tab counts stay whole and aligned.** A narrow rail no longer clips
+  the counts, and they sit on the same line as the word.
+
 ## [0.32.0] — 2026-11-22
 
 ### Changed
@@ -1108,7 +1127,8 @@ shipped in it, written as a starting point rather than a history.
 - **Guided reading** — splitting a large change into an ordered sequence of small,
   reviewable sections — is designed but not built.
 
-[Unreleased]: https://github.com/DiffoHQ/diffo/compare/v0.32.0...HEAD
+[Unreleased]: https://github.com/DiffoHQ/diffo/compare/v0.33.0...HEAD
+[0.33.0]: https://github.com/DiffoHQ/diffo/compare/v0.32.0...v0.33.0
 [0.32.0]: https://github.com/DiffoHQ/diffo/compare/v0.31.0...v0.32.0
 [0.31.0]: https://github.com/DiffoHQ/diffo/compare/v0.30.0...v0.31.0
 [0.30.0]: https://github.com/DiffoHQ/diffo/compare/v0.29.0...v0.30.0
