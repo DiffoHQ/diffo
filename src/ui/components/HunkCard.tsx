@@ -8,7 +8,7 @@ import { type LineTokens, patchLineKind, symbolRuns, tokenizeLines } from '../hi
 import { useDarkMode } from '../hooks.js'
 import { intralineRanges, type Range, splitByRanges } from '../intraline.js'
 import { anchorForRange, rangedRows, rangeStartRows, threadsByLine } from '../reviewPlacement.js'
-import { toSplitRows } from '../splitRows.js'
+import { type SplitRow, toSplitRows } from '../splitRows.js'
 import { Icon } from './Icon.js'
 import type { ViewMode } from './ReadingPane.js'
 import { CommentBox, type ReviewActions, ThreadList } from './Threads.js'
@@ -301,6 +301,10 @@ interface LineExtras {
   /** The rows the layer's lines light (the card's "lines" view); absent when
    * nothing lights, so nothing dims. */
   litRows?: ReadonlySet<number>
+  /** The rows to render; the rest fold into a band per run. Absent shows all. */
+  shownRows?: ReadonlySet<number>
+  /** Shows a folded run, by its line indices. */
+  onUnfold?: (idxs: number[]) => void
 }
 
 /** The at-rest shape saying "a range conversation starts on this line" — a glyph
@@ -370,6 +374,57 @@ function CommentButton({ onClick }: { onClick: () => void }) {
   )
 }
 
+/** Unlit lines kept beside the lit ones under the "lines" view, for context. */
+export const LIT_CONTEXT = 3
+
+/**
+ * The rows the "lines" view shows: the lit ones and `LIT_CONTEXT` lines either
+ * side, plus every row in `keep` (expanded context, threads, the open composer,
+ * a region the reviewer unfolded). Undefined when nothing lights, so the hunk
+ * shows whole. A lone unlit line is never folded: its fold row would be no
+ * shorter than the line.
+ */
+export function litShownRows(
+  count: number,
+  litRows: ReadonlySet<number> | undefined,
+  keep: Iterable<number>,
+): Set<number> | undefined {
+  if (!litRows || litRows.size === 0) return undefined
+  const shown = new Set<number>(keep)
+  for (const r of litRows) {
+    for (let i = Math.max(0, r - LIT_CONTEXT); i <= Math.min(count - 1, r + LIT_CONTEXT); i++) {
+      shown.add(i)
+    }
+  }
+  for (let i = 0; i < count; i++) {
+    const lone = (i === 0 || shown.has(i - 1)) && (i === count - 1 || shown.has(i + 1))
+    if (!shown.has(i) && lone) shown.add(i)
+  }
+  return shown.size >= count ? undefined : shown
+}
+
+/** The band standing in for a run of folded lines; a click shows them. */
+function FoldRow({ lines, onUnfold }: { lines: number; onUnfold?: () => void }) {
+  return (
+    <tr className="hunk-fold">
+      <td colSpan={4}>
+        <button
+          type="button"
+          className="hunk-fold-btn"
+          aria-label={`show ${lines} lines outside this layer's highlight`}
+          onClick={(e) => {
+            e.stopPropagation()
+            onUnfold?.()
+          }}
+        >
+          <Icon name="unfold" size="sm" />
+          {lines} {lines === 1 ? 'line' : 'lines'} outside this layer
+        </button>
+      </td>
+    </tr>
+  )
+}
+
 function UnifiedLines({
   lines,
   tokens,
@@ -385,6 +440,8 @@ function UnifiedLines({
   rangeRows,
   rangeStarts,
   litRows,
+  shownRows,
+  onUnfold,
   boundary,
 }: { lines: DiffLine[]; tokens: (LineTokens | null)[]; boundary?: ReactNode } & LineExtras) {
   return (
@@ -392,6 +449,15 @@ function UnifiedLines({
       <tbody>
         {boundary}
         {lines.map((line, i) => {
+          if (shownRows && !shownRows.has(i)) {
+            if (i > 0 && !shownRows.has(i - 1)) return null
+            const run: number[] = []
+            for (let j = i; j < lines.length && !shownRows.has(j); j++) run.push(j)
+            return (
+              // biome-ignore lint/suspicious/noArrayIndexKey: the hunk is keyed by content, so its rows never reorder
+              <FoldRow key={`fold-${i}`} lines={run.length} onUnfold={() => onUnfold?.(run)} />
+            )
+          }
           const extra = extraFor?.(i)
           const down = gutterDown(onGutterDown, i)
           return (
@@ -446,9 +512,15 @@ function SplitLines({
   rangeRows,
   rangeStarts,
   litRows,
+  shownRows,
+  onUnfold,
   boundary,
 }: { lines: DiffLine[]; tokens: (LineTokens | null)[]; boundary?: ReactNode } & LineExtras) {
   const rows = toSplitRows(lines)
+  const rowShown = (row: SplitRow | undefined) =>
+    !shownRows ||
+    (row?.left != null && shownRows.has(row.left.idx)) ||
+    (row?.right != null && shownRows.has(row.right.idx))
   // Each half is its own line, so a click focuses the half it landed on.
   const click = (idx: number | undefined) =>
     onRowClick && idx !== undefined ? () => onRowClick(idx) : undefined
@@ -470,6 +542,19 @@ function SplitLines({
       <tbody>
         {boundary}
         {rows.map((row, i) => {
+          if (!rowShown(row)) {
+            if (i > 0 && !rowShown(rows[i - 1])) return null
+            const run = new Set<number>()
+            for (let j = i; j < rows.length && !rowShown(rows[j]); j++) {
+              if (rows[j]!.left) run.add(rows[j]!.left!.idx)
+              if (rows[j]!.right) run.add(rows[j]!.right!.idx)
+            }
+            const idxs = [...run]
+            return (
+              // biome-ignore lint/suspicious/noArrayIndexKey: the hunk is keyed by content, so its rows never reorder
+              <FoldRow key={`fold-${i}`} lines={idxs.length} onUnfold={() => onUnfold?.(idxs)} />
+            )
+          }
           const leftExtra = row.left ? extraFor?.(row.left.idx) : null
           const rightExtra =
             row.right && row.right.idx !== row.left?.idx ? extraFor?.(row.right.idx) : null
@@ -684,6 +769,13 @@ export function HunkCard({
     : undefined
 
   const lineThreads = threadsByLine(lines, threads)
+  // Under the "lines" view only the lit lines and a little context show; the
+  // rest fold into bands. Unfolded runs are kept hunk-relative, so expanding
+  // context above (which shifts every index) does not refold them.
+  const above = linesAbove?.length ?? 0
+  const [unfolded, setUnfolded] = useState<ReadonlySet<number>>(() => new Set())
+  const onUnfold = (idxs: number[]) =>
+    setUnfolded((prev) => new Set([...prev, ...idxs.map((i) => i - above)]))
   const strayThreads = lineThreads.get(-1) ?? []
   const rangeRows = useMemo(() => rangedRows(lines, threads), [lines, threads])
   const rangeStarts = useMemo(() => rangeStartRows(lines, threads), [lines, threads])
@@ -701,6 +793,15 @@ export function HunkCard({
     }
     return rows
   }, [drag, compose, hover])
+
+  const shownRows = useMemo(() => {
+    const keep: number[] = [...selRows, ...[...lineThreads.keys()].filter((i) => i >= 0)]
+    for (let i = 0; i < above; i++) keep.push(i)
+    for (let i = above + hunk.lines.length; i < lines.length; i++) keep.push(i)
+    for (const i of unfolded) keep.push(i + above)
+    if (focusLine !== null) keep.push(focusLine)
+    return litShownRows(lines.length, litRows, keep)
+  }, [lines, litRows, selRows, lineThreads, above, hunk.lines.length, unfolded, focusLine])
 
   const composerFor = (span: ComposeRange): ReactNode => {
     if (!reviewActions) return null
@@ -848,6 +949,8 @@ export function HunkCard({
           rangeRows={rangeRows}
           rangeStarts={rangeStarts}
           litRows={litRows}
+          shownRows={shownRows}
+          onUnfold={onUnfold}
           boundary={boundary}
         />
       ) : (
@@ -866,6 +969,8 @@ export function HunkCard({
           rangeRows={rangeRows}
           rangeStarts={rangeStarts}
           litRows={litRows}
+          shownRows={shownRows}
+          onUnfold={onUnfold}
           boundary={boundary}
         />
       )}

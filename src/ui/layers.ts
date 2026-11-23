@@ -336,16 +336,21 @@ export function layerProgress(layer: ResolvedLayer, viewed: ReadonlySet<string>)
   return { files: layer.files.length, doneFiles, marks, doneMarks }
 }
 
-/** Lines added and removed across a layer's shown hunks — the layer's size,
- * so the outline says how big a step is before the reviewer takes it. Hidden
- * files are left out, the same way `layerProgress` leaves them out, and so is
- * the part of a split file that reads in another step. */
+/** Lines added and removed that a layer asks the reviewer to read — the
+ * layer's size, so the outline says how big a step is before the reviewer
+ * takes it. A highlighted entry counts its highlighted lines only (a hunk it
+ * lights nothing in counts whole, as its read mark does); otherwise every line
+ * of its shown hunks. Hidden files are left out, the same way `layerProgress`
+ * leaves them out, and so is the part of a split file that reads in another
+ * step. */
 export function layerLineStats(layer: ResolvedLayer): { additions: number; deletions: number } {
   let additions = 0
   let deletions = 0
-  for (const { hunks } of layer.files) {
+  for (const { hunks, highlight } of layer.files) {
     for (const hunk of hunks) {
-      for (const line of hunk.lines) {
+      const lit = highlight ? litChangedRows(hunk, highlight) : null
+      for (const [i, line] of hunk.lines.entries()) {
+        if (lit && lit.size > 0 && !lit.has(i)) continue
         if (line.kind === 'add') additions++
         else if (line.kind === 'del') deletions++
       }

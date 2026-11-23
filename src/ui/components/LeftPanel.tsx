@@ -55,7 +55,8 @@ export function LeftPanel({
           {layersSuggested && layerCount === null && (
             <span className="tab-dot" aria-hidden="true" />
           )}
-          Layers {layerCount !== null && <span className="tab-n">{layerCount}</span>}
+          <span className="tab-label">Layers</span>{' '}
+          {layerCount !== null && <span className="tab-n">{layerCount}</span>}
         </button>
         <button
           type="button"
@@ -64,7 +65,7 @@ export function LeftPanel({
           aria-selected={view === 'files'}
           onClick={() => onSetView('files')}
         >
-          Files <span className="tab-n">{fileCount}</span>
+          <span className="tab-label">Files</span> <span className="tab-n">{fileCount}</span>
         </button>
         <button
           type="button"
@@ -77,7 +78,7 @@ export function LeftPanel({
           }
         >
           {wantsYou > 0 && <span className="tab-dot" aria-hidden="true" />}
-          Threads <span className="tab-n">{threadCount}</span>
+          <span className="tab-label">Threads</span> <span className="tab-n">{threadCount}</span>
         </button>
       </div>
       {view === 'layers' ? layers : view === 'threads' ? threads : files}

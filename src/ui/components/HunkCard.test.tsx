@@ -258,3 +258,52 @@ describe('changed since your last review', () => {
     expect(container.querySelector('.hunk-boundary')?.getAttribute('title')).toBeNull()
   })
 })
+
+describe('HunkCard highlight fold', () => {
+  const LONG: Hunk = {
+    id: 'h-long',
+    path: 'src/long.ts',
+    oldStart: 1,
+    newStart: 1,
+    lines: Array.from({ length: 20 }, (_, i) => ({
+      kind: 'add' as const,
+      oldNo: null,
+      newNo: i + 1,
+      text: `line ${i + 1}`,
+    })),
+  }
+  const code = (c: HTMLElement) =>
+    [...c.querySelectorAll('tr.line td.line-code')].map((td) => td.textContent)
+
+  it('shows only the lit lines with a little context, the rest folded', () => {
+    const { container } = render(<HunkCard hunk={LONG} highlight={[{ from: 10, to: 11 }]} />)
+    expect(code(container)).toEqual([
+      'line 7',
+      'line 8',
+      'line 9',
+      'line 10',
+      'line 11',
+      'line 12',
+      'line 13',
+      'line 14',
+    ])
+    const folds = [...container.querySelectorAll('tr.hunk-fold')].map((r) => r.textContent)
+    expect(folds).toEqual(['6 lines outside this layer', '6 lines outside this layer'])
+    fireEvent.click(screen.getAllByRole('button', { name: /show 6 lines/ })[0]!)
+    expect(code(container)).toHaveLength(14)
+  })
+
+  it('folds the same way side by side', () => {
+    const { container } = render(
+      <HunkCard hunk={LONG} viewMode="split" highlight={[{ from: 10, to: 11 }]} />,
+    )
+    expect(container.querySelectorAll('tr.line')).toHaveLength(8)
+    expect(container.querySelectorAll('tr.hunk-fold')).toHaveLength(2)
+  })
+
+  it('folds nothing without a highlight', () => {
+    const { container } = render(<HunkCard hunk={LONG} />)
+    expect(code(container)).toHaveLength(20)
+    expect(container.querySelector('tr.hunk-fold')).toBeNull()
+  })
+})

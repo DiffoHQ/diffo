@@ -228,6 +228,18 @@ describe('resolveLayers', () => {
       expect(since).toBeUndefined()
     })
 
+    it('a highlighted entry counts only the lines it lights', () => {
+      const [a, b] = resolveLayers(
+        layers([
+          { id: 'a', title: 'Contract', files: [{ path: 'src/big.ts', highlight: ['11-12'] }] },
+          { id: 'b', title: 'Rest', files: ['src/big.ts:40-90'] },
+        ]),
+        [big],
+      )
+      expect(layerLineStats(a!)).toEqual({ additions: 2, deletions: 0 })
+      expect(layerLineStats(b!)).toEqual({ additions: 6, deletions: 0 })
+    })
+
     it('changed lines no step claims land in the derived layer, lit', () => {
       const outline = layers([
         { id: 'a', title: 'Contract', files: [{ path: 'src/big.ts', highlight: ['11'] }] },
