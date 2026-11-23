@@ -729,6 +729,11 @@ body {
     gap: var(--s-5);
   }
 
+  /* The agent's live activity gives way to the title and the bar. */
+  .presence-label {
+    max-width: 16ch;
+  }
+
   .cmp-n {
     display: none;
   }
@@ -991,8 +996,10 @@ body {
   overflow: hidden;
   text-overflow: ellipsis;
   display: inline-flex;
-  align-items: center;
-  justify-content: center;
+  /* The smaller count sits on the word's baseline, not its middle. */
+  align-items: baseline;
+  /* safe: a label wider than the tab clips at its end, never off its start. */
+  justify-content: safe center;
   gap: 5px;
   padding: 4px 6px;
   border: none;
@@ -1012,7 +1019,15 @@ body {
   box-shadow: 0 1px 2px rgba(0, 0, 0, 0.08);
 }
 
+/* The word gives way first; the count always shows whole. */
+.tab-label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
 .tab-n {
+  flex: none;
   font-size: var(--t-11);
   color: var(--ink-3);
   font-variant-numeric: tabular-nums;
@@ -1028,6 +1043,8 @@ body {
   border-radius: 50%;
   background: var(--attn);
   flex: none;
+  /* Textless, so it has no baseline to share: it centres instead. */
+  align-self: center;
 }
 
 /* ---------- thread rows ---------- */
@@ -1899,6 +1916,11 @@ body {
 
 /* Docked, the pager is two arrows: the titles are in their tooltips and in
    the plan beside the page. */
+/* Squeezed, the progress keeps enough length to still read as a bar. */
+.pane-bar-top .prog-track-pane {
+  min-width: 40px;
+}
+
 .pane-bar-top .ch-pager-t,
 .pane-bar-top .ch-pager .kbd {
   display: none;
@@ -8428,6 +8450,10 @@ i.q-now {
 /* Header chips. The title owns the row: it is the one thing the reviewer
    needs at every glance, so it takes the room and the rest waits in the card. */
 .pr-chips {
+  /* A row of its own, so the title button shrinks and ellipsizes inside it
+     rather than spilling over the bar beside it. */
+  display: inline-flex;
+  align-items: center;
   gap: var(--s-3);
   min-width: 0;
   flex: 0 1 auto;
@@ -8466,6 +8492,7 @@ i.q-now {
 }
 
 .pr-title-text {
+  min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -11319,4 +11346,38 @@ span.elsewhere-go {
   .lp-grid {
     grid-template-columns: 1fr;
   }
+}
+
+/* The "lines" view folds a layer's unlit lines beyond a little context into
+ * one band per run — the same quiet fill as a hunk boundary, the whole band a
+ * button that shows them. */
+.hunk-fold td {
+  padding: 0;
+  background: var(--fill);
+  border-top: 1px solid var(--hair);
+  border-bottom: 1px solid var(--hair);
+}
+
+.hunk-fold-btn {
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+  width: 100%;
+  min-height: 24px;
+  border: 0;
+  padding: 0 var(--s-3);
+  background: transparent;
+  color: var(--ink-3);
+  font-family: var(--mono);
+  font-size: var(--t-11);
+  text-align: left;
+  cursor: pointer;
+  transition:
+    background var(--dur) var(--ease-out),
+    color var(--dur) var(--ease-out);
+}
+
+.hunk-fold-btn:hover {
+  background: var(--exp-hover);
+  color: var(--exp-hover-fg);
 }
