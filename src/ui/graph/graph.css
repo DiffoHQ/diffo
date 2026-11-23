@@ -1,0 +1,714 @@
+/* A button with no effect on what the pane shows now. */
+.pane-icon:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+
+/* ---------- the graph view ---------- */
+
+.pane-word {
+  height: 24px;
+  padding: 0 var(--s-3);
+  border: none;
+  border-radius: var(--r-sm);
+  background: none;
+  color: var(--ink-3);
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.pane-word:hover {
+  background: var(--fill);
+  color: var(--ink);
+}
+
+.pane-word[aria-pressed="true"] {
+  background: var(--fill-2);
+  color: var(--ink);
+}
+
+.pane-word:focus-visible {
+  outline: 2px solid var(--acc);
+  outline-offset: 1px;
+}
+
+.graph-note {
+  margin: var(--s-8) 0;
+  color: var(--ink-3);
+  text-align: center;
+}
+
+.graph-canvas {
+  position: relative;
+  height: calc(100vh - 150px);
+  min-height: 420px;
+  overflow: hidden;
+  border: 1px solid var(--hair);
+  border-radius: var(--r-sm);
+  background: var(--fill);
+  cursor: grab;
+  touch-action: none;
+  /* A drag moves the view. Text is selectable only in the selected card. */
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+.graph-canvas:active {
+  cursor: grabbing;
+}
+
+.graph-panel {
+  position: absolute;
+  top: var(--s-3);
+  right: var(--s-3);
+  z-index: 2;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: var(--s-2);
+  cursor: default;
+}
+
+/* The switches of the view. */
+.graph-tools {
+  display: flex;
+  align-items: center;
+  gap: var(--s-1);
+  padding: var(--s-1) var(--s-3);
+  border: 1px solid var(--hair);
+  border-radius: var(--r-sm);
+  background: var(--paper);
+}
+
+.graph-fit {
+  height: 24px;
+  padding: 0 var(--s-3);
+  border: none;
+  border-radius: var(--r-sm);
+  background: none;
+  color: var(--ink-3);
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.graph-fit:hover {
+  background: var(--fill);
+  color: var(--ink);
+}
+
+/* Where the reviewer is, at the top left of the canvas. */
+.graph-crumbs {
+  position: absolute;
+  top: var(--s-3);
+  left: var(--s-3);
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  max-width: 60%;
+  padding: var(--s-1) var(--s-2);
+  border: 1px solid var(--hair);
+  border-radius: var(--r-sm);
+  background: var(--paper);
+  font-size: 12px;
+  cursor: default;
+}
+
+.graph-crumb-part {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+}
+
+.graph-crumb-sep {
+  padding: 0 var(--s-1);
+  color: var(--ink-3);
+}
+
+.graph-crumb {
+  overflow: hidden;
+  max-width: 220px;
+  padding: 2px var(--s-2);
+  border: none;
+  border-radius: var(--r-sm);
+  background: none;
+  color: var(--ink-2);
+  font: inherit;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+button.graph-crumb {
+  cursor: pointer;
+}
+
+button.graph-crumb[style] {
+  color: color-mix(in srgb, rgb(var(--realm)) 55%, var(--ink));
+}
+
+button.graph-crumb:hover {
+  background: var(--fill);
+  color: var(--ink);
+}
+
+.graph-crumb-card {
+  color: var(--ink);
+  font-family: var(--mono);
+  font-weight: 600;
+}
+
+/* The zoom, at the bottom right. */
+.graph-zoom {
+  position: absolute;
+  right: var(--s-3);
+  bottom: var(--s-3);
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  gap: var(--s-1);
+  padding: var(--s-1) var(--s-2);
+  border: 1px solid var(--hair);
+  border-radius: var(--r-sm);
+  background: var(--paper);
+  cursor: default;
+}
+
+.graph-world {
+  position: absolute;
+  top: 0;
+  left: 0;
+  transform-origin: 0 0;
+}
+
+.graph-edges {
+  position: absolute;
+  top: 0;
+  left: 0;
+  overflow: visible;
+  pointer-events: none;
+}
+
+/* The width of an arrow is divided by the zoom when the graph is small, so
+   the arrow has the same width on the screen at each zoom below 1. */
+.graph-edge {
+  fill: none;
+  stroke: var(--ink-3);
+  stroke-width: calc(1.5px / min(1, var(--zoom, 1)));
+}
+
+/* An arrow can cross a card, so each arrow is pale: the code under it stays
+   readable. The arrows of the selected card are strong. */
+.graph-edge.graph-edge-hot {
+  stroke-width: calc(3.5px / min(1, var(--zoom, 1)));
+  opacity: 1;
+}
+
+.graph-slot {
+  position: absolute;
+}
+
+.graph-card {
+  overflow: hidden;
+  border: 1px solid var(--hair);
+  border-radius: var(--r-sm);
+  background: var(--paper);
+  cursor: pointer;
+}
+
+.graph-card-selected {
+  border-color: var(--acc);
+  outline: 2px solid var(--acc);
+  cursor: default;
+}
+
+.graph-card-selected .graph-card-code {
+  cursor: text;
+  user-select: text;
+  -webkit-user-select: text;
+}
+
+/* The Viewed button of a card: the one of the list, smaller. */
+.graph-card-viewed {
+  height: 22px;
+  margin-left: var(--s-2);
+  padding: 0 7px;
+}
+
+.graph-card-open {
+  flex: none;
+  height: 22px;
+  padding: 0 var(--s-3);
+  border: 1px solid var(--hair);
+  border-radius: var(--r-sm);
+  background: none;
+  color: var(--ink-3);
+  font: inherit;
+  font-size: 11px;
+  cursor: pointer;
+  visibility: hidden;
+}
+
+.graph-card:hover .graph-card-open,
+.graph-card-selected .graph-card-open {
+  visibility: visible;
+}
+
+.graph-card-open:hover {
+  background: var(--fill);
+  color: var(--ink);
+}
+
+.graph-card-head {
+  display: flex;
+  align-items: center;
+  gap: var(--s-3);
+  box-sizing: border-box;
+  width: 100%;
+  height: 34px;
+  padding: 0 var(--s-5);
+  border-bottom: 1px solid var(--hair);
+  color: var(--ink);
+}
+
+/* The name is never cut. The marks and the file name give way to it. */
+.graph-card-name {
+  flex: none;
+  font-family: var(--mono);
+  font-size: 12.5px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.graph-card-head .graph-card-tag {
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.graph-card-file {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  color: var(--ink-3);
+  font-size: 12px;
+  text-align: right;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.graph-card-threads {
+  flex: none;
+  min-width: 18px;
+  padding: 0 var(--s-1);
+  border-radius: 9px;
+  background: var(--acc);
+  color: var(--paper);
+  font-size: 11px;
+  line-height: 18px;
+  text-align: center;
+}
+
+.graph-card-code {
+  font-family: var(--mono);
+  font-size: 12px;
+}
+
+/* A line that is longer than the widest card: the selected card scrolls. */
+.graph-card-selected .graph-card-code {
+  overflow-x: auto;
+}
+
+/* The threads and the comment box below a line, as in the list. */
+button.graph-card-threads {
+  border: none;
+  font: inherit;
+  cursor: pointer;
+}
+
+button.graph-card-threads[aria-pressed="true"] {
+  outline: 2px solid var(--acc);
+}
+
+.graph-card-more {
+  width: 100%;
+  height: 26px;
+  border: none;
+  border-top: 1px solid var(--hair);
+  background: none;
+  color: var(--ink-3);
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.graph-card-more:hover {
+  background: var(--fill);
+  color: var(--ink);
+}
+
+/* A box that the agent made in a step. */
+.graph-box {
+  border: 2px solid rgba(var(--realm), 0.75);
+  background: rgba(var(--realm), 0.1);
+}
+
+.graph-box .graph-inner-name {
+  color: rgb(var(--realm));
+  font-family: var(--sans);
+  font-size: 15px;
+}
+
+/* An arrow between two steps of the outline: how the steps connect. */
+.graph-edge.graph-edge-cross {
+  opacity: 0.75;
+}
+
+/* A box inside an entity: 1 is a component (a folder), 2 is a class. */
+.graph-inner {
+  position: absolute;
+  box-sizing: border-box;
+  border: 1px solid var(--ink-3);
+  border-radius: 8px;
+  background: rgba(127, 127, 127, 0.07);
+  pointer-events: none;
+}
+
+.graph-inner-name {
+  position: absolute;
+  top: 5px;
+  left: 12px;
+  color: var(--ink-2);
+  font-size: 14px;
+  font-weight: 600;
+}
+
+/* The box under the pointer: a click in it moves the view to it. */
+.graph-inner.graph-hot {
+  box-shadow: inset 0 0 0 9999px rgba(127, 127, 127, 0.1);
+  outline: 2px solid var(--ink-2);
+  outline-offset: -1px;
+}
+
+.graph-box.graph-hot {
+  outline-color: rgb(var(--realm));
+}
+
+.graph-canvas:has(.graph-hot) {
+  cursor: pointer;
+}
+
+.graph-inner-name {
+  overflow: hidden;
+  max-width: calc(100% - 24px);
+  line-height: 1.1;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.graph-inner-name[hidden] {
+  display: none;
+}
+
+/* From far: the name of a card or of a box, on a wash over what is in it.
+   The zoom is a number for the widths of the borders. It has no glide: a
+   glide would paint each box and each name again on each frame. */
+@property --far-zoom {
+  syntax: "<number>";
+  inherits: true;
+  initial-value: 1;
+}
+
+.graph-far-layer {
+  display: contents;
+}
+
+/* A name fades in and out: it is in the page before it shows. The wash is
+   not the color of the card or of the box: it is a lighter color. */
+.graph-far {
+  /* A thin wash with a little color: the colors of the lines of the card
+     show through it. */
+  --wash: color-mix(in srgb, color-mix(in srgb, var(--exp-ink) 12%, var(--bg)) 72%, transparent);
+  --wash-hot: color-mix(
+    in srgb,
+    color-mix(in srgb, var(--exp-ink) 30%, var(--bg)) 86%,
+    transparent
+  );
+
+  position: absolute;
+  display: flex;
+  box-sizing: border-box;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  background: var(--wash);
+  color: var(--ink);
+  font-weight: 600;
+  line-height: 1.2;
+  pointer-events: none;
+  /* The fade is on the colors, not on the opacity. A fade of the opacity
+     gives each name its own layer in the compositor. A click changes 60
+     names at one time, in a graph of 11000 pixels that also glides, and
+     the full graph then flickers. */
+  transition:
+    background-color 0.3s ease,
+    color 0.3s ease,
+    border-color 0.3s ease,
+    box-shadow 0.15s ease;
+  white-space: nowrap;
+}
+
+.graph-far-on {
+  cursor: pointer;
+  pointer-events: auto;
+}
+
+.graph-far-card {
+  /* The color of the diff of the card: green for added lines, red for
+     removed lines. Thin, so the lines of the card show through it. */
+  --tint: rgb(var(--realm, 128, 128, 128));
+  --wash: color-mix(in srgb, color-mix(in srgb, var(--tint) 16%, var(--bg)) 74%, transparent);
+  --wash-hot: color-mix(in srgb, color-mix(in srgb, var(--tint) 32%, var(--bg)) 86%, transparent);
+
+  border-radius: var(--r-sm);
+  font-family: var(--mono);
+}
+
+.graph-far-card:hover,
+.graph-far-box:hover {
+  background: var(--wash-hot);
+  box-shadow: inset 0 0 0 calc(2px / var(--far-zoom)) var(--ink-2);
+}
+
+.graph-far-box {
+  --tint: rgb(var(--realm, 128, 128, 128));
+  /* Not a full color: what is under the box shows a little through it. */
+  --wash: color-mix(
+    in srgb,
+    color-mix(in srgb, var(--tint) 22%, color-mix(in srgb, var(--ink) 14%, var(--bg))) 72%,
+    transparent
+  );
+  --wash-hot: color-mix(
+    in srgb,
+    color-mix(in srgb, var(--tint) 34%, color-mix(in srgb, var(--ink) 24%, var(--bg))) 84%,
+    transparent
+  );
+
+  border-radius: 14px;
+  color: color-mix(in srgb, var(--tint) 30%, var(--ink));
+  text-align: center;
+  white-space: normal;
+}
+
+.graph-far-box .graph-far-name {
+  max-width: calc(100% - 40px);
+  text-wrap: balance;
+}
+
+.graph-far-box:hover {
+  box-shadow: inset 0 0 0 calc(2px / var(--far-zoom)) var(--tint);
+}
+
+/* The name of a box has the shape of the box: its corners and its border.
+   The border keeps its width on the screen. */
+.graph-far.graph-far-box.graph-far-box {
+  border: calc(2px / var(--far-zoom)) solid rgba(var(--realm, 128, 128, 128), 0.75);
+}
+
+.graph-far.graph-far-box.graph-far-box {
+  border-radius: 8px;
+}
+
+.graph-far.graph-far-card {
+  border: calc(1px / var(--far-zoom)) solid rgba(var(--realm, 128, 128, 128), 0.55);
+}
+
+.graph-inner.graph-hot {
+  outline-width: calc(2px / var(--far-zoom));
+}
+
+/* The card or the box that the Up and the Down keys went to. */
+.graph-far-on.graph-far-focus {
+  box-shadow: inset 0 0 0 calc(3px / var(--far-zoom)) var(--exp-ink);
+}
+
+/* A name that is not in the view has no color. The rule is the last one,
+   and the strongest: it is over the colors of each shape. */
+.graph-far.graph-far.graph-far.graph-far:not(.graph-far-on) {
+  border-color: transparent;
+  background-color: transparent;
+  color: transparent;
+  /* It fades out after the names that take its place fade in. */
+  transition-delay: 0.2s;
+}
+
+/* An arrow that is not a direct call: a callback, or a kind of the project.
+   The view gives the color of the kind. */
+.graph-edge-kind {
+  stroke: rgb(var(--kind, 127, 127, 127));
+  stroke-width: calc(2.5px / min(1, var(--zoom, 1)));
+}
+
+.graph-edge-label {
+  fill: var(--ink-2);
+  font-size: 15px;
+  font-weight: 600;
+  text-anchor: middle;
+  paint-order: stroke;
+  stroke: var(--fill);
+  stroke-width: 5px;
+}
+
+/* A node that stands for something outside the change. */
+.graph-card-tag {
+  flex: none;
+  padding: 0 var(--s-2);
+  border: 1px solid var(--hair);
+  border-radius: var(--r-sm);
+  color: var(--ink-3);
+  font-size: 11px;
+  line-height: 16px;
+}
+
+.graph-card-note {
+  margin: 0;
+  padding: var(--s-3) var(--s-5);
+  color: var(--ink-3);
+  font-size: 12px;
+}
+
+/* The number of an arrow, at the place where it meets the selected card. A
+   full circle: the card leads there. A ring: the arrow comes from there. */
+.graph-port {
+  position: absolute;
+  z-index: 4;
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  border: 2px solid var(--acc);
+  border-radius: 13px;
+  background: var(--acc);
+  color: var(--paper);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 700;
+  line-height: 22px;
+  text-align: center;
+  transform: translate(-50%, -50%);
+  cursor: pointer;
+}
+
+.graph-port-idle {
+  background: var(--paper);
+  color: var(--acc);
+  opacity: 0.6;
+}
+
+/* A return: a card that calls the selected one. Square, so it is not a call. */
+.graph-port-in {
+  border-radius: 6px;
+}
+
+/* The card of the step before. */
+.graph-port-from {
+  outline: 2px solid var(--acc);
+  outline-offset: 3px;
+  opacity: 1;
+}
+
+/* The two sides of the selected card: the returns on the left, the calls on
+   the right, each with its key. */
+.graph-side {
+  position: absolute;
+  z-index: 4;
+  height: 24px;
+  padding: 0 var(--s-3);
+  border: 1.5px solid var(--acc);
+  border-radius: 12px;
+  background: var(--paper);
+  color: var(--acc);
+  font: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.graph-side-in {
+  border-radius: 6px;
+  transform: translate(0, calc(-100% - 8px));
+}
+
+.graph-side-out {
+  transform: translate(-100%, calc(-100% - 8px));
+}
+
+.graph-side-on {
+  background: var(--acc);
+  color: var(--paper);
+}
+
+.graph-side:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.graph-port:hover {
+  transform: translate(-50%, -50%) scale(1.25);
+}
+
+/* A graph block in its full view: the canvas has the height of the modal. */
+.modal.graph-full {
+  width: min(1680px, 100%);
+  height: 100%;
+}
+
+.graph-full .modal-body {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-height: 0;
+  padding: 0 var(--s-4) var(--s-4);
+  overflow: hidden;
+}
+
+.graph-block-view {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.graph-block-view .graph-canvas {
+  flex: 1;
+  height: auto;
+  min-height: 0;
+}
+
+.graph-block-problems {
+  margin: 0 0 var(--s-2);
+  padding-left: var(--s-4);
+  font-size: var(--t-12);
+  color: var(--ink-2);
+}
+
+/* The picture of a graph in its card: the canvas, with no controls. */
+.graph-preview {
+  height: 100%;
+}
+
+.graph-preview .graph-canvas {
+  height: 100%;
+  min-height: 0;
+  border: 0;
+  border-radius: 0;
+  cursor: pointer;
+}
+
+.graph-preview .graph-panel,
+.graph-preview .graph-crumbs,
+.graph-preview .graph-zoom {
+  display: none;
+}

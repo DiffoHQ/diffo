@@ -1,6 +1,7 @@
 import DOMPurify from 'dompurify'
 import { marked } from 'marked'
 import { DEFAULT_ARTIFACT_SIZE, isArtifactInfo, parseArtifactInfo } from '../shared/artifacts.js'
+import { isGraphInfo, parseGraphInfo } from '../shared/graphs.js'
 
 /**
  * Comment bodies render markdown, because agent replies *arrive* as markdown —
@@ -34,6 +35,15 @@ marked.use({
   renderer: {
     code(token) {
       const info = token.lang ?? ''
+      if (isGraphInfo(info)) {
+        // A graph is data, not a page: the graph pass (src/ui/graphs.ts)
+        // reads the JSON and draws a card.
+        const { title } = parseGraphInfo(info)
+        return (
+          `<pre data-graph="${ARTIFACT_MARK}" data-graph-title="${escapeHtml(title ?? '')}">` +
+          `<code class="language-graph">${escapeHtml(token.text)}</code></pre>\n`
+        )
+      }
       if (!isArtifactInfo(info)) return false
       const { title, size } = parseArtifactInfo(info)
       const text = token.text.replace(/\n$/, '')

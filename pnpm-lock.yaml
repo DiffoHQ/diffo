@@ -11,6 +11,9 @@ importers:
       '@hono/node-server':
         specifier: ^2.1.1
         version: 2.1.8(hono@4.13.18)
+      elkjs:
+        specifier: 0.12.1
+        version: 0.12.1
       hono:
         specifier: ^4.13.3
         version: 4.13.18

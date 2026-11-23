@@ -11381,3 +11381,88 @@ span.elsewhere-go {
   background: var(--exp-hover);
   color: var(--exp-hover-fg);
 }
+
+/* ── A graph block of the agent ──────────────────────────────────────────
+ * The card that stands for a ```graph fence in a guide, a reply or a layer
+ * summary. The canvas itself opens from it (see src/ui/graph/graph.css). */
+.graph-block {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-2);
+  margin: var(--s-3) 0;
+  padding: var(--s-3);
+  border: 1px solid var(--hair);
+  border-radius: var(--r);
+  background: var(--paper);
+}
+
+.graph-block-head {
+  display: flex;
+  align-items: baseline;
+  gap: var(--s-2);
+}
+
+.graph-block-tag {
+  font-family: var(--mono);
+  font-size: var(--t-11);
+  color: var(--ink-3);
+}
+
+.graph-block-title {
+  font-weight: 600;
+}
+
+.graph-block-counts {
+  margin-left: auto;
+  font-size: var(--t-12);
+  color: var(--ink-3);
+}
+
+/* The picture of the graph, as the canvas shows it from far. All of it is one
+ * button: the canvas in it takes no pointer and no key. */
+.graph-block-preview {
+  position: relative;
+  height: 320px;
+  overflow: hidden;
+  border: 1px solid var(--hair);
+  border-radius: var(--r-sm);
+  background: var(--fill);
+  cursor: pointer;
+}
+
+.graph-block-preview:hover,
+.graph-block-preview:focus-visible {
+  border-color: var(--acc);
+  outline: none;
+}
+
+.graph-block-canvas {
+  height: 100%;
+  pointer-events: none;
+}
+
+.graph-block-open {
+  position: absolute;
+  right: var(--s-2);
+  bottom: var(--s-2);
+  padding: 2px var(--s-2);
+  border: 1px solid var(--hair);
+  border-radius: var(--r-sm);
+  background: var(--paper);
+  font-size: var(--t-12);
+  color: var(--ink-2);
+  opacity: 0;
+  transition: opacity 0.12s;
+}
+
+.graph-block-preview:hover .graph-block-open,
+.graph-block-preview:focus-visible .graph-block-open {
+  opacity: 1;
+}
+
+.graph-block-errors {
+  margin: 0;
+  padding-left: var(--s-4);
+  font-size: var(--t-12);
+  color: var(--ink-2);
+}

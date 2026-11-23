@@ -7,7 +7,16 @@ Until 1.0, minor versions may break things. When they do, the entry says how to 
 
 ## [Unreleased]
 
-Nothing yet.
+### Added
+
+- **Agents draw graphs.** A guide, reply, comment or layer summary can carry a
+  ```graph fence: cards and arrows that the agent writes as JSON. A card is
+  changed code of the review, other code at a place, or a note. Diffo places
+  the cards, routes the arrows, and shows the graph in its card; a click opens
+  it on a canvas with zoom, names from far and `↓` / `↑` from card to card. A
+  card of changed code takes comments and the Viewed mark, as in the file
+  list. The CLI and the server check a graph before it posts, and the answer
+  names a card whose place has no code. `diffo help graph` has the format.
 
 ## [0.33.0] — 2026-11-23
 

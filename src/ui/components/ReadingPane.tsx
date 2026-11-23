@@ -904,7 +904,7 @@ function freshGapState(fingerprint: string): GapState {
  * so the fingerprint rotates on any edit and the expansions reset with it — same
  * reset semantics as everything else keyed by hunk id.
  */
-function useGapExpansion(file: FileChange) {
+export function useGapExpansion(file: FileChange) {
   const gaps = useMemo(() => fileGaps(file), [file])
   const fingerprint = useMemo(
     () => `${file.newLineCount ?? ''}#${file.hunks.map((h) => h.id).join('\n')}`,

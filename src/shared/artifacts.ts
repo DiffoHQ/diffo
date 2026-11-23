@@ -169,8 +169,33 @@ export interface FoundArtifact {
  * a ````markdown fence is not mistaken for a real one.
  */
 export function findArtifacts(text: string): FoundArtifact[] {
+  return findFences(text, isArtifactInfo).map((f, index) =>
+    artifact(index, { info: f.info, line: f.line, start: f.start }, f.text, f.closed, f.end),
+  )
+}
+
+/** A top-level fenced code block, as marked reads it. */
+export interface FoundFence {
+  /** The info string after the fence marks. */
+  info: string
+  /** The body, without the fence lines. */
+  text: string
+  /** 1-based line of the opening fence. */
+  line: number
+  closed: boolean
+  /** Character offsets of the whole fence, opener through closer. */
+  start: number
+  end: number
+}
+
+/**
+ * The top-level fences of `text` whose info string `opens` accepts, in order.
+ * One walk for every format that rides a fence (an artifact, a graph), so
+ * they all agree with the page on what is a fence.
+ */
+export function findFences(text: string, opens: (info: string) => boolean): FoundFence[] {
   const src = normalizeNewlines(text)
-  const found: FoundArtifact[] = []
+  const found: FoundFence[] = []
   let cursor = 0
   for (const tok of Lexer.lex(src)) {
     const at = src.indexOf(tok.raw, cursor)
@@ -180,16 +205,14 @@ export function findArtifacts(text: string): FoundArtifact[] {
     const opener = /^ {0,3}(`{3,}|~{3,})/.exec(code.raw)
     if (!opener) continue // an indented code block, not a fence
     const info = code.lang ?? ''
-    if (!isArtifactInfo(info)) continue
+    if (!opens(info)) continue
     const fence = opener[1] ?? '```'
     const body = code.raw.replace(/\n+$/, '')
     const lines = body.split('\n')
     const closer = new RegExp(`^ {0,3}\\${fence[0]}{${fence.length},}[ \\t]*$`)
     const closed = lines.length > 1 && closer.test(lines[lines.length - 1] ?? '')
     const line = src.slice(0, at).split('\n').length
-    found.push(
-      artifact(found.length, { info, line, start: at }, code.text, closed, at + body.length),
-    )
+    found.push({ info, text: code.text, line, closed, start: at, end: at + body.length })
   }
   return found
 }
@@ -334,22 +357,27 @@ export function withoutArtifacts<T extends { summary?: string }>(layer: T): T {
   return { ...layer, summary: named.replace(/^ {0,3}(`{3,}|~{3,})\s*artifact\b.*$/gm, '') }
 }
 
-/** Length of the prose around the artifacts — what a prose cap should count. */
+/** A fence that rides the text and is not prose: an artifact, or a graph
+ * (src/shared/graphs.ts). A prose cap must not count it, and must not cut it. */
+const isRider = (info: string) => /^(?:artifact|graph)(?:\s|$)/.test(info.trim())
+
+/** Length of the prose around the artifacts and the graphs — what a prose cap
+ * should count. */
 export function proseLength(text: string): number {
   text = normalizeNewlines(text)
-  const found = findArtifacts(text)
+  const found = findFences(text, isRider)
   let n = text.length
   for (const a of found) n -= a.end - a.start
   return n
 }
 
 /** `text` cut so its prose is at most `cap` characters, never cutting inside
- * an artifact fence: fences ride along whole and don't count. Their own caps
- * come from `checkArtifacts`. */
+ * an artifact fence or a graph fence: they ride along whole and don't count.
+ * Their own caps come from `checkArtifacts` and `checkGraphs`. */
 export function capProse(text: string, cap: number): string {
   text = normalizeNewlines(text)
   if (proseLength(text) <= cap) return text
-  const found = findArtifacts(text)
+  const found = findFences(text, isRider)
   let out = ''
   let budget = cap
   let at = 0

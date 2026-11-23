@@ -1,6 +1,7 @@
 import { memo, useEffect, useRef } from 'react'
 import { renderArtifactsIn } from '../artifacts.js'
-import { renderMarkdown, renderMarkdownDoc } from '../markdown.js'
+import { renderGraphsIn } from '../graphs.js'
+import { ARTIFACT_MARK, renderMarkdown, renderMarkdownDoc } from '../markdown.js'
 import { linkDiagramRefs, renderMermaidIn } from '../mermaid.js'
 
 /**
@@ -48,7 +49,10 @@ export const Markdown = memo(function Markdown({
     const pass = async () => {
       // Only the agent's own text becomes pages. A fence anywhere else — a
       // repo README, a pull request's comments, the reviewer's own — stays code.
-      if (artifactOwner) renderArtifactsIn(el, artifactOwner)
+      if (artifactOwner) {
+        renderArtifactsIn(el, artifactOwner)
+        renderGraphsIn(el, ARTIFACT_MARK)
+      }
       await renderMermaidIn(el)
       if (paths) linkDiagramRefs(el, paths)
     }

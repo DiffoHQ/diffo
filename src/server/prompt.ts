@@ -1,6 +1,7 @@
 import { fileURLToPath } from 'node:url'
 import { findHunk as findHunkIn } from '../shared/anchors.js'
 import { type ArtifactReport, SIZE_HELP, stripArtifacts } from '../shared/artifacts.js'
+import { stripGraphs } from '../shared/graphs.js'
 import {
   formatSpan,
   hunkHeadSpan,
@@ -444,6 +445,46 @@ export const ARTIFACT = {
     "an unclosed fence, a missing title, a bad size or an artifact over 256 KB is refused before it posts; if it throws, is blocked, scrolls sideways, has text that can't be read, or draws nothing in the reviewer's browser, your next poll says so, and you post a fixed one",
 } as const
 
+/**
+ * The graph: cards and arrows that the agent writes as data, and Diffo draws
+ * (shared/graphs.ts is the format, src/ui/graph the canvas). It is the
+ * picture for one case: how parts of the code connect, with the code in view.
+ */
+export const GRAPH = {
+  what: 'cards and arrows that you write as JSON and Diffo draws on a canvas: it places the cards, routes the arrows, and the reviewer moves in it and reads the code in each card',
+  when: 'when the picture is how parts of the code connect — a flow through some functions, who calls what across a boundary, what a change puts between two existing parts — and the reviewer is better off with the code itself in the picture than with boxes that name it. Any other picture (a timeline, a screen, data) is an artifact. A change with one idea in one place needs neither',
+  syntax:
+    'a fenced block that opens with ```graph title="…" and holds one JSON object: { "cards": […], "boxes": […], "arrows": […], "order": […] }',
+  cards: [
+    '{ "id": "save", "hunk": "src/save.ts:12-40", "title": "save()" } — changed lines of the review at a place. It is the same code as in the file list, so the reviewer can comment on it and mark it viewed. Give the lines, so a card is one function or one decision: with no lines ("src/save.ts") the card is every changed line of the file. In a file that the change adds, each line is a changed line',
+    '{ "id": "disk", "code": "src/disk.ts:80-95", "title": "…" } — lines that the change does not touch, read only, 80 lines at most: the caller, the callee, the type that the flow goes through. Lines that the change does touch are a "hunk" card, never a "code" card',
+    '{ "id": "user", "note": "The reviewer", "text": "Presses Save." } — no code: an actor, a store, a process, a decision. "note" is its title; "text" is one or two plain sentences, not markdown',
+  ],
+  rest: [
+    '"id" is yours: lower-case letters, digits, "-" and "_". Arrows, boxes and the order name cards by it',
+    '"boxes": [{ "title": "Server", "color": "blue", "cards": ["save"], "boxes": [ … ] }] — a named group, to four levels; a card is in one box; the colors are blue, green, purple, orange, red, teal, pink, yellow',
+    '"arrows": [{ "from": "user", "to": "save", "label": "presses Save" }] — from any card to any card, a note too; one arrow from a card to another (a second one for the same pair is dropped, the way back is its own arrow); the label says what goes along it, in a few words; a card may have no arrow',
+    '"order": ["user", "save", "disk"] — the order to read the cards; the Down and Up keys of the reviewer follow it. It may leave cards out: they come after, in the order of their places on the canvas',
+  ],
+  craft: [
+    'one point per graph: the flow of this change, or this step. A second point is a second graph',
+    'few cards, each with a reason: five to twelve reads well; past forty is refused',
+    'cut each code card to the lines that the arrow is about, not the whole function',
+    'a note for what has no code here — a person, a server, a file on disk — so the flow has its two ends',
+    'titles in the words of the code and the product; an arrow label is a verb phrase',
+  ],
+  truth:
+    'draw only what is true: an arrow is a call, a message or a data path that you read in the code, not one that would make sense',
+  feedback:
+    'a graph that is not JSON, a card with no kind, an arrow or a box that names an id no card has, or more than 40 cards is refused before it posts, with each problem named. A card at a wrong place still posts, and the answer lists it under "graph_problems": a hunk card whose file is not in the change or whose lines have no changed line, and a code card on lines that the change touches. Fix the place and post again; an answer with no "graph_problems" means each card found its code',
+} as const
+
+/** The graph contract in one line, for the payloads that carry the picture
+ * rule inline. */
+export function graphBrief(): string {
+  return `Graph: ${GRAPH.when}. It is ${GRAPH.syntax}; read \`diffo help graph\` before your first one.`
+}
+
 /** The few lines of the contract a payload carries inline, since payloads
  * must stand alone (see POLL_STANCE). */
 export function artifactBrief(): string {
@@ -451,7 +492,7 @@ export function artifactBrief(): string {
   // artifact`, read once when the agent draws its first one — the same split
   // Anthropic's artifacts use (a short contract in the tool, the design guide
   // in a skill loaded on demand). Every review open pays for this line.
-  return `Picture: ${PICTURE.pick}. Artifact: a \`\`\`artifact fence with title="…" and size=s, m, l, WIDTHxHEIGHT or page; a sandboxed page with no network, colored with Diffo's tokens. Read \`diffo help artifact\` before your first one; write the message to a file, \`diffo artifact preview <file>\`, fix with small edits, post from the file.`
+  return `Picture: ${PICTURE.pick}. Artifact: a \`\`\`artifact fence with title="…" and size=s, m, l, WIDTHxHEIGHT or page; a sandboxed page with no network, colored with Diffo's tokens. Read \`diffo help artifact\` before your first one; write the message to a file, \`diffo artifact preview <file>\`, fix with small edits, post from the file. ${graphBrief()}`
 }
 
 export const GUIDE_CLASSDEFS = [
@@ -481,7 +522,7 @@ export const LAYERS = {
     "say what this layer is about and give the reviewer enough context to review it — the part the files below cannot show on their own. Write it however fits the step, keep it short, and don't retell the diff",
   /** Diagrams when they help: a picture of the step usually beats a paragraph. */
   diagram:
-    "the guide's call, made per step: a step a picture makes clearer gets an excellent ```artifact (size s or m: it sits above the step's files) designed for it; a step its files already explain gets none. Mark new and changed code as the guide does",
+    "the guide's call, made per step: a step a picture makes clearer gets an excellent ```artifact (size s or m: it sits above the step's files) designed for it; when that picture is how the code of the step connects, a ```graph of its cards and arrows instead (`diffo help graph`); a step its files already explain gets none. Mark new and changed code as the guide does",
   /** How to order them. */
   order:
     'the order you would explain it, not the order you wrote it — the file that explains the rest first, mechanical consequences last; for a feature, follow the request from entry point to effect; for a refactor, contract first, then consumers',
@@ -1186,7 +1227,7 @@ function threadBlock(thread: ReviewThread, index: number): string {
       // An artifact's HTML is the agent's own output; replaying kilobytes of it
       // every round is cost, not context.
       (m) =>
-        `- ${m.author}${m.editedAt ? ' (edited)' : ''}: ${stripArtifacts(m.text).replace(/\n/g, '\n  ')}`,
+        `- ${m.author}${m.editedAt ? ' (edited)' : ''}: ${stripGraphs(stripArtifacts(m.text)).replace(/\n/g, '\n  ')}`,
     ),
   ].join('\n')
 }
