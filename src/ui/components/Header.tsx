@@ -7,12 +7,14 @@ import {
   useState,
 } from 'react'
 import type { Changeset, PrInfo } from '../../shared/types.js'
+import { REVIEWER_STATUS_WORDS, type ReviewerRow, reviewerRows, useReviewers } from '../actors.js'
 import type { Presence, PresenceReason } from '../api.js'
 import { isDevServer } from '../devMode.js'
 import { shortAgo } from '../markdown.js'
 import { openGithub } from '../starNudge.js'
 import type { Theme } from '../theme.js'
-import { type CritterEyes, CritterFace, CritterTrack } from './Critter.js'
+import { StatusFace } from './AgentsPanel.js'
+import { type CritterEyes, CritterFace, type CritterPal, CritterTrack } from './Critter.js'
 import { Icon } from './Icon.js'
 import { LivingMark } from './LivingMark.js'
 import { Menu, MenuItem, MenuLabel, MenuSep } from './Menu.js'
@@ -489,6 +491,98 @@ function PresenceChip({
   )
 }
 
+/** How a reviewer still at it walks the header; done or gone, it does not. */
+const PAL_STATE: Partial<Record<ReviewerRow['status'], CritterPal['state']>> = {
+  working: 'active',
+  waiting: 'listening',
+  needs: 'listening',
+  starting: 'starting',
+}
+
+/** How many faces the stack shows before it folds the rest into "+N". */
+const STACK_MAX = 4
+
+/**
+ * The reviewer agents beside the author agent's chip: a face each, in its own
+ * colour, saying only who is here. A face opens the reviewer agents sidebar on
+ * that reviewer, and "+" adds one.
+ */
+function AgentStack({
+  onAdd,
+  onShow,
+  suggested,
+}: {
+  onAdd?: () => void
+  /** Open the reviewer agents panel, on this reviewer when one is named. */
+  onShow?: (name?: string) => void
+  /** The agent's suggestion of a reviewer, while it stands: the button says it. */
+  suggested?: { role: string; reason?: string }
+}) {
+  const reviewers = useReviewers()
+  const rows = reviewerRows(reviewers)
+  if (rows.length === 0 && !onAdd) return null
+  const shown = rows.slice(0, STACK_MAX)
+  const folded = rows.length - shown.length
+  return (
+    <fieldset className="stack" aria-label="Reviewer agents">
+      {shown.length > 0 && (
+        <span className="stack-faces">
+          {shown.map((row) => {
+            const tip = `${row.name}: ${REVIEWER_STATUS_WORDS[row.status].toLowerCase()}`
+            return onShow && row.seated ? (
+              <button
+                key={row.name}
+                type="button"
+                className="stack-face"
+                data-tip={tip}
+                aria-label={`${tip}. Open it`}
+                onClick={() => onShow(row.name)}
+              >
+                <StatusFace row={row} />
+              </button>
+            ) : (
+              <span
+                key={`${row.seated ? '' : 'starting:'}${row.name}`}
+                className="stack-face"
+                data-tip={tip}
+              >
+                <StatusFace row={row} />
+              </span>
+            )
+          })}
+          {folded > 0 && <span className="stack-more">+{folded}</span>}
+        </span>
+      )}
+      {onAdd &&
+        (suggested ? (
+          <button
+            type="button"
+            className="stack-add stack-add-suggested"
+            onClick={onAdd}
+            data-tip={`Your agent suggests a ${suggested.role} reviewer${suggested.reason ? `: ${suggested.reason}` : ''}`}
+            aria-label={`Add the ${suggested.role} reviewer your agent suggests`}
+          >
+            <Icon name="plus" size="sm" />
+            <span className="stack-add-word">{suggested.role} reviewer?</span>
+          </button>
+        ) : (
+          // Until the first reviewer, the button says what it does; then it
+          // is the "+" after their faces.
+          <button
+            type="button"
+            className={`stack-add${rows.length === 0 ? ' stack-add-labeled' : ''}`}
+            onClick={onAdd}
+            data-tip="Add a reviewer agent: a second AI that reads this change"
+            aria-label="Add a reviewer agent"
+          >
+            <Icon name="plus" size="sm" />
+            {rows.length === 0 && <span className="stack-add-word">Add reviewer</span>}
+          </button>
+        ))}
+    </fieldset>
+  )
+}
+
 export interface HeaderAgent {
   presence?: Presence
   /** Why the state holds — only `repolling` and `arriving` change what the chip says. */
@@ -503,6 +597,16 @@ export interface HeaderAgent {
   monitorPanel?: ReactNode
   /** Set while the agent's layers suggestion stands and no layers exist yet. */
   suggestion?: LayersSuggestion
+  /** Opens the Add reviewer dialog. Absent where reviewer agents cannot join
+   * (a pull-request review). */
+  onAddReviewer?: () => void
+  /** Open the agents panel, on this reviewer when one is named. */
+  onShowReviewer?: (name?: string) => void
+  /** The agent's standing suggestion of a reviewer, by role, with its reason. */
+  reviewerSuggested?: { role: string; reason?: string }
+  /** The reviewer agents sidebar's switch: the right edge's twin of the file
+   * list's. Absent where reviewer agents cannot join. */
+  reviewersPanel?: { open: boolean; onToggle: () => void }
 }
 
 export interface HeaderReview {
@@ -525,6 +629,8 @@ export interface HeaderSettings {
   onShowVoice?: () => void
   /** Opens the Layers dialog: what the layers are for — presets, the default. */
   onShowLayers?: () => void
+  /** Opens the reviewer agents dialog: their roles, and bringing one in. */
+  onShowReviewers?: () => void
   onShowShortcuts?: () => void
   /** Opens the Privacy dialog, where the usage-data switch lives. */
   onShowPrivacy?: () => void
@@ -566,7 +672,18 @@ export function Header({
     onShowShortcuts,
     onShowPrivacy,
     onShowLayers,
+    onShowReviewers,
   } = settings
+  // The reviewers still at it walk the header with the agent's critter, each
+  // in its own colour; one that finished, or left, is not on the floor.
+  const reviewers = useReviewers()
+  const pals: CritterPal[] = reviewerRows(reviewers).flatMap((row) => {
+    // "Needs you" is about its threads, not whether it is here: one that left
+    // after its thread stopped does not walk.
+    const gone = (reviewers.states.get(row.name) ?? 'away') === 'away'
+    const state = row.status === 'needs' && gone ? undefined : PAL_STATE[row.status]
+    return state ? [{ name: row.name, hue: row.hue, state }] : []
+  })
   return (
     <header className="top">
       {nav && (
@@ -616,6 +733,8 @@ export function Header({
           onAway={setCompanionAway}
           summon={summon}
           starAsk={starAsk}
+          pals={pals}
+          {...(agent.onShowReviewer ? { onPal: agent.onShowReviewer } : {})}
         />
       ) : starAsk ? (
         <span className="grow star-floor">
@@ -641,6 +760,11 @@ export function Header({
           onHover={critter ? () => setSummon((n) => n + 1) : undefined}
         />
       )}
+      <AgentStack
+        onAdd={agent.onAddReviewer}
+        onShow={agent.onShowReviewer}
+        suggested={agent.reviewerSuggested}
+      />
       {onOpenPalette && (
         <button
           type="button"
@@ -756,6 +880,17 @@ export function Header({
                 </MenuItem>
               </>
             )}
+            {onShowReviewers && (
+              <MenuItem
+                icon="user"
+                onClick={() => {
+                  close()
+                  onShowReviewers()
+                }}
+              >
+                Reviewer agents
+              </MenuItem>
+            )}
             {onShowShortcuts && (
               <>
                 {(onSetTheme || onSetCritter || onShowVoice || onShowLayers) && <MenuSep />}
@@ -805,6 +940,20 @@ export function Header({
           </>
         )}
       </Menu>
+      {/* The right edge's switch, last in the bar so it never moves: the twin of
+          the file list's switch at the left edge. */}
+      {agent.reviewersPanel && (
+        <button
+          type="button"
+          className="pane-icon top-agents"
+          onClick={agent.reviewersPanel.onToggle}
+          data-tip={`${agent.reviewersPanel.open ? 'Hide' : 'Show'} reviewer agents (⇧B)`}
+          aria-label={`${agent.reviewersPanel.open ? 'Hide' : 'Show'} reviewer agents`}
+          aria-pressed={agent.reviewersPanel.open}
+        >
+          <Icon name="sidebar" size="md" />
+        </button>
+      )}
     </header>
   )
 }

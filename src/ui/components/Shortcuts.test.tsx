@@ -25,6 +25,7 @@ describe('Shortcuts', () => {
       'u',
       'o',
       'b',
+      'B',
       'z',
       'c',
       'drag ↓',

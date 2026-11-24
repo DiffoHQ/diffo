@@ -7,7 +7,23 @@ import { Markdown } from './Markdown.js'
 
 /** `github` is a person on the pull request: their avatar when GitHub gave one,
  * the first letter of their login otherwise. */
-export function Avatar({ who, user }: { who: 'you' | 'agent' | 'github'; user?: GhUser }) {
+export function Avatar({
+  who,
+  user,
+  reviewer,
+}: {
+  who: 'you' | 'agent' | 'github' | 'reviewer'
+  user?: GhUser
+  /** A reviewer agent: its name's initial, in its hue (see ui/actors.ts). */
+  reviewer?: { name: string; hue: number }
+}) {
+  if (who === 'reviewer') {
+    return (
+      <span className={`avatar avatar-rev actor-rev-${reviewer?.hue ?? 1}`} aria-hidden="true">
+        {(reviewer?.name ?? '?').slice(0, 1).toUpperCase()}
+      </span>
+    )
+  }
   if (who === 'github') {
     return user?.avatarUrl ? (
       <img className="avatar avatar-github" src={user.avatarUrl} alt="" aria-hidden="true" />

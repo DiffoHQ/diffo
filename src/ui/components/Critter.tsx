@@ -91,6 +91,8 @@ function reducedMotion(): boolean {
 
 const between = (lo: number, hi: number) => lo + Math.random() * (hi - lo)
 
+const NO_PALS: readonly CritterPal[] = []
+
 /** Where the walker stands: a translate in px from its parked box, and a scale. */
 interface Spot {
   x: number
@@ -99,6 +101,150 @@ interface Spot {
 }
 
 const spotTransform = (p: Spot) => `translate(${p.x}px, ${p.y}px) scale(${p.s})`
+
+/**
+ * A reviewer agent at work, as a smaller critter in its own colour sharing
+ * the floor with the agent's: reading and inspecting while it works, sitting
+ * by the chips while it waits for answers, walking in while it is on its way.
+ */
+export interface CritterPal {
+  name: string
+  /** Its reviewer colour, 1-based (`--rev-N`). */
+  hue: number
+  state: 'active' | 'listening' | 'starting'
+}
+
+const PAL_SIZE = 22
+const PAL_PACE = 38
+const PAL_TASKS: readonly CritterAct[] = ['read', 'inspect', 'write']
+
+function PalWalker({
+  pal,
+  index,
+  width,
+  calm,
+  onClick,
+}: {
+  pal: CritterPal
+  /** Its place in the row parked by the chips: 0 is nearest them. */
+  index: number
+  width: number
+  /** The human is busy: work where it stands rather than cross the header. */
+  calm: boolean
+  onClick?: () => void
+}) {
+  const el = useRef<HTMLElement | null>(null)
+  const max = Math.max(0, width - PAL_SIZE)
+  const park = Math.max(0, max - 6 - index * (PAL_SIZE + 2))
+  // One on its way walks in from the far end; the rest start parked.
+  const [x, setX] = useState<number | null>(pal.state === 'starting' ? 0 : null)
+  const [move, setMove] = useState<{ ms: number; dir: 'left' | 'right' } | null>(null)
+  const [act, setAct] = useState<CritterAct>('stand')
+  const live = useRef({ x, max, park, calm })
+  live.current = { x, max, park, calm }
+  const room = max >= ROOM
+  const measured = width > 0
+
+  useEffect(() => {
+    if (!measured || !room || reducedMotion()) {
+      setX(null)
+      setMove(null)
+      setAct(pal.state === 'listening' ? 'sit' : 'stand')
+      return
+    }
+    let alive = true
+    let timer: ReturnType<typeof setTimeout> | undefined
+    const after = (ms: number, then: () => void) => {
+      timer = setTimeout(() => alive && then(), ms)
+    }
+    const at = () => Math.min(live.current.x ?? live.current.park, live.current.max)
+    const doing = (a: CritterAct, ms: number, then: () => void) => {
+      setAct(a)
+      after(ms, then)
+    }
+    const walk = (to: number, then: () => void) => {
+      const from = at()
+      const ms = (Math.abs(to - from) / PAL_PACE) * 1000
+      if (ms < 150) {
+        then()
+        return
+      }
+      setAct('walk')
+      setMove({ ms, dir: to < from ? 'left' : 'right' })
+      setX(to)
+      after(ms, () => {
+        setMove(null)
+        then()
+      })
+    }
+    const task = () => PAL_TASKS[Math.floor(Math.random() * PAL_TASKS.length)]!
+    if (pal.state === 'active') {
+      const shift = (): void =>
+        live.current.calm
+          ? doing(task(), between(2500, 4000), shift)
+          : walk(between(0, live.current.max), () => doing(task(), between(2500, 5500), shift))
+      doing(task(), between(800, 2500), shift)
+    } else {
+      // Waiting on answers, or not here yet: over by the chips, and still.
+      walk(live.current.park, () => setAct(pal.state === 'listening' ? 'sit' : 'stand'))
+    }
+    return () => {
+      alive = false
+      clearTimeout(timer)
+      // Interrupted mid-walk: stop where it actually is, not where it was headed.
+      if (el.current) {
+        try {
+          setX(new DOMMatrixReadOnly(getComputedStyle(el.current).transform).m41)
+        } catch {
+          // nothing to read; it lands where it was headed
+        }
+      }
+      setMove(null)
+    }
+  }, [pal.state, measured, room])
+
+  const shared = {
+    className: `critter-walker critter-pal actor-rev-${pal.hue}${move ? ` critter-moving critter-${move.dir}` : ''}${calm ? ' critter-calm' : ''}`,
+    style: {
+      transform: spotTransform({ x: Math.min(x ?? park, max), y: 0, s: 1 }),
+      transition: move ? `transform ${move.ms}ms linear` : 'none',
+      visibility: measured && room ? undefined : ('hidden' as const),
+    },
+    title: `${pal.name}, a reviewer agent${pal.state === 'starting' ? ' on its way' : pal.state === 'listening' ? ' waiting for answers' : ' at work'}`,
+  }
+  const figure = (
+    <Critter
+      presence={pal.state === 'active' ? 'working' : 'listening'}
+      act={act}
+      size={PAL_SIZE}
+    />
+  )
+  // A click opens the reviewer's log. Out of the tab order: its chip in the
+  // strip beside it is the keyboard's way to the same place.
+  return onClick ? (
+    <button
+      type="button"
+      tabIndex={-1}
+      ref={(node) => {
+        el.current = node
+      }}
+      {...shared}
+      className={`${shared.className} critter-pal-link`}
+      onClick={onClick}
+    >
+      {figure}
+    </button>
+  ) : (
+    <span
+      ref={(node) => {
+        el.current = node
+      }}
+      {...shared}
+    >
+      {figure}
+    </span>
+  )
+}
 
 /** The header's flexible gap, with the critter roaming inside it. Stands in for
  * the header's `grow` spacer, so the layout around it is unchanged. `seat` is
@@ -110,6 +256,8 @@ export function CritterTrack({
   onAway,
   summon = 0,
   starAsk,
+  pals = NO_PALS,
+  onPal,
 }: {
   presence: Presence
   reason?: PresenceReason
@@ -119,6 +267,10 @@ export function CritterTrack({
   summon?: number
   /** The one-time star ask: it walks out, holds up a star, and says so. */
   starAsk?: StarAsk
+  /** The reviewer agents at work: each a smaller critter on the same floor. */
+  pals?: readonly CritterPal[]
+  /** A click on a reviewer's critter. */
+  onPal?: (name: string) => void
 }) {
   const track = useRef<HTMLSpanElement>(null)
   const walker = useRef<HTMLSpanElement>(null)
@@ -471,6 +623,16 @@ export function CritterTrack({
       >
         <Critter presence={presence} act={act} />
       </span>
+      {pals.map((pal, index) => (
+        <PalWalker
+          key={pal.name}
+          pal={pal}
+          index={index}
+          width={width}
+          calm={calm}
+          {...(onPal ? { onClick: () => onPal(pal.name) } : {})}
+        />
+      ))}
       {starAsk && (
         <StarBubble
           ask={starAsk}

@@ -1,4 +1,10 @@
-import { commitLabel, type ReviewThread, untouchedAgentVoice } from '../shared/review.js'
+import {
+  askedBy,
+  betweenAgents,
+  commitLabel,
+  type ReviewThread,
+  untouchedAgentVoice,
+} from '../shared/review.js'
 
 /**
  * What's worth telling a reviewer who isn't looking: the agent answered a thread
@@ -53,7 +59,15 @@ export function collectNotices(
 ): AgentNotice[] {
   const notices: AgentNotice[] = []
   for (const thread of threads) {
-    const last = [...thread.messages].reverse().find((m) => m.author === 'agent')
+    // An answer to a reviewer agent is not news for the human, until the two
+    // run out of rounds or one asks for their decision, and the thread is
+    // theirs to settle: then the last word, whichever agent said it, is.
+    const between = betweenAgents(thread)
+    if (between && !thread.needsYou) continue
+    const last =
+      between && askedBy(thread) === 'reviewer'
+        ? thread.messages.at(-1)
+        : [...thread.messages].reverse().find((m) => m.author === 'agent')
     if (!last || seen.has(key(thread.id, last.id))) continue
     const untouched = untouchedAgentVoice(thread)
     notices.push({

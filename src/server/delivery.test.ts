@@ -1007,6 +1007,26 @@ describe('DeliveryQueue — the layers request', () => {
     expect(q.take()).toEqual({ kind: 'layers', ask: { kind: 'auto' } })
   })
 
+  it('a role message rides like a preset message, after it; clearing it drops it', async () => {
+    const q = new DeliveryQueue()
+    const attached = q.attach()
+    q.enqueueLayers()
+    q.enqueueRole('perf')
+    q.enqueueRole('perf')
+    q.enqueueRole('draft-0a1b2c3d')
+    q.enqueuePreset('p1')
+    expect(await attached).toBe('data')
+    const first = q.take()!
+    expect(first).toEqual({ kind: 'preset', id: 'p1' })
+    q.confirm(first, [])
+    const second = q.take()!
+    expect(second).toEqual({ kind: 'role', id: 'perf' })
+    q.confirm(second, [])
+    expect(q.take()).toEqual({ kind: 'role', id: 'draft-0a1b2c3d' })
+    q.dropRole('draft-0a1b2c3d')
+    expect(q.take()).toEqual({ kind: 'layers', ask: { kind: 'auto' } })
+  })
+
   it('reads as queued while parked, and two clicks before a poll are one item', () => {
     const q = new DeliveryQueue()
     q.enqueueLayers()

@@ -2,6 +2,11 @@ import { describe, expect, it } from 'vitest'
 import { actionForKey } from './keyboard.js'
 
 describe('actionForKey', () => {
+  it('b is the file list, and Shift+B its twin on the right: the reviewer agents', () => {
+    expect(actionForKey('b', false)).toBe('toggle-nav')
+    expect(actionForKey('B', true)).toBe('toggle-agents')
+  })
+
   it('maps the reading keys', () => {
     expect(actionForKey('j', false)).toBe('next-hunk')
     expect(actionForKey('k', false)).toBe('prev-hunk')

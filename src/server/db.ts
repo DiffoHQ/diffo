@@ -7,6 +7,17 @@ import { branchExists, branchExistsAsync } from './git.js'
 
 const require = createRequire(import.meta.url)
 
+/**
+ * Where a review's reviewer agents' state is kept (`ReviewStore`'s hub
+ * snapshot): a ui_settings row beside the review, keyed by the review's own
+ * key, so it goes when the review goes.
+ */
+export function reviewerHubKey(repoPath: string, branch: string, base: string): string {
+  return `reviewerHub:${JSON.stringify([repoPath, branch, base])}`
+}
+
+type ReviewKeyRow = { repo_path: string; branch: string; base: string }
+
 /** Signal 0 asks "does this process exist?" without touching it; EPERM is still
  * a yes (it exists, it just isn't ours). */
 function pidAlive(pid: number): boolean {
@@ -199,8 +210,11 @@ export class DiffoDb {
    */
   private pruneExpiredReviews(): void {
     const cutoff = new Date(Date.now() - REVIEW_TTL_DAYS * 86_400_000).toISOString()
-    const stale = this.db.prepare('DELETE FROM reviews WHERE updated_at < ?').run(cutoff)
-    if (Number(stale.changes) > 0) this.checkpoint()
+    const stale = this.db
+      .prepare('DELETE FROM reviews WHERE updated_at < ? RETURNING repo_path, branch, base')
+      .all(cutoff) as ReviewKeyRow[]
+    this.dropHubs(stale)
+    if (stale.length > 0) this.checkpoint()
   }
 
   /**
@@ -286,13 +300,27 @@ export class DiffoDb {
 
   /** Every review of a repo, or only one branch's. Returns the rows dropped. */
   private dropReviews(repoPath: string, branch?: string): number {
-    const result =
+    const dropped = (
       branch === undefined
-        ? this.db.prepare('DELETE FROM reviews WHERE repo_path = ?').run(repoPath)
+        ? this.db
+            .prepare('DELETE FROM reviews WHERE repo_path = ? RETURNING repo_path, branch, base')
+            .all(repoPath)
         : this.db
-            .prepare('DELETE FROM reviews WHERE repo_path = ? AND branch = ?')
-            .run(repoPath, branch)
-    return Number(result.changes)
+            .prepare(
+              'DELETE FROM reviews WHERE repo_path = ? AND branch = ? RETURNING repo_path, branch, base',
+            )
+            .all(repoPath, branch)
+    ) as ReviewKeyRow[]
+    this.dropHubs(dropped)
+    return dropped.length
+  }
+
+  /** The reviewer agents' state of reviews that went: it goes with them, or a
+   * namesake branch would inherit its removals, logs and conversations. */
+  private dropHubs(rows: readonly ReviewKeyRow[]): void {
+    if (rows.length === 0) return
+    const drop = this.db.prepare('DELETE FROM ui_settings WHERE key = ?')
+    for (const r of rows) drop.run(reviewerHubKey(r.repo_path, r.branch, r.base))
   }
 
   /** Fold the write-ahead log back into the database file and truncate it. WAL

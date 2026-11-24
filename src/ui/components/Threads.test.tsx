@@ -3,9 +3,16 @@ import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/re
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { ReviewThread } from '../../shared/review.js'
 import type { FileChange, Hunk } from '../../shared/types.js'
+import { ReviewersContext } from '../actors.js'
 import { partitionThreads } from '../reviewPlacement.js'
 import { ReadingPane } from './ReadingPane.js'
-import { CommentBox, type ReviewActions, ThreadCard } from './Threads.js'
+import {
+  CommentBox,
+  formatAgentDuration,
+  type ReviewActions,
+  ThreadCard,
+  ThreadFocusContext,
+} from './Threads.js'
 
 vi.mock('../highlight.js', () => ({
   tokenizeLines: async () => null,
@@ -345,6 +352,27 @@ describe('ThreadCard', () => {
     expect(document.querySelector('.thread-reply-stub')).toBeNull()
   })
 
+  it('a closed thread you go to opens in full, again on each visit', () => {
+    const closed = thread({ state: 'resolved' })
+    const at = (focus: { id: string; n: number } | null) => (
+      <ThreadFocusContext.Provider value={focus}>
+        <ThreadCard thread={closed} actions={actions()} />
+      </ThreadFocusContext.Provider>
+    )
+    const { rerender } = render(at(null))
+    expect(document.querySelector('.thread-collapsed')).toBeTruthy()
+    rerender(at({ id: closed.id, n: 1 }))
+    expect(document.querySelector('.thread-collapsed')).toBeNull()
+    expect(screen.getByText('because Y')).toBeTruthy()
+    fireEvent.click(screen.getByText('Collapse'))
+    expect(document.querySelector('.thread-collapsed')).toBeTruthy()
+    rerender(at({ id: closed.id, n: 2 }))
+    expect(document.querySelector('.thread-collapsed')).toBeNull()
+    // Going to another thread leaves this one as it is.
+    rerender(at({ id: 'other', n: 3 }))
+    expect(document.querySelector('.thread-collapsed')).toBeNull()
+  })
+
   it('a collapsed thread shows only the first line of a long body', () => {
     // A bot's review comment runs to paragraphs; the collapsed summary is one
     // nowrap line, and a whole body there would set the diff table's width.
@@ -505,6 +533,10 @@ describe('ThreadCard', () => {
       />,
     )
     expect(screen.getByText('answered in 1m 05s')).toBeTruthy()
+  })
+
+  it('an answer over an hour reads in hours', () => {
+    expect(formatAgentDuration(591 * 60_000 + 35_000)).toBe('9h 51m')
   })
 })
 
@@ -1324,5 +1356,114 @@ describe('a held reply on a departed thread', () => {
   it('a thread still in the diff keeps the promise the batch can keep', () => {
     render(<ThreadCard thread={held} actions={actions()} />)
     expect(screen.getByText(/Finish review takes it with the batch/)).toBeTruthy()
+  })
+})
+
+describe('ThreadCard — reviewer agents', () => {
+  const at = '2026-11-22T00:00:00Z'
+  const fromCodex = (over: Partial<ReviewThread> = {}) =>
+    thread({
+      state: 'sent',
+      messages: [
+        { id: 'm1', author: 'reviewer', by: 'codex', text: 'no backoff between retries', at },
+        { id: 'm2', author: 'agent', text: 'added one', at },
+      ],
+      ...over,
+    })
+  const card = (t: ReviewThread, act = actions()) =>
+    render(
+      <ReviewersContext.Provider
+        value={{ seats: ['codex'], hues: new Map([['codex', 1]]), states: new Map() }}
+      >
+        <ThreadCard thread={t} actions={act} />
+      </ReviewersContext.Provider>,
+    )
+  const names = () => [...document.querySelectorAll('.cmt-who')].map((n) => n.textContent)
+
+  it('names who wrote each message and who started the thread', () => {
+    card(
+      fromCodex({
+        messages: [
+          { id: 'm1', author: 'reviewer', by: 'codex', text: 'no backoff', at },
+          { id: 'm2', author: 'agent', text: 'added one', at },
+          { id: 'm3', author: 'reviewer', text: 'cap it too', at },
+        ],
+      }),
+    )
+    expect(names()).toEqual(['codex', 'Author agent', 'You'])
+    const who = document.querySelector('.cmt-who-rev')!
+    expect(who.className).toContain('actor-rev-1')
+    expect(document.querySelector('.avatar-rev')!.textContent).toBe('C')
+    expect(document.querySelector('.cmt-role')!.textContent).toBe('reviewer agent')
+    expect(document.querySelector('.thread-where')!.textContent).toBe('codex’s comment on line 2')
+  })
+
+  it("names the reviewer agent's role beside it", () => {
+    render(
+      <ReviewersContext.Provider
+        value={{
+          seats: ['codex'],
+          hues: new Map([['codex', 1]]),
+          states: new Map(),
+          roleNames: new Map([['codex', 'Code comments']]),
+        }}
+      >
+        <ThreadCard thread={fromCodex()} actions={actions()} />
+      </ReviewersContext.Provider>,
+    )
+    expect(document.querySelector('.cmt-role')!.textContent).toBe('Code comments reviewer agent')
+  })
+
+  it("leaves your own thread's bylines as they were", () => {
+    render(<ThreadCard thread={thread()} actions={actions()} />)
+    expect(names()).toEqual(['You', 'Agent'])
+    expect(document.querySelector('.cmt-role')).toBeNull()
+  })
+
+  it('says whose move it is while the agents talk', () => {
+    card(fromCodex())
+    expect(document.querySelector('.chip')!.textContent).toBe('With codex')
+    cleanup()
+    card(
+      fromCodex({
+        messages: [{ id: 'm1', author: 'reviewer', by: 'codex', text: 'no backoff', at }],
+      }),
+    )
+    expect(document.querySelector('.chip')!.textContent).toBe('With the agent')
+    // No prompt was copied for a reviewer agent's comment: nothing to paste.
+    expect(document.querySelector('.thread-hint')).toBeNull()
+  })
+
+  it('a stopped thread asks for you, and your reply or resolve is how it moves', () => {
+    const act = actions()
+    card(fromCodex({ needsYou: 'rounds' }), act)
+    expect(document.querySelector('.thread-badge-needs')!.textContent).toBe('needs you · 3 rounds')
+    expect(document.querySelector('.chip')).toBeNull()
+    expect(document.querySelector('.thread-hint')!.textContent).toMatch(
+      /codex and the agent could not settle this in 3 rounds/,
+    )
+    fireEvent.click(screen.getByRole('button', { name: 'Resolve' }))
+    expect(act.resolve).toHaveBeenCalledWith('t-1')
+  })
+
+  it('a thread a reviewer agent closed says so', () => {
+    card(fromCodex({ state: 'resolved', resolvedBy: 'codex' }))
+    // Collapsed, the line itself says it; opened, a badge does.
+    expect(document.querySelector('.chip')!.textContent).toBe('Closed by codex')
+    fireEvent.click(document.querySelector('.thread-collapsed-summary')!)
+    expect(document.body.textContent).toContain('closed by codex')
+  })
+
+  it("only your own messages can be edited, never a reviewer agent's", () => {
+    card(
+      fromCodex({
+        messages: [
+          { id: 'm1', author: 'reviewer', by: 'codex', text: 'no backoff', at },
+          { id: 'm2', author: 'reviewer', text: 'agreed', at },
+        ],
+      }),
+      actions({ edit: vi.fn(async () => {}) }),
+    )
+    expect(document.querySelectorAll('.cmt-edit')).toHaveLength(1)
   })
 })

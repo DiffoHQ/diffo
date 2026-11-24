@@ -790,7 +790,8 @@ body {
     visibility 0s var(--dur-move);
 }
 
-.nav-hidden .rail-resize {
+/* The reviewer agents' edge keeps its handle: only the file list's goes. */
+.nav-hidden .rail-resize:not(.agents-resize) {
   display: none;
 }
 
@@ -9397,6 +9398,24 @@ i.q-now {
   transform-origin: 0 0;
 }
 
+/* A reviewer agent's critter: smaller, in its reviewer's colour, on the same
+   floor and behind the agent's own. */
+.critter-pal {
+  bottom: -3px;
+  z-index: 0;
+}
+
+.critter-pal .critter {
+  color: var(--actor);
+}
+
+.critter-pal-link {
+  padding: 0;
+  border: 0;
+  background: none;
+  cursor: pointer;
+}
+
 /* Hopping between floor and seat: legs and glasses fold away, leaving the face. */
 .critter-tucked .critter-leg,
 .critter-tucked .critter-glasses {
@@ -10775,6 +10794,75 @@ span.elsewhere-go {
   min-width: 0;
 }
 
+/* Reviewer agents: the list is long (the active ones and a library), so it
+   scrolls on its own beside the reviewer it opened, which stays in view. */
+.ra-modal .lp-side {
+  position: sticky;
+  top: 0;
+  align-self: start;
+  max-height: calc(100vh - 220px);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+/* The list scrolls as one: its groups keep their height. */
+.ra-modal .lp-side > * {
+  flex: none;
+}
+
+/* One rhythm for the reviewer in view: its name with its line close under
+   it, then what it looks for, then the conversation, each its own block a
+   steady step apart, the heading level with the list's first caption. */
+.ra-modal .lp-detail {
+  gap: var(--s-6);
+  padding-top: var(--s-4);
+}
+
+.ra-modal .lp-dhead {
+  gap: var(--s-1);
+}
+
+/* What it says and the conversation that changes it are two blocks, not a
+   card holding a card. */
+.ra-modal .lp-card:not(.lp-card-bare) {
+  gap: var(--s-6);
+  border: 0;
+  border-radius: 0;
+  background: none;
+  overflow: visible;
+}
+
+.ra-modal .lp-card:not(.lp-card-bare) > .lp-facts {
+  gap: var(--s-6);
+  padding: var(--s-6) var(--s-7);
+  border: 1px solid var(--hair);
+  border-radius: var(--r);
+  background: var(--paper);
+}
+
+.ra-modal .lp-card-thread {
+  padding: 0;
+  border-top: 0;
+  background: none;
+}
+
+/* Editing by hand, the form takes the facts' place, in the same frame, with
+   its Save right under it. */
+.ra-modal .lp-card:not(.lp-card-bare) > .lp-fields {
+  border: 1px solid var(--hair);
+  border-radius: var(--r);
+}
+
+.ra-modal .lp-card:not(.lp-card-bare) > .lp-savebar {
+  margin-top: calc(-1 * var(--s-3));
+  padding: 0;
+  border-top: 0;
+}
+
+.ra-modal .lp-fact {
+  gap: var(--s-2);
+}
+
 .lp-cap {
   padding: var(--s-4) var(--s-3) 0;
   font-size: var(--t-11);
@@ -11380,4 +11468,1346 @@ span.elsewhere-go {
 .hunk-fold-btn:hover {
   background: var(--exp-hover);
   color: var(--exp-hover-fg);
+}
+
+/* ---------- reviewer agents: one hue per actor ----------
+   A review can hold several agents: the one that wrote the change (amber, as
+   ever), and any number of reviewer agents sent to read it. Each reviewer
+   agent keeps one hue wherever it appears — its byline, its avatar, its rail
+   rows, its chip in the top bar — assigned by the order it joined
+   (ui/actors.ts). The hues stay off the roles the rest of the page owns:
+   indigo is you, amber the author agent, green is read. Blue is free here
+   because a reviewer agent never sits in a pull-request review, the one place
+   GitHub's blue appears. */
+
+:root,
+:root[data-theme="light"] {
+  --rev-1: #6639ba;
+  --rev-1-wash: rgba(102, 57, 186, 0.09);
+  --rev-1-line: rgba(102, 57, 186, 0.32);
+  --rev-2: #0b62b8;
+  --rev-2-wash: rgba(11, 98, 184, 0.09);
+  --rev-2-line: rgba(11, 98, 184, 0.32);
+  --rev-3: #0c6f66;
+  --rev-3-wash: rgba(12, 111, 102, 0.1);
+  --rev-3-line: rgba(12, 111, 102, 0.34);
+  --rev-4: #a82363;
+  --rev-4-wash: rgba(168, 35, 99, 0.08);
+  --rev-4-line: rgba(168, 35, 99, 0.3);
+  --rev-5: #b0481c;
+  --rev-5-wash: rgba(176, 72, 28, 0.08);
+  --rev-5-line: rgba(176, 72, 28, 0.3);
+  --rev-6: #5a6e00;
+  --rev-6-wash: rgba(90, 110, 0, 0.09);
+  --rev-6-line: rgba(90, 110, 0, 0.32);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --rev-1: #b391f5;
+    --rev-1-wash: rgba(179, 145, 245, 0.14);
+    --rev-1-line: rgba(179, 145, 245, 0.4);
+    --rev-2: #6cb6ff;
+    --rev-2-wash: rgba(108, 182, 255, 0.14);
+    --rev-2-line: rgba(108, 182, 255, 0.4);
+    --rev-3: #5ccdbd;
+    --rev-3-wash: rgba(92, 205, 189, 0.13);
+    --rev-3-line: rgba(92, 205, 189, 0.38);
+    --rev-4: #f28cb8;
+    --rev-4-wash: rgba(242, 140, 184, 0.13);
+    --rev-4-line: rgba(242, 140, 184, 0.38);
+    --rev-5: #ff9a76;
+    --rev-5-wash: rgba(255, 154, 118, 0.13);
+    --rev-5-line: rgba(255, 154, 118, 0.38);
+    --rev-6: #b8cf5a;
+    --rev-6-wash: rgba(184, 207, 90, 0.12);
+    --rev-6-line: rgba(184, 207, 90, 0.36);
+  }
+}
+
+:root[data-theme="dark"] {
+  --rev-1: #b391f5;
+  --rev-1-wash: rgba(179, 145, 245, 0.14);
+  --rev-1-line: rgba(179, 145, 245, 0.4);
+  --rev-2: #6cb6ff;
+  --rev-2-wash: rgba(108, 182, 255, 0.14);
+  --rev-2-line: rgba(108, 182, 255, 0.4);
+  --rev-3: #5ccdbd;
+  --rev-3-wash: rgba(92, 205, 189, 0.13);
+  --rev-3-line: rgba(92, 205, 189, 0.38);
+  --rev-4: #f28cb8;
+  --rev-4-wash: rgba(242, 140, 184, 0.13);
+  --rev-4-line: rgba(242, 140, 184, 0.38);
+  --rev-5: #ff9a76;
+  --rev-5-wash: rgba(255, 154, 118, 0.13);
+  --rev-5-line: rgba(255, 154, 118, 0.38);
+  --rev-6: #b8cf5a;
+  --rev-6-wash: rgba(184, 207, 90, 0.12);
+  --rev-6-line: rgba(184, 207, 90, 0.36);
+}
+
+/* The hue, handed to whatever draws the actor. */
+.actor-rev-1 {
+  --actor: var(--rev-1);
+  --actor-wash: var(--rev-1-wash);
+  --actor-line: var(--rev-1-line);
+}
+
+.actor-rev-2 {
+  --actor: var(--rev-2);
+  --actor-wash: var(--rev-2-wash);
+  --actor-line: var(--rev-2-line);
+}
+
+.actor-rev-3 {
+  --actor: var(--rev-3);
+  --actor-wash: var(--rev-3-wash);
+  --actor-line: var(--rev-3-line);
+}
+
+.actor-rev-4 {
+  --actor: var(--rev-4);
+  --actor-wash: var(--rev-4-wash);
+  --actor-line: var(--rev-4-line);
+}
+
+.actor-rev-5 {
+  --actor: var(--rev-5);
+  --actor-wash: var(--rev-5-wash);
+  --actor-line: var(--rev-5-line);
+}
+
+.actor-rev-6 {
+  --actor: var(--rev-6);
+  --actor-wash: var(--rev-6-wash);
+  --actor-line: var(--rev-6-line);
+}
+
+/* A reviewer agent's byline: its name is an identifier, so it is set in mono. */
+.cmt-who-rev {
+  font-family: var(--mono);
+  font-size: var(--t-125);
+  color: var(--actor);
+}
+
+.cmt-role {
+  font-size: var(--t-11);
+  color: var(--ink-3);
+}
+
+.avatar-rev {
+  background: var(--actor-wash);
+  color: var(--actor);
+  box-shadow: inset 0 0 0 1px var(--actor-line);
+  font-family: var(--mono);
+  font-size: var(--t-11);
+  font-weight: 600;
+  line-height: 1;
+}
+
+/* Who started the thread, on its rail row. */
+.crow-who {
+  font-family: var(--mono);
+  font-size: var(--t-11);
+  font-weight: 600;
+  color: var(--actor);
+}
+
+.crow-state-needs {
+  color: var(--attn);
+  font-weight: 600;
+}
+
+/* Stopped for you (the agents ran out of rounds, or one asked): the one badge
+   on a card that asks for you. */
+.thread-badge-needs {
+  border: 1px solid var(--attn-line);
+  font-weight: 600;
+}
+
+/* The rail's filter: everything, or only what the agents could not settle. */
+.clist-filter {
+  display: flex;
+  gap: var(--s-1);
+  margin: 0;
+  padding: var(--s-2) var(--s-4) var(--s-1);
+  border: 0;
+  min-width: 0;
+}
+
+.clist-filter-opt {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s-2);
+  padding: 3px var(--s-3);
+  border: 1px solid transparent;
+  border-radius: var(--r-pill);
+  background: none;
+  font: inherit;
+  font-size: var(--t-12);
+  font-weight: 500;
+  color: var(--ink-3);
+  cursor: pointer;
+  transition:
+    background-color var(--dur) var(--ease-out),
+    color var(--dur) var(--ease-out);
+}
+
+.clist-filter-opt:hover {
+  color: var(--ink);
+  background: var(--fill);
+}
+
+.clist-filter-opt[aria-pressed="true"] {
+  color: var(--ink);
+  background: var(--fill-2);
+}
+
+.clist-filter-opt:focus-visible {
+  outline: 2px solid var(--acc);
+  outline-offset: 1px;
+}
+
+.clist-filter-hot,
+.clist-filter-hot .sec-n {
+  color: var(--attn);
+}
+
+.clist-filter-hot[aria-pressed="true"] {
+  color: var(--attn);
+  background: var(--attn-wash);
+  border-color: var(--attn-line);
+}
+
+/* ---------- add a reviewer agent ---------- */
+
+.rv-sheet .cov-note {
+  margin: 0;
+}
+
+/* What a role looks for, read rather than edited: the built-ins are fixed. */
+.rv-focus {
+  margin: 0;
+  padding: var(--s-3) var(--s-4);
+  border-radius: var(--r-sm);
+  background: var(--fill);
+  font-size: var(--t-13);
+  line-height: 1.5;
+  color: var(--ink-2);
+}
+
+/* When to open it: the quick read. */
+.rv-when {
+  margin: 0 0 var(--s-1);
+  color: var(--ink);
+}
+
+/* The whole instructions, on demand. */
+.rv-full {
+  margin: var(--s-2) 0;
+  max-height: 148px;
+  overflow-y: auto;
+  font-size: var(--t-12);
+  color: var(--ink-2);
+}
+
+/* The roles to tick: one row each, its focus one click away. */
+/* Ready-made sets: one click ticks the roles a kind of change wants. */
+.rv-combos {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s-2);
+  margin: 0 0 var(--s-3);
+  padding: 0;
+  border: 0;
+}
+
+.rv-combos-cap {
+  float: left;
+  margin-right: var(--s-1);
+  padding: 4px 0;
+  font-size: var(--t-12);
+  color: var(--ink-3);
+}
+
+.rv-combo {
+  padding: 3px 10px;
+  border: 1px solid var(--hair);
+  border-radius: 999px;
+  background: var(--paper);
+  font: inherit;
+  font-size: var(--t-12);
+  color: var(--ink-2);
+  cursor: pointer;
+}
+
+.rv-combo:hover {
+  border-color: var(--ink-3);
+  color: var(--ink);
+}
+
+.rv-combo[aria-pressed="true"] {
+  border-color: var(--ink);
+  background: var(--fill);
+  color: var(--ink);
+}
+
+.rv-combo:focus-visible {
+  outline: 2px solid var(--acc);
+  outline-offset: 2px;
+}
+
+.rv-more {
+  margin-top: var(--s-2);
+}
+
+.rv-roles {
+  display: flex;
+  flex-direction: column;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  border: 1px solid var(--hair);
+  border-radius: var(--r-sm);
+}
+
+.rv-role + .rv-role {
+  border-top: 1px solid var(--hair);
+}
+
+.rv-role-row {
+  display: flex;
+  align-items: center;
+  gap: var(--s-3);
+  padding: 0 var(--s-4) 0 0;
+}
+
+.rv-role-pick {
+  display: flex;
+  align-items: baseline;
+  gap: var(--s-3);
+  flex: 1;
+  min-width: 0;
+  padding: var(--s-3) 0 var(--s-3) var(--s-4);
+  cursor: pointer;
+}
+
+.rv-role-pick input {
+  flex: none;
+  margin: 0;
+  align-self: center;
+  accent-color: var(--acc);
+}
+
+.rv-role-name {
+  flex: none;
+  font-size: var(--t-13);
+  font-weight: 600;
+  color: var(--ink);
+}
+
+.rv-role-blurb {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: var(--t-12);
+  color: var(--ink-3);
+}
+
+.rv-role .rv-focus {
+  margin: 0 var(--s-4) var(--s-3);
+}
+
+/* How they join: two choices, said in full. */
+.rv-how {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-2);
+  margin: 0;
+  padding: 0;
+  border: 0;
+  min-width: 0;
+}
+
+.rv-how legend {
+  padding: 0;
+  margin-bottom: var(--s-2);
+}
+
+.rv-how-opt {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--s-3);
+  padding: var(--s-3) var(--s-4);
+  border: 1px solid var(--hair);
+  border-radius: var(--r-sm);
+  cursor: pointer;
+}
+
+.rv-how-opt:has(input:checked) {
+  border-color: var(--acc);
+  background: var(--acc-wash);
+}
+
+.rv-how-opt input {
+  flex: none;
+  margin: 3px 0 0;
+  accent-color: var(--acc);
+}
+
+.rv-how-off {
+  cursor: default;
+  opacity: 0.6;
+}
+
+.rv-how-text {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+}
+
+.rv-how-title {
+  font-size: var(--t-13);
+  font-weight: 600;
+  color: var(--ink);
+}
+
+.rv-how-sub {
+  font-size: var(--t-12);
+  color: var(--ink-3);
+}
+
+/* A line to paste: its role, how it starts, and the button. Nobody reads it. */
+.rv-lines {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-2);
+}
+
+.rv-line {
+  display: flex;
+  align-items: center;
+  gap: var(--s-3);
+  padding: var(--s-2) var(--s-2) var(--s-2) var(--s-4);
+  border-radius: var(--r-sm);
+  background: var(--fill);
+}
+
+.rv-line-role {
+  flex: none;
+  font-size: var(--t-12);
+  font-weight: 600;
+  color: var(--ink);
+}
+
+.rv-line-text {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: var(--mono);
+  font-size: var(--t-11);
+  color: var(--ink-3);
+}
+
+.rv-line .btn {
+  flex: none;
+  gap: var(--s-2);
+}
+
+/* Passing on a suggestion destroys nothing: set apart, not in red. */
+.rv-pass {
+  margin-left: auto;
+}
+
+.rv-suggested {
+  display: flex;
+  gap: var(--s-3);
+  padding: var(--s-3) var(--s-4);
+  border: 1px solid var(--attn-line);
+  border-radius: var(--r-sm);
+  background: var(--attn-wash);
+  font-size: var(--t-13);
+  line-height: 1.45;
+  color: var(--ink-2);
+}
+
+.rv-suggested svg {
+  flex: none;
+  margin-top: 3px;
+  color: var(--attn);
+}
+
+.rv-suggested b {
+  color: var(--ink);
+  font-weight: 600;
+}
+
+/* ---------- reviewer agents: status marks ---------- */
+
+/* The marks agent tools already share, so nothing here needs learning: a
+   spinner while working, an orange dot when it waits on you, a clock while it
+   waits on your agent, a check when done, a hollow circle when gone. */
+.st {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 12px;
+  height: 12px;
+  flex: none;
+  border-radius: 50%;
+}
+
+.st-working {
+  border: 2px solid var(--fill-2);
+  border-top-color: var(--ink-2);
+  animation: st-spin 0.9s linear infinite;
+}
+
+@keyframes st-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+:root[data-motion="off"] .st-working {
+  animation: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .st-working {
+    animation: none;
+  }
+}
+
+.st-needs {
+  width: 8px;
+  height: 8px;
+  margin: 2px;
+  background: var(--attn);
+}
+
+.st-waiting,
+.st-starting {
+  border: 1.5px solid var(--ink-3);
+}
+
+.st-waiting::after {
+  content: "";
+  position: absolute;
+  left: 50%;
+  top: 2px;
+  width: 1.5px;
+  height: 3.5px;
+  background: var(--ink-3);
+  transform: translateX(-50%);
+}
+
+.st-starting {
+  border-style: dashed;
+}
+
+.st-done {
+  background: var(--add);
+  color: var(--paper);
+}
+
+.st-done .icon {
+  width: 8px;
+  height: 8px;
+}
+
+.st-away {
+  width: 10px;
+  height: 10px;
+  margin: 1px;
+  border: 1.5px solid var(--ink-3);
+}
+
+/* Stopped: a media player's stop, a small square. */
+.st-stopped {
+  width: 8px;
+  height: 8px;
+  margin: 2px;
+  border-radius: 2px;
+  background: var(--ink-3);
+}
+
+/* A reviewer's face: the critter in its colour, eyes cut in the page's. */
+.face {
+  --face-cut: var(--paper);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  flex: none;
+  color: var(--actor, var(--ink-3));
+  line-height: 1;
+}
+
+.face .critter-face {
+  width: 100%;
+  height: auto;
+}
+
+/* ---------- reviewer agents: the top bar ---------- */
+
+.stack {
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+  flex: none;
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.stack-faces {
+  display: flex;
+  align-items: center;
+}
+
+.stack-face {
+  display: inline-flex;
+  /* Side by side, not stacked: each face's status badge needs its corner. */
+  margin-left: 6px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: none;
+  box-shadow: 0 0 0 2px var(--canvas);
+}
+
+.stack-face:first-child {
+  margin-left: 0;
+}
+
+button.stack-face {
+  cursor: pointer;
+}
+
+button.stack-face:focus-visible,
+.stack-add:focus-visible {
+  outline: 2px solid var(--acc);
+  outline-offset: 2px;
+}
+
+.stack-more {
+  margin-left: var(--s-1);
+  font-size: var(--t-11);
+  color: var(--ink-3);
+}
+
+.stack-add {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+  min-width: 24px;
+  height: 24px;
+  padding: 0 5px;
+  border: 1px dashed var(--ink-3);
+  border-radius: 12px;
+  background: none;
+  font-size: var(--t-11);
+  font-weight: 500;
+  color: var(--ink-2);
+  cursor: pointer;
+}
+
+.stack-add:hover {
+  color: var(--ink);
+  border: 1px solid var(--ink);
+}
+
+/* Before any reviewer: the same dashed button, with its word. */
+.stack-add-labeled {
+  gap: 5px;
+  padding: 0 var(--s-3) 0 var(--s-2);
+  font-size: var(--t-12);
+}
+
+.stack-add-suggested {
+  padding: 0 var(--s-3) 0 var(--s-2);
+  border-color: var(--attn-line);
+  color: var(--attn);
+}
+
+@media (max-width: 860px) {
+  .stack-add-word {
+    display: none;
+  }
+}
+
+/* ---------- reviewer agents: the sidebar on the right ---------- */
+
+/* Built like the file list on the left: on the canvas, its tab bar, its rows. */
+.agents {
+  display: flex;
+  flex-direction: column;
+  flex: none;
+  width: var(--agents-w, 300px);
+  min-height: 0;
+  margin-left: var(--s-3);
+  overflow: hidden;
+}
+
+.agents-resize {
+  order: 0;
+}
+
+.agents-list {
+  display: flex;
+  flex-direction: column;
+}
+
+.agents-empty {
+  margin: var(--s-3) var(--s-5);
+  font-size: var(--t-12);
+  color: var(--ink-3);
+  list-style: none;
+}
+
+/* One reviewer, as a pull request lists one: face, name and type, a line on
+   what it is doing, and its status mark; on hover, what can be done with it. */
+.agents-row {
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+  width: 100%;
+  padding: 4px var(--s-2) 4px 0;
+  border: 0;
+  border-radius: var(--r-sm);
+  background: none;
+  font: inherit;
+  color: inherit;
+  text-align: left;
+}
+
+.agents-row:hover,
+.agents-row:focus-within {
+  background: var(--fill);
+}
+
+.agents-row-open {
+  display: flex;
+  align-items: center;
+  gap: var(--s-3);
+  flex: 1;
+  min-width: 0;
+  padding: 4px 0 4px var(--s-3);
+  border: 0;
+  background: none;
+  font: inherit;
+  color: inherit;
+  text-align: left;
+}
+
+button.agents-row-open {
+  cursor: pointer;
+}
+
+.agents-row-text {
+  min-width: 0;
+  flex: 1;
+}
+
+.agents-row-name {
+  display: flex;
+  align-items: baseline;
+  gap: var(--s-2);
+  font-size: var(--t-13);
+  font-weight: 500;
+  color: var(--ink);
+}
+
+.agents-row-who {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Its time at work and its threads, on the right like a chat list's time. */
+.agents-row-meta {
+  flex: none;
+  margin-left: auto;
+  font-size: var(--t-12);
+  font-weight: 400;
+  color: var(--ink-3);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+/* Its role, after its name: the name says who, the role what it looks for. */
+.agents-row-type {
+  margin-left: var(--s-2);
+  font-weight: 400;
+  color: var(--ink-3);
+}
+
+.agents-row-line {
+  display: block;
+  margin-top: 1px;
+  font-size: var(--t-12);
+  line-height: 1.4;
+  color: var(--ink-3);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.agents-row-line-new {
+  color: var(--ink-2);
+}
+
+/* A chat list's face is a size up from the top bar's. */
+.agents-row .face {
+  width: 28px;
+  height: 28px;
+}
+
+.agents-row {
+  padding-top: 2px;
+  padding-bottom: 2px;
+}
+
+/* Something waits on the human: an unread chat's dot. */
+.agents-dot {
+  display: block;
+  width: 8px;
+  height: 8px;
+  margin: 0 var(--s-1);
+  border-radius: 50%;
+  background: var(--acc);
+}
+
+.agents-row-end {
+  display: flex;
+  align-items: center;
+  flex: none;
+}
+
+.agents-row-mark {
+  display: inline-flex;
+  padding: 0 var(--s-1);
+}
+
+/* Actions take the mark's place while the row is pointed at or focused. */
+.agents-acts {
+  display: none;
+  gap: 2px;
+}
+
+.agents-row:hover .agents-acts,
+.agents-row:focus-within .agents-acts {
+  display: flex;
+}
+
+.agents-row:hover .agents-row-mark,
+.agents-row:focus-within .agents-row-mark {
+  display: none;
+}
+
+.agents-add {
+  gap: var(--s-3);
+  padding: 8px var(--s-3);
+  font-size: var(--t-13);
+  color: var(--ink-2);
+  cursor: pointer;
+}
+
+.agents-add-mark {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  flex: none;
+  border: 1px dashed var(--ink-3);
+  border-radius: 50%;
+}
+
+/* The list's own actions, one row each under a hairline: quieter than a
+   reviewer's row, with an icon where its face would be. */
+.agents-actions {
+  display: flex;
+  flex-direction: column;
+  margin-top: var(--s-2);
+  padding-top: var(--s-2);
+  border-top: 1px solid var(--hair);
+}
+
+.agents-action {
+  display: flex;
+  align-items: center;
+  gap: var(--s-3);
+  width: 100%;
+  padding: 5px var(--s-3);
+  border: 0;
+  border-radius: var(--r-sm);
+  background: none;
+  font: inherit;
+  font-size: var(--t-12);
+  color: var(--ink-2);
+  text-align: left;
+  cursor: pointer;
+}
+
+.agents-action:hover {
+  background: var(--fill);
+  color: var(--ink);
+}
+
+.agents-action-mark {
+  display: inline-flex;
+  justify-content: center;
+  width: 28px;
+  flex: none;
+  color: var(--ink-3);
+}
+
+.agents-action:hover .agents-action-mark {
+  color: inherit;
+}
+
+.agents-action-aside {
+  margin-left: auto;
+  color: var(--ink-3);
+}
+
+.agents-action-danger:hover {
+  color: var(--del);
+}
+
+.agents-warn {
+  margin: var(--s-2) var(--s-2) 0;
+}
+
+/* Activity: everything they did, one plain sentence a line. */
+.agents-activity {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.agents-line {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--s-3);
+  padding: 6px var(--s-2) 6px var(--s-3);
+  font-size: var(--t-13);
+  line-height: 1.45;
+  color: var(--ink-2);
+}
+
+.agents-line b {
+  font-weight: 500;
+  color: var(--ink);
+}
+
+.agents-line .face {
+  width: 18px;
+  height: 18px;
+  font-size: 9.5px;
+  margin-top: 1px;
+}
+
+.agents-line-face {
+  display: inline-flex;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: none;
+  cursor: pointer;
+}
+
+.agents-line-text {
+  flex: 1;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.face-you {
+  border-radius: 50%;
+  background: var(--acc);
+  color: var(--paper);
+}
+
+.agents-row-when {
+  flex: none;
+  font-size: var(--t-11);
+  color: var(--ink-3);
+  white-space: nowrap;
+}
+
+.agents-one {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+}
+
+.agents-one-head {
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+  padding: var(--s-1) 0;
+}
+
+.agents-back .icon {
+  transform: rotate(90deg);
+}
+
+.agents-step-link {
+  padding: 0;
+  border: 0;
+  background: none;
+  font: inherit;
+  color: inherit;
+  text-align: left;
+  text-decoration: underline;
+  text-decoration-color: var(--hair);
+  text-underline-offset: 2px;
+  cursor: pointer;
+}
+
+.agents-step-link:hover {
+  color: var(--ink);
+  text-decoration-color: currentColor;
+}
+
+/* Narrow, the diff has no width to give: the sidebar floats over it instead. */
+@media (max-width: 1100px) {
+  .body:has(> .agents) {
+    position: relative;
+  }
+
+  .agents {
+    position: absolute;
+    top: 0;
+    right: var(--s-5);
+    bottom: var(--s-5);
+    z-index: 20;
+    width: min(var(--agents-w, 300px), calc(100% - 2 * var(--s-5)));
+    padding: 0 var(--s-2) var(--s-2);
+    border-radius: var(--r-card);
+    background: var(--canvas);
+    box-shadow: 0 12px 32px rgba(0, 0, 0, 0.14);
+  }
+
+  .agents-resize {
+    display: none;
+  }
+}
+
+/* The reviewer agents sidebar's switch: the file list's, mirrored. */
+.top-agents .icon {
+  transform: scaleX(-1);
+}
+
+.top-agents[aria-pressed="true"] {
+  background: var(--fill);
+  color: var(--ink);
+}
+
+/* One reviewer, built like the review's own threads: an identity row, then
+   sections under the app's small-caps headings, the conversation in a card. */
+.agents-one > * {
+  flex: none;
+}
+
+.agents-one-id {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-width: 0;
+  line-height: 1.3;
+}
+
+.agents-one-name {
+  font-size: var(--t-13);
+  font-weight: 600;
+}
+
+.agents-one-status {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-size: var(--t-12);
+  color: var(--ink-3);
+}
+
+.agents-one-status .st {
+  transform: scale(0.85);
+}
+
+/* Read out, never seen: a live region's words for a screen reader. */
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+  border: 0;
+}
+
+/* The line under its name: how long, how many comments, how much it read. */
+.agents-one-meta {
+  margin-top: 2px;
+  font-size: var(--t-12);
+  color: var(--ink-3);
+  font-variant-numeric: tabular-nums;
+}
+
+/* The box that writes to it, on top while it can still read you. */
+.story-write-wrap {
+  margin: var(--s-2) 0 var(--s-3);
+}
+
+.agents-one-head + .story {
+  margin-top: var(--s-3);
+}
+
+.story-write {
+  display: flex;
+  align-items: flex-end;
+  gap: var(--s-1);
+  padding: 4px 4px 4px var(--s-3);
+  border: 1px solid var(--hair);
+  border-radius: 10px;
+  background: var(--paper);
+}
+
+.story-write:focus-within {
+  border-color: var(--acc);
+}
+
+.story-input {
+  flex: 1;
+  min-width: 0;
+  padding: 5px 0;
+  border: 0;
+  background: none;
+  font: inherit;
+  font-size: var(--t-13);
+  line-height: 1.45;
+  color: var(--ink);
+  resize: none;
+  outline: none;
+  field-sizing: content;
+  max-height: 140px;
+}
+
+.story-hint {
+  margin: 4px var(--s-1) 0;
+  font-size: var(--t-11);
+  color: var(--ink-3);
+}
+
+/* Its story, newest first: one line down the left, one line a step. */
+.story {
+  position: relative;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.story::before {
+  content: "";
+  position: absolute;
+  left: 4px;
+  top: 10px;
+  bottom: 10px;
+  width: 1px;
+  background: var(--hair);
+}
+
+.story-it {
+  position: relative;
+  display: grid;
+  grid-template-columns: 9px minmax(0, 1fr) auto;
+  column-gap: var(--s-3);
+  padding: 4px 0;
+  font-size: var(--t-13);
+  line-height: 1.45;
+}
+
+.story-mark {
+  z-index: 1;
+  width: 9px;
+  height: 9px;
+  margin-top: 5px;
+  border: 1.5px solid var(--ink-3);
+  border-radius: 50%;
+  background: var(--canvas);
+}
+
+.story-mark-dot {
+  width: 7px;
+  height: 7px;
+  margin: 6px 1px 0;
+  border: 0;
+  background: var(--ink-3);
+}
+
+.story-mark-you {
+  border-color: var(--ink-2);
+}
+
+.story-mark-done {
+  border-color: var(--add);
+  background: var(--add);
+}
+
+.story-mark-now {
+  border-color: var(--acc);
+  background: var(--acc);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--acc) 20%, transparent);
+}
+
+.story-text {
+  min-width: 0;
+  color: var(--ink);
+}
+
+.story-text b {
+  font-weight: 600;
+}
+
+.story-line {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.story-minor .story-text {
+  color: var(--ink-3);
+}
+
+.story-when {
+  padding-top: 1px;
+  font-size: var(--t-11);
+  color: var(--ink-3);
+  white-space: nowrap;
+}
+
+.story-where {
+  padding: 0;
+  border: 0;
+  background: none;
+  font-family: var(--mono);
+  font-size: var(--t-11);
+  color: var(--ink);
+  text-decoration: underline;
+  text-decoration-color: var(--hair);
+  text-underline-offset: 3px;
+  cursor: pointer;
+}
+
+.story-where:hover {
+  text-decoration-color: currentColor;
+}
+
+.story-st {
+  margin-left: var(--s-2);
+  font-size: var(--t-11);
+  color: var(--ink-3);
+}
+
+.story-st-closed {
+  color: var(--add);
+}
+
+.story-st-needs-you {
+  color: var(--attn);
+}
+
+.story-who {
+  display: block;
+  font-size: var(--t-12);
+  color: var(--ink-2);
+}
+
+.story-bubble {
+  display: block;
+  margin-top: 3px;
+  padding: 6px var(--s-3);
+  border: 1px solid var(--hair);
+  border-radius: 10px;
+  background: var(--paper);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.story-bubble-you {
+  border-color: transparent;
+  background: var(--fill);
+}
+
+/* A face's status, on its corner like a chat app's presence badge. */
+.stack-face-in {
+  position: relative;
+  display: inline-flex;
+}
+
+.stack-badge {
+  position: absolute;
+  right: -4px;
+  bottom: -4px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: var(--canvas);
+}
+
+.stack-badge .st {
+  width: 10px;
+  height: 10px;
+}
+
+.stack-badge .st-working {
+  border-width: 1.5px;
+}
+
+.stack-badge .st-needs {
+  width: 7px;
+  height: 7px;
+  margin: 0;
+}
+
+.stack-badge .st-away {
+  width: 8px;
+  height: 8px;
+  margin: 0;
+}
+
+.stack-badge .st-stopped {
+  width: 6px;
+  height: 6px;
+  margin: 0;
+  border-radius: 1.5px;
+}
+
+.stack-badge .st-done .icon {
+  width: 6px;
+  height: 6px;
+}
+
+/* Gone or stopped: the face fades, its badge says which. */
+.stack-away .face,
+.stack-stopped .face {
+  opacity: 0.5;
 }

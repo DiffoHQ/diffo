@@ -10,6 +10,7 @@ import type {
   ReviewThread,
   ThreadIntent,
 } from '../shared/review.js'
+import type { ReviewerRole } from '../shared/roles.js'
 import {
   type Changeset,
   type CommitChangeset,
@@ -158,6 +159,71 @@ export function useInvite(enabled: boolean) {
       return res.json() as Promise<Invite>
     },
   })
+}
+
+/** The roles a reviewer agent can be invited in: the built-ins, then the
+ * reviewer's own (shared/roles.ts). */
+export interface ReviewerRoles {
+  roles: ReviewerRole[]
+  default: string
+  /** The roles in the Add reviewer picker; the rest wait in the library. */
+  active: string[]
+}
+
+export function useReviewerRoles() {
+  return useQuery<ReviewerRoles>({
+    queryKey: ['reviewer-roles'],
+    queryFn: async () => handle<ReviewerRoles>(await fetch('/api/reviewer/roles')),
+  })
+}
+
+/** The line that brings a reviewer agent in, in the role picked. */
+export function useReviewerInvite(role: string | null) {
+  return useQuery<Invite>({
+    queryKey: ['reviewer-invite', role],
+    enabled: role !== null,
+    queryFn: async () =>
+      handle<Invite>(await fetch(`/api/reviewer/invite?role=${encodeURIComponent(role ?? '')}`)),
+  })
+}
+
+export const reviewerApi = {
+  /** Replace the reviewer's own roles; answers with every role on offer. */
+  saveRoles: async (roles: ReviewerRole[]) =>
+    handle<ReviewerRoles>(
+      await fetch('/api/reviewer/roles', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ roles }),
+      }),
+    ),
+  /** Move a role into the Add reviewer picker, or back to the library. */
+  setActive: async (id: string, active: boolean) =>
+    handle<ReviewerRoles>(
+      await fetch(`/api/reviewer/roles/${encodeURIComponent(id)}/active`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ active }),
+      }),
+    ),
+  /** Ask the agent that wrote the change to start a reviewer in each role. */
+  request: (roles: string[]) =>
+    post<{ ok: boolean; roles: string[]; presence: Presence }>('/api/reviewer/request', {
+      roles,
+    }),
+  /** Stop one: its session ends, and what it did and said stays. */
+  stop: (name: string) =>
+    post<{ stopped: boolean }>(`/api/reviewer/stop?name=${encodeURIComponent(name)}`, {}),
+  /** Delete every one: the list empties; their threads stay. */
+  removeAll: () => del<{ removed: number }>('/api/reviewer/seats'),
+  /** Delete one: it leaves the list, with its log and conversation. */
+  remove: (name: string) =>
+    del<{ removed: boolean }>(`/api/reviewer/seat?name=${encodeURIComponent(name)}`),
+  /** Write to one reviewer: it reads it at its next poll or progress line. */
+  message: (name: string, text: string) =>
+    post<{ ok: boolean; listening: boolean }>('/api/reviewer/message', { name, text }),
+  /** Pass on the agent's suggestion of a reviewer: nothing is started. */
+  dismissSuggestion: () => del<{ cleared: boolean }>('/api/reviewer/suggestion'),
 }
 
 /** What Finish will post to GitHub, in words — present only on a pull request. */

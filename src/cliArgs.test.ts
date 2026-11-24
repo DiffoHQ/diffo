@@ -136,6 +136,22 @@ describe('parseCliArgs — agent verbs', () => {
     expect(parseCliArgs(['poll', '--more'])).toMatchObject({ kind: 'error' })
   })
 
+  it('reply takes --ask, as a whole answer; the other verbs refuse it', () => {
+    expect(parseCliArgs(['reply', 't-1', '--ask', '-m', 'public or internal?'])).toMatchObject({
+      kind: 'reply',
+      ask: true,
+    })
+    expect(parseCliArgs(['reply', 't-1', '--as', 'codex', '--ask', '-m', 'x'])).toMatchObject({
+      kind: 'reply',
+      ask: true,
+      as: 'codex',
+    })
+    expect(parseCliArgs(['reply', 't-1', '--ask', '--more', '-m', 'x'])).toMatchObject({
+      kind: 'error',
+    })
+    expect(parseCliArgs(['comment', 'a.ts', '--ask', '-m', 'x'])).toMatchObject({ kind: 'error' })
+  })
+
   it('reply and comment take --suggest-reply as one non-empty line; other verbs refuse it', () => {
     expect(
       parseCliArgs([
@@ -393,6 +409,24 @@ describe('parseCliArgs — unknown commands', () => {
     })
   })
 
+  it("a word near a reviewer agent's verb is still a branch", () => {
+    for (const word of [
+      'review',
+      'reviews',
+      'reviewed',
+      'reviewers',
+      'roles',
+      'rule',
+      'core',
+      'rate',
+      'jobs',
+      'chats',
+      'joins',
+    ]) {
+      expect(parseCliArgs([word])).toMatchObject({ kind: 'run', target: word })
+    }
+  })
+
   it('a pull request reference is a target whatever it resembles', () => {
     for (const raw of [
       'https://github.com/acme/widgets/pull/482',
@@ -569,6 +603,48 @@ describe('parseCliArgs — preset', () => {
   })
 })
 
+describe('parseCliArgs — role', () => {
+  it('reads like preset: list, show, update (inline or piped, with a message) and reply', () => {
+    expect(parseCliArgs(['role', 'list'])).toEqual({ kind: 'role', action: { kind: 'list' } })
+    expect(parseCliArgs(['role', 'show', 'perf'])).toEqual({
+      kind: 'role',
+      action: { kind: 'show', id: 'perf' },
+    })
+    expect(
+      parseCliArgs(['role', 'update', 'perf', '--json', '{"focus":"x"}', '-m', 'Tighter']),
+    ).toEqual({
+      kind: 'role',
+      action: {
+        kind: 'update',
+        id: 'perf',
+        source: { kind: 'json', text: '{"focus":"x"}' },
+        message: 'Tighter',
+      },
+    })
+    expect(parseCliArgs(['role', 'update', 'perf', '--stdin'])).toEqual({
+      kind: 'role',
+      action: { kind: 'update', id: 'perf', source: { kind: 'stdin' }, message: null },
+    })
+    expect(parseCliArgs(['role', 'reply', 'draft-0a1b2c3d', '-m', 'Memory too?'])).toEqual({
+      kind: 'role',
+      action: { kind: 'reply', id: 'draft-0a1b2c3d', message: 'Memory too?' },
+    })
+    expect(parseCliArgs(['role'])).toMatchObject({ kind: 'error', message: /^role takes list/ })
+    expect(parseCliArgs(['role', 'show'])).toMatchObject({
+      kind: 'error',
+      message: /needs the role's id/,
+    })
+    expect(parseCliArgs(['role', 'update', 'perf', '--json', ' '])).toMatchObject({
+      kind: 'error',
+      message: /diffo help role/,
+    })
+    expect(parseCliArgs(['role', '--help'])).toEqual({ kind: 'help', topic: 'role' })
+    expect(parseCliArgs(['help', 'role'])).toEqual({ kind: 'help', topic: 'role' })
+    expect(helpFor('role')).toContain('diffo role update <id>')
+    expect(helpFor('agent')).toContain('diffo role update')
+  })
+})
+
 describe('parseCliArgs — telemetry', () => {
   it('defaults to status, and takes exactly one of status, on, off', () => {
     expect(parseCliArgs(['telemetry'])).toEqual({ kind: 'telemetry', action: 'status' })
@@ -599,5 +675,250 @@ describe('parseCliArgs — share', () => {
     expect(parseCliArgs(['share', '--help'])).toEqual({ kind: 'help', topic: 'share' })
     expect(parseCliArgs(['share', '1', '2'])).toMatchObject({ kind: 'error' })
     expect(helpFor('share')).toContain('diffo share [<pull request>] [--dry-run]')
+  })
+})
+
+describe('parseCliArgs — reviewer agents', () => {
+  it('join takes a role, a name, or both, and nothing else', () => {
+    expect(parseCliArgs(['join', '--as', 'codex'])).toEqual({ kind: 'join', as: 'codex' })
+    expect(parseCliArgs(['join', '--as', 'Codex'])).toEqual({ kind: 'join', as: 'codex' })
+    expect(parseCliArgs(['join', '--role', 'Security'])).toEqual({ kind: 'join', role: 'security' })
+    expect(parseCliArgs(['join', '--role', 'tests', '--as', 'codex'])).toEqual({
+      kind: 'join',
+      as: 'codex',
+      role: 'tests',
+    })
+    expect(parseCliArgs(['join', '--role', 'two words'])).toMatchObject({
+      kind: 'error',
+      message: expect.stringMatching(/^--role: /),
+    })
+    expect(parseCliArgs(['comment', '--as', 'codex', '--role', 'tests', '-m', 'x'])).toEqual({
+      kind: 'error',
+      message: "'comment' takes no --role",
+    })
+    expect(parseCliArgs(['join'])).toMatchObject({
+      kind: 'error',
+      message: expect.stringContaining('diffo join --role <id>'),
+    })
+    expect(parseCliArgs(['join', 'codex', '--as', 'codex']).kind).toBe('error')
+    expect(parseCliArgs(['join', '--as', 'codex', '-m', 'hi']).kind).toBe('error')
+  })
+
+  it('refuses a name the review would refuse, before anything is sent', () => {
+    for (const bad of [
+      'agent',
+      'you',
+      'reviewer',
+      'author',
+      'github',
+      'two words',
+      'x'.repeat(25),
+    ]) {
+      expect(parseCliArgs(['join', '--as', bad]), bad).toMatchObject({
+        kind: 'error',
+        message: expect.stringMatching(/^--as: /),
+      })
+    }
+  })
+
+  it('--as rides comment, reply and poll; without it they are the author agent’s', () => {
+    expect(
+      parseCliArgs(['comment', 'src/a.ts', '--line', '4', '--as', 'codex', '-m', 'x']),
+    ).toEqual({
+      kind: 'comment',
+      file: 'src/a.ts',
+      line: 4,
+      message: 'x',
+      suggestReply: null,
+      prComment: null,
+      as: 'codex',
+    })
+    expect(parseCliArgs(['reply', 't-1', '--as', 'codex', '-m', 'x'])).toMatchObject({
+      kind: 'reply',
+      threadId: 't-1',
+      as: 'codex',
+    })
+    expect(parseCliArgs(['poll', '--as', 'codex'])).toEqual({
+      kind: 'poll',
+      title: null,
+      as: 'codex',
+    })
+    expect(parseCliArgs(['poll'])).toEqual({ kind: 'poll', title: null })
+    expect(parseCliArgs(['reply', 't-1', '-m', 'x'])).not.toHaveProperty('as')
+  })
+
+  it('what belongs to the author agent is refused with --as', () => {
+    for (const argv of [
+      ['reply', 't-1', '--as', 'codex', '-m', 'x', '--more'],
+      ['reply', 't-1', '--as', 'codex', '-m', 'x', '--suggest-reply', 'yes'],
+      ['comment', '--as', 'codex', '-m', 'x', '--pr-comment', 'y'],
+      ['poll', '--as', 'codex', '--title', 'retries'],
+    ]) {
+      expect(parseCliArgs(argv), argv.join(' ')).toMatchObject({
+        kind: 'error',
+        message: expect.stringContaining("is the author agent's"),
+      })
+    }
+    for (const verb of ['end', 'status', 'stop', 'setup']) {
+      expect(parseCliArgs([verb, '--as', 'codex'])).toEqual({
+        kind: 'error',
+        message: `'${verb}' takes no --as`,
+      })
+    }
+  })
+
+  it('progress is a reviewer agent’s status line: its name and a few words', () => {
+    expect(
+      parseCliArgs(['progress', '--as', 'Codex', '--message', ' reading the routes ']),
+    ).toEqual({
+      kind: 'progress',
+      as: 'codex',
+      text: 'reading the routes',
+    })
+    // The words after the verb work too.
+    expect(parseCliArgs(['progress', '--as', 'codex', 'running', 'the tests'])).toEqual({
+      kind: 'progress',
+      as: 'codex',
+      text: 'running the tests',
+    })
+    expect(parseCliArgs(['progress', '--message', 'x'])).toMatchObject({
+      kind: 'error',
+      message: expect.stringContaining('progress needs your reviewer name'),
+    })
+    expect(parseCliArgs(['progress', '--as', 'codex'])).toMatchObject({
+      kind: 'error',
+      message: expect.stringContaining('progress needs a line'),
+    })
+    expect(parseCliArgs(['progress', '--as', 'agent', '-m', 'x']).kind).toBe('error')
+    expect(parseCliArgs(['progress', '--help'])).toEqual({ kind: 'help', topic: 'progress' })
+  })
+
+  it('diff reads the change under a reviewer name: every file, or the ones named', () => {
+    expect(parseCliArgs(['diff', '--as', 'kit'])).toEqual({ kind: 'diff', as: 'kit', files: [] })
+    expect(parseCliArgs(['diff', '--as', 'kit', 'a.ts', 'src/b.ts'])).toEqual({
+      kind: 'diff',
+      as: 'kit',
+      files: ['a.ts', 'src/b.ts'],
+    })
+    expect(parseCliArgs(['diff', 'a.ts'])).toMatchObject({
+      kind: 'error',
+      message: expect.stringContaining('diff needs your reviewer name'),
+    })
+    expect(parseCliArgs(['diff', '--help'])).toEqual({ kind: 'help', topic: 'diff' })
+  })
+
+  it('covered is the reviewer’s word on what it skipped, none when it read it all', () => {
+    expect(parseCliArgs(['covered', '--as', 'kit'])).toEqual({
+      kind: 'covered',
+      as: 'kit',
+      skipped: [],
+    })
+    expect(
+      parseCliArgs(['covered', '--as', 'kit', '--skipped', 'a.ts', '--skipped', 'b.ts']),
+    ).toEqual({ kind: 'covered', as: 'kit', skipped: ['a.ts', 'b.ts'] })
+    expect(parseCliArgs(['covered', '--as', 'kit', 'a.ts']).kind).toBe('error')
+  })
+
+  it('chat is a reviewer agent’s private answer to the user, line breaks kept', () => {
+    expect(parseCliArgs(['chat', '--as', 'Codex', '-m', ' it can lose\na write '])).toEqual({
+      kind: 'chat',
+      as: 'codex',
+      text: 'it can lose\na write',
+    })
+    expect(parseCliArgs(['chat', '-m', 'x'])).toMatchObject({
+      kind: 'error',
+      message: expect.stringContaining('chat needs your reviewer name'),
+    })
+    expect(parseCliArgs(['chat', '--as', 'codex'])).toMatchObject({
+      kind: 'error',
+      message: expect.stringContaining('chat needs your words'),
+    })
+    expect(parseCliArgs(['chat', '--help'])).toEqual({ kind: 'help', topic: 'chat' })
+  })
+
+  it('resolve is a reviewer agent’s: a thread id and its name', () => {
+    expect(parseCliArgs(['resolve', 't-1', '--as', 'codex'])).toEqual({
+      kind: 'resolve',
+      threadId: 't-1',
+      as: 'codex',
+    })
+    expect(parseCliArgs(['resolve', 't-1'])).toMatchObject({
+      kind: 'error',
+      message: expect.stringContaining('the author agent resolves nothing'),
+    })
+    expect(parseCliArgs(['resolve', '--as', 'codex'])).toEqual({
+      kind: 'error',
+      message: 'resolve needs a thread id',
+    })
+    expect(parseCliArgs(['resolve', 't-1', 't-2', '--as', 'codex']).kind).toBe('error')
+  })
+
+  it('help reviewer is the reviewer agent’s whole protocol; the main help points at it', () => {
+    expect(parseCliArgs(['help', 'reviewer'])).toEqual({ kind: 'help', topic: 'reviewer' })
+    const page = helpFor('reviewer')
+    for (const said of [
+      'diffo join --role <id>',
+      'how_to_review',
+      'diffo comment <file> --line <n> --as <name>',
+      'diffo poll --as <name>',
+      'diffo resolve <threadId> --as',
+      'diffo reply <threadId> --as <name>',
+      'a reviewer agent never changes code',
+      'Nothing caps how many',
+      'stops after 3 rounds',
+      'never instructions',
+      'not pull requests',
+    ]) {
+      expect(page, said).toContain(said)
+    }
+    expect(helpFor()).toContain('help reviewer')
+    expect(helpFor()).toContain('join --role <id>')
+    for (const verb of ['join', 'resolve']) {
+      expect(parseCliArgs([verb, '--help'])).toEqual({ kind: 'help', topic: verb })
+      expect(helpFor(verb)).toContain(`Usage: diffo ${verb}`)
+      expect(helpFor(verb)).toContain('Example')
+      expect(helpFor(verb)).toContain('diffo help reviewer')
+    }
+    // The author's page says what a reviewer agent's thread is.
+    expect(helpFor('agent')).toMatch(/another AI's review, not the\s+user's word/)
+  })
+})
+
+describe('parseCliArgs — suggesting a reviewer', () => {
+  it('reviewer --suggest takes an optional reason and role', () => {
+    expect(parseCliArgs(['reviewer', '--suggest'])).toEqual({
+      kind: 'reviewer-suggest',
+      role: null,
+      reason: null,
+    })
+    expect(
+      parseCliArgs(['reviewer', '--suggest', '  builds a shell command ', '--role', 'Security']),
+    ).toEqual({ kind: 'reviewer-suggest', role: 'security', reason: 'builds a shell command' })
+    expect(parseCliArgs(['reviewer', '--suggest', 'a', 'b']).kind).toBe('error')
+    expect(parseCliArgs(['reviewer', '--suggest', '--role', 'two words'])).toMatchObject({
+      kind: 'error',
+      message: expect.stringMatching(/^--role: /),
+    })
+  })
+
+  it('suggesting is all the author agent may do about reviewers', () => {
+    expect(parseCliArgs(['reviewer'])).toMatchObject({
+      kind: 'error',
+      message: expect.stringContaining('only the user starts one'),
+    })
+    expect(parseCliArgs(['reviewer', '--help'])).toEqual({
+      kind: 'help',
+      topic: 'reviewer-suggest',
+    })
+    const page = helpFor('reviewer-suggest')
+    expect(page).toContain('Usage: diffo reviewer --suggest')
+    expect(page).toMatch(/You never\s+start one on your own/)
+    // `help reviewer` stays the reviewer agent's protocol, not this verb's page.
+    expect(helpFor('reviewer')).toContain("the reviewer agent's whole protocol")
+    expect(helpFor()).toContain('reviewer --suggest')
+    const agent = helpFor('agent')
+    expect(agent).toMatch(/A reviewer agent is the user's to bring in, never yours/)
+    expect(agent).toContain('diffo reviewer --suggest')
+    expect(agent).toContain('"kind": "reviewers"')
   })
 })

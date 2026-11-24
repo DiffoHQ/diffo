@@ -17,6 +17,8 @@ import {
 } from '../shared/artifacts.js'
 import {
   describeUncovered,
+  formatSpan,
+  hunkHeadSpan,
   parseLayersPost,
   parseSuggestReason,
   sharedByLayers,
@@ -35,17 +37,26 @@ import {
 } from '../shared/presets.js'
 import {
   type Anchor,
+  askedBy,
   type Coverage,
   type DraftOrigin,
+  describeAnchor,
+  isHumanMessage,
   isPublic,
   type Layer,
   layerFilePath,
   liveSuggestion,
   normalizeTitle,
   type OutgoingThread,
+  openedByReviewerAgent,
   parsePrComment,
+  parseReviewerName,
   parseSuggestedReply,
+  REVIEWER_LIMITS,
+  REVIEWER_MESSAGE_MAX,
+  type ReviewersPayload,
   type ReviewThread,
+  roundsOf,
   seenByAgent,
   startedByAgent,
   THREAD_INTENTS,
@@ -54,6 +65,17 @@ import {
   undeliveredThreadIds,
   untouchedAgentVoice,
 } from '../shared/review.js'
+import {
+  allRoles,
+  DEFAULT_ROLE,
+  findRole,
+  isActiveRole,
+  isDraftRoleKey,
+  parseCustomRoles,
+  parseRolePatch,
+  type ReviewerRole,
+  ROLE_MESSAGE_MAX,
+} from '../shared/roles.js'
 import type { ChangesetSpec, PrInfo } from '../shared/types.js'
 import { normalizeVoice, VOICE_MAX } from '../shared/voice.js'
 import { VERSION } from '../version.js'
@@ -65,7 +87,13 @@ import {
   listCommits,
 } from './commits.js'
 import { DiffoDb, type ServerRecord } from './db.js'
-import { DeliveryQueue, type LayersAsk, QUIET_POLL_LIMIT, type Snapshot } from './delivery.js'
+import {
+  DeliveryQueue,
+  type LayersAsk,
+  pidAlive,
+  QUIET_POLL_LIMIT,
+  type Snapshot,
+} from './delivery.js'
 import {
   getBaseFileBytes,
   getCommitSubject,
@@ -98,6 +126,9 @@ import {
   buildLayersAddPrompt,
   buildLayersRequestPrompt,
   buildPresetThreadPrompt,
+  buildReviewerAsk,
+  buildReviewerRequestPrompt,
+  buildRoleThreadPrompt,
   buildSubmittedPrompt,
   buildThreadPrompt,
   captureAnchor,
@@ -105,8 +136,23 @@ import {
   layersSharedError,
   nextStepFor,
   type PromptContext,
+  REVIEWER_BRIEF,
+  REVIEWER_NEXT_STEP,
+  reviewerCommands,
+  specLine,
 } from './prompt.js'
 import { parseAnchor, ReviewStore } from './review.js'
+import {
+  parseHubSnapshot,
+  parseProgress,
+  parseReviewerMessage,
+  pickReviewerName,
+  ReviewerHub,
+  renderFilePatch,
+  reviewerInbox,
+  voiceOf,
+} from './reviewers.js'
+import { ROLE_DELETED, RoleStore, roleKey } from './roles.js'
 import { ChangesetStore } from './store.js'
 import {
   agentNameOf,
@@ -151,6 +197,9 @@ const POLL_HEARTBEAT_MS = 15_000
  * aborts, and a listening poll blocks the daemon's idle reap.
  */
 const POLL_MAX_MS = 30 * 60_000
+/** How long a reviewer agent stays listening once all its threads are closed:
+ * the human's last word on one, or a message to it, still reaches it. */
+const REVIEWER_GRACE_MS = 5 * 60_000
 
 /** What a poll says when the reviewer has been quiet for `QUIET_POLL_LIMIT`
  * polls in a row: stop, and let the user decide whether to keep listening. */
@@ -184,6 +233,15 @@ export interface ServerContext {
   pollMaxMs?: number
   /** Overrides `QUIET_POLL_LIMIT` (tests). */
   pollQuietLimit?: number
+  /** The names new reviewer agents are given, in order (tests); the default
+   * is `REVIEWER_NAMES`, picked at random. */
+  reviewerNames?: readonly string[]
+  /** Overrides `REVIEWER_GRACE_MS` (tests). */
+  reviewerGraceMs?: number
+  /** Overrides `REVIEWER_ACTIVE_MS` (tests). */
+  reviewerActiveMs?: number
+  /** Overrides `REVIEWER_START_MS` (tests). */
+  reviewerStartMs?: number
   onShutdownRequest?: () => void
   onListenError?: (err: NodeJS.ErrnoException) => void
   idle?: IdleMonitor
@@ -289,6 +347,124 @@ export function createApp(
     ctx.idle?.touch()
     return next()
   })
+
+  // Reviewer agents (see reviewers.ts). Their presence and their polls live in
+  // the hub, never in the author agent's queue.
+  const hub = new ReviewerHub(ctx.reviewerActiveMs, pidAlive, ctx.reviewerStartMs)
+  // What the hub knows of each reviewer outlives the server: its log, the
+  // messages it has not read, its conversation, and who the human removed or
+  // stopped. Saved on every change.
+  if (review) {
+    hub.restore(parseHubSnapshot(review.loadReviewerHub()))
+    // Runs inside every hub change, the hub's own timers included: a failed
+    // write (a busy or full database) is logged, never thrown, or a timer
+    // would take the server down and a route would fail after its work.
+    hub.subscribe(() => {
+      try {
+        review.saveReviewerHub(JSON.stringify(hub.snapshot()))
+      } catch (err) {
+        console.error(
+          `diffo: could not save the reviewer agents' state for ${JSON.stringify(review.scope)}: ${(err as Error).message}`,
+        )
+      }
+    })
+    // A checkout under a running server swaps the review to that branch's
+    // (ReviewStore.rescope): the hub swaps with it, or one branch's logs,
+    // conversations and removals would show on, and be saved over, the other's.
+    let hubScope = JSON.stringify(review.scope)
+    review.subscribe(() => {
+      const scope = JSON.stringify(review.scope)
+      if (scope === hubScope) return
+      hubScope = scope
+      hub.reload(parseHubSnapshot(review.loadReviewerHub()))
+    })
+  }
+
+  // The reviewer's own roles (shared/roles.ts) follow the human, not the repo,
+  // like the layers presets: one list in the shared DB, with each role's
+  // conversation with the agent beside it (server/roles.ts).
+  const roleStore = ctx.uiSettings ? new RoleStore(ctx.uiSettings) : null
+  const customRoles = (): ReviewerRole[] => roleStore?.roles() ?? []
+  const NO_REVIEWERS_ON_PR =
+    'reviewer agents join branch and working-tree reviews only; this review is of a pull request'
+
+  /** A request only the CLI can make: a custom header a web page cannot send
+   * without a preflight the Origin guard refuses (see the poll route). */
+  const fromCli = (c: Context): boolean =>
+    c.req.header('x-diffo-agent') !== undefined || c.req.header('x-diffo-session-pid') !== undefined
+
+  const stoppedNotice = (name: string) =>
+    `the human stopped reviewer agent "${name}". Stop here: do not comment, reply or poll again, and tell the user you were stopped`
+  const removedNotice = (name: string) =>
+    `the human removed reviewer agent "${name}" from this review. Stop here: do not comment, reply or poll again, and tell the user you were removed`
+
+  /**
+   * The door every reviewer-agent request comes through: the CLI's header, a
+   * review that takes reviewer agents, a name that passes. A name that gets in
+   * has a seat from then on, so `comment --as` without a `join` still shows the
+   * reviewer in the review, and it reads as here for a while.
+   */
+  const reviewerAt = (
+    c: Context,
+    raw: unknown,
+    role?: string,
+    /** A join: the one command that brings a removed reviewer back in. */
+    joining = false,
+  ): { name: string } | Response => {
+    if (!review) return c.json({ error: 'review unavailable' }, 503)
+    if (!fromCli(c)) {
+      return c.json({ error: 'reviewer agents reach the review through the diffo CLI' }, 403)
+    }
+    if (ctx.pr) return c.json({ error: NO_REVIEWERS_ON_PR }, 400)
+    const parsed = parseReviewerName(raw)
+    if (!parsed.ok) return c.json({ error: parsed.error }, 400)
+    if (hub.isRemoved(parsed.name) || hub.isStopped(parsed.name)) {
+      if (!joining) {
+        return c.json(
+          {
+            error: hub.isStopped(parsed.name)
+              ? stoppedNotice(parsed.name)
+              : removedNotice(parsed.name),
+          },
+          403,
+        )
+      }
+      hub.readmit(parsed.name)
+    }
+    const pid = parseSessionPid(c.req.header('x-diffo-session-pid'))
+    const holder = hub.heldBy(parsed.name, pid)
+    if (holder !== null) {
+      return c.json(
+        {
+          error: `another session (pid ${holder}) is in this review as reviewer agent "${parsed.name}"; pick a different name with --as <name>`,
+        },
+        409,
+      )
+    }
+    review.registerReviewer(parsed.name, role)
+    hub.touch(parsed.name, pid)
+    return { name: parsed.name }
+  }
+
+  /** What the page's strip shows: who of the seated reviewers is connected,
+   * and the roles a reviewer is on its way in. */
+  const reviewerPresence = (): ReviewersPayload => ({
+    seats: hub.presence((review?.get().reviewers ?? []).map((r) => r.name)).map((seat) => ({
+      ...seat,
+      activity: hub.activity(seat.name),
+      chat: hub.chat(seat.name),
+      coverage: hub.coverage(seat.name),
+    })),
+    starting: hub.starting(),
+  })
+
+  /** Why an agent may not write in a thread that ran out of rounds. */
+  const STOPPED = `this thread reached ${REVIEWER_LIMITS.rounds} rounds between the reviewer agent and the author agent, so it stopped and waits for the human reviewer: no agent may write in it until they reply or resolve it`
+  /** Why a stopped thread is the human's: an agent asked them, or the rounds ran out. */
+  const stoppedWhy = (thread: ReviewThread): string =>
+    askedBy(thread)
+      ? `the ${askedBy(thread) === 'author' ? 'author agent' : 'reviewer agent'} asked the human reviewer to decide this thread, so it waits for them: no agent may write in it until they reply or resolve it`
+      : STOPPED
 
   app.get('/api/health', (c) =>
     c.json({
@@ -563,6 +739,30 @@ export function createApp(
     const body = await c.req.json().catch(() => null)
     const text = typeof body?.text === 'string' ? body.text.trim() : ''
     if (!text) return c.json({ error: 'need {anchor, text}' }, 400)
+    // A reviewer agent's comment: the same file/line ladder the author agent
+    // uses, in the reviewer's voice under its name, and handed to the author
+    // agent at once, the way the human's Send would.
+    if (body?.as !== undefined) {
+      const who = reviewerAt(c, body.as)
+      if (who instanceof Response) return who
+      const art = checkArtifacts(text).errors
+      if (art.length > 0) return c.json({ error: art.join('; ') }, 400)
+      const file =
+        typeof body?.file === 'string' && body.file.trim() !== '' ? body.file.trim() : null
+      const line =
+        typeof body?.line === 'number' && Number.isInteger(body.line) && body.line >= 1
+          ? body.line
+          : null
+      const anchor = agentAnchor(file, line)
+      const capture = store ? captureAnchor(store.get(), anchor) : null
+      const created = review.createThread(anchor, text, capture, undefined, 'reviewer', {
+        by: who.name,
+      })
+      const thread = review.send(created.id) ?? created
+      const delivered = deliverThreads([thread.id])
+      hub.log(who.name, 'commented', `commented on ${describeAnchor(thread.anchor)}`, thread.id)
+      return c.json({ thread, delivered, anchored: anchor.kind })
+    }
     // The agent speaks in file/line coordinates, not anchors: it has no hunk ids,
     // and the ladder below turns "this file, this line" into the best live anchor.
     if (body?.author === 'agent') {
@@ -986,14 +1186,106 @@ export function createApp(
     const body = await c.req.json().catch(() => null)
     const text = typeof body?.text === 'string' ? body.text.trim() : ''
     if (!text) return c.json({ error: 'need {text}' }, 400)
+    // A reviewer agent answers in a thread it opened, one message per turn:
+    // it speaks, the author agent answers, and so on until the rounds run out.
+    if (body?.as !== undefined) {
+      const who = reviewerAt(c, body.as)
+      if (who instanceof Response) return who
+      const id = c.req.param('id')
+      const current = review.get().threads.find((t) => t.id === id)
+      if (!current) return c.json({ error: 'no such thread' }, 404)
+      if (openedByReviewerAgent(current) !== who.name) {
+        return c.json(
+          {
+            error: `reviewer agent "${who.name}" did not open this thread, and a reviewer agent replies only in threads it opened; open a thread of your own with \`comment --as ${who.name}\``,
+          },
+          403,
+        )
+      }
+      if (current.state === 'resolved') {
+        return c.json({ error: 'this thread is resolved; only the human reopens one' }, 409)
+      }
+      if (current.needsYou || roundsOf(current) >= REVIEWER_LIMITS.rounds) {
+        return c.json({ error: stoppedWhy(current) }, 409)
+      }
+      // The human's until they send it: they wrote here and are holding the
+      // line, or reopened the thread. A reply now would queue it for the author
+      // agent with what they have not sent in it.
+      if (current.withheld || current.state === 'open') {
+        return c.json(
+          {
+            error: `the human ${current.withheld ? 'is writing in this thread and has not sent it yet' : 'reopened this thread and has not sent it again'}; leave it, and run \`poll --as ${who.name}\`: it brings their words once they send`,
+          },
+          409,
+        )
+      }
+      if (current.messages.at(-1)?.by === who.name) {
+        return c.json(
+          {
+            error: `you spoke last in this thread; wait for the answer (\`poll --as ${who.name}\`) before writing in it again`,
+          },
+          409,
+        )
+      }
+      const art = checkArtifacts(text).errors
+      if (art.length > 0) return c.json({ error: art.join('; ') }, 400)
+      const thread = review.addMessage(
+        id,
+        'reviewer',
+        text,
+        false,
+        undefined,
+        false,
+        undefined,
+        undefined,
+        who.name,
+      )
+      if (!thread) return c.json({ error: 'no such thread' }, 404)
+      // A question for the human (`--ask`): the thread stops for their
+      // decision, and the author agent is not handed it meanwhile.
+      if (body?.ask === true) {
+        const asked = review.askHuman(id, 'reviewer') ?? thread
+        hub.log(who.name, 'asked', `asked you to decide on ${describeAnchor(thread.anchor)}`, id)
+        return c.json({ thread: asked, delivered: false, asked: true })
+      }
+      const delivered = deliverThreads([id])
+      hub.log(who.name, 'replied', `replied on ${describeAnchor(thread.anchor)}`, id)
+      return c.json({
+        thread,
+        delivered,
+        roundsLeft: REVIEWER_LIMITS.rounds - roundsOf(thread) - 1,
+      })
+    }
     if (body?.author === 'agent') {
       const id = c.req.param('id')
       // Conclude the delivery BEFORE writing the reply: the wait tells us where the
       // agent's knowledge ends, so the reply can land at its causal spot instead of
       // after reviewer comments that raced in while the agent was answering. The
       // existence check keeps a bogus id from concluding a real delivery.
-      if (!review.get().threads.some((t) => t.id === id)) {
-        return c.json({ error: 'no such thread' }, 404)
+      const answered = review.get().threads.find((t) => t.id === id)
+      if (!answered) return c.json({ error: 'no such thread' }, 404)
+      // Stopped for the human (rounds cap or --ask): the author agent's word
+      // would land in a thread that is theirs now.
+      if (answered.needsYou) return c.json({ error: `${stoppedWhy(answered)}; move on` }, 409)
+      // Asking the human is for a thread between two agents; in the human's
+      // own thread every reply already reaches them.
+      const asking = body?.ask === true
+      if (asking && openedByReviewerAgent(answered) === null) {
+        return c.json(
+          {
+            error:
+              "--ask is for a reviewer agent's thread; this one is the human's, and your reply already reaches them",
+          },
+          400,
+        )
+      }
+      // A resolved thread needs nobody: asking would mark it as needing the
+      // human while it reads as closed.
+      if (asking && answered.state === 'resolved') {
+        return c.json({ error: 'this thread is resolved; there is nothing to ask' }, 409)
+      }
+      if (asking && body?.more === true) {
+        return c.json({ error: '--ask is a whole answer; drop --more' }, 400)
       }
       const art = checkArtifacts(text).errors
       if (art.length > 0) return c.json({ error: art.join('; ') }, 400)
@@ -1021,6 +1313,13 @@ export function createApp(
       )
       if (!thread) return c.json({ error: 'no such thread' }, 404)
       if (waitedMs !== null) review.annotateAgentReplies([thread.id], waitedMs)
+      if (asking) {
+        return c.json({
+          thread: review.askHuman(id, 'author') ?? thread,
+          delivered: false,
+          asked: true,
+        })
+      }
       return c.json({ thread, delivered: false })
     }
     const target = review.get().threads.find((t) => t.id === c.req.param('id'))
@@ -1068,7 +1367,9 @@ export function createApp(
     const current = review.get().threads.find((t) => t.id === id)
     const index = current?.messages.findIndex((m) => m.id === messageId) ?? -1
     if (!current || index === -1) return c.json({ error: 'no such message' }, 404)
-    if (current.messages[index]!.author !== 'reviewer') {
+    // Yours means the human's: a reviewer agent's message is a `reviewer`
+    // message too, and rewriting it would put the human's words under its name.
+    if (!isHumanMessage(current.messages[index]!)) {
       return c.json({ error: 'only your own messages can be edited' }, 400)
     }
     // A message GitHub already holds is edited there: rewriting it here would
@@ -1103,6 +1404,51 @@ export function createApp(
       return c.json({ error: 'state must be "resolved" or "open" (reopen)' }, 400)
     }
     const id = c.req.param('id')
+    // Who may close what: a reviewer agent, only a thread it opened; the
+    // author agent, none; the human, any, and only the human reopens.
+    if (body?.author === 'agent') {
+      return c.json({ error: "resolving a thread is the reviewer's call, never the agent's" }, 403)
+    }
+    if (body?.as !== undefined) {
+      const who = reviewerAt(c, body.as)
+      if (who instanceof Response) return who
+      const mine = review.get().threads.find((t) => t.id === id)
+      if (!mine) return c.json({ error: 'no such thread' }, 404)
+      if (state !== 'resolved') {
+        return c.json({ error: 'a reviewer agent closes threads; only the human reopens one' }, 403)
+      }
+      if (openedByReviewerAgent(mine) !== who.name) {
+        const opener = mine.messages[0]
+        return c.json(
+          {
+            error: `reviewer agent "${who.name}" did not open this thread (the ${opener ? voiceOf(opener) : 'human reviewer'} did), and a reviewer agent closes only threads it opened`,
+          },
+          403,
+        )
+      }
+      if (mine.state === 'resolved') return c.json({ thread: mine })
+      if (mine.needsYou) {
+        return c.json({ error: `${stoppedWhy(mine)}; closing it is theirs too now` }, 409)
+      }
+      // Reopened by the human: closing it again is not the reviewer's answer
+      // to give before they have said why.
+      if (mine.state === 'open') {
+        return c.json(
+          { error: 'the human reopened this thread; it is theirs until they send it again' },
+          409,
+        )
+      }
+      // Closed before the author agent was handed it: nothing left to hand over.
+      // A thread it is already answering stays on its clock, untouched.
+      if (queue?.queuedThreadIds().includes(id) && !queue.deliveredThreadIds().includes(id)) {
+        queue.drop(id)
+      }
+      const thread = review.setState(id, 'resolved', who.name)
+      if (thread) {
+        hub.log(who.name, 'closed', `closed its thread on ${describeAnchor(thread.anchor)}`, id)
+      }
+      return thread ? c.json({ thread }) : c.json({ error: 'no such thread' }, 404)
+    }
     const current = review.get().threads.find((t) => t.id === id)
     if (!current) return c.json({ error: 'no such thread' }, 404)
     // An inline thread GitHub knows resolves there too — on Finish. Until then
@@ -1123,6 +1469,8 @@ export function createApp(
     const before = review.get()
     const hadRound = before.threads.length > 0 || before.lastFinish !== undefined
     const removed = review.reset()
+    // The seats went with the round, and what the hub kept for them goes too.
+    hub.clear()
     for (const id of removed) queue?.drop(id)
     // reset() dropped the layers; a request for them has nothing to answer.
     queue?.dropLayers()
@@ -1392,13 +1740,12 @@ export function createApp(
     ctx.telemetry?.reviewFinished({
       kind: reviewKind(),
       threads: batch.length,
-      comments: batch.reduce(
-        (n, t) => n + t.messages.filter((m) => m.author === 'reviewer').length,
-        0,
-      ),
+      comments: batch.reduce((n, t) => n + t.messages.filter(isHumanMessage).length, 0),
       layers: (review.get().layers?.items.length ?? 0) > 0,
       ...(event !== null ? { event } : {}),
       ...(coverage.shareLayers ? { shareLayers: true } : {}),
+      reviewerAgents: review.get().reviewers?.length ?? 0,
+      reviewerThreads: review.get().threads.filter((t) => openedByReviewerAgent(t) !== null).length,
     })
     ctx.uiSettings?.set('finishes', String(finishCount() + 1))
     return c.json({
@@ -1437,6 +1784,19 @@ export function createApp(
         ),
       }
     }
+    if (snapshot.kind === 'role') {
+      return {
+        status: 'feedback' as const,
+        kind: 'role' as const,
+        threadIds: [] as string[],
+        prompt: buildRoleThreadPrompt(
+          { repo: repoInfo(), changeset: store?.get() ?? null },
+          snapshot.id,
+          roleStore?.find(snapshot.id) ?? null,
+          roleStore?.thread(snapshot.id) ?? { messages: [] },
+        ),
+      }
+    }
     if (snapshot.kind === 'cleared') {
       return {
         status: 'feedback' as const,
@@ -1458,6 +1818,24 @@ export function createApp(
         ),
       }
     }
+    if (snapshot.kind === 'reviewers') {
+      const roles = customRoles()
+      // A role deleted since the ask has no focus to hand over: the general
+      // one stands in, so the ask is never dropped on the floor.
+      const asks = snapshot.roles.map((id) => {
+        const role = findRole(roles, id) ?? findRole(roles, DEFAULT_ROLE)!
+        return { role, ask: buildReviewerAsk(resolve(ctx.root), homedir(), role) }
+      })
+      return {
+        status: 'feedback' as const,
+        kind: 'reviewers' as const,
+        threadIds: [] as string[],
+        prompt: buildReviewerRequestPrompt(
+          { repo: repoInfo(), changeset: store?.get() ?? null },
+          asks,
+        ),
+      }
+    }
     if (snapshot.kind === 'submitted') {
       return {
         status: 'feedback' as const,
@@ -1475,8 +1853,10 @@ export function createApp(
       // agent's answer rides the prompt as a one-line mention (see
       // buildFinishPrompt) and owes nothing — putting it back on the reply clock
       // would read its (correct) silence as "never answered".
+      // A thread stopped for the human (rounds cap or --ask) is theirs: the
+      // agent's reply to it would be refused, so it owes none.
       const actionable = batch
-        .filter((t) => t.state === 'sent' && !answeredByAgent(t))
+        .filter((t) => t.state === 'sent' && !answeredByAgent(t) && !t.needsYou)
         .map((t) => t.id)
       return {
         status: 'feedback' as const,
@@ -1632,6 +2012,689 @@ export function createApp(
     })
   })
 
+  /** The role a request names, or the refusal: reviewer agents are not
+   * for pull-request reviews, and a role has to be one the reviewer has. */
+  const roleAsked = (c: Context, raw: unknown): ReviewerRole | Response => {
+    if (ctx.pr) return c.json({ error: NO_REVIEWERS_ON_PR }, 400)
+    const id = typeof raw === 'string' && raw !== '' ? raw : DEFAULT_ROLE
+    const roles = customRoles()
+    return (
+      findRole(roles, id) ??
+      c.json(
+        {
+          error: `no reviewer role "${id}"; the roles are ${allRoles(roles)
+            .map((r) => r.id)
+            .join(', ')}`,
+        },
+        400,
+      )
+    )
+  }
+
+  // A reviewer agent takes its seat and is told what it needs to start: what is
+  // under review and how to read it, the threads already there so it does not
+  // open them again, and its limits. The CLI adds the next step.
+  const JOIN_THREAD_CAP = 60
+  const JOIN_FILE_CAP = 300
+  app.post('/api/reviewer/join', async (c) => {
+    const body = await c.req.json().catch(() => null)
+    const seats = new Set((review?.get().reviewers ?? []).map((r) => r.name))
+    // The role decides what the reviewer looks for. A seat taken again keeps
+    // its role unless it names one.
+    const roles = customRoles()
+    const asked = typeof body?.role === 'string' ? body.role.trim().toLowerCase() : undefined
+    if (asked === undefined && body?.as === undefined) {
+      return c.json(
+        { error: 'join needs a role (--role <id>), or the name you had (--as <name>)' },
+        400,
+      )
+    }
+    if (asked !== undefined) {
+      const known = roleAsked(c, asked)
+      if (known instanceof Response) return known
+    }
+    // A reviewer that brings no name is given one, never one this review
+    // has known: a new reviewer in a role is a new reviewer, not the last
+    // one's seat. `--as` is for coming back under one's own name.
+    const fresh = () => {
+      const taken = new Set([
+        ...seats,
+        ...hub.knownNames(),
+        ...(review?.get().threads ?? []).flatMap((t) =>
+          t.messages.flatMap((m) => (m.by ? [m.by] : [])),
+        ),
+      ])
+      return ctx.reviewerNames
+        ? pickReviewerName(taken, ctx.reviewerNames, (free) => free[0]!)
+        : pickReviewerName(taken)
+    }
+    const who = reviewerAt(c, body?.as ?? fresh(), asked, true)
+    if (who instanceof Response) return who
+    const seat = review!.get().reviewers?.find((r) => r.name === who.name)
+    const role = findRole(roles, seat?.role ?? DEFAULT_ROLE) ?? findRole(roles, DEFAULT_ROLE)!
+    // The reviewer the author agent was asked to start, if one was awaited,
+    // and the one it suggested, if it suggested this role.
+    hub.arrived(role.id)
+    hub.log(
+      who.name,
+      'joined',
+      `${seats.has(who.name) ? 'rejoined' : 'joined'} as ${role.name} reviewer`,
+    )
+    review!.clearReviewerSuggestion(role.id)
+    const changeset = store?.get() ?? null
+    const state = review!.get()
+    const files = changeset?.files ?? []
+    const threads = threadsInChangeset(files, state.threads, state.layers).active.filter(
+      (t) => !isPublic(t),
+    )
+    return c.json({
+      ok: true,
+      as: who.name,
+      rejoined: seats.has(who.name),
+      role: { id: role.id, name: role.name, focus: role.focus },
+      how_to_review: REVIEWER_BRIEF,
+      review: {
+        repo: repoInfo().name,
+        branch: repoInfo().branch,
+        under_review: changeset ? specLine(changeset) : null,
+        // The same diff the human reads in the browser, through Diffo, so the
+        // page can say which files each reviewer read (`diffo diff`).
+        read_with: `\`${reviewerCommands(who.name).diff}\`: the diff the user reads, every file or the files you name; the user sees which files you read this way`,
+        // Each file with its hunks as head-side line ranges: a `--line` inside
+        // one anchors the comment to that line, any other lands on the file.
+        files: files.slice(0, JOIN_FILE_CAP).map((f) => ({
+          path: f.path,
+          status: f.status,
+          lines: f.hunks.map((h) => formatSpan(hunkHeadSpan(h))),
+        })),
+        ...(files.length > JOIN_FILE_CAP ? { more_files: files.length - JOIN_FILE_CAP } : {}),
+      },
+      threads: threads.slice(0, JOIN_THREAD_CAP).map((t) => {
+        const first = t.messages[0]
+        return {
+          threadId: t.id,
+          where: describeAnchor(t.anchor),
+          by: first?.by === who.name ? 'you' : first ? voiceOf(first) : 'human reviewer',
+          state: t.needsYou ? 'needs the human' : t.state,
+          text: (first?.text ?? '').split('\n')[0]!.slice(0, 160),
+        }
+      }),
+      ...(threads.length > JOIN_THREAD_CAP
+        ? { more_threads: threads.length - JOIN_THREAD_CAP }
+        : {}),
+      limits: { rounds_per_thread: REVIEWER_LIMITS.rounds },
+    })
+  })
+
+  // The roles a reviewer agent can be invited in: the built-ins, then the
+  // reviewer's own, and which of them are active (in the Add reviewer
+  // picker; the rest wait in the library). The page reads and saves them.
+  const rolesPayload = (custom: readonly ReviewerRole[]) => {
+    const roles = allRoles(custom)
+    const activity = roleStore?.activity() ?? { on: [], off: [] }
+    return {
+      roles,
+      default: DEFAULT_ROLE,
+      active: roles.filter((r) => isActiveRole(r, activity)).map((r) => r.id),
+    }
+  }
+  app.get('/api/reviewer/roles', (c) => c.json(rolesPayload(customRoles())))
+
+  // The human moves a role into the picker, or back to the library.
+  app.put('/api/reviewer/roles/:id/active', async (c) => {
+    if (!roleStore) return c.json({ error: 'settings unavailable' }, 503)
+    if (fromCli(c)) return c.json({ error: 'only the human picks the active reviewers' }, 403)
+    const body = await c.req.json().catch(() => null)
+    if (typeof body?.active !== 'boolean') return c.json({ error: 'need {active: boolean}' }, 400)
+    const id = roleKey(c.req.param('id'))
+    if (!findRole(customRoles(), id)) return c.json({ error: `no reviewer role "${id}"` }, 404)
+    roleStore.setActive(id, body.active)
+    return c.json(rolesPayload(customRoles()))
+  })
+
+  app.put('/api/reviewer/roles', async (c) => {
+    if (!roleStore) return c.json({ error: 'settings unavailable' }, 503)
+    const body = await c.req.json().catch(() => null)
+    const parsed = parseCustomRoles(body?.roles)
+    if (!parsed.ok) return c.json({ error: parsed.error }, 400)
+    const kept = new Set(parsed.roles.map((r) => r.id))
+    const gone = roleStore.roles().filter((r) => !kept.has(r.id))
+    roleStore.saveRoles(parsed.roles)
+    // A deleted role's parked message has nothing left to be about.
+    for (const role of gone) queue?.dropRole(role.id)
+    return c.json(rolesPayload(parsed.roles))
+  })
+
+  // The conversation about a reviewer role (see server/roles.ts), the way a
+  // layers preset has one: the reviewer writes to the agent from the Reviewer
+  // agents page, the message rides the delivery queue, and the agent answers
+  // with `diffo role update` (a role made or edited, with a line on it) or
+  // `diffo role reply`. A new role talks under a draft key until the agent
+  // names it.
+  app.get('/api/reviewer/roles/:id/thread', (c) => {
+    if (!roleStore) return c.json({ error: 'settings unavailable' }, 503)
+    return c.json({ thread: roleStore.thread(roleKey(c.req.param('id'))) })
+  })
+
+  // A new conversation: the messages go, the role stays. A message still
+  // parked for the agent goes too.
+  app.delete('/api/reviewer/roles/:id/thread', (c) => {
+    if (!roleStore) return c.json({ error: 'settings unavailable' }, 503)
+    const id = roleKey(c.req.param('id'))
+    const cleared = roleStore.clearThread(id)
+    queue?.dropRole(id)
+    return c.json({ cleared, thread: roleStore.thread(id) })
+  })
+
+  app.post('/api/reviewer/roles/:id/messages', async (c) => {
+    if (!roleStore) return c.json({ error: 'settings unavailable' }, 503)
+    const id = roleKey(c.req.param('id'))
+    const body = (await c.req.json().catch(() => null)) as {
+      author?: unknown
+      text?: unknown
+    } | null
+    const text = typeof body?.text === 'string' ? body.text.trim() : ''
+    if (text === '') return c.json({ error: 'need { text }' }, 400)
+    if (text.length > ROLE_MESSAGE_MAX) {
+      return c.json({ error: `keep a message under ${ROLE_MESSAGE_MAX} characters` }, 400)
+    }
+    const author = body?.author === 'agent' ? 'agent' : 'reviewer'
+    // An agent answering late about a role the reviewer deleted: its words
+    // have nowhere to go, and must not bring the conversation back.
+    if (author === 'agent' && roleStore.wasDeleted(id)) {
+      return c.json({ error: ROLE_DELETED }, 400)
+    }
+    // Unlike a preset, a new role is not made on the first word: it waits
+    // under its draft key for the agent to name it.
+    if (!roleStore.find(id) && !isDraftRoleKey(id)) {
+      return c.json({ error: `no reviewer role "${id}"` }, 400)
+    }
+    const message = roleStore.addMessage(id, author, text)
+    // The reviewer's words are for the agent: parked for its next poll.
+    if (author === 'reviewer') queue?.enqueueRole(id)
+    return c.json({
+      message,
+      thread: roleStore.thread(id),
+      ...(queue ? { presence: queue.presence() } : {}),
+    })
+  })
+
+  // The agent's edit: the fields it sends replace the role's (a role nobody
+  // has yet is made from them), and the change lands in the conversation
+  // with the agent's line on it and the values before, for undo.
+  app.post('/api/reviewer/roles/:id', async (c) => {
+    if (!roleStore) return c.json({ error: 'settings unavailable' }, 503)
+    const id = roleKey(c.req.param('id'))
+    const body = (await c.req.json().catch(() => null)) as {
+      fields?: unknown
+      message?: unknown
+    } | null
+    const patch = parseRolePatch(body?.fields)
+    if (!patch.ok) return c.json({ error: patch.error }, 400)
+    // Read before the role exists: the conversation waiting on a new one.
+    const asked = roleStore.find(id) === undefined ? roleStore.waitingAsk() : undefined
+    const result = roleStore.upsert(id, patch.patch)
+    if (!result.ok) return c.json({ error: result.error }, 400)
+    const text = typeof body?.message === 'string' ? body.message.trim() : ''
+    // A role under an id of the agent's own, while a built-in's or a draft's
+    // conversation waits on it, is what the reviewer asked for there. The
+    // answer goes to that conversation too, naming the role: otherwise the
+    // reviewer waits on a thread the agent answered somewhere else. A draft's
+    // conversation carries on under the role it became.
+    if (asked !== undefined && isDraftRoleKey(asked)) roleStore.carryOver(asked, id)
+    const message = roleStore.addMessage(id, 'agent', text, result.change)
+    if (asked !== undefined) {
+      const where = isDraftRoleKey(asked)
+        ? ''
+        : `The copy is “${result.role.name}”, under your reviewer agents.`
+      roleStore.addMessage(asked, 'agent', [text, where].filter(Boolean).join('\n\n'), {
+        ...result.change,
+        roleId: id,
+      })
+    }
+    return c.json({ role: result.role, message, thread: roleStore.thread(id) })
+  })
+
+  // The line that brings a reviewer agent in, for the reviewer to paste into
+  // another agent session.
+  app.get('/api/reviewer/invite', (c) => {
+    const role = roleAsked(c, c.req.query('role'))
+    if (role instanceof Response) return role
+    return c.json({ role: role.id, ask: buildReviewerAsk(resolve(ctx.root), homedir(), role) })
+  })
+
+  // The reviewer's other way in: ask the agent that wrote the change to start
+  // the reviewer itself, as a sub-agent. The ask rides the author agent's poll
+  // like a layers request, and the page shows the reviewer as on its way until
+  // one joins in that role.
+  app.post('/api/reviewer/request', async (c) => {
+    if (!review || !queue) return c.json({ error: 'review unavailable' }, 503)
+    const body = await c.req.json().catch(() => null)
+    // One role or several, each a reviewer of its own. All of them are checked
+    // before any is asked for, so a bad id starts none; an empty list or a
+    // non-string id is refused, never read as the default role.
+    const ids: unknown[] = Array.isArray(body?.roles) ? [...new Set(body.roles)] : []
+    if (ids.length === 0 || ids.some((id) => typeof id !== 'string' || id === '')) {
+      return c.json({ error: 'need {roles}: one or more role ids' }, 400)
+    }
+    const roles: ReviewerRole[] = []
+    for (const id of ids) {
+      const role = roleAsked(c, id)
+      if (role instanceof Response) return role
+      roles.push(role)
+    }
+    const suggested = review.get().reviewerSuggested?.role
+    ctx.telemetry?.reviewersRequested({
+      kind: reviewKind(),
+      count: roles.length,
+      roles: [...new Set(roles.map((r) => (r.builtIn ? r.id : 'custom')))].sort(),
+      suggested: suggested !== undefined && roles.some((r) => r.id === suggested),
+    })
+    for (const role of roles) {
+      queue.enqueueReviewer(role.id)
+      hub.expect(role.id)
+      // Acting on the author agent's suggestion answers it.
+      review.clearReviewerSuggestion(role.id)
+    }
+    return c.json({ ok: true, roles: roles.map((r) => r.id), presence: queue.presence() })
+  })
+
+  // A reviewer agent says what it is doing, in a line (`diffo progress`): the
+  // human sees it on the page while the reviewer reads, long before it has
+  // anything to say in a thread. Never a comment, and never the author agent's
+  // to read.
+  app.post('/api/reviewer/progress', async (c) => {
+    const body = await c.req.json().catch(() => null)
+    const text = parseProgress(body?.text)
+    if (text === null)
+      return c.json({ error: 'need {as, text}: one line on what you are doing' }, 400)
+    const who = reviewerAt(c, body?.as)
+    if (who instanceof Response) return who
+    hub.log(who.name, 'doing', text)
+    // A message from the human rides back on the reviewer's next word, so one
+    // reading the diff hears it before it ever polls.
+    const notes = hub.unread(who.name)
+    if (notes.length === 0) return c.json({ ok: true })
+    const handed = [...notes]
+    hub.markRead(who.name, handed)
+    return c.json({
+      ok: true,
+      messages: handed,
+      next_step: REVIEWER_NEXT_STEP.message(who.name),
+    })
+  })
+
+  // A reviewer agent reads the change through Diffo (`diffo diff`): the
+  // same hunks the human reads, and the page counts the files it fetched.
+  // No files is every file.
+  app.post('/api/reviewer/diff', async (c) => {
+    const body = await c.req.json().catch(() => null)
+    const who = reviewerAt(c, body?.as)
+    if (who instanceof Response) return who
+    const files = store?.get().files ?? []
+    const asked: unknown[] = Array.isArray(body?.files) ? body.files : []
+    const wanted = asked.filter((p): p is string => typeof p === 'string')
+    const picked = wanted.length === 0 ? files : files.filter((f) => wanted.includes(f.path))
+    const missing = wanted.filter((p) => !files.some((f) => f.path === p))
+    hub.fetched(
+      who.name,
+      picked.map((f) => f.path),
+    )
+    return c.json({
+      patch: picked.map(renderFilePatch).join('\n\n'),
+      files: picked.length,
+      ...(missing.length > 0 ? { missing } : {}),
+    })
+  })
+
+  // A reviewer agent's own account when it finishes (`diffo covered`): the
+  // changed files it did not read. The page shows it beside what it fetched.
+  app.post('/api/reviewer/coverage', async (c) => {
+    const body = await c.req.json().catch(() => null)
+    const who = reviewerAt(c, body?.as)
+    if (who instanceof Response) return who
+    const files = store?.get().files ?? []
+    const raw: unknown[] = Array.isArray(body?.skipped) ? body.skipped : []
+    const skipped = raw.filter((p): p is string => typeof p === 'string')
+    const unknown = skipped.filter((p) => !files.some((f) => f.path === p))
+    if (unknown.length > 0) {
+      return c.json(
+        { error: `not in this change: ${unknown.join(', ')}; --skipped takes changed files` },
+        400,
+      )
+    }
+    hub.reported(who.name, skipped)
+    // Its account is the last thing it does: with nothing of its own left
+    // open, that is the end of its review, raised anything or not.
+    const inbox = reviewerInbox(review!.get().threads, who.name)
+    const settled =
+      inbox.counts.waiting === 0 && inbox.counts.human === 0 && inbox.yourMove.length === 0
+    if (settled && hub.activity(who.name).at(-1)?.kind !== 'done') {
+      hub.log(who.name, 'done', 'finished its review')
+    }
+    const read = files.length - new Set(skipped).size
+    return c.json({ ok: true, read, of: files.length })
+  })
+
+  // The reviewer agent answers the human in their private conversation
+  // (`diffo chat`): on the page beside it, never in a thread, never to the
+  // author agent.
+  app.post('/api/reviewer/chat', async (c) => {
+    const body = await c.req.json().catch(() => null)
+    const text = parseReviewerMessage(body?.text)
+    if (text === null) {
+      return c.json({ error: `need {as, text}: up to ${REVIEWER_MESSAGE_MAX} characters` }, 400)
+    }
+    const who = reviewerAt(c, body?.as)
+    if (who instanceof Response) return who
+    hub.say(who.name, text)
+    return c.json({ ok: true, next_step: REVIEWER_NEXT_STEP.chat(who.name) })
+  })
+
+  // The human writes to one reviewer agent: to steer it, ask it something, or
+  // tell it to stop. It waits for the reviewer's next poll or progress line.
+  // The page's to do, never an agent's: no agent writes to another this way.
+  app.post('/api/reviewer/message', async (c) => {
+    if (!review) return c.json({ error: 'review unavailable' }, 503)
+    if (fromCli(c)) {
+      return c.json({ error: 'only the human writes to a reviewer agent, on the review page' }, 403)
+    }
+    const body = await c.req.json().catch(() => null)
+    const parsed = parseReviewerName(body?.name)
+    if (!parsed.ok) return c.json({ error: parsed.error }, 400)
+    const text = parseReviewerMessage(body?.text)
+    if (text === null) {
+      return c.json({ error: `need {name, text}: up to ${REVIEWER_MESSAGE_MAX} characters` }, 400)
+    }
+    if (!review.get().reviewers?.some((r) => r.name === parsed.name)) {
+      return c.json({ error: `no reviewer agent "${parsed.name}" in this review` }, 404)
+    }
+    hub.tell(parsed.name, text)
+    // Whether it hears it now: a held poll wakes for it; otherwise it waits.
+    return c.json({ ok: true, listening: hub.state(parsed.name) === 'listening' })
+  })
+
+  // The author agent's flag that this change deserves a second reader, in a
+  // role and with a reason (`diffo reviewer --suggest`). An offer on the page,
+  // nothing more: only the human starts a reviewer.
+  app.post('/api/reviewer/suggest', async (c) => {
+    if (!review) return c.json({ error: 'review unavailable' }, 503)
+    if (!fromCli(c)) {
+      return c.json({ error: 'a reviewer is suggested through the diffo CLI' }, 403)
+    }
+    const body = await c.req.json().catch(() => null)
+    const role = roleAsked(c, body?.role)
+    if (role instanceof Response) return role
+    if (review.get().reviewers?.some((r) => (r.role ?? DEFAULT_ROLE) === role.id)) {
+      return c.json({ suggested: false, role: role.id })
+    }
+    review.suggestReviewer(role.id, parseSuggestReason(body?.reason))
+    return c.json({ suggested: true, role: role.id })
+  })
+
+  // The human passes on the suggestion: it goes, and nothing is started.
+  app.delete('/api/reviewer/suggestion', (c) => {
+    if (!review) return c.json({ error: 'review unavailable' }, 503)
+    return c.json({ cleared: review.clearReviewerSuggestion() })
+  })
+
+  // The human stops a reviewer agent: its session is told to end, and it
+  // stays in the review with what it did and said (see `hub.stop`).
+  app.post('/api/reviewer/stop', (c) => {
+    if (!review) return c.json({ error: 'review unavailable' }, 503)
+    if (fromCli(c)) {
+      return c.json({ error: 'only the human stops a reviewer agent, on the review page' }, 403)
+    }
+    const parsed = parseReviewerName(c.req.query('name'))
+    if (!parsed.ok) return c.json({ error: parsed.error }, 400)
+    if (!review.get().reviewers?.some((r) => r.name === parsed.name)) {
+      return c.json({ error: `no reviewer agent "${parsed.name}" in this review` }, 404)
+    }
+    hub.stop(parsed.name)
+    return c.json({ stopped: true })
+  })
+
+  // The human clears the list: every reviewer agent goes as one would with
+  // Delete (a running one's session is ended), and every thread stays.
+  app.delete('/api/reviewer/seats', (c) => {
+    if (!review) return c.json({ error: 'review unavailable' }, 503)
+    if (fromCli(c)) {
+      return c.json({ error: 'only the human removes reviewer agents, on the review page' }, 403)
+    }
+    const names = (review.get().reviewers ?? []).map((r) => r.name)
+    for (const name of names) {
+      if (review.removeReviewer(name)) hub.remove(name)
+    }
+    return c.json({ removed: names.length })
+  })
+
+  // The human takes a reviewer agent out of the review. Its threads stay; its
+  // poll is released with the word that it was removed, and its commands are
+  // refused until someone brings it back in. The page's to do, never an
+  // agent's: no reviewer removes another, and the author agent removes none.
+  app.delete('/api/reviewer/seat', (c) => {
+    if (!review) return c.json({ error: 'review unavailable' }, 503)
+    if (fromCli(c)) {
+      return c.json({ error: 'only the human removes a reviewer agent, on the review page' }, 403)
+    }
+    const parsed = parseReviewerName(c.req.query('name'))
+    if (!parsed.ok) return c.json({ error: parsed.error }, 400)
+    const removed = review.removeReviewer(parsed.name)
+    if (removed) hub.remove(parsed.name)
+    return c.json({ removed })
+  })
+
+  // The reviewer agent's inbox: one payload when something new lands on a
+  // thread it opened (the author agent's answer, or the human's), or the word
+  // that nothing of its own is left to wait for. Derived from the review on
+  // every wake, so it holds no queue of its own, and it never goes near the
+  // author agent's: no session claimed, no batch, no presence there.
+  app.get('/api/reviewer/poll', (c) => {
+    const who = reviewerAt(c, c.req.query('as'))
+    if (who instanceof Response) return who
+    const name = who.name
+    const inboxOf = review!
+    // The review this poll waits in. A checkout swaps the store to another
+    // branch's review in place (ReviewStore.rescope): answering from that one
+    // would read as "you raised nothing", and its threads here would go
+    // unwatched.
+    const branch = inboxOf.scope.branch
+    const scope = JSON.stringify(inboxOf.scope)
+    const heartbeatMs = ctx.pollHeartbeatMs ?? POLL_HEARTBEAT_MS
+    const graceMs = ctx.reviewerGraceMs ?? REVIEWER_GRACE_MS
+    return stream(c, async (s) => {
+      let aborted = false
+      let superseded = false
+      let wake: (() => void) | null = null
+      const nudge = () => wake?.()
+      // A listening poll holds the daemon up, as the author agent's does.
+      ctx.idle?.connect()
+      const detach = hub.attach(name, () => {
+        superseded = true
+        nudge()
+      })
+      const unsubscribe = inboxOf.subscribe(nudge)
+      const unhear = hub.onNote(name, nudge)
+      let held = true
+      const drop = () => {
+        if (!held) return
+        held = false
+        ctx.idle?.disconnect()
+        unsubscribe()
+        unhear()
+        detach()
+      }
+      s.onAbort(() => {
+        aborted = true
+        nudge()
+        drop()
+      })
+      try {
+        const deadline = Date.now() + (ctx.pollMaxMs ?? POLL_MAX_MS)
+        while (!aborted) {
+          if (hub.isRemoved(name)) {
+            await s.write(
+              JSON.stringify({ status: 'removed', as: name, message: `${removedNotice(name)}.` }),
+            )
+            return
+          }
+          if (hub.isStopped(name)) {
+            await s.write(
+              JSON.stringify({ status: 'stopped', as: name, message: `${stoppedNotice(name)}.` }),
+            )
+            return
+          }
+          if (superseded) {
+            await s.write(
+              JSON.stringify({
+                status: 'superseded',
+                as: name,
+                message: `another poll attached as reviewer agent "${name}", so this one is released. Do nothing here and do not poll again unless the user asks; if that was not you, another session is using your name: say so to the user.`,
+              }),
+            )
+            return
+          }
+          if (JSON.stringify(inboxOf.scope) !== scope) {
+            await s.write(
+              JSON.stringify({
+                status: 'moved',
+                as: name,
+                message: `the review moved to branch "${inboxOf.scope.branch}" (a checkout), so your threads on "${branch}" are not in view. Stop polling here and tell the user; run poll again once they are back on "${branch}".`,
+              }),
+            )
+            return
+          }
+          const inbox = reviewerInbox(inboxOf.get().threads, name)
+          // The human's own words come first: they may change what it does next.
+          const notes = [...hub.unread(name)]
+          if (notes.length > 0) {
+            await s.write(
+              JSON.stringify({
+                status: 'message',
+                as: name,
+                from: 'human reviewer',
+                messages: notes,
+                still_waiting: inbox.counts.waiting,
+                next_step: REVIEWER_NEXT_STEP.message(name),
+              }),
+            )
+            if (aborted) return
+            hub.markRead(name, notes)
+            return
+          }
+          if (inbox.handed.length > 0) {
+            const n = inbox.threads.length
+            hub.log(
+              name,
+              'answered',
+              n > 0
+                ? `got ${n === 1 ? 'an answer' : `${n} answers`} to read`
+                : 'a thread stopped for the human',
+            )
+            await s.write(
+              JSON.stringify({
+                status: 'feedback',
+                as: name,
+                threads: inbox.threads,
+                ...(inbox.needsHuman.length > 0 ? { needs_human: inbox.needsHuman } : {}),
+                still_waiting: inbox.counts.waiting,
+                next_step: REVIEWER_NEXT_STEP.poll(name),
+              }),
+            )
+            // Hono's stream swallows write errors: a client that vanished
+            // mid-write got nothing, and the next poll hands it over again.
+            if (aborted) return
+            inboxOf.markReviewerSeen(inbox.handed)
+            return
+          }
+          const { counts, opened } = inbox
+          // Finished: every thread of its own closed. It stays a short while
+          // after the last word in them or to it, so the human can still
+          // reach it; then it stops.
+          const finished =
+            opened > 0 &&
+            counts.waiting === 0 &&
+            counts.human === 0 &&
+            counts.unanswered === 0 &&
+            inbox.yourMove.length === 0
+          let napUntil = deadline
+          if (finished) {
+            const last = Math.max(inbox.lastChange, ...hub.chat(name).map((m) => Date.parse(m.at)))
+            napUntil = Math.min(deadline, last + graceMs)
+            hub.log(name, 'done', 'finished its review')
+          }
+          // Nothing left to listen for: a reviewer that raised nothing, has
+          // answers to act on, or finished and waited out its grace.
+          if (
+            (finished && Date.now() >= napUntil) ||
+            (!finished && counts.waiting === 0 && counts.human === 0)
+          ) {
+            if (!finished) {
+              hub.log(
+                name,
+                'waiting',
+                opened === 0 ? 'has raised nothing yet' : 'has answers to reply to or close',
+              )
+            }
+            await s.write(
+              JSON.stringify({
+                status: 'idle',
+                as: name,
+                // `threads` is always the list of threads with news; the tally
+                // is its own key.
+                counts: { opened, ...counts },
+                ...(inbox.yourMove.length > 0 ? { your_move: inbox.yourMove } : {}),
+                next_step:
+                  opened === 0
+                    ? REVIEWER_NEXT_STEP.idleNone(name)
+                    : inbox.yourMove.length > 0
+                      ? REVIEWER_NEXT_STEP.idleYourMove(name)
+                      : REVIEWER_NEXT_STEP.idle(name),
+              }),
+            )
+            return
+          }
+          if (!finished) {
+            hub.log(
+              name,
+              'waiting',
+              counts.waiting > 0
+                ? `waiting for ${counts.waiting === 1 ? 'an answer' : `${counts.waiting} answers`}`
+                : `waiting for your decision on ${counts.human === 1 ? 'a thread' : `${counts.human} threads`}`,
+            )
+          }
+          const left = napUntil - Date.now()
+          if (left <= 0) {
+            await s.write(
+              JSON.stringify({
+                status: 'timeout',
+                as: name,
+                still_waiting: inbox.counts.waiting,
+                ...(counts.human > 0 ? { with_the_human: counts.human } : {}),
+                next_step:
+                  counts.waiting === 0 && counts.human > 0
+                    ? REVIEWER_NEXT_STEP.timeoutHuman(name)
+                    : REVIEWER_NEXT_STEP.timeout(name),
+              }),
+            )
+            return
+          }
+          await new Promise<void>((resolveNap) => {
+            const timer = setTimeout(resolveNap, Math.min(heartbeatMs, left))
+            wake = () => {
+              clearTimeout(timer)
+              resolveNap()
+            }
+          })
+          wake = null
+          if (!aborted && !superseded) await s.write(' ')
+        }
+      } finally {
+        drop()
+      }
+    })
+  })
+
   // The agent's CLI opened the review: it is here, reading the change for its
   // guide, and has not polled yet. Presence says so until the first poll — the
   // reviewer who opens the URL meanwhile is not told there is no agent. Same
@@ -1772,6 +2835,11 @@ export function createApp(
       const unsubscribePresets = presetStore?.subscribe(() => {
         void sse.writeSSE({ event: 'presets', data: '{}', id: String(id++) })
       })
+      // The reviewer roles and their conversations moved, the same way: an
+      // open Reviewer agents page re-reads.
+      const unsubscribeRoles = roleStore?.subscribe(() => {
+        void sse.writeSSE({ event: 'roles', data: '{}', id: String(id++) })
+      })
       const unsubscribePresence = queue?.subscribe(() => {
         void sse.writeSSE({
           event: 'presence',
@@ -1785,16 +2853,27 @@ export function createApp(
           id: String(id++),
         })
       })
+      // Which reviewer agents are connected: the page's actors strip. Seats
+      // come with the review; this is who is here right now.
+      const unsubscribeReviewers = hub.subscribe(() => {
+        void sse.writeSSE({
+          event: 'reviewers',
+          data: JSON.stringify(reviewerPresence()),
+          id: String(id++),
+        })
+      })
       // Register the abort handler BEFORE the first awaited write — Hono never
       // fires a late `onAbort`, so a connection dying under backpressure would
-      // leak all three subscriptions and spin the ping loop forever.
+      // leak every subscription and spin the ping loop forever.
       sse.onAbort(() => {
         closed = true
         drop()
         unsubscribe()
         unsubscribeReview?.()
         unsubscribePresets?.()
+        unsubscribeRoles?.()
         unsubscribePresence?.()
+        unsubscribeReviewers()
       })
       await sse.writeSSE({
         event: 'changeset',
@@ -1814,6 +2893,11 @@ export function createApp(
           id: String(id++),
         })
       }
+      await sse.writeSSE({
+        event: 'reviewers',
+        data: JSON.stringify(reviewerPresence()),
+        id: String(id++),
+      })
       while (!closed) {
         await sse.sleep(15000)
         await sse.writeSSE({ event: 'ping', data: '' })

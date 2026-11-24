@@ -11,7 +11,8 @@ import { VERSION } from '../version.js'
  * Anonymous usage data, Homebrew-style: on by default, announced in the review
  * page before the first event leaves, one command or variable to turn off. Two
  * events per review, `review_opened` and `review_finished`, `layers_requested`
- * when the reviewer asks for layers, `review_failed` for an open that never
+ * when the reviewer asks for layers, `reviewers_requested` when they ask for
+ * reviewer agents (one per ask, never one per reviewer), `review_failed` for an open that never
  * became a review, and one last `telemetry_disabled` when a
  * machine that has reported turns it off; `send`
  * below is the authoritative list of what they carry, and the docs page links here. Never
@@ -186,6 +187,26 @@ export interface FinishedProps {
   event?: string
   /** The author asked the agent to share the layers on the pull request. */
   shareLayers?: boolean
+  /** Reviewer agents with a seat in this review, and the threads they
+   * opened: counts only, and only when there were any. */
+  reviewerAgents?: number
+  reviewerThreads?: number
+}
+
+/**
+ * The reviewer asked the agent to start reviewer agents: one event for the
+ * ask, however many it starts. Never an event per reviewer, per comment or
+ * per poll.
+ */
+export interface ReviewersRequestedProps {
+  kind: ReviewKind
+  /** How many reviewers were asked for: one per role. */
+  count: number
+  /** The built-in roles asked for, sorted; a role of the reviewer's own is
+   * `custom`, never its name. */
+  roles: string[]
+  /** The agent had suggested a reviewer in one of these roles. */
+  suggested: boolean
 }
 
 /**
@@ -340,6 +361,19 @@ export class Telemetry {
     })
   }
 
+  /** The reviewer asked for reviewer agents. Like a finish: only for a
+   * review that was opened reporting, and is still on. */
+  reviewersRequested(props: ReviewersRequestedProps): void {
+    if (this.armedReview !== true || !this.armed()) return
+    this.send('reviewers_requested', {
+      kind: props.kind,
+      count: props.count,
+      // One flat value, as every property is: "ai-slop,comments,general".
+      roles: props.roles.join(','),
+      suggested: props.suggested,
+    })
+  }
+
   /** `diffo share` posted a reading guide on a pull request. */
   layersShared(props: SharedProps): void {
     if (!this.armed()) return
@@ -368,6 +402,8 @@ export class Telemetry {
       layers: props.layers,
       ...(props.event ? { event: props.event } : {}),
       ...(props.shareLayers ? { share_layers: true } : {}),
+      ...(props.reviewerAgents ? { reviewer_agents: props.reviewerAgents } : {}),
+      ...(props.reviewerThreads ? { reviewer_threads: props.reviewerThreads } : {}),
       ...(this.openedAt !== undefined
         ? { duration: durationBucket(this.now() - this.openedAt) }
         : {}),

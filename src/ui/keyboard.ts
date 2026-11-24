@@ -6,6 +6,7 @@ export type ReviewAction =
   | 'toggle-viewed'
   | 'toggle-view-mode'
   | 'toggle-nav'
+  | 'toggle-agents'
   | 'toggle-focus'
   | 'focus-search'
   | 'comment'
@@ -29,6 +30,8 @@ export function actionForKey(key: string, shift: boolean): ReviewAction | null {
   if (key === 'K' || (shift && key === 'k')) return 'prev-file'
   if (key === 'v') return 'toggle-viewed'
   if (key === 'u') return 'toggle-view-mode'
+  // The file list's switch, and its twin on the right edge for the reviewer agents.
+  if (key === 'B' || (shift && key === 'b')) return 'toggle-agents'
   if (key === 'b') return 'toggle-nav'
   if (key === 'z') return 'toggle-focus'
   if (key === '/') return 'focus-search'

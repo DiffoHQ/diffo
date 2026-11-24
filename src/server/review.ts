@@ -14,15 +14,24 @@ import {
   type DraftOrigin,
   EMPTY_REVIEW,
   type GithubThread,
+  isHumanMessage,
   type Landed,
   type LastFinish,
   type Layers,
+  type NeedsYou,
+  nextReviewerHue,
   normalizeTitle,
+  openedByReviewerAgent,
   type PrCommentOutcome,
   type PrCommentSuggestion,
+  parseReviewerName,
+  REVIEWER_HUES,
+  REVIEWER_LIMITS,
+  type ReviewerAgent,
   type ReviewMessage,
   type ReviewState,
   type ReviewThread,
+  roundsOf,
   type SharedLayersFrom,
   seenByAgent,
   THREAD_INTENTS,
@@ -31,10 +40,31 @@ import {
   type ThreadState,
 } from '../shared/review.js'
 import type { ChangesetSpec } from '../shared/types.js'
-import type { DiffoDb, ReviewScope } from './db.js'
+import { type DiffoDb, type ReviewScope, reviewerHubKey } from './db.js'
 import { getBranchName } from './git.js'
 
 const STATES: ThreadState[] = ['open', 'sent', 'addressed', 'resolved']
+
+/**
+ * The reviewer agent's cursor (`reviewerSeenAt`) as it must stand once
+ * `edited` is rewritten: an edit keeps the message's time, so a cursor at or
+ * past it would never hand the new words over. It moves back to the newest
+ * message before it, or goes when there is none; one still short of it stays.
+ */
+function reviewerCursorBefore(
+  thread: ReviewThread,
+  edited: ReviewMessage,
+): { reviewerSeenAt?: string } {
+  const seenAt = thread.reviewerSeenAt
+  if (seenAt === undefined) return {}
+  if (Date.parse(seenAt) < Date.parse(edited.at)) return { reviewerSeenAt: seenAt }
+  const earlier = thread.messages
+    .filter((m) => m.id !== edited.id && Date.parse(m.at) < Date.parse(edited.at))
+    .map((m) => m.at)
+    .sort()
+    .at(-1)
+  return earlier === undefined ? {} : { reviewerSeenAt: earlier }
+}
 
 export class ReviewStore {
   private state: ReviewState
@@ -98,6 +128,8 @@ export class ReviewStore {
       suggestedReply?: string
       prComment?: string
       origin?: DraftOrigin
+      /** The reviewer agent that wrote it (see `ReviewMessage.by`). */
+      by?: string
     } = {},
   ): ReviewThread {
     const now = new Date().toISOString()
@@ -120,6 +152,7 @@ export class ReviewStore {
           author,
           text,
           at: now,
+          ...(author === 'reviewer' && options.by ? { by: options.by } : {}),
           ...(author === 'agent' && options.suggestedReply
             ? { suggestedReply: options.suggestedReply }
             : {}),
@@ -221,7 +254,12 @@ export class ReviewStore {
    * The reply is inserted after the messages that delivery carried and before any
    * the reviewer raced in since — appended at the end, it would render as an
    * answer to a comment it never saw, and the raced comment would stop reading
-   * as "waiting on the agent" even though it still is. */
+   * as "waiting on the agent" even though it still is.
+   *
+   * `by` names the reviewer agent that wrote a `reviewer` message. The rounds
+   * cap is kept here, in the one place a message lands: the author agent's
+   * answer that completes the last allowed round marks the thread `needsYou`,
+   * and the human's next message clears it. */
   addMessage(
     threadId: string,
     author: Author,
@@ -231,13 +269,15 @@ export class ReviewStore {
     followUp = false,
     suggestedReply?: string,
     prComment?: string,
+    by?: string,
   ): ReviewThread | null {
-    return this.update(threadId, ({ unanswered: _answered, ...thread }) => {
+    return this.update(threadId, ({ unanswered: _answered, needsYou, ...thread }) => {
       const message: ReviewMessage = {
         id: randomUUID(),
         author,
         text,
         at: new Date().toISOString(),
+        ...(author === 'reviewer' && by ? { by } : {}),
         ...(author === 'agent' && suggestedReply ? { suggestedReply } : {}),
         ...(author === 'agent' && prComment ? { prComment: { text: prComment } } : {}),
       }
@@ -253,17 +293,33 @@ export class ReviewStore {
       // An agent reply settles the promised follow-up — unless it renews the
       // promise. A reviewer message leaves it: the agent still owes the ending.
       const { awaitingFollowUp: _promised, ...settled } = thread
+      const messages =
+        raced === -1
+          ? [...thread.messages, message]
+          : [...thread.messages.slice(0, raced), message, ...thread.messages.slice(raced)]
+      // An interim reply is not the answer yet: the round closes, and the cap
+      // with it, on the plain reply that follows.
+      const capped =
+        author === 'agent' &&
+        !followUp &&
+        thread.state !== 'resolved' &&
+        openedByReviewerAgent({ messages }) !== null &&
+        roundsOf({ messages }) >= REVIEWER_LIMITS.rounds
       return {
         ...(author === 'agent' ? settled : thread),
+        // The human's word takes the thread back from the agents; anyone
+        // else's leaves it stopped.
+        ...(needsYou && !isHumanMessage(message)
+          ? { needsYou }
+          : capped
+            ? { needsYou: 'rounds' as const }
+            : {}),
         ...(author === 'agent' && followUp ? { awaitingFollowUp: true as const } : {}),
         // An agent message does NOT clear this: it proves the agent had the thread, not
         // that it saw the line you are still holding. Only a real hand-over
         // (`clearWithheld`, from Send or Finish) clears it.
         ...(withheld && author === 'reviewer' ? { withheld: true } : {}),
-        messages:
-          raced === -1
-            ? [...thread.messages, message]
-            : [...thread.messages.slice(0, raced), message, ...thread.messages.slice(raced)],
+        messages,
       }
     })
   }
@@ -289,26 +345,34 @@ export class ReviewStore {
     const seen = seenByAgent(current, index)
     const cut = current.messages.slice(index + 1)
     const cutAnswer = cut.some((m) => m.author === 'agent')
-    return this.update(threadId, ({ unanswered, awaitingFollowUp, ...thread }) => {
-      const before = thread.messages[index]!
-      const edited: ReviewMessage = {
-        ...before,
-        text,
-        ...(seen || before.editedAt ? { editedAt: new Date().toISOString() } : {}),
-      }
-      return {
-        ...thread,
-        // Speaking to the agent again un-strands the thread, as a reply does.
-        ...(unanswered && !seen ? { unanswered } : {}),
-        // A promised follow-up belonged to a reply that is gone.
-        ...(awaitingFollowUp && !cutAnswer ? { awaitingFollowUp } : {}),
-        // The answer that addressed it is gone: the thread waits on the agent again.
-        ...(cutAnswer && thread.state === 'addressed' ? { state: 'sent' as const } : {}),
-        ...(seen && cut.length > 0 ? { rewound: true as const } : {}),
-        ...(seen && withheld ? { withheld: true } : {}),
-        messages: [...thread.messages.slice(0, index), edited],
-      }
-    })
+    // Only the human edits, and an edit is their word on the thread: it lifts
+    // `needsYou` the way a reply does.
+    return this.update(
+      threadId,
+      ({ unanswered, awaitingFollowUp, needsYou: _needs, reviewerSeenAt: _cursor, ...thread }) => {
+        const before = thread.messages[index]!
+        const edited: ReviewMessage = {
+          ...before,
+          text,
+          ...(seen || before.editedAt ? { editedAt: new Date().toISOString() } : {}),
+        }
+        return {
+          ...thread,
+          // Speaking to the agent again un-strands the thread, as a reply does.
+          ...(unanswered && !seen ? { unanswered } : {}),
+          // A promised follow-up belonged to a reply that is gone.
+          ...(awaitingFollowUp && !cutAnswer ? { awaitingFollowUp } : {}),
+          // The answer that addressed it is gone: the thread waits on the agent again.
+          ...(cutAnswer && thread.state === 'addressed' ? { state: 'sent' as const } : {}),
+          ...(seen && cut.length > 0 ? { rewound: true as const } : {}),
+          ...(seen && withheld ? { withheld: true } : {}),
+          // A reviewer agent handed these words already gets them again: its
+          // cursor goes back to just before them.
+          ...reviewerCursorBefore(current, before),
+          messages: [...thread.messages.slice(0, index), edited],
+        }
+      },
+    )
   }
 
   /** A delivery just handed these threads to the agent — remember through when,
@@ -366,20 +430,130 @@ export class ReviewStore {
     this.commit()
   }
 
-  setState(threadId: string, state: ThreadState): ReviewThread | null {
-    return this.update(threadId, ({ awaitingFollowUp: promised, ...thread }) => ({
-      ...thread,
-      // Resolving settles the promised follow-up along with the thread.
-      ...(promised && state !== 'resolved' ? { awaitingFollowUp: true as const } : {}),
-      state,
-      ...(state === 'sent' && !thread.sentAt ? { sentAt: new Date().toISOString() } : {}),
-      // A settled thread drops its frozen diff: the snapshot keeps the thread legible
-      // while the code moves underneath it, and it is the heaviest thing in the store
-      // (66% of the review row). The messages stay, and so does `anchored` — it is
-      // small, and a follow-up on this thread has nothing else to point at the code.
-      // Reopening does not bring the snapshot back.
-      ...(state === 'resolved' ? { codeContext: null } : {}),
-    }))
+  /**
+   * An agent in a reviewer agent's thread hands it to the human for a
+   * decision (`reply --ask`): it stops the way a thread at the rounds cap
+   * does, neither agent is handed it or writes in it, and the human's next
+   * word gives it back.
+   */
+  askHuman(threadId: string, who: 'author' | 'reviewer'): ReviewThread | null {
+    return this.update(threadId, (thread) => ({ ...thread, needsYou: who }))
+  }
+
+  /** `by` names the reviewer agent closing a thread it opened; a resolve
+   * without it is the human's. */
+  setState(threadId: string, state: ThreadState, by?: string): ReviewThread | null {
+    return this.update(
+      threadId,
+      ({ awaitingFollowUp: promised, needsYou, resolvedBy: _was, ...thread }) => ({
+        ...thread,
+        // Resolving settles the promised follow-up along with the thread.
+        ...(promised && state !== 'resolved' ? { awaitingFollowUp: true as const } : {}),
+        // A resolved thread needs nobody. One reopened with its rounds spent
+        // is the human's again: an agent may write in it only after they do.
+        ...(state === 'resolved'
+          ? {}
+          : needsYou
+            ? { needsYou }
+            : state === 'open' &&
+                openedByReviewerAgent(thread) !== null &&
+                roundsOf(thread) >= REVIEWER_LIMITS.rounds
+              ? { needsYou: 'rounds' as const }
+              : {}),
+        ...(state === 'resolved' && by ? { resolvedBy: by } : {}),
+        state,
+        ...(state === 'sent' && !thread.sentAt ? { sentAt: new Date().toISOString() } : {}),
+        // A settled thread drops its frozen diff: the snapshot keeps the thread legible
+        // while the code moves underneath it, and it is the heaviest thing in the store
+        // (66% of the review row). The messages stay, and so does `anchored` — it is
+        // small, and a follow-up on this thread has nothing else to point at the code.
+        // Reopening does not bring the snapshot back.
+        ...(state === 'resolved' ? { codeContext: null } : {}),
+      }),
+    )
+  }
+
+  /** A reviewer agent takes its seat: every reviewer command does, `join`
+   * with a role, the others without. Idempotent: a seat taken again stays the
+   * first one, and changes only the role when it names another. */
+  registerReviewer(name: string, role?: string): ReviewerAgent {
+    const seats = this.state.reviewers ?? []
+    const seated = seats.find((r) => r.name === name)
+    if (seated && (role === undefined || seated.role === role)) return seated
+    const reviewer: ReviewerAgent = seated
+      ? { ...seated, role }
+      : {
+          name,
+          joinedAt: new Date().toISOString(),
+          ...(role ? { role } : {}),
+          hue: nextReviewerHue(seats.map((r) => r.hue)),
+        }
+    this.state = {
+      ...this.state,
+      reviewers: seated ? seats.map((r) => (r === seated ? reviewer : r)) : [...seats, reviewer],
+    }
+    this.commit()
+    return reviewer
+  }
+
+  /** Where the reviewer agents' log, unread messages and removals are kept
+   * (see `ReviewerHubSnapshot`): beside the review, not in it, so a progress
+   * line does not wake every listener on the review. */
+  private hubKey(): string {
+    return reviewerHubKey(this.key.repoPath, this.key.branch, this.key.base)
+  }
+
+  loadReviewerHub(): string | null {
+    return this.db.getUiSetting(this.hubKey())
+  }
+
+  saveReviewerHub(json: string): void {
+    this.db.setUiSetting(this.hubKey(), json)
+  }
+
+  /** The human takes a reviewer agent out of the review. Its threads stay:
+   * they are part of what was said. False when it had no seat. */
+  removeReviewer(name: string): boolean {
+    const seats = this.state.reviewers ?? []
+    if (!seats.some((r) => r.name === name)) return false
+    const { reviewers: _was, ...rest } = this.state
+    const left = seats.filter((r) => r.name !== name)
+    this.state = left.length > 0 ? { ...rest, reviewers: left } : rest
+    this.commit()
+    return true
+  }
+
+  /** The author agent's flag: this change deserves a reviewer in this role.
+   * The newest one stands; a second flag replaces the first. */
+  suggestReviewer(role: string, reason?: string): void {
+    this.state = { ...this.state, reviewerSuggested: { role, ...(reason ? { reason } : {}) } }
+    this.commit()
+  }
+
+  /** The suggestion is settled: the human started a reviewer or passed, or one
+   * joined. With a role, only a suggestion for that role goes. False when
+   * there was none to clear. */
+  clearReviewerSuggestion(role?: string): boolean {
+    const suggested = this.state.reviewerSuggested
+    if (!suggested || (role !== undefined && suggested.role !== role)) return false
+    const { reviewerSuggested: _gone, ...rest } = this.state
+    this.state = rest
+    this.commit()
+    return true
+  }
+
+  /** A reviewer agent's poll just handed it these threads, each through the
+   * message named: its inbox is whatever lands after that one. */
+  markReviewerSeen(handed: readonly { threadId: string; through: string }[]): void {
+    const through = new Map(handed.map((h) => [h.threadId, h.through]))
+    if (!this.state.threads.some((t) => through.has(t.id))) return
+    this.state = {
+      ...this.state,
+      threads: this.state.threads.map((t) =>
+        through.has(t.id) ? { ...t, reviewerSeenAt: through.get(t.id)! } : t,
+      ),
+    }
+    this.commit()
   }
 
   removeThread(threadId: string): boolean {
@@ -405,8 +579,18 @@ export class ReviewStore {
    */
   reset(): string[] {
     const ids = this.state.threads.map((t) => t.id)
-    const { lastFinish, landed, title, layers, layersSuggested } = this.state
-    if (ids.length === 0 && !lastFinish && !landed && !title && !layers && !layersSuggested) {
+    const { lastFinish, landed, title, layers, layersSuggested, reviewers, reviewerSuggested } =
+      this.state
+    if (
+      ids.length === 0 &&
+      !lastFinish &&
+      !landed &&
+      !title &&
+      !layers &&
+      !layersSuggested &&
+      !reviewers &&
+      !reviewerSuggested
+    ) {
       return []
     }
     const {
@@ -416,6 +600,9 @@ export class ReviewStore {
       // The plan described the round that ended; the next one is outlined afresh.
       layers: _layers,
       layersSuggested: _suggested,
+      // A seat belongs to the round: the next one's reviewers join again.
+      reviewers: _reviewers,
+      reviewerSuggested: _reviewerSuggested,
       ...rest
     } = this.state
     this.state = { ...rest, threads: [] }
@@ -919,9 +1106,23 @@ export function parseReview(raw: string): ReviewState | null {
   const layers = normalizeLayers(parsed.layers, now)
   const layersSuggested = normalizeSuggested(parsed.layersSuggested)
   const pr = normalizePr(parsed.pr)
+  const reviewers = normalizeReviewers(parsed.reviewers, now)
+  const suggestedRole = storedName((parsed.reviewerSuggested as { role?: unknown } | null)?.role)
+  const suggestedWhy = parseSuggestReason(
+    (parsed.reviewerSuggested as { reason?: unknown } | null)?.reason,
+  )
   return {
     version: 1,
     threads: [...valid, ...migrated],
+    ...(reviewers.length > 0 ? { reviewers } : {}),
+    ...(suggestedRole
+      ? {
+          reviewerSuggested: {
+            role: suggestedRole,
+            ...(suggestedWhy ? { reason: suggestedWhy } : {}),
+          },
+        }
+      : {}),
     ...(pr ? { pr } : {}),
     ...(title ? { title } : {}),
     ...(lastFinish ? { lastFinish } : {}),
@@ -940,6 +1141,39 @@ export function parseReview(raw: string): ReviewState | null {
         }
       : {}),
   }
+}
+
+/** Seats with a name the door would refuse are dropped; one name, one seat. */
+function normalizeReviewers(value: unknown, now: string): ReviewerAgent[] {
+  if (!Array.isArray(value)) return []
+  const seats = new Map<string, ReviewerAgent>()
+  for (const entry of value) {
+    if (typeof entry !== 'object' || entry === null) continue
+    const r = entry as Record<string, unknown>
+    const parsed = parseReviewerName(r.name)
+    if (!parsed.ok || seats.has(parsed.name)) continue
+    const role = storedName(r.role)
+    // A seat with no colour it can wear gets the next free one.
+    const hue =
+      typeof r.hue === 'number' && Number.isInteger(r.hue) && r.hue >= 1 && r.hue <= REVIEWER_HUES
+        ? r.hue
+        : nextReviewerHue([...seats.values()].map((s) => s.hue))
+    seats.set(parsed.name, {
+      name: parsed.name,
+      joinedAt: typeof r.joinedAt === 'string' ? r.joinedAt : now,
+      ...(role ? { role } : {}),
+      hue,
+    })
+  }
+  return [...seats.values()]
+}
+
+/** A stored name that would not pass the door is dropped, and the message or
+ * thread reads as the human's: the safe side, since the human's word is the
+ * one an agent may not overrule. */
+function storedName(value: unknown): string | undefined {
+  const parsed = parseReviewerName(value)
+  return parsed.ok ? parsed.name : undefined
 }
 
 /** Stored layers go back through the same validation a post does; a list that
@@ -1203,6 +1437,11 @@ function normalizeThread(value: unknown, now: string): ReviewThread | null {
   const anchoredLayer = normalizeAnchoredLayer(t.anchoredLayer)
   const anchoredCommit = normalizeAnchoredCommit(t.anchoredCommit)
   if (!Array.isArray(t.messages)) return null
+  // Why it stopped for the human; anything else is not a stop.
+  const needsYou: NeedsYou | null =
+    t.needsYou === 'rounds' || t.needsYou === 'author' || t.needsYou === 'reviewer'
+      ? t.needsYou
+      : null
   const messages: ReviewMessage[] = []
   for (const m of t.messages) {
     if (typeof m !== 'object' || m === null) return null
@@ -1212,6 +1451,7 @@ function normalizeThread(value: unknown, now: string): ReviewThread | null {
     const github = normalizeMessageGithub(msg.github)
     // A GitHub-authored message with no GitHub identity is nobody's — drop the thread.
     if (msg.author === 'github' && !github) return null
+    const by = msg.author === 'reviewer' ? storedName(msg.by) : undefined
     messages.push({
       id: typeof msg.id === 'string' ? msg.id : randomUUID(),
       author: msg.author,
@@ -1225,11 +1465,13 @@ function normalizeThread(value: unknown, now: string): ReviewThread | null {
         ? { prComment: normalizePrComment(msg.prComment)! }
         : {}),
       ...(typeof msg.editedAt === 'string' ? { editedAt: msg.editedAt } : {}),
+      ...(by ? { by } : {}),
       ...(github ? { github } : {}),
     })
   }
   const github = normalizeThreadGithub(t.github)
   const queued = normalizeQueued(t.queued)
+  const resolvedBy = t.state === 'resolved' ? storedName(t.resolvedBy) : undefined
   return {
     id: t.id,
     anchor,
@@ -1259,6 +1501,10 @@ function normalizeThread(value: unknown, now: string): ReviewThread | null {
     ...(typeof t.sentAt === 'string' ? { sentAt: t.sentAt } : {}),
     // Survives a restart: the agent is owed the word that its replies were cut.
     ...(t.rewound === true ? { rewound: true as const } : {}),
+    // A resolved thread needs nobody, whatever the file says.
+    ...(needsYou && t.state !== 'resolved' ? { needsYou } : {}),
+    ...(resolvedBy ? { resolvedBy } : {}),
+    ...(typeof t.reviewerSeenAt === 'string' ? { reviewerSeenAt: t.reviewerSeenAt } : {}),
     messages,
     createdAt: typeof t.createdAt === 'string' ? t.createdAt : now,
     updatedAt: typeof t.updatedAt === 'string' ? t.updatedAt : now,

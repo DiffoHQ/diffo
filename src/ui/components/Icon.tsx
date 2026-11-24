@@ -64,6 +64,7 @@ export type IconName =
   | 'diff-del'
   | 'diff-mod'
   | 'undo'
+  | 'stop'
   | 'bell'
   | 'star'
   | 'expand'
@@ -87,6 +88,18 @@ export function IconSprite() {
           <path d="M3.3 7.4h2.6" />
           <path d="M3.3 16.6h2.6M4.6 15.3v2.6" />
         </g>
+      </symbol>
+      <symbol id="i-stop" viewBox="0 0 16 16">
+        <rect
+          x="4.25"
+          y="4.25"
+          width="7.5"
+          height="7.5"
+          rx="1.5"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="1.5"
+        />
       </symbol>
       <symbol id="i-sidebar" viewBox="0 0 16 16">
         <g fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round">

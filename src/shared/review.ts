@@ -41,6 +41,205 @@ export type Anchor =
  * to GitHub stay `reviewer`: the message gains a `github` id when it lands. */
 export type Author = 'reviewer' | 'agent' | 'github'
 
+/**
+ * A reviewer agent: a second AI session the user sent to read the change and
+ * comment on it like a person would. Its messages are `reviewer` messages that
+ * carry its name in `by`; the human's carry none. The role stays `reviewer`
+ * on purpose: a thread whose last word is a reviewer's, human or agent, is the
+ * author agent's to answer (`undeliveredThreadIds`), and that rule needs no
+ * second branch.
+ */
+export interface ReviewerAgent {
+  name: string
+  joinedAt: string
+  /** The role it reviews in (shared/roles.ts), by id. Absent when the seat
+   * was taken by a command other than `join` (read as the default role). */
+  role?: string
+  /** Its colour on the page, 1-based (`--rev-N`). Given when it takes its
+   * seat and kept for the review, so removing one reviewer never repaints
+   * the others. */
+  hue: number
+}
+
+/** How many reviewer colours the page has: `--rev-1` … in styles.css. */
+export const REVIEWER_HUES = 6
+
+/** The colour for the next reviewer: the first one nobody here wears, and
+ * once all are worn, round again. */
+export function nextReviewerHue(taken: readonly number[]): number {
+  for (let hue = 1; hue <= REVIEWER_HUES; hue++) {
+    if (!taken.includes(hue)) return hue
+  }
+  return (taken.length % REVIEWER_HUES) + 1
+}
+
+/**
+ * One line of what a reviewer agent did, for the human watching it work. Most
+ * are written by the server from the command the reviewer ran; `doing` is the
+ * reviewer's own word (`diffo progress`), the only way the page learns what it
+ * is reading before it has said anything. `told` is the human's own message to
+ * the reviewer, in their words; `heard` is the reviewer picking it up; `said`
+ * is the reviewer's answer to them (see `ReviewerChatMessage`).
+ */
+export const REVIEWER_EVENT_KINDS = [
+  'joined',
+  'doing',
+  'commented',
+  'replied',
+  'asked',
+  'closed',
+  'waiting',
+  'answered',
+  'done',
+  'told',
+  'heard',
+  'said',
+  'stopped',
+] as const
+
+/** How long the human's message to a reviewer agent may be, or its answer. */
+export const REVIEWER_MESSAGE_MAX = 2000
+
+/** How many messages a conversation with one reviewer keeps. */
+export const REVIEWER_CHAT_MAX = 200
+
+/**
+ * One message of the human's private conversation with a reviewer agent: what
+ * they wrote to it from the page, or what it answered with `diffo chat`. It
+ * lives beside the reviewer, never in a thread, and never reaches the author
+ * agent.
+ */
+export interface ReviewerChatMessage {
+  at: string
+  from: 'you' | 'agent'
+  text: string
+}
+
+/**
+ * How much of the change a reviewer agent read. Two accounts, since neither
+ * is the whole truth: the files it fetched through `diffo diff` (measured,
+ * though it may read some with plain git instead), and what it said it left
+ * unread when it finished (`diffo covered`, its own word).
+ */
+export interface ReviewerCoverage {
+  /** Changed files it fetched through `diffo diff`, by path. */
+  fetched: string[]
+  /** Its own account at the end: the changed files it did not read. */
+  reported?: { skipped: string[]; at: string }
+}
+
+/** A stored or sent coverage, read leniently: null when it is not one. */
+export function parseReviewerCoverage(value: unknown): ReviewerCoverage | null {
+  if (typeof value !== 'object' || value === null) return null
+  const v = value as Record<string, unknown>
+  const paths = (list: unknown) =>
+    Array.isArray(list) ? list.filter((p): p is string => typeof p === 'string') : []
+  const r = v.reported as Record<string, unknown> | undefined
+  return {
+    fetched: paths(v.fetched),
+    ...(typeof r === 'object' && r !== null && typeof r.at === 'string'
+      ? { reported: { skipped: paths(r.skipped), at: r.at } }
+      : {}),
+  }
+}
+
+/** A stored or sent conversation, read leniently: a bad message is dropped alone. */
+export function parseReviewerChat(value: unknown): ReviewerChatMessage[] {
+  if (!Array.isArray(value)) return []
+  const chat: ReviewerChatMessage[] = []
+  for (const entry of value) {
+    if (typeof entry !== 'object' || entry === null) continue
+    const m = entry as Record<string, unknown>
+    if (typeof m.at !== 'string' || typeof m.text !== 'string') continue
+    if (m.from !== 'you' && m.from !== 'agent') continue
+    chat.push({ at: m.at, from: m.from, text: m.text })
+  }
+  return chat.slice(-REVIEWER_CHAT_MAX)
+}
+
+export type ReviewerEventKind = (typeof REVIEWER_EVENT_KINDS)[number]
+
+/** Where a reviewer agent is right now: holding a poll, between commands,
+ * gone quiet, or stopped by the human. */
+export type ReviewerState = 'listening' | 'active' | 'away' | 'stopped'
+
+const oneOf = <T extends string>(all: readonly T[], value: unknown): value is T =>
+  typeof value === 'string' && (all as readonly string[]).includes(value)
+
+/** What the events stream says of the reviewer agents (`reviewers`): every
+ * seated one with its state, log, conversation and coverage, and the roles on
+ * their way. Built by the server from state it already checked, and read by
+ * the page it serves: a cast, not a parse. */
+export interface ReviewersPayload {
+  seats: {
+    name: string
+    state: ReviewerState
+    activity: readonly ReviewerEvent[]
+    chat: readonly ReviewerChatMessage[]
+    coverage: ReviewerCoverage
+  }[]
+  starting: string[]
+}
+
+export interface ReviewerEvent {
+  at: string
+  kind: ReviewerEventKind
+  text: string
+  threadId?: string
+}
+
+/** A reviewer's log as it arrives on the page's event stream: what parses. */
+export function parseReviewerEvents(value: unknown): ReviewerEvent[] {
+  if (!Array.isArray(value)) return []
+  const events: ReviewerEvent[] = []
+  for (const entry of value) {
+    if (typeof entry !== 'object' || entry === null) continue
+    const e = entry as Record<string, unknown>
+    if (typeof e.at !== 'string' || typeof e.text !== 'string') continue
+    if (!oneOf(REVIEWER_EVENT_KINDS, e.kind)) continue
+    events.push({
+      at: e.at,
+      kind: e.kind,
+      text: e.text,
+      ...(typeof e.threadId === 'string' ? { threadId: e.threadId } : {}),
+    })
+  }
+  return events
+}
+
+/**
+ * The cap on a reviewer agent, enforced by the server (see server/index.ts).
+ * There is none on how many threads it opens: what is worth a comment is the
+ * review brief's to teach (`REVIEWER_BRIEF`), and a number here would be a
+ * guess made before anyone has watched reviewers work.
+ */
+export const REVIEWER_LIMITS = {
+  /** Rounds per thread: a reviewer agent's message answered by the author
+   * agent is one. After this many the thread stops and waits for the human. */
+  rounds: 3,
+} as const
+
+const REVIEWER_NAME = /^[a-z0-9-]{1,24}$/
+
+/** Names that already mean someone else on the page or in a prompt. */
+const RESERVED_NAMES = new Set(['you', 'reviewer', 'agent', 'author', 'github'])
+
+export function parseReviewerName(
+  value: unknown,
+): { ok: true; name: string } | { ok: false; error: string } {
+  const name = typeof value === 'string' ? value.trim().toLowerCase() : ''
+  if (!REVIEWER_NAME.test(name)) {
+    return {
+      ok: false,
+      error: 'a reviewer name is 1 to 24 characters of a-z, 0-9 and "-" (for example: codex)',
+    }
+  }
+  if (RESERVED_NAMES.has(name)) {
+    return { ok: false, error: `"${name}" is taken by the review itself; pick another name` }
+  }
+  return { ok: true, name }
+}
+
 /** Who a thread is for. Absent means the agent — every thread from before pull
  * requests existed, and every private thread since. A `pr` thread is a review
  * comment: drafted here, posted to GitHub on Finish, never handed to the agent. */
@@ -103,6 +302,9 @@ export interface ReviewMessage {
   /** ISO, stamped when the reviewer rewrites a message the agent had already
    * seen. An edit to words the agent never saw is just a draft fixed in place. */
   editedAt?: string
+  /** A reviewer agent wrote this: its name (see {@link ReviewerAgent}). Only on
+   * `reviewer` messages; absent on the human's. */
+  by?: string
   /** Set once the message exists on GitHub: the comment's node id, who wrote it
    * there, and where. A `reviewer` message in a posted public thread without
    * this block is a reply still owed to GitHub. */
@@ -183,6 +385,13 @@ export interface GithubThread {
   url?: string
 }
 
+/** Why a thread stopped for the human (see `ReviewThread.needsYou`). */
+export type NeedsYou = 'rounds' | 'author' | 'reviewer'
+
+/** An agent asked the human to decide it, rather than the rounds running out. */
+export const askedBy = (thread: { needsYou?: NeedsYou }): 'author' | 'reviewer' | null =>
+  thread.needsYou === 'author' || thread.needsYou === 'reviewer' ? thread.needsYou : null
+
 export interface ReviewThread {
   id: string
   anchor: Anchor
@@ -240,6 +449,21 @@ export interface ReviewThread {
    * was cut. The agent's session still remembers the cut replies, so the next
    * delivery has to say they are withdrawn; that delivery clears the flag. */
   rewound?: true
+  /** The thread stopped for the human, and why: a reviewer agent and the
+   * author agent went {@link REVIEWER_LIMITS}.rounds rounds without settling
+   * it (`rounds`), or one of them asked for the human's decision (`reply
+   * --ask`: `author` or `reviewer`). Neither agent is handed it and neither
+   * may write in it until the human replies or resolves. Stored, because it
+   * is a hand-over, not a count: the human's reply clears it while the
+   * messages stay. */
+  needsYou?: NeedsYou
+  /** The reviewer agent that closed this thread, one it opened. Absent when
+   * the human resolved it. */
+  resolvedBy?: string
+  /** ISO: the reviewer agent that opened this thread has been handed
+   * everything written before this. Its inbox is derived from it
+   * (server/reviewers.ts), so it survives a restart. */
+  reviewerSeenAt?: string
   messages: ReviewMessage[]
   createdAt: string
   updatedAt: string
@@ -259,7 +483,7 @@ export function isDraft(thread: ReviewThread): boolean {
 /** Reviewer replies on a posted public thread that GitHub has not seen. */
 export function unpostedReplies(thread: ReviewThread): ReviewMessage[] {
   if (!isPublic(thread) || thread.github === undefined) return []
-  return thread.messages.filter((m) => m.author === 'reviewer' && m.github === undefined)
+  return thread.messages.filter((m) => isHumanMessage(m) && m.github === undefined)
 }
 
 /** The retired predecessor of agent-started threads. Kept only so `parseReview`
@@ -276,6 +500,52 @@ export interface LegacySuggestion {
  * Drives rendering — avatar, head label — and never changes. */
 export function startedByAgent(thread: ReviewThread): boolean {
   return thread.messages[0]?.author === 'agent'
+}
+
+/** The human wrote this message: a `reviewer` message no reviewer agent signed. */
+export function isHumanMessage(message: Pick<ReviewMessage, 'author' | 'by'>): boolean {
+  return message.author === 'reviewer' && message.by === undefined
+}
+
+/** The reviewer agent that opened this thread, or null: the human's threads,
+ * the author agent's and GitHub's have none. Never changes. */
+export function openedByReviewerAgent(thread: Pick<ReviewThread, 'messages'>): string | null {
+  const first = thread.messages[0]
+  return first?.author === 'reviewer' && first.by !== undefined ? first.by : null
+}
+
+/**
+ * The agents are talking to each other here, not to the human: a reviewer
+ * agent's thread in which the last reviewer to speak was an agent. Once the
+ * human writes in it, the next answer is to them, and the thread reads as any
+ * thread of theirs until a reviewer agent speaks again.
+ */
+export function betweenAgents(thread: Pick<ReviewThread, 'messages'>): boolean {
+  if (openedByReviewerAgent(thread) === null) return false
+  const last = thread.messages.findLast((m) => m.author === 'reviewer')
+  return last !== undefined && !isHumanMessage(last)
+}
+
+/**
+ * Rounds between a reviewer agent and the author agent: each reviewer-agent
+ * message the author agent answered is one. Counted since the human last
+ * spoke, so their reply hands the thread back with the count at zero.
+ */
+export function roundsOf(thread: Pick<ReviewThread, 'messages'>): number {
+  let rounds = 0
+  let asked = false
+  for (const m of thread.messages) {
+    if (isHumanMessage(m)) {
+      rounds = 0
+      asked = false
+    } else if (m.author === 'reviewer') {
+      asked = true
+    } else if (m.author === 'agent' && asked) {
+      rounds++
+      asked = false
+    }
+  }
+  return rounds
 }
 
 /** The agent has this message: it replied after it, or a delivery carried it.
@@ -296,7 +566,16 @@ export function seenByAgent(thread: ReviewThread, index: number): boolean {
  * reviewer writes a reply into an agent thread, it carries their feedback and
  * moves exactly like a thread they opened themselves. */
 export function untouchedAgentVoice(thread: ReviewThread): boolean {
-  return startedByAgent(thread) && !thread.messages.some((m) => m.author === 'reviewer')
+  return startedByAgent(thread) && !thread.messages.some(isHumanMessage)
+}
+
+/** An agent opened this thread, the author or a reviewer agent, and the human
+ * has written nothing in it: none of it is their engagement with the code. */
+export function untouchedByHuman(thread: ReviewThread): boolean {
+  return (
+    (startedByAgent(thread) || openedByReviewerAgent(thread) !== null) &&
+    !thread.messages.some(isHumanMessage)
+  )
 }
 
 /**
@@ -514,13 +793,25 @@ export interface ReviewState {
    */
   seenHead?: string
   landed?: Landed
+  /** The reviewer agents that joined this review (`diffo join --role <id>`),
+   * in the order they came. Who is connected right now is the server's to
+   * say; this is who has a seat. */
+  reviewers?: ReviewerAgent[]
+  /**
+   * The author agent flagged that this change deserves a second reader, in a
+   * role (shared/roles.ts), and why. A suggestion only: the human starts a
+   * reviewer, or passes. It goes when they do either, or when a reviewer
+   * joins in that role.
+   */
+  reviewerSuggested?: { role: string; reason?: string }
 }
 
 /**
  * Feedback the reviewer is still owed an answer on — the delivery queue's contents,
  * derived rather than remembered, so a restart cannot drop an Ask nobody collected.
  * The cuts: handed over at all; not already ruled unanswered by a closed batch; not
- * deliberately withheld; and the reviewer spoke last.
+ * deliberately withheld; not stopped for the human; and a reviewer spoke last —
+ * the human, or a reviewer agent, whose words go to the author agent the same way.
  */
 export function undeliveredThreadIds(threads: readonly ReviewThread[]): string[] {
   return (
@@ -531,6 +822,7 @@ export function undeliveredThreadIds(threads: readonly ReviewThread[]): string[]
           (t.state === 'sent' || t.state === 'addressed') &&
           t.unanswered !== true &&
           t.withheld !== true &&
+          t.needsYou === undefined &&
           t.messages.at(-1)?.author === 'reviewer',
       )
       // Send order, not array order — the queue's line is a promise a rebuilt queue
