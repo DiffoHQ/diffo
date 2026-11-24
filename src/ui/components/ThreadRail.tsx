@@ -1,17 +1,22 @@
 import { type ReactElement, useMemo, useState } from 'react'
 import {
+  askedBy,
   isDraft,
   isPublic,
   liveSuggestion,
+  openedByReviewerAgent,
+  REVIEWER_LIMITS,
   type ReviewThread,
   unpostedReplies,
 } from '../../shared/review.js'
+import { reviewerHue, useReviewers } from '../actors.js'
 import { shortAgo } from '../markdown.js'
 import { usePr } from '../prMode.js'
 import {
   bySection,
   bySide,
   involves,
+  needsYou,
   SECTION_LABEL,
   type Section,
   type Side,
@@ -43,6 +48,9 @@ function Row({
   onReopen?: (threadId: string) => Promise<unknown>
   onDelete?: (threadId: string) => Promise<unknown>
 }) {
+  const { hues, roleNames } = useReviewers()
+  // Who started it, when a reviewer agent did: the row says so in its colour.
+  const opener = openedByReviewerAgent(item.thread)
   const resolved = item.turn === 'resolved'
   // A public draft has nothing to resolve: resolving it would only drop it from
   // the submit while the row went on reading as settled on GitHub. Its one way
@@ -105,6 +113,17 @@ function Row({
               <Icon name="globe" size="sm" /> suggests
             </span>
           )}
+          {opener !== null && (
+            <>
+              <span
+                className={`crow-who actor-rev-${reviewerHue(opener, hues)}`}
+                title={`started by ${opener}, ${roleNames?.has(opener) ? `the ${roleNames.get(opener)} reviewer agent` : 'a reviewer agent'}`}
+              >
+                {opener}
+              </span>
+              <span className="crow-sep">·</span>
+            </>
+          )}
           {item.thread.intent && item.turn !== 'proposed' && (
             <>
               <span className={`crow-kind crow-kind-${item.thread.intent}`}>
@@ -126,7 +145,11 @@ function Row({
           ) : (
             <>
               <span className="crow-sep">·</span>
-              <span className={`crow-state crow-state-${item.turn}`}>{stateLine(item)}</span>
+              <span
+                className={`crow-state crow-state-${item.thread.needsYou ? 'needs' : item.turn}`}
+              >
+                {stateLine(item)}
+              </span>
             </>
           )}
         </span>
@@ -148,8 +171,14 @@ function Row({
 }
 
 function stateLine(item: ThreadItem): string {
+  const opener = openedByReviewerAgent(item.thread)
   switch (item.turn) {
     case 'yours':
+      if (item.thread.needsYou) {
+        return askedBy(item.thread)
+          ? 'needs your decision'
+          : `needs you · ${REVIEWER_LIMITS.rounds} rounds`
+      }
       // A silent code edit is an answer too, and "answered" over a thread with no
       // reply in it reads as a missing message, not a fix.
       if (item.outcome === 'changed') return 'changed the code, no reply'
@@ -162,11 +191,14 @@ function stateLine(item: ThreadItem): string {
       if (item.working) return 'agent is on it'
       if (item.queued !== undefined) return `queued, ${formatQueuePlace(item.queued)}`
       return 'waiting on the agent'
+    case 'reviewer':
+      return `waiting on ${opener ?? 'the reviewer agent'}`
     case 'note':
       return 'draft, not sent'
     case 'posted':
       return item.answer ?? 'on GitHub'
     case 'resolved':
+      if (item.thread.resolvedBy) return `closed by ${item.thread.resolvedBy}`
       return item.answer ?? 'resolved'
   }
 }
@@ -349,11 +381,20 @@ export function ThreadRail({
   pr?: boolean
 }) {
   const [folded, setFolded] = useState<ReadonlySet<Section>>(FOLDED_BY_DEFAULT)
+  // "Needs you": only what the agents could not settle between them. Offered
+  // once a reviewer agent has a thread here; before that it would filter nothing.
+  const [onlyNeedsYou, setOnlyNeedsYou] = useState(false)
   const all = useMemo(
     () => [...items, ...pastItems.map((i) => ({ ...i, gone: true }))],
     [items, pastItems],
   )
-  const groups = useMemo(() => bySection(all), [all])
+  const flagged = useMemo(() => needsYou(all), [all])
+  const withReviewers = useMemo(
+    () => all.some((i) => openedByReviewerAgent(i.thread) !== null),
+    [all],
+  )
+  const filtering = onlyNeedsYou && withReviewers
+  const groups = useMemo(() => bySection(filtering ? flagged : all), [all, flagged, filtering])
   const sides = useMemo(() => (pr ? bySide(all) : null), [pr, all])
 
   const batchFor = (section: Section, group: ThreadItem[]) => {
@@ -409,6 +450,46 @@ export function ThreadRail({
     )
   }
 
+  const filter = withReviewers && (
+    <fieldset className="clist-filter" aria-label="Which threads to show">
+      <button
+        type="button"
+        className="clist-filter-opt"
+        aria-pressed={!filtering}
+        onClick={() => setOnlyNeedsYou(false)}
+      >
+        All <span className="sec-n">{all.length}</span>
+      </button>
+      <button
+        type="button"
+        className={`clist-filter-opt${flagged.length > 0 ? ' clist-filter-hot' : ''}`}
+        aria-pressed={filtering}
+        title="threads a reviewer agent and the agent could not settle between them"
+        onClick={() => setOnlyNeedsYou(true)}
+      >
+        Needs you <span className="sec-n">{flagged.length}</span>
+      </button>
+    </fieldset>
+  )
+
+  if (filtering && flagged.length === 0) {
+    const talking = all.filter((i) => i.turn === 'agent' || i.turn === 'reviewer').length
+    return (
+      <div className="clist">
+        {filter}
+        <div className="clist-quiet">
+          Nothing needs you.
+          <br />
+          <span className="clist-quiet-n">
+            {talking > 0
+              ? `The agents are working through ${talking} ${talking === 1 ? 'thread' : 'threads'}.`
+              : 'Every thread the agents opened is settled.'}
+          </span>
+        </div>
+      </div>
+    )
+  }
+
   if (groups.size === 0) {
     return (
       <div className="clist">
@@ -425,6 +506,7 @@ export function ThreadRail({
 
   return (
     <div className="clist">
+      {filter}
       {quiet && (
         <div className="clist-quiet">
           Nothing needs you.

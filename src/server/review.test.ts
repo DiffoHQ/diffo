@@ -2,7 +2,7 @@ import { existsSync, mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
-import type { Anchor, Coverage } from '../shared/review.js'
+import { type Anchor, type Coverage, REVIEWER_LIMITS } from '../shared/review.js'
 import type { ChangesetSpec } from '../shared/types.js'
 import { DiffoDb } from './db.js'
 import { parseReview, ReviewStore } from './review.js'
@@ -1082,5 +1082,209 @@ describe('parseReview layers presets', () => {
     const bad = parseReview(stored({ id: 'has space' }))!
     expect(bad.layers?.items).toHaveLength(1)
     expect(bad.layers?.preset).toBeUndefined()
+  })
+})
+
+describe('ReviewStore — reviewer agents', () => {
+  /** A reviewer agent's thread, sent, as the comment route leaves it. */
+  const opened = (store: ReviewStore, by = 'codex') => {
+    const thread = store.createThread(hunkAnchor(), 'this leaks', null, undefined, 'reviewer', {
+      by,
+    })
+    store.send(thread.id)
+    return thread.id
+  }
+  const agentSays = (store: ReviewStore, id: string, more = false) =>
+    store.addMessage(id, 'agent', 'answer', false, undefined, more)!
+  const codexSays = (store: ReviewStore, id: string) =>
+    store.addMessage(
+      id,
+      'reviewer',
+      'again',
+      false,
+      undefined,
+      false,
+      undefined,
+      undefined,
+      'codex',
+    )!
+  const toTheCap = (store: ReviewStore, id: string) => {
+    agentSays(store, id)
+    for (let i = 1; i < REVIEWER_LIMITS.rounds; i++) {
+      codexSays(store, id)
+      agentSays(store, id)
+    }
+  }
+
+  it('a message keeps the name of the reviewer agent that wrote it, across a restart', () => {
+    const root = tempRoot()
+    const store = makeStore(root)
+    const id = opened(store)
+    store.addMessage(id, 'agent', 'fixed')
+    codexSays(store, id)
+    store.addMessage(id, 'reviewer', 'the human here')
+    const names = (s: ReviewStore) => s.get().threads[0]!.messages.map((m) => m.by)
+    expect(names(store)).toEqual(['codex', undefined, 'codex', undefined])
+    expect(names(makeStore(root))).toEqual(['codex', undefined, 'codex', undefined])
+    // A name is only ever a reviewer's: the author agent's message carries none.
+    const own = store.createThread(hunkAnchor(), 'mine', null, undefined, 'agent', { by: 'codex' })
+    expect(own.messages[0]!.by).toBeUndefined()
+  })
+
+  it('a stored name the door would refuse is dropped, and the message reads as the human’s', () => {
+    const stored = (by: unknown) =>
+      JSON.stringify({
+        version: 1,
+        threads: [
+          {
+            id: 't',
+            anchor: { kind: 'changeset' },
+            state: 'sent',
+            messages: [{ id: 'm', author: 'reviewer', text: 'x', at: 'now', by }],
+          },
+        ],
+      })
+    expect(parseReview(stored('codex'))!.threads[0]!.messages[0]!.by).toBe('codex')
+    for (const bad of ['agent', 'Two Words', 7, '']) {
+      expect(parseReview(stored(bad))!.threads[0]!.messages[0]!.by, String(bad)).toBeUndefined()
+    }
+  })
+
+  it('the answer that completes the last round marks the thread as needing the human', () => {
+    const root = tempRoot()
+    const store = makeStore(root)
+    const id = opened(store)
+    agentSays(store, id)
+    for (let i = 1; i < REVIEWER_LIMITS.rounds; i++) {
+      expect(store.get().threads[0]!.needsYou).toBeUndefined()
+      codexSays(store, id)
+      agentSays(store, id)
+    }
+    expect(store.get().threads[0]!.needsYou).toBe('rounds')
+    // Stored, so it survives a restart.
+    expect(makeStore(root).get().threads[0]!.needsYou).toBe('rounds')
+  })
+
+  it('an interim answer leaves the round open; the plain one closes it', () => {
+    const store = makeStore(tempRoot())
+    const id = opened(store)
+    agentSays(store, id)
+    for (let i = 2; i < REVIEWER_LIMITS.rounds; i++) {
+      codexSays(store, id)
+      agentSays(store, id)
+    }
+    codexSays(store, id)
+    expect(agentSays(store, id, true).needsYou).toBeUndefined()
+    expect(agentSays(store, id).needsYou).toBe('rounds')
+  })
+
+  it("the human's threads never stop, however long they run", () => {
+    const store = makeStore(tempRoot())
+    const thread = store.createThread(hunkAnchor(), 'mine', null)
+    for (let i = 0; i < REVIEWER_LIMITS.rounds + 2; i++) {
+      store.addMessage(thread.id, 'agent', 'answer')
+      store.addMessage(thread.id, 'reviewer', 'more')
+    }
+    expect(store.get().threads[0]!.needsYou).toBeUndefined()
+  })
+
+  it("only the human's word takes a stopped thread back", () => {
+    const store = makeStore(tempRoot())
+    const id = opened(store)
+    toTheCap(store, id)
+    expect(codexSays(store, id).needsYou).toBe('rounds')
+    expect(agentSays(store, id).needsYou).toBe('rounds')
+    expect(store.addMessage(id, 'reviewer', 'do the jitter')!.needsYou).toBeUndefined()
+    // The count starts over from their word.
+    expect(agentSays(store, id).needsYou).toBeUndefined()
+  })
+
+  it('resolving settles it; reopening with the rounds spent hands it back to the human', () => {
+    const store = makeStore(tempRoot())
+    const id = opened(store)
+    toTheCap(store, id)
+    expect(store.setState(id, 'resolved')!.needsYou).toBeUndefined()
+    expect(store.setState(id, 'open')!.needsYou).toBe('rounds')
+    // An edit is the human's word too: it lifts the stop like a reply does.
+    const mine = store.addMessage(id, 'reviewer', 'typo')!.messages.at(-1)!
+    agentSays(store, id)
+    for (let i = 0; i < REVIEWER_LIMITS.rounds; i++) {
+      codexSays(store, id)
+      agentSays(store, id)
+    }
+    expect(store.get().threads[0]!.needsYou).toBe('rounds')
+    expect(store.editMessage(id, mine.id, 'fixed typo')!.needsYou).toBeUndefined()
+  })
+
+  it('records the reviewer agent that closed a thread, until it is reopened', () => {
+    const root = tempRoot()
+    const store = makeStore(root)
+    const id = opened(store)
+    expect(store.setState(id, 'resolved', 'codex')!.resolvedBy).toBe('codex')
+    expect(makeStore(root).get().threads[0]!.resolvedBy).toBe('codex')
+    expect(store.setState(id, 'open')!.resolvedBy).toBeUndefined()
+    expect(store.setState(id, 'resolved')!.resolvedBy).toBeUndefined()
+  })
+
+  it('seats a reviewer once, keeps the seats across a restart, and clears them with the review', () => {
+    const root = tempRoot()
+    const store = makeStore(root)
+    const seat = store.registerReviewer('codex')
+    expect(store.registerReviewer('codex')).toBe(seat)
+    store.registerReviewer('gemini')
+    expect(
+      makeStore(root)
+        .get()
+        .reviewers?.map((r) => r.name),
+    ).toEqual(['codex', 'gemini'])
+    store.reset()
+    expect(store.get().reviewers).toBeUndefined()
+    expect(makeStore(root).get().reviewers).toBeUndefined()
+  })
+
+  it('a seat remembers its role, keeps it when joined again without one, and takes a new one', () => {
+    const root = tempRoot()
+    const store = makeStore(root)
+    expect(store.registerReviewer('codex', 'security').role).toBe('security')
+    expect(store.registerReviewer('codex').role).toBe('security')
+    expect(store.registerReviewer('codex', 'tests').role).toBe('tests')
+    expect(store.get().reviewers).toHaveLength(1)
+    expect(makeStore(root).get().reviewers![0]).toMatchObject({ name: 'codex', role: 'tests' })
+  })
+
+  it('keeps the suggestion of a reviewer across a restart, and drops it with the review', () => {
+    const root = tempRoot()
+    const store = makeStore(root)
+    store.suggestReviewer('security', 'builds a shell command')
+    expect(makeStore(root).get().reviewerSuggested).toEqual({
+      role: 'security',
+      reason: 'builds a shell command',
+    })
+    expect(store.clearReviewerSuggestion('tests')).toBe(false)
+    expect(store.clearReviewerSuggestion('security')).toBe(true)
+    expect(store.clearReviewerSuggestion()).toBe(false)
+    store.suggestReviewer('tests')
+    expect(store.get().reviewerSuggested).toEqual({ role: 'tests' })
+    store.reset()
+    expect(store.get().reviewerSuggested).toBeUndefined()
+    // A stored role that is not a name is no suggestion at all.
+    const bad = JSON.stringify({
+      version: 1,
+      threads: [],
+      reviewerSuggested: { role: 'Two Words' },
+    })
+    expect(parseReview(bad)!.reviewerSuggested).toBeUndefined()
+  })
+
+  it("remembers through which message a reviewer agent's inbox was handed over", () => {
+    const root = tempRoot()
+    const store = makeStore(root)
+    const id = opened(store)
+    const other = opened(store, 'gemini')
+    store.markReviewerSeen([{ threadId: id, through: '2026-11-22T10:00:00.000Z' }])
+    const byId = (s: ReviewStore, t: string) => s.get().threads.find((x) => x.id === t)!
+    expect(byId(store, id).reviewerSeenAt).toBe('2026-11-22T10:00:00.000Z')
+    expect(byId(store, other).reviewerSeenAt).toBeUndefined()
+    expect(byId(makeStore(root), id).reviewerSeenAt).toBe('2026-11-22T10:00:00.000Z')
   })
 })

@@ -62,7 +62,7 @@ export interface BatchClosed {
 }
 
 /** Signal 0 probes existence without touching the process; EPERM still proves it exists. */
-function pidAlive(pid: number): boolean {
+export function pidAlive(pid: number): boolean {
   try {
     process.kill(pid, 0)
     return true
@@ -78,9 +78,14 @@ export type Snapshot =
   | { kind: 'finish'; coverage: Coverage; absorbedThreadIds: string[] }
   | { kind: 'layers'; ask: LayersAsk }
   | { kind: 'preset'; id: string }
+  /** The reviewer wrote to the agent about a reviewer role: by role id, or a
+   * new role's draft key. */
+  | { kind: 'role'; id: string }
   | { kind: 'cleared' }
   | { kind: 'submitted'; submitted: Submitted }
   | { kind: 'artifacts'; reports: ArtifactReport[] }
+  /** The reviewer asked the author agent to start reviewer agents, by role. */
+  | { kind: 'reviewers'; roles: string[] }
 
 /** The reviewer submitted the pull-request review: context for the agent, no
  * work owed. */
@@ -133,11 +138,17 @@ interface ScopePending {
   /** Presets whose conversation has a reviewer message the agent has not
    * seen (Layers dialog): ids, in the order they were spoken to. */
   presets: Set<string>
+  /** Reviewer roles whose conversation has a reviewer message the agent has
+   * not seen (Reviewer agents page): role ids or draft keys, in order. */
+  roles: Set<string>
   /** The reviewer submitted the PR review — one notice, the newest wins. */
   submitted: Submitted | null
   /** The agent's artifacts that broke in the reviewer's browser, oldest
    * first. Work the agent owes, but its own: behind the reviewer's words. */
   artifacts: ArtifactReport[]
+  /** Reviewer agents the reviewer asked this agent to start, by role id, in
+   * the order asked. Asking twice for one role before a poll is one ask. */
+  reviewers: Set<string>
   /** The request was delivered and the outline is owed: epoch ms of the
    * delivery, or null. Per scope like the request itself — a branch switch
    * must not carry "outlining" to a review nobody asked about. No batch and no
@@ -304,10 +315,12 @@ export class DeliveryQueue {
         cleared: false,
         layers: null,
         presets: new Set(),
+        roles: new Set(),
         outlining: null,
         asked: null,
         submitted: null,
         artifacts: [],
+        reviewers: new Set(),
       }
       this.buckets.set(this.scope, bucket)
     }
@@ -349,6 +362,15 @@ export class DeliveryQueue {
    * ask: parked until the next poll, behind open threads. */
   enqueuePreset(id: string): void {
     this.bucket().presets.add(id)
+    const queued = this.waiter === null
+    this.wake()
+    if (queued) this.notify()
+  }
+
+  /** The reviewer wrote to the agent about a reviewer role. Rides like a
+   * preset message. */
+  enqueueRole(key: string): void {
+    this.bucket().roles.add(key)
     const queued = this.waiter === null
     this.wake()
     if (queued) this.notify()
@@ -606,10 +628,27 @@ export class DeliveryQueue {
     if (queued) this.notify()
   }
 
+  /** The reviewer asked for a reviewer agent in this role, started by the
+   * author agent. Rides like a preset message: parked until the next poll,
+   * behind the threads the reviewer is already owed an answer on. */
+  enqueueReviewer(role: string): void {
+    this.bucket().reviewers.add(role)
+    const queued = this.waiter === null
+    this.wake()
+    if (queued) this.notify()
+  }
+
   /** The reviewer cleared a preset's conversation, or deleted the preset: a
    * message about it still parked for the agent has nothing left to answer. */
   dropPreset(id: string): void {
     for (const bucket of this.buckets.values()) bucket.presets.delete(id)
+    this.notify()
+  }
+
+  /** The reviewer cleared a role's conversation, or deleted the role: a
+   * message about it still parked for the agent has nothing left to answer. */
+  dropRole(key: string): void {
+    for (const bucket of this.buckets.values()) bucket.roles.delete(key)
     this.notify()
   }
 
@@ -787,8 +826,10 @@ export class DeliveryQueue {
         bucket.cleared ||
         bucket.layers !== null ||
         bucket.presets.size > 0 ||
+        bucket.roles.size > 0 ||
         bucket.submitted !== null ||
-        bucket.artifacts.length > 0)
+        bucket.artifacts.length > 0 ||
+        bucket.reviewers.size > 0)
     )
   }
 
@@ -815,9 +856,15 @@ export class DeliveryQueue {
     // A preset is a few lines of writing: ahead of the outline, which is heavy.
     const presetId = bucket.presets.values().next().value
     if (presetId !== undefined) return { kind: 'preset', id: presetId }
+    // A role is the same few lines of writing, asked for in the same way.
+    const roleKey = bucket.roles.values().next().value
+    if (roleKey !== undefined) return { kind: 'role', id: roleKey }
     // A broken artifact is the agent's own mess, a quick fix: after what the
     // reviewer said, ahead of the heavy outline.
     if (bucket.artifacts.length > 0) return { kind: 'artifacts', reports: [...bucket.artifacts] }
+    // Starting a reviewer agent is one hand-off, and the review it brings is
+    // what the reviewer is waiting for: ahead of the outline.
+    if (bucket.reviewers.size > 0) return { kind: 'reviewers', roles: [...bucket.reviewers] }
     // The outline is heavy work: it waits behind replies the reviewer is
     // already owed, and ahead of the cleared heads-up, which owes nothing.
     if (bucket.layers !== null) return { kind: 'layers', ask: bucket.layers }
@@ -848,6 +895,13 @@ export class DeliveryQueue {
       this.notify()
       return
     }
+    if (snapshot.kind === 'role') {
+      // Like a preset: the reply or edit lands in the conversation when posted.
+      this.buckets.get(this.scope)?.roles.delete(snapshot.id)
+      this.armGrace()
+      this.notify()
+      return
+    }
     if (snapshot.kind === 'cleared') {
       // No batch, no reply owed: the agent may post a guide and re-poll, which
       // is what the grace window already models.
@@ -860,6 +914,14 @@ export class DeliveryQueue {
     if (snapshot.kind === 'artifacts') {
       const bucket = this.buckets.get(this.scope)
       if (bucket) bucket.artifacts = bucket.artifacts.filter((r) => !snapshot.reports.includes(r))
+      this.armGrace()
+      this.notify()
+      return
+    }
+    if (snapshot.kind === 'reviewers') {
+      // The reviewer agent announces itself when it joins; nothing here waits.
+      const bucket = this.buckets.get(this.scope)
+      for (const role of snapshot.roles) bucket?.reviewers.delete(role)
       this.armGrace()
       this.notify()
       return

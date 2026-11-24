@@ -2,6 +2,7 @@
 import { cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { Anchor, ReviewThread } from '../../shared/review.js'
+import { ReviewersContext } from '../actors.js'
 import { threadItems } from '../threads.js'
 import { LeftPanel } from './LeftPanel.js'
 import { ThreadRail } from './ThreadRail.js'
@@ -368,5 +369,91 @@ describe('LeftPanel', () => {
       />,
     )
     expect(screen.getByTitle('3 still going · 8 settled')).toBeTruthy()
+  })
+})
+
+describe('ThreadRail — reviewer agents', () => {
+  const codex = (text: string) => ({ ...msg('reviewer', text), by: 'codex' })
+  const stopped = thread({
+    id: 't-stopped',
+    messages: [codex('stream the file'), msg('agent', 'it is capped at 5 MB')],
+    needsYou: 'rounds',
+  })
+  const talking = thread({
+    id: 't-talking',
+    messages: [codex('no backoff'), msg('agent', 'added one')],
+  })
+  const waiting = thread({ id: 't-waiting', messages: [codex('and no jitter')] })
+  const closed = thread({
+    id: 't-closed',
+    state: 'resolved',
+    resolvedBy: 'codex',
+    messages: [codex('typo'), msg('agent', 'fixed the typo')],
+  })
+  const mine = thread({ id: 't-mine', messages: [msg('reviewer', 'my own question')] })
+  const seated = (ui: React.ReactElement) =>
+    render(
+      <ReviewersContext.Provider
+        value={{
+          seats: ['gemini', 'codex'],
+          hues: new Map([
+            ['gemini', 1],
+            ['codex', 2],
+          ]),
+          states: new Map(),
+        }}
+      >
+        {ui}
+      </ReviewersContext.Provider>,
+    )
+  const row = (id: string) => document.querySelector(`[data-thread="${id}"]`)!
+
+  it('says who started a thread, in that reviewer’s colour, and where each one stands', () => {
+    seated(<ThreadRail items={threadItems([stopped, talking, waiting, closed, mine])} />)
+    const who = row('t-talking').querySelector('.crow-who')!
+    expect(who.textContent).toBe('codex')
+    // The second to join: the second hue.
+    expect(who.className).toContain('actor-rev-2')
+    expect(row('t-mine').querySelector('.crow-who')).toBeNull()
+
+    expect(sectionOfRow(row('t-stopped'))).toBe('Your turn 1')
+    expect(row('t-stopped').textContent).toContain('needs you · 3 rounds')
+    expect(sectionOfRow(row('t-talking'))).toBe('With a reviewer agent 1')
+    expect(row('t-talking').textContent).toContain('waiting on codex')
+    // Waiting on the author agent reads the same whoever asked.
+    expect(sectionOfRow(row('t-waiting'))).toBe('Waiting on the agent 2')
+    expect(sectionOfRow(row('t-mine'))).toBe('Waiting on the agent 2')
+  })
+
+  it('a closed thread says which reviewer agent closed it', () => {
+    seated(<ThreadRail items={threadItems([closed])} />)
+    fireEvent.click(screen.getByRole('button', { name: /Settled/ }))
+    expect(row('t-closed').textContent).toContain('closed by codex')
+  })
+
+  it('"Needs you" filters the list to what the agents could not settle', () => {
+    seated(<ThreadRail items={threadItems([stopped, talking, waiting, mine])} />)
+    const needs = screen.getByRole('button', { name: /Needs you/ })
+    expect(needs.textContent).toBe('Needs you 1')
+    expect(needs.getAttribute('aria-pressed')).toBe('false')
+    expect(rows()).toHaveLength(4)
+    fireEvent.click(needs)
+    expect(needs.getAttribute('aria-pressed')).toBe('true')
+    expect(rows().map((r) => r.getAttribute('data-thread'))).toEqual(['t-stopped'])
+    fireEvent.click(screen.getByRole('button', { name: /^All/ }))
+    expect(rows()).toHaveLength(4)
+  })
+
+  it('says so when nothing needs you, and what the agents still have', () => {
+    seated(<ThreadRail items={threadItems([talking, waiting])} />)
+    fireEvent.click(screen.getByRole('button', { name: /Needs you/ }))
+    expect(rows()).toHaveLength(0)
+    expect(screen.getByText('Nothing needs you.')).toBeTruthy()
+    expect(screen.getByText('The agents are working through 2 threads.')).toBeTruthy()
+  })
+
+  it('offers no filter in a review no reviewer agent has commented on', () => {
+    render(<ThreadRail items={threadItems([mine])} />)
+    expect(screen.queryByRole('button', { name: /Needs you/ })).toBeNull()
   })
 })

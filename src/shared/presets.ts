@@ -1,3 +1,5 @@
+import { normalizeConversationMessage, normalizeConversations } from './conversation.js'
+
 /**
  * Layers presets: what the layers are for, chosen before the agent outlines.
  *
@@ -269,51 +271,12 @@ export const isEmptyPreset = (preset: LayersPreset): boolean =>
 
 /** The stored conversations, read leniently: a bad one is dropped alone. */
 export function normalizePresetThreads(value: unknown): PresetThreads {
-  if (typeof value === 'string') {
-    try {
-      value = JSON.parse(value)
-    } catch {
-      return {}
-    }
-  }
-  if (typeof value !== 'object' || value === null || Array.isArray(value)) return {}
-  const out: PresetThreads = {}
-  for (const [id, raw] of Object.entries(value as Record<string, unknown>)) {
-    if (!PRESET_ID.test(id)) continue
-    const t = raw as { messages?: unknown } | null
-    if (typeof t !== 'object' || t === null || !Array.isArray(t.messages)) continue
-    const messages = t.messages.flatMap((m) => {
-      const msg = normalizePresetMessage(m)
-      return msg ? [msg] : []
-    })
-    if (messages.length > 0) out[id] = { presetId: id, messages }
-  }
-  return out
-}
-
-function normalizePresetMessage(raw: unknown): PresetMessage | null {
-  if (typeof raw !== 'object' || raw === null) return null
-  const m = raw as Record<string, unknown>
-  if (typeof m.id !== 'string' || m.id === '') return null
-  if (m.author !== 'reviewer' && m.author !== 'agent') return null
-  if (typeof m.text !== 'string' || typeof m.at !== 'string') return null
-  const message: PresetMessage = { id: m.id, author: m.author, text: m.text, at: m.at }
-  const c = m.change as Record<string, unknown> | undefined
-  if (typeof c === 'object' && c !== null && Array.isArray(c.fields)) {
-    const fields = c.fields.filter((f): f is PresetField =>
-      (PRESET_FIELDS as readonly string[]).includes(f as string),
-    )
-    const beforeRaw = (typeof c.before === 'object' && c.before !== null ? c.before : {}) as Record<
-      string,
-      unknown
-    >
-    const before: Partial<LayersPresetDraft> = {}
-    for (const f of PRESET_FIELDS) {
-      if (typeof beforeRaw[f] === 'string') before[f] = beforeRaw[f] as string
-    }
-    message.change = { fields, before, ...(c.created === true ? { created: true } : {}) }
-  }
-  return message
+  return normalizeConversations(
+    value,
+    (id) => PRESET_ID.test(id),
+    (raw) => normalizeConversationMessage(raw, PRESET_FIELDS),
+    (presetId, messages) => ({ presetId, messages }),
+  )
 }
 
 /**

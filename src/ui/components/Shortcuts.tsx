@@ -24,6 +24,7 @@ const GROUPS: { name: string; keys: [string, string][] }[] = [
       ['u', 'Unified / split'],
       ['o', 'Collapse / expand file'],
       ['b', 'Show / hide the sidebar'],
+      ['B', 'Show / hide reviewer agents'],
       ['z', 'Focus: just the page'],
     ],
   },

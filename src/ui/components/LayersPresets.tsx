@@ -16,15 +16,12 @@ import {
   PRESET_WHEN_MAX,
   PRESETS_MAX,
   type PresetChange,
-  type PresetMessage,
   presetDefault,
 } from '../../shared/presets.js'
-import { timeAgo } from '../markdown.js'
 import { usePresetThread } from '../presetsPref.js'
-import { Avatar } from './CommentBox.js'
+import { AgentConversation, type AgentConversationProps } from './AgentConversation.js'
 import { Confirm } from './Confirm.js'
 import { Icon } from './Icon.js'
-import { Markdown } from './Markdown.js'
 import { Menu, MenuItem, MenuSep } from './Menu.js'
 import { Modal } from './Modal.js'
 
@@ -758,215 +755,25 @@ function FieldsEditor({
 }
 
 /**
- * The conversation about one preset, as the card a review thread is: the
- * same message rows, the same "with the agent" line while an answer is owed,
- * the same reply bar. Messages come from the server and stay current from
- * the events stream; a reply rides to the agent's next poll. An agent message
- * that changed the preset carries the fields it set and an undo.
+ * The conversation about one preset (see AgentConversation, which the
+ * Reviewer agents page shares): messages come from the server and stay
+ * current from the events stream; a reply rides to the agent's next poll.
  */
 function Conversation({
   id,
-  canAsk,
-  title,
-  context,
-  hint,
-  placeholder,
-  current,
-  onUndo,
-}: {
-  id: string
-  canAsk: boolean
-  /** The first message's box, named for what it does to this preset. */
-  title: string
-  /** One short line at the foot of the first message's box: what the agent
-   * does with it. */
-  hint: string
-  /** What the agent is sent besides the messages: the caption's tooltip,
-   * since it never shows in the thread. */
-  context: string
-  placeholder: string
-  /** The preset as it stands: a change whose fields are back where they were
-   * reads as undone, and offers no undo. */
-  current?: LayersPresetDraft
-  onUndo?: (change: PresetChange) => void
-}) {
-  const { thread, send, clear } = usePresetThread(id)
-  const [text, setText] = useState('')
-  const [sending, setSending] = useState(false)
-  // A new conversation asks first, in a dialog.
-  const [clearing, setClearing] = useState(false)
-  const trimmed = text.trim()
-  const last = thread.messages.at(-1)
-  // The reviewer spoke last: the agent is owed an answer, and the card says so.
-  const waiting = last?.author === 'reviewer'
-  const submit = async () => {
-    if (trimmed === '' || !canAsk || sending) return
-    setSending(true)
-    const sent = await send(trimmed)
-    setSending(false)
-    if (sent) setText('')
-  }
-  const first = thread.messages.length === 0
-  const input = (
-    <textarea
-      // The first message gets room to say what is wanted.
-      rows={first ? 3 : 1}
-      className={first ? 'thread-input cbox-input' : 'thread-input'}
-      aria-label="Tell the agent what to change"
-      value={text}
+  ...props
+}: { id: string } & Omit<
+  AgentConversationProps<PresetChange>,
+  'conversation' | 'noun' | 'fieldLabels' | 'maxLength'
+>) {
+  const conversation = usePresetThread(id)
+  return (
+    <AgentConversation
+      conversation={conversation}
+      noun="preset"
+      fieldLabels={FIELD_LABELS}
       maxLength={PRESET_MESSAGE_MAX}
-      // The example is for the first message; after it, this is a reply box.
-      placeholder={first ? placeholder : 'Reply…'}
-      onChange={(e) => setText(e.target.value)}
-      onKeyDown={(e) => {
-        if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') {
-          e.preventDefault()
-          void submit()
-        }
-      }}
+      {...props}
     />
-  )
-  const sendButton = (
-    <button
-      type="button"
-      className="btn btn-primary btn-sm"
-      disabled={trimmed === '' || !canAsk || sending}
-      title={
-        canAsk
-          ? 'send it to your agent; it answers here and edits the fields'
-          : 'needs an agent on the review'
-      }
-      onClick={() => void submit()}
-    >
-      <Icon name="send" size="sm" /> Send
-      <span className="btn-kbd">⌘↵</span>
-    </button>
-  )
-  return (
-    <>
-      {first ? (
-        // Nothing said yet: the review's own "Ask your agent" box.
-        <div className="cbox thread-composer cbox-agent lp-cbox">
-          <div className="cbox-head">
-            <span className="cbox-title" title={context}>
-              {title}
-            </span>
-          </div>
-          <div className="cbox-body">{input}</div>
-          <div className="cbox-foot">
-            <span className="cbox-hint">{canAsk ? hint : 'No agent on the review to talk to'}</span>
-            <span className="cbox-actions">{sendButton}</span>
-          </div>
-        </div>
-      ) : (
-        // A conversation: the card a review thread is, head and all.
-        <div className="thread conv thread-open lp-conv">
-          <div className="thread-head lp-conv-head">
-            <span className="thread-where" title={context}>
-              Conversation with the agent
-            </span>
-            <button
-              type="button"
-              className="lp-sec-act"
-              title="Clear these messages and start over; the preset stays as it is"
-              onClick={() => setClearing(true)}
-            >
-              New conversation
-            </button>
-          </div>
-          <div className="thread-messages">
-            {thread.messages.map((m) => (
-              <Message key={m.id} message={m} current={current} onUndo={onUndo} />
-            ))}
-            {waiting && (
-              <div className="cmt thread-message thread-message-agent thread-message-pending">
-                <div className="cmt-head">
-                  <Avatar who="agent" />
-                  <span className="cmt-who cmt-who-agent">Agent</span>
-                  <span className="cmt-when">
-                    {canAsk ? 'with the agent' : 'waits for an agent on a review'}
-                  </span>
-                </div>
-                <div className="cmt-body pending-reply" role="status" aria-label="with the agent">
-                  <span className="pending-dots">
-                    <i />
-                    <i />
-                    <i />
-                  </span>
-                </div>
-              </div>
-            )}
-          </div>
-          <div className="thread-foot">
-            <div className="thread-input-wrap">{input}</div>
-            {sendButton}
-          </div>
-        </div>
-      )}
-      {clearing && (
-        <Confirm
-          title="New conversation"
-          action="Clear conversation"
-          onConfirm={async () => {
-            if (!(await clear())) throw new Error('refused')
-          }}
-          onClose={() => setClearing(false)}
-        >
-          Clears the messages. The preset stays as it is.
-        </Confirm>
-      )}
-    </>
-  )
-}
-
-function Message({
-  message,
-  current,
-  onUndo,
-}: {
-  message: PresetMessage
-  current?: LayersPresetDraft | undefined
-  onUndo?: ((change: PresetChange) => void) | undefined
-}) {
-  const change = message.change
-  // Every field this change set is back where it was: undone, by the link
-  // below or by hand.
-  const undone =
-    change !== undefined &&
-    current !== undefined &&
-    change.fields.length > 0 &&
-    change.fields.every((f) => f in change.before && current[f] === change.before[f])
-  return (
-    <div className={`cmt thread-message thread-message-${message.author}`}>
-      <div className="cmt-head">
-        <Avatar who={message.author === 'reviewer' ? 'you' : 'agent'} />
-        <span className={`cmt-who cmt-who-${message.author}`}>
-          {message.author === 'reviewer' ? 'You' : 'Agent'}
-        </span>
-        <span className="cmt-when">{timeAgo(message.at)}</span>
-      </div>
-      {message.text !== '' && <Markdown className="cmt-body markdown" text={message.text} />}
-      {change && (
-        <div className="lp-change">
-          {change.created
-            ? 'Made the preset'
-            : `Changed ${change.fields.map((f) => FIELD_LABELS[f].toLowerCase()).join(', ')}`}
-          {onUndo && !change.created && undone && ' · undone'}
-          {onUndo && !change.created && change.fields.length > 0 && !undone && (
-            <>
-              {' · '}
-              <button
-                type="button"
-                className="lp-change-undo"
-                title="Put the fields back as they were before this change"
-                onClick={() => onUndo(change)}
-              >
-                undo
-              </button>
-            </>
-          )}
-        </div>
-      )}
-    </div>
   )
 }

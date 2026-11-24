@@ -1,10 +1,23 @@
-import { Fragment, type ReactNode, useEffect, useRef, useState } from 'react'
+import {
+  createContext,
+  Fragment,
+  type ReactNode,
+  useContext,
+  useEffect,
+  useRef,
+  useState,
+} from 'react'
 import {
   type Audience,
   type Author,
   anchorSpan,
+  askedBy,
+  betweenAgents,
+  isHumanMessage,
   isPublic,
   liveSuggestion,
+  openedByReviewerAgent,
+  REVIEWER_LIMITS,
   type ReviewMessage,
   type ReviewThread,
   seenByAgent,
@@ -14,6 +27,7 @@ import {
   type ThreadState,
   untouchedAgentVoice,
 } from '../../shared/review.js'
+import { reviewerHue, useReviewers } from '../actors.js'
 import { messageOwner } from '../artifacts.js'
 import { linkPaths, type RefLinks, refClickTarget } from '../layers.js'
 import { timeAgo } from '../markdown.js'
@@ -77,10 +91,21 @@ const STATE_TONE: Record<ThreadState, string> = {
   resolved: 'mute',
 }
 
+/**
+ * The thread the human just went to (from the threads list, the reviewer
+ * agents' activity, a notification): its card opens in full, a closed one
+ * too, since going to it is asking to read it. `n` counts each visit, so
+ * going back to a card collapsed since opens it again.
+ */
+export const ThreadFocusContext = createContext<{ id: string; n: number } | null>(null)
+
 export function formatAgentDuration(ms: number): string {
   const s = Math.max(0, ms) / 1000
   if (s < 60) return `${s.toFixed(1)}s`
   const whole = Math.round(s)
+  if (whole >= 3600) {
+    return `${Math.floor(whole / 3600)}h ${String(Math.floor((whole % 3600) / 60)).padStart(2, '0')}m`
+  }
   return `${Math.floor(whole / 60)}m ${String(whole % 60).padStart(2, '0')}s`
 }
 
@@ -403,6 +428,10 @@ export function ThreadCard({
   // comment for GitHub — drafted here, posted on Finish; a private one is
   // today's thread with the agent. Off a PR `pr` is null and none of this shows.
   const pr = usePr()
+  // Reviewer agents (ui/actors.ts): who opened this thread, when one did, and
+  // the hue each keeps everywhere it appears.
+  const { hues, roleNames } = useReviewers()
+  const opener = openedByReviewerAgent(thread)
   const publicThread = isPublic(thread)
   const gh = thread.github
   const draft = publicThread && thread.state === 'open' && gh === undefined
@@ -420,6 +449,12 @@ export function ThreadCard({
   const [replyOpen, setReplyOpen] = useState(false)
   const [expanded, setExpanded] = useState(false)
   const [shut, setShut] = useState(false)
+  const focus = useContext(ThreadFocusContext)
+  useEffect(() => {
+    if (focus?.id !== thread.id) return
+    setExpanded(true)
+    setShut(false)
+  }, [focus, thread.id])
   // The message being rewritten and its draft. One at a time: the editor takes
   // that message's body in place, and the error is the server's own words — a
   // refusal ("the agent is answering") must not read as a dropped connection.
@@ -451,9 +486,10 @@ export function ThreadCard({
   const editDispatches =
     editSeen && agentConnected && (thread.state === 'sent' || thread.state === 'addressed')
   // A message already on GitHub is edited there, not here (see the server's guard).
+  // Yours to edit means the human's: a reviewer agent's message is its own.
   const canEdit = (m: ReviewMessage) =>
     actions.edit !== undefined &&
-    m.author === 'reviewer' &&
+    isHumanMessage(m) &&
     thread.state !== 'resolved' &&
     m.github === undefined
   const startEdit = (m: ReviewMessage) => {
@@ -532,7 +568,12 @@ export function ThreadCard({
     !withheld &&
     lastAuthor === 'reviewer' &&
     (thread.state === 'sent' || thread.state === 'addressed')
-  const showManualHint = thread.state === 'sent' && awaitingAgent && !agentConnected
+  // A copied prompt is how the human's own words reach a detached agent; a
+  // reviewer agent's comment was never copied anywhere.
+  const lastIsYours = isHumanMessage(
+    thread.messages[thread.messages.length - 1] ?? { author: 'agent' },
+  )
+  const showManualHint = thread.state === 'sent' && awaitingAgent && !agentConnected && lastIsYours
   const unpostedReplies =
     publicThread && gh
       ? thread.messages.filter((m) => m.author === 'reviewer' && m.github === undefined).length
@@ -579,6 +620,13 @@ export function ThreadCard({
     !e.ctrlKey &&
     !e.altKey
 
+  // Two agents working it out: the chip says whose move it is, since "Sent"
+  // and "Answered" are words about the human's own comment.
+  const agentsTalking =
+    opener !== null &&
+    betweenAgents(thread) &&
+    !thread.needsYou &&
+    (thread.state === 'sent' || thread.state === 'addressed')
   const status = publicThread
     ? draft
       ? 'Draft'
@@ -589,9 +637,13 @@ export function ThreadCard({
       ? 'From the agent'
       : withheld
         ? TURN_LABEL.note
-        : thread.state === 'addressed' && thread.intent === 'fix'
-          ? 'Addressed'
-          : STATE_LABEL[thread.state]
+        : agentsTalking
+          ? lastAuthor === 'agent'
+            ? `With ${opener}`
+            : 'With the agent'
+          : thread.state === 'addressed' && thread.intent === 'fix'
+            ? 'Addressed'
+            : STATE_LABEL[thread.state]
   const tone: string = publicThread
     ? draft
       ? 'attn'
@@ -625,6 +677,21 @@ export function ThreadCard({
         </span>
       )}
       {thread.closingNote && <span className="thread-badge">closing note</span>}
+      {thread.needsYou && (
+        <span
+          className="thread-badge thread-badge-needs"
+          title={
+            askedBy(thread)
+              ? `${askedBy(thread) === 'author' ? 'Your agent' : (opener ?? 'The reviewer agent')} asks for your decision; neither agent writes here until you reply or resolve`
+              : `${opener ?? 'the reviewer agent'} and the agent went ${REVIEWER_LIMITS.rounds} rounds without settling this; neither may write here until you reply or resolve`
+          }
+        >
+          {askedBy(thread) ? 'needs your decision' : `needs you · ${REVIEWER_LIMITS.rounds} rounds`}
+        </span>
+      )}
+      {thread.state === 'resolved' && thread.resolvedBy && (
+        <span className="thread-badge thread-badge-kind">closed by {thread.resolvedBy}</span>
+      )}
       {live !== null && (
         <span
           className="thread-badge thread-badge-pr"
@@ -673,7 +740,9 @@ export function ThreadCard({
       {copied && <span className="thread-badge">prompt copied, paste it to your agent</span>}
       {/* A fresh agent thread's head already reads "Agent comment on …"; a chip
           saying "From the agent" beside it would say it twice. */}
-      {!(proposed && startedByAgent(thread)) && (
+      {/* Nor on a stopped thread: "needs you" is its state, and "Sent" beside
+          it would be a second, older answer to the same question. */}
+      {!(proposed && startedByAgent(thread)) && !thread.needsYou && (
         <span className={`chip chip-${tone}`}>{status}</span>
       )}
     </span>
@@ -828,7 +897,9 @@ export function ThreadCard({
           onClick={() => setExpanded(true)}
           title="expand this resolved thread"
         >
-          <span className="chip chip-mute">Resolved</span>
+          <span className="chip chip-mute">
+            {thread.resolvedBy ? `Closed by ${thread.resolvedBy}` : 'Resolved'}
+          </span>
           {queuedMarks}
           <span className="thread-collapsed-text">{firstLine(first?.text ?? '')}</span>
           <span className="thread-collapsed-count">
@@ -909,6 +980,13 @@ export function ThreadCard({
               waiting on your agent: paste the copied prompt into it; replies land here live
             </div>
           )}
+          {thread.needsYou && (
+            <div className="thread-hint">
+              {askedBy(thread)
+                ? `${askedBy(thread) === 'author' ? 'Your agent' : (opener ?? 'The reviewer agent')} asks you to decide this one. Reply with your word to hand it back to them, or resolve it.`
+                : `${opener ?? 'The reviewer agent'} and the agent could not settle this in ${REVIEWER_LIMITS.rounds} rounds, so it stopped for you: reply to hand it back to them with your word, or resolve it.`}
+            </div>
+          )}
           {withheld && (
             <div className="thread-hint">
               {gone
@@ -928,17 +1006,47 @@ export function ThreadCard({
                   <div className="cmt-head">
                     <Avatar
                       who={
-                        m.author === 'reviewer' ? 'you' : m.author === 'agent' ? 'agent' : 'github'
+                        m.by !== undefined
+                          ? 'reviewer'
+                          : m.author === 'reviewer'
+                            ? 'you'
+                            : m.author === 'agent'
+                              ? 'agent'
+                              : 'github'
                       }
                       user={m.github?.user}
+                      reviewer={
+                        m.by !== undefined
+                          ? { name: m.by, hue: reviewerHue(m.by, hues) }
+                          : undefined
+                      }
                     />
-                    <span className={`cmt-who cmt-who-${m.author}`}>
-                      {m.author === 'reviewer'
-                        ? 'You'
-                        : m.author === 'agent'
-                          ? 'Agent'
-                          : (m.github?.user.login ?? 'GitHub')}
-                    </span>
+                    {m.by !== undefined ? (
+                      <span
+                        className={`cmt-who cmt-who-rev actor-rev-${reviewerHue(m.by, hues)}`}
+                        title="a reviewer agent: another AI session reviewing this change"
+                      >
+                        {m.by}
+                      </span>
+                    ) : (
+                      <span className={`cmt-who cmt-who-${m.author}`}>
+                        {m.author === 'reviewer'
+                          ? 'You'
+                          : m.author === 'agent'
+                            ? // Beside a reviewer agent, "Agent" alone would not say which.
+                              opener !== null
+                              ? 'Author agent'
+                              : 'Agent'
+                            : (m.github?.user.login ?? 'GitHub')}
+                      </span>
+                    )}
+                    {m.by !== undefined && i === 0 && (
+                      <span className="cmt-role">
+                        {roleNames?.has(m.by)
+                          ? `${roleNames.get(m.by)} reviewer agent`
+                          : 'reviewer agent'}
+                      </span>
+                    )}
                     <span className="cmt-when">
                       {m.author === 'agent' && m.durationMs !== undefined
                         ? `answered in ${formatAgentDuration(m.durationMs)}`
@@ -1266,15 +1374,20 @@ function anchorLabel(thread: ReviewThread, gone = false): string {
   if (gh?.kind === 'comment' || (isPublic(thread) && anchor.kind === 'changeset')) {
     return 'Comment on the pull request'
   }
+  const reviewerAgent = openedByReviewerAgent(thread)
   const word = startedByAgent(thread)
     ? 'Agent comment'
-    : thread.messages[0]?.author === 'github'
-      ? `${thread.messages[0].github?.user.login ?? 'GitHub'}'s comment`
-      : isPublic(thread)
-        ? 'Review comment'
-        : 'Comment'
+    : reviewerAgent !== null
+      ? `${reviewerAgent}’s comment`
+      : thread.messages[0]?.author === 'github'
+        ? `${thread.messages[0].github?.user.login ?? 'GitHub'}'s comment`
+        : isPublic(thread)
+          ? 'Review comment'
+          : 'Comment'
   if (anchor.kind === 'changeset') {
-    return startedByAgent(thread) ? `${word} on the changeset` : 'Note on the changeset'
+    return startedByAgent(thread) || reviewerAgent !== null
+      ? `${word} on the changeset`
+      : 'Note on the changeset'
   }
   if (anchor.kind === 'layer') {
     // Gone: the outline no longer has this step, so the card names it.

@@ -1,6 +1,7 @@
 import { QueryClient, QueryClientProvider, useQueryClient } from '@tanstack/react-query'
 import {
   type CSSProperties,
+  type ReactNode,
   type PointerEvent as ReactPointerEvent,
   useCallback,
   useEffect,
@@ -15,11 +16,23 @@ import {
   type Coverage,
   isDraft,
   type LineRange,
+  type ReviewerChatMessage,
+  type ReviewerCoverage,
+  type ReviewerEvent,
+  type ReviewersPayload,
   type ReviewThread,
   threadsInChangeset,
-  untouchedAgentVoice,
+  untouchedByHuman,
 } from '../shared/review.js'
-import { type Changeset, type CommitInfo, type FileChange, UNCOMMITTED } from '../shared/types.js'
+import { DEFAULT_ROLE } from '../shared/roles.js'
+import {
+  type Changeset,
+  type CommitInfo,
+  type FileChange,
+  type PrInfo,
+  UNCOMMITTED,
+} from '../shared/types.js'
+import { needsYouBy, type ReviewerState, type Reviewers, ReviewersContext } from './actors.js'
 import {
   type LayersRequest,
   type Presence,
@@ -30,9 +43,11 @@ import {
   useCommitDiffs,
   useCommits,
   useReview,
+  useReviewerRoles,
 } from './api.js'
 import { copyText } from './clipboard.js'
 import { AgentNotices } from './components/AgentNotices.js'
+import { AgentsPanel } from './components/AgentsPanel.js'
 import { ArtifactViewer } from './components/ArtifactViewer.js'
 import { ClearThreads } from './components/ClearThreads.js'
 import { CommandPalette } from './components/CommandPalette.js'
@@ -41,6 +56,7 @@ import { FinishReview } from './components/FinishReview.js'
 import { Header } from './components/Header.js'
 import { Icon, IconSprite } from './components/Icon.js'
 import { InviteAgent } from './components/InviteAgent.js'
+import { InviteReviewer } from './components/InviteReviewer.js'
 import { LayerRail } from './components/LayerRail.js'
 import { LayerSource } from './components/LayerSource.js'
 import type { LayersAskInput } from './components/LayersAsk.js'
@@ -61,13 +77,14 @@ import {
   type ReviewComments,
   type ViewMode,
 } from './components/ReadingPane.js'
+import { ReviewerAgents, type ReviewerAgentsPick } from './components/ReviewerAgents.js'
 import { Shortcuts } from './components/Shortcuts.js'
 import { PlanStrip } from './components/Strips.js'
 import { SubmitReview } from './components/SubmitReview.js'
 import { type JumpTarget, SymbolHoverLayer } from './components/SymbolHover.js'
 import { TelemetryNotice } from './components/TelemetryNotice.js'
 import { ThreadRail } from './components/ThreadRail.js'
-import type { ReviewActions } from './components/Threads.js'
+import { type ReviewActions, ThreadFocusContext } from './components/Threads.js'
 import { Voice } from './components/Voice.js'
 import { useCritter } from './critterPref.js'
 import { expandMarks, fileMarks, isFileViewed } from './fileMarks.js'
@@ -101,6 +118,7 @@ import { notifyPresetsChanged, useLayersPresets } from './presetsPref.js'
 import { PrContext } from './prMode.js'
 import { isTestFile, useReviewFilter } from './reviewFilter.js'
 import { partitionForCommit, partitionThreads, threadsByFile } from './reviewPlacement.js'
+import { notifyRolesChanged } from './rolesPref.js'
 import { computeSinceLastReview } from './sinceLastReview.js'
 import { useStarNudge } from './starNudge.js'
 import { useTelemetry } from './telemetry.js'
@@ -142,6 +160,11 @@ const OVERVIEW_KEY = 'overview'
 const FILE_GAP = 16
 
 const NO_THREADS: ReadonlySet<string> = new Set()
+const NO_REVIEWER_STATES: ReadonlyMap<string, ReviewerState> = new Map()
+const NO_ROLES: readonly string[] = []
+const NO_ACTIVITY: ReadonlyMap<string, readonly ReviewerEvent[]> = new Map()
+const NO_CHATS: ReadonlyMap<string, readonly ReviewerChatMessage[]> = new Map()
+const NO_COVERAGE: ReadonlyMap<string, ReviewerCoverage> = new Map()
 const NO_QUEUE: ReadonlyMap<string, number> = new Map()
 
 /** Light up whatever a jump just landed on — a thread card halos, a file card
@@ -173,6 +196,16 @@ function useLiveUpdates(): {
   /** The reviewer's layers request: parked for the next poll, in the agent's
    * hands, or none. */
   layersRequest: LayersRequest
+  /** Which reviewer agents are connected (see ui/actors.ts). */
+  reviewerStates: ReadonlyMap<string, ReviewerState>
+  /** Roles a reviewer is on its way in: asked of the agent, not joined yet. */
+  reviewersStarting: readonly string[]
+  /** What each reviewer agent did, oldest first. */
+  reviewerActivity: ReadonlyMap<string, readonly ReviewerEvent[]>
+  /** Each reviewer agent's private conversation with the human. */
+  reviewerChats: ReadonlyMap<string, readonly ReviewerChatMessage[]>
+  /** How much of the change each reviewer agent read. */
+  reviewerCoverage: ReadonlyMap<string, ReviewerCoverage>
 } {
   const client = useQueryClient()
   const [presence, setPresence] = useState<Presence>('waiting')
@@ -182,6 +215,15 @@ function useLiveUpdates(): {
   const [workingOn, setWorkingOn] = useState<ReadonlySet<string>>(NO_THREADS)
   const [queuedOn, setQueuedOn] = useState<ReadonlyMap<string, number>>(NO_QUEUE)
   const [answeredOn, setAnsweredOn] = useState<ReadonlySet<string>>(NO_THREADS)
+  const [reviewerStates, setReviewerStates] =
+    useState<ReadonlyMap<string, ReviewerState>>(NO_REVIEWER_STATES)
+  const [reviewersStarting, setReviewersStarting] = useState<readonly string[]>(NO_ROLES)
+  const [reviewerActivity, setReviewerActivity] =
+    useState<ReadonlyMap<string, readonly ReviewerEvent[]>>(NO_ACTIVITY)
+  const [reviewerChats, setReviewerChats] =
+    useState<ReadonlyMap<string, readonly ReviewerChatMessage[]>>(NO_CHATS)
+  const [reviewerCoverage, setReviewerCoverage] =
+    useState<ReadonlyMap<string, ReviewerCoverage>>(NO_COVERAGE)
   useEffect(() => {
     const source = new EventSource('/api/events')
     source.addEventListener('changeset', () => {
@@ -191,6 +233,28 @@ function useLiveUpdates(): {
       void client.invalidateQueries({ queryKey: ['review'] })
     })
     source.addEventListener('presets', () => notifyPresetsChanged())
+    // The reviewer roles or their conversations moved (an edit by the agent,
+    // a message, a save from another tab): the roles and the threads re-read.
+    source.addEventListener('roles', () => {
+      void client.invalidateQueries({ queryKey: ['reviewer-roles'] })
+      notifyRolesChanged()
+    })
+    source.addEventListener('reviewers', (event) => {
+      try {
+        // The server that serves this page built it from checked state.
+        const detail = JSON.parse((event as MessageEvent).data) as ReviewersPayload
+        setReviewersStarting(detail.starting)
+        setReviewerStates(new Map(detail.seats.map((r) => [r.name, r.state])))
+        const did = new Map(detail.seats.map((r) => [r.name, r.activity]))
+        const said = new Map(detail.seats.map((r) => [r.name, r.chat]))
+        const read = new Map(detail.seats.map((r) => [r.name, r.coverage]))
+        setReviewerActivity(did)
+        setReviewerChats(said)
+        setReviewerCoverage(read)
+      } catch {
+        // a malformed event is no reason to lose the stream
+      }
+    })
     source.addEventListener('presence', (event) => {
       try {
         const detail = JSON.parse((event as MessageEvent).data) as {
@@ -250,10 +314,28 @@ function useLiveUpdates(): {
       setQueuedOn(NO_QUEUE)
       setAnsweredOn(NO_THREADS)
       setLayersRequest(null)
+      setReviewerStates(NO_REVIEWER_STATES)
+      setReviewersStarting(NO_ROLES)
+      setReviewerActivity(NO_ACTIVITY)
+      setReviewerChats(NO_CHATS)
+      setReviewerCoverage(NO_COVERAGE)
     }
     return () => source.close()
   }, [client])
-  return { presence, reason, since, workingOn, queuedOn, answeredOn, layersRequest }
+  return {
+    presence,
+    reason,
+    since,
+    workingOn,
+    queuedOn,
+    answeredOn,
+    layersRequest,
+    reviewerStates,
+    reviewersStarting,
+    reviewerActivity,
+    reviewerChats,
+    reviewerCoverage,
+  }
 }
 
 /**
@@ -325,6 +407,11 @@ function Review() {
     queuedOn,
     answeredOn,
     layersRequest,
+    reviewerStates,
+    reviewersStarting,
+    reviewerActivity,
+    reviewerChats,
+    reviewerCoverage,
   } = useLiveUpdates()
   const {
     viewed,
@@ -384,6 +471,38 @@ function Review() {
   useEffect(() => () => dragTeardown.current?.(), [])
 
   const { data: review } = useReview()
+  const { data: roleList } = useReviewerRoles()
+  // The reviewer agents with a seat here, and who of them is connected: read
+  // by every byline, rail row and the header strip (ui/actors.ts).
+  const reviewers: Reviewers = useMemo(
+    () => ({
+      seats: (review?.reviewers ?? []).map((r) => r.name),
+      states: reviewerStates,
+      starting: reviewersStarting,
+      roles: new Map((review?.reviewers ?? []).map((r) => [r.name, r.role ?? DEFAULT_ROLE])),
+      roleNames: new Map(
+        (review?.reviewers ?? []).map((r) => {
+          const id = r.role ?? DEFAULT_ROLE
+          return [r.name, roleList?.roles.find((x) => x.id === id)?.name ?? id]
+        }),
+      ),
+      hues: new Map((review?.reviewers ?? []).map((r) => [r.name, r.hue])),
+      activity: reviewerActivity,
+      chats: reviewerChats,
+      coverage: reviewerCoverage,
+      needsYou: needsYouBy(review?.threads ?? []),
+    }),
+    [
+      review?.reviewers,
+      review?.threads,
+      roleList,
+      reviewerStates,
+      reviewersStarting,
+      reviewerActivity,
+      reviewerChats,
+      reviewerCoverage,
+    ],
+  )
   const reviewActions = useReviewActions()
   const [composeHunkId, setComposeHunkId] = useState<string | null>(null)
   const [composeFilePath, setComposeFilePath] = useState<string | null>(null)
@@ -422,6 +541,20 @@ function Review() {
     return () => window.removeEventListener('keydown', onKey)
   }, [])
   const [inviteOpen, setInviteOpen] = useState(false)
+  // The agents panel on the right: open, and on which reviewer.
+  // Each ask is numbered: the sidebar opens afresh on it, so clicking the face
+  // of the reviewer already shown, or Start, lands where it says.
+  const [agentsPanel, setAgentsPanel] = useState<null | { on?: string; n: number }>(null)
+  const agentsAsk = useRef(0)
+  const openAgents = useCallback((on?: string) => {
+    agentsAsk.current += 1
+    setAgentsPanel({ ...(on !== undefined ? { on } : {}), n: agentsAsk.current })
+  }, [])
+  // Reviewer agents: the quick Add dialog, or the page with every reviewer
+  // and role. One at a time; each can hand over to the other.
+  const [reviewerView, setReviewerView] = useState<
+    null | { kind: 'add'; role?: string } | { kind: 'page'; on?: ReviewerAgentsPick }
+  >(null)
   const [theme, setTheme] = useTheme()
   const [critter, setCritter] = useCritter()
   const telemetry = useTelemetry()
@@ -897,6 +1030,8 @@ function Review() {
   const [revealPastTick, setRevealPastTick] = useState(0)
   const [revealThreadId, setRevealThreadId] = useState<string | null>(null)
   const [openThreadId, setOpenThreadId] = useState<string | null>(null)
+  // The thread just gone to, counted, so its card opens in full each visit.
+  const [threadFocus, setThreadFocus] = useState<{ id: string; n: number } | null>(null)
   // A comment made in a commit names that commit, so the server can freeze the
   // code it was about even when the hunk exists only in that commit's diff.
   const commentCommit = inCommits ? (activeCommit?.sha ?? null) : null
@@ -962,11 +1097,12 @@ function Review() {
   const [movedPaths, setMovedPaths] = useState<ReadonlySet<string>>(new Set())
 
   // Only the reviewer's engagement makes a file "commented" for coverage — an
-  // agent note the reviewer never touched must not read as their engagement.
+  // agent note the reviewer never touched must not read as their engagement,
+  // whether the author agent or a reviewer agent left it.
   const commentedPaths = useMemo(() => {
     const paths = new Set<string>()
     for (const t of activeThreads) {
-      if (untouchedAgentVoice(t)) continue
+      if (untouchedByHuman(t)) continue
       if (t.anchor.kind === 'hunk' || t.anchor.kind === 'file') paths.add(t.anchor.path)
     }
     return paths
@@ -1484,6 +1620,7 @@ function Review() {
       gone?: boolean
     }) => {
       setOpenThreadId(item.threadId)
+      setThreadFocus((prev) => ({ id: item.threadId, n: (prev?.n ?? 0) + 1 }))
       // A thread whose file left the changeset has no file body to scroll to — it
       // renders in the pane's own section for the ones the diff left behind.
       if (item.gone) {
@@ -1677,6 +1814,12 @@ function Review() {
         setViewMode((m) => (m === 'unified' ? 'split' : 'unified'))
       } else if (action === 'toggle-nav') {
         toggleNav()
+      } else if (action === 'toggle-agents') {
+        // Reviewer agents join branch and working-tree reviews only.
+        if (pr === null) {
+          if (agentsPanel === null) openAgents()
+          else setAgentsPanel(null)
+        }
       } else if (action === 'toggle-focus') {
         setFocusMode((on) => !on)
       } else if (action === 'focus-search') {
@@ -1733,6 +1876,9 @@ function Review() {
     toggleViewedHere,
     hunkOrder,
     toggleNav,
+    pr,
+    agentsPanel,
+    openAgents,
     nextUnreviewed,
     toggleCollapsed,
     filter.hideReviewed,
@@ -2068,6 +2214,17 @@ function Review() {
           label: 'Invite your agent',
           run: () => setInviteOpen(true),
         },
+        // Reviewer agents join branch and working-tree reviews only.
+        ...(pr === null
+          ? [
+              {
+                id: 'a:reviewer',
+                group: 'Actions' as const,
+                label: 'Add a reviewer agent',
+                run: () => setReviewerView({ kind: 'add' }),
+              },
+            ]
+          : []),
         ...(['light', 'dark', 'system'] as const).map((t) => ({
           id: `a:theme:${t}`,
           group: 'Actions' as const,
@@ -2171,7 +2328,7 @@ function Review() {
       ),
   }
   return (
-    <PrContext.Provider value={pr}>
+    <ReviewContexts pr={pr} reviewers={reviewers} focus={threadFocus}>
       <div className="layout">
         <Header
           starAsk={starAsk}
@@ -2190,6 +2347,19 @@ function Review() {
             since: presenceSince,
             activity,
             onInvite: () => setInviteOpen(true),
+            ...(pr === null
+              ? {
+                  onAddReviewer: () => setReviewerView({ kind: 'add' }),
+                  onShowReviewer: (name?: string) => openAgents(name),
+                  reviewersPanel: {
+                    open: agentsPanel !== null,
+                    onToggle: () => (agentsPanel === null ? openAgents() : setAgentsPanel(null)),
+                  },
+                  ...(review?.reviewerSuggested
+                    ? { reviewerSuggested: review.reviewerSuggested }
+                    : {}),
+                }
+              : {}),
             batch: batchForBadge,
             suggestion:
               !layerMode &&
@@ -2235,6 +2405,8 @@ function Review() {
             onSetCritter: setCritter,
             onShowVoice: () => setVoiceOpen(true),
             onShowLayers: () => setLayersDialog(true),
+            // Reviewer agents join branch and working-tree reviews only.
+            ...(pr === null ? { onShowReviewers: () => setReviewerView({ kind: 'page' }) } : {}),
             ...(telemetry.status ? { onShowPrivacy: () => setPrivacyOpen(true) } : {}),
             onShowShortcuts: () => setShortcutsOpen(true),
           }}
@@ -2420,6 +2592,16 @@ function Review() {
             onToggleCollapsed={toggleCollapsed}
             comments={paneComments}
           />
+          {pr === null && agentsPanel && (
+            <AgentsPanel
+              key={agentsPanel.n}
+              {...(agentsPanel.on !== undefined ? { focus: agentsPanel.on } : {})}
+              threads={review?.threads ?? []}
+              onAdd={() => setReviewerView({ kind: 'add' })}
+              onManage={() => setReviewerView({ kind: 'page' })}
+              onOpenThread={openThreadById}
+            />
+          )}
         </div>
         {finishOpen &&
           (data.pr ? (
@@ -2506,6 +2688,26 @@ function Review() {
             onClose={() => setLayersDialog(false)}
           />
         )}
+        {reviewerView?.kind === 'add' && (
+          <InviteReviewer
+            agentAttached={presence !== 'waiting'}
+            {...(review?.reviewerSuggested ? { suggested: review.reviewerSuggested } : {})}
+            {...(reviewerView.role !== undefined ? { preselect: reviewerView.role } : {})}
+            onManage={() => setReviewerView({ kind: 'page' })}
+            onStarted={() => openAgents()}
+            onClose={() => setReviewerView(null)}
+          />
+        )}
+        {reviewerView?.kind === 'page' && (
+          <ReviewerAgents
+            {...(reviewerView.on ? { initial: reviewerView.on } : {})}
+            agentAttached={presence !== 'waiting'}
+            onAdd={(role) =>
+              setReviewerView(role === undefined ? { kind: 'add' } : { kind: 'add', role })
+            }
+            onClose={() => setReviewerView(null)}
+          />
+        )}
         {inviteOpen && (
           <InviteAgent
             presence={presence}
@@ -2515,6 +2717,28 @@ function Review() {
         )}
         <SymbolHoverLayer files={data?.files ?? EMPTY_FILES} onJump={jumpToLine} />
       </div>
+    </ReviewContexts>
+  )
+}
+
+/** What every thread card and rail row asks of the review, in one wrapper: the
+ * pull request under review, when there is one, and the reviewer agents. */
+function ReviewContexts({
+  pr,
+  reviewers,
+  focus,
+  children,
+}: {
+  pr: PrInfo | null
+  reviewers: Reviewers
+  focus: { id: string; n: number } | null
+  children: ReactNode
+}) {
+  return (
+    <PrContext.Provider value={pr}>
+      <ReviewersContext.Provider value={reviewers}>
+        <ThreadFocusContext.Provider value={focus}>{children}</ThreadFocusContext.Provider>
+      </ReviewersContext.Provider>
     </PrContext.Provider>
   )
 }

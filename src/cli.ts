@@ -45,6 +45,7 @@ import {
   POLL_NOW_FOREGROUND,
   POLL_STANCE,
   prOpenNote,
+  REVIEWER_NEXT_STEP,
   sharedLayersNote,
   TAB_TITLE,
 } from './server/prompt.js'
@@ -72,6 +73,7 @@ import { boxOf, checkArtifacts, describeArtifact } from './shared/artifacts.js'
 import { parseLayersPost, type UncoveredRef } from './shared/layers.js'
 import { parsePresetPatch } from './shared/presets.js'
 import type { Layers, ReviewState } from './shared/review.js'
+import { isDraftRoleKey, parseRolePatch } from './shared/roles.js'
 import type { ChangesetSpec as CliSpec, PrInfo } from './shared/types.js'
 import { VERSION } from './version.js'
 
@@ -704,6 +706,174 @@ if (command.kind === 'telemetry') {
   process.exit(0)
 }
 
+/** Why the server refused, in its own words when it gave any. */
+function refusal(body: unknown, fallback: string): string {
+  return (body as { error?: string } | null)?.error ?? fallback
+}
+
+// A reviewer agent takes its seat. Unlike every other verb it starts no server:
+// a reviewer joins a review someone opened, it never opens one.
+if (command.kind === 'join') {
+  const db = new DiffoDb()
+  let record: ReturnType<DiffoDb['getServer']>
+  try {
+    record = db.getServer(repoPath)
+  } finally {
+    db.close()
+  }
+  const health = record ? await fetchHealth(record.port) : null
+  const verdict = record ? assessRunningServer(health, repoPath, VERSION) : 'foreign'
+  if (!record || verdict === 'foreign') {
+    fail(
+      'no review is running for this repo, so there is nothing to join. The author agent or the user opens one with `diffo`; then run `diffo join` again',
+    )
+  }
+  if (verdict === 'replace') {
+    fail(
+      `the review running here is served by another diffo build (${health?.version ?? 'unknown'}, this CLI is ${VERSION}); run the same diffo the review was opened with`,
+    )
+  }
+  const { status, body } = await postJson(record.port, '/api/reviewer/join', {
+    ...(command.as !== undefined ? { as: command.as } : {}),
+    ...(command.role !== undefined ? { role: command.role } : {}),
+  })
+  if (status !== 200) fail(`join refused: ${refusal(body, `the server answered ${status}`)}`)
+  const seat = body as { as: string } & Record<string, unknown>
+  console.log(
+    JSON.stringify({
+      ...seat,
+      url: reviewUrl(record.port),
+      // The name the review gave back: a fresh one from the pool unless --as.
+      next_step: REVIEWER_NEXT_STEP.join(seat.as),
+    }),
+  )
+  process.exit(0)
+}
+
+if (command.kind === 'reviewer-suggest') {
+  const port = await requireServer()
+  const { status, body } = await postJson(port, '/api/reviewer/suggest', {
+    ...(command.role === null ? {} : { role: command.role }),
+    ...(command.reason === null ? {} : { reason: command.reason }),
+  })
+  if (status !== 200) fail(`reviewer refused: ${refusal(body, `the server answered ${status}`)}`)
+  const { suggested, role } = body as { suggested: boolean; role: string }
+  console.log(
+    JSON.stringify({
+      ok: true,
+      suggested,
+      role,
+      next_step: suggested ? ACK_NEXT_STEP.reviewerSuggested : ACK_NEXT_STEP.reviewerAlready,
+    }),
+  )
+  process.exit(0)
+}
+
+// A reviewer agent's status line. Quiet on purpose: it is said many times a
+// review, and there is nothing to do next but carry on.
+if (command.kind === 'progress') {
+  const port = await requireServer()
+  const { status, body } = await postJson(port, '/api/reviewer/progress', {
+    as: command.as,
+    text: command.text,
+  })
+  if (status !== 200) fail(`progress refused: ${refusal(body, `the server answered ${status}`)}`)
+  // The human's messages ride back on a progress line: print them, with the
+  // next step that says what to do with them.
+  const { messages, next_step } = (body ?? {}) as { messages?: unknown; next_step?: unknown }
+  console.log(
+    JSON.stringify(
+      Array.isArray(messages)
+        ? { ok: true, from: 'human reviewer', messages, next_step }
+        : { ok: true },
+    ),
+  )
+  process.exit(0)
+}
+
+// A reviewer agent reads the change through Diffo: the diff itself, plain,
+// for it to read; the page counts the files it fetched.
+if (command.kind === 'diff') {
+  const port = await requireServer()
+  const { status, body } = await postJson(port, '/api/reviewer/diff', {
+    as: command.as,
+    files: command.files,
+  })
+  if (status !== 200) fail(`diff refused: ${refusal(body, `the server answered ${status}`)}`)
+  const { patch, files, missing } = body as { patch: string; files: number; missing?: string[] }
+  if (patch !== '') console.log(patch)
+  console.log(JSON.stringify({ files, ...(missing ? { missing, why: 'not in this change' } : {}) }))
+  process.exit(0)
+}
+
+// A reviewer agent's own account, before it stops: what it did not read.
+if (command.kind === 'covered') {
+  const port = await requireServer()
+  const { status, body } = await postJson(port, '/api/reviewer/coverage', {
+    as: command.as,
+    skipped: command.skipped,
+  })
+  if (status !== 200) fail(`covered refused: ${refusal(body, `the server answered ${status}`)}`)
+  console.log(JSON.stringify(body))
+  process.exit(0)
+}
+
+if (command.kind === 'chat') {
+  const port = await requireServer()
+  const { status, body } = await postJson(port, '/api/reviewer/chat', {
+    as: command.as,
+    text: command.text,
+  })
+  if (status !== 200) fail(`chat refused: ${refusal(body, `the server answered ${status}`)}`)
+  const { next_step } = (body ?? {}) as { next_step?: unknown }
+  console.log(JSON.stringify({ ok: true, next_step }))
+  process.exit(0)
+}
+
+if (command.kind === 'resolve') {
+  const port = await requireServer()
+  const { status, body } = await postJson(
+    port,
+    `/api/review/threads/${encodeURIComponent(command.threadId)}/state`,
+    { state: 'resolved', as: command.as },
+  )
+  if (status === 404) fail(`no thread with id '${command.threadId}'`)
+  if (status !== 200) fail(`resolve refused: ${refusal(body, `the server answered ${status}`)}`)
+  console.log(
+    JSON.stringify({
+      ok: true,
+      threadId: command.threadId,
+      state: 'resolved',
+      next_step: REVIEWER_NEXT_STEP.resolve(command.as),
+    }),
+  )
+  process.exit(0)
+}
+
+// The reviewer agent's inbox: the same long-poll shape as the author agent's,
+// on a route of its own that never touches the author's session.
+if (command.kind === 'poll' && command.as !== undefined) {
+  const port = await requireServer()
+  process.stderr.write(
+    `diffo: waiting for answers on your threads. Keep this process attended: ${POLL_STANCE}.\n` +
+      'If it dies, just re-run it; answers are held in the review and survive.\n',
+  )
+  try {
+    const res = await fetch(
+      apiUrl(port, `/api/reviewer/poll?as=${encodeURIComponent(command.as)}`),
+      { headers: sessionHeaders() },
+    )
+    if (!res.ok) {
+      const body = await res.json().catch(() => null)
+      fail(`poll refused: ${refusal(body, `the server answered ${res.status}`)}`)
+    }
+    console.log((await res.text()).trim())
+  } catch {
+    fail(`lost connection to the diffo server; re-run \`poll --as ${command.as}\` to keep waiting`)
+  }
+  process.exit(0)
+}
+
 if (command.kind === 'poll') {
   const port = await requireServer()
   process.stderr.write(
@@ -774,6 +944,29 @@ if (command.kind === 'reply') {
   if (!message) fail('reply needs a message: pass --message "<text>" or pipe it on stdin')
   const art = artifactPreflight('reply', [message])
   const port = await requireServer()
+  if (command.as !== undefined) {
+    const { status, body } = await postJson(
+      port,
+      `/api/review/threads/${encodeURIComponent(command.threadId)}/messages`,
+      { as: command.as, text: message, ...(command.ask ? { ask: true } : {}) },
+    )
+    if (status === 404) fail(`no thread with id '${command.threadId}'`)
+    if (status !== 200) fail(`reply refused: ${refusal(body, `the server answered ${status}`)}`)
+    const { thread, roundsLeft } = body as { thread: { id: string }; roundsLeft: number }
+    console.log(
+      JSON.stringify({
+        ok: true,
+        threadId: thread.id,
+        as: command.as,
+        ...(command.ask ? { asked: true } : {}),
+        ...art,
+        next_step: command.ask
+          ? REVIEWER_NEXT_STEP.asked(command.as)
+          : REVIEWER_NEXT_STEP.reply(command.as, roundsLeft),
+      }),
+    )
+    process.exit(0)
+  }
   const { status, body } = await postJson(
     port,
     `/api/review/threads/${encodeURIComponent(command.threadId)}/messages`,
@@ -781,13 +974,15 @@ if (command.kind === 'reply') {
       author: 'agent',
       text: message,
       ...(command.more ? { more: true } : {}),
+      ...(command.ask ? { ask: true } : {}),
       ...(command.suggestReply ? { suggestedReply: command.suggestReply } : {}),
       ...(command.prComment ? { prComment: command.prComment } : {}),
     },
   )
   if (status === 404) fail(`no thread with id '${command.threadId}'`)
-  if (status === 400)
-    fail(`reply refused: ${(body as { error?: string } | null)?.error ?? 'bad request'}`)
+  // 409: the thread stopped for the human (rounds cap or --ask) and waits on
+  // them.
+  if (status === 400 || status === 409) fail(`reply refused: ${refusal(body, 'bad request')}`)
   if (status !== 200) fail(`reply failed (${status})`)
   const thread = (body as { thread: { id: string; state: string } }).thread
   console.log(
@@ -797,11 +992,14 @@ if (command.kind === 'reply') {
       state: thread.state,
       ...art,
       ...(command.prComment ? { prComment: 'suggested' } : {}),
-      next_step: command.more
-        ? ACK_NEXT_STEP.replyMore
-        : command.prComment
-          ? ACK_NEXT_STEP.replyPrComment
-          : ACK_NEXT_STEP.reply,
+      ...(command.ask ? { asked: true } : {}),
+      next_step: command.ask
+        ? ACK_NEXT_STEP.replyAsked
+        : command.more
+          ? ACK_NEXT_STEP.replyMore
+          : command.prComment
+            ? ACK_NEXT_STEP.replyPrComment
+            : ACK_NEXT_STEP.reply,
     }),
   )
   process.exit(0)
@@ -815,6 +1013,40 @@ if (command.kind === 'comment') {
   if (!message) fail('comment needs a message: pass --message "<text>" or pipe it on stdin')
   const art = artifactPreflight('comment', [message])
   const port = await requireServer()
+  if (command.as !== undefined) {
+    const { status, body } = await postJson(port, '/api/review/threads', {
+      as: command.as,
+      file: command.file,
+      line: command.line,
+      text: message,
+    })
+    if (status !== 200) fail(`comment refused: ${refusal(body, `the server answered ${status}`)}`)
+    const { thread, anchored } = body as {
+      thread: { id: string }
+      anchored: 'hunk' | 'file' | 'changeset'
+    }
+    // Where it landed, when that is not where it was aimed: a line outside the
+    // diff falls back to its file, a file outside the changeset to the change.
+    const aimed = command.line !== null ? 'hunk' : command.file !== null ? 'file' : 'changeset'
+    console.log(
+      JSON.stringify({
+        ok: true,
+        threadId: thread.id,
+        as: command.as,
+        ...(anchored !== aimed
+          ? {
+              anchored:
+                anchored === 'file'
+                  ? `the file: line ${command.line} is not among its changed lines`
+                  : `the whole change: ${command.file} is not in the changeset`,
+            }
+          : {}),
+        ...art,
+        next_step: REVIEWER_NEXT_STEP.comment(command.as),
+      }),
+    )
+    process.exit(0)
+  }
   const { status, body } = await postJson(port, '/api/review/threads', {
     author: 'agent',
     file: command.file,
@@ -970,6 +1202,77 @@ if (command.kind === 'preset') {
       ok: true,
       preset: { id: preset.id, name: preset.name },
       next_step: ACK_NEXT_STEP.presetUpdate,
+    }),
+  )
+  process.exit(0)
+}
+
+// `diffo role`: the reviewer roles, read and written the way `diffo preset`
+// does presets, so the two conversations read alike to an agent.
+if (command.kind === 'role') {
+  const port = await requireServer()
+  const action = command.action
+  const path = (id: string) => `/api/reviewer/roles/${encodeURIComponent(id)}`
+  if (action.kind === 'list' || action.kind === 'show') {
+    const { status, body } = await getJson(port, '/api/reviewer/roles')
+    if (status !== 200) fail(`role ${action.kind} failed (${status})`)
+    const { roles, default: def } = body as { roles: Array<{ id: string }>; default: string }
+    if (action.kind === 'list') {
+      console.log(JSON.stringify({ ok: true, default: def, roles }))
+      process.exit(0)
+    }
+    const role = roles.find((r) => r.id === action.id)
+    // A draft has no role yet, only its conversation.
+    if (!role && !isDraftRoleKey(action.id)) fail(`no role with id '${action.id}'`)
+    const thread = await getJson(port, `${path(action.id)}/thread`)
+    console.log(
+      JSON.stringify({
+        ok: true,
+        role: role ?? null,
+        thread: (thread.body as { thread: unknown }).thread,
+      }),
+    )
+    process.exit(0)
+  }
+  if (action.kind === 'reply') {
+    if (action.message === null && process.stdin.isTTY) {
+      fail('role reply needs a message: pass --message "<text>" or pipe it on stdin')
+    }
+    const message = (action.message ?? (await readStdin())).trim()
+    if (!message) fail('role reply needs a message: pass --message "<text>" or pipe it on stdin')
+    const { status, body } = await postJson(port, `${path(action.id)}/messages`, {
+      author: 'agent',
+      text: message,
+    })
+    if (status === 400)
+      fail(`role reply refused: ${(body as { error?: string } | null)?.error ?? 'bad request'}`)
+    if (status !== 200) fail(`role reply failed (${status})`)
+    console.log(JSON.stringify({ ok: true, roleId: action.id, next_step: ACK_NEXT_STEP.roleReply }))
+    process.exit(0)
+  }
+  const text = action.source.kind === 'json' ? action.source.text : await readStdin()
+  let raw: unknown
+  try {
+    raw = JSON.parse(text)
+  } catch (err) {
+    fail(`role update needs JSON — { name?, blurb?, focus? }: ${(err as Error).message}`)
+  }
+  // Checked here first so a bad field is refused with its name.
+  const patch = parseRolePatch(raw)
+  if (!patch.ok) fail(`role update: ${patch.error}`)
+  const { status, body } = await postJson(port, path(action.id), {
+    fields: patch.patch,
+    ...(action.message ? { message: action.message } : {}),
+  })
+  if (status === 400)
+    fail(`role update refused: ${(body as { error?: string } | null)?.error ?? 'bad request'}`)
+  if (status !== 200) fail(`role update failed (${status})`)
+  const { role } = body as { role: { id: string; name: string } }
+  console.log(
+    JSON.stringify({
+      ok: true,
+      role: { id: role.id, name: role.name },
+      next_step: ACK_NEXT_STEP.roleUpdate,
     }),
   )
   process.exit(0)

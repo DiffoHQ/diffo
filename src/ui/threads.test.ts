@@ -3,11 +3,13 @@ import type { Anchor, ReviewMessage, ReviewThread } from '../shared/review.js'
 import {
   agentActivity,
   byFile,
+  bySection,
   byTurn,
   firstLine,
   holdsAttention,
   involves,
   isUnsent,
+  needsYou,
   shortAnchor,
   threadItems,
   threadOutcome,
@@ -507,5 +509,44 @@ describe('firstLine', () => {
 
   it('leaves arithmetic and globs alone', () => {
     expect(firstLine('2 * 3 is 6, and src/*.ts')).toBe('2 * 3 is 6, and src/*.ts')
+  })
+})
+
+describe('threads between a reviewer agent and the author agent', () => {
+  const codex = (text = 'this leaks') => msg('reviewer', text, { by: 'codex' })
+  const turnOf = (over: Partial<ReviewThread>) => threadTurn(thread(over))
+
+  it("waits on the agent after the reviewer agent's word, and on that reviewer after the answer", () => {
+    expect(turnOf({ messages: [codex()] })).toBe('agent')
+    expect(turnOf({ messages: [codex(), msg('agent')] })).toBe('reviewer')
+    expect(turnOf({ messages: [codex(), msg('agent'), codex()] })).toBe('agent')
+    // A promised follow-up still holds the agent's turn.
+    expect(turnOf({ messages: [codex(), msg('agent')], awaitingFollowUp: true })).toBe('agent')
+  })
+
+  it('is your turn once the rounds run out, and once you step in and are answered', () => {
+    expect(turnOf({ messages: [codex(), msg('agent')], needsYou: 'rounds' })).toBe('yours')
+    expect(turnOf({ messages: [codex(), msg('agent'), msg('reviewer')] })).toBe('agent')
+    expect(turnOf({ messages: [codex(), msg('agent'), msg('reviewer'), msg('agent')] })).toBe(
+      'yours',
+    )
+    expect(turnOf({ messages: [codex(), msg('agent')], state: 'resolved' })).toBe('resolved')
+  })
+
+  it("leaves your own threads' turns as they were", () => {
+    expect(turnOf({ messages: [msg('reviewer'), msg('agent')] })).toBe('yours')
+    expect(turnOf({ messages: [msg('reviewer')] })).toBe('agent')
+  })
+
+  it('"Needs you" is what the agents could not settle, and nothing settled', () => {
+    const items = threadItems([
+      thread({ id: 'stopped', messages: [codex(), msg('agent')], needsYou: 'rounds' }),
+      thread({ id: 'talking', messages: [codex(), msg('agent')] }),
+      thread({ id: 'mine', messages: [msg('reviewer'), msg('agent')] }),
+    ])
+    expect(needsYou(items).map((i) => i.thread.id)).toEqual(['stopped'])
+    // It counts toward your turn like any thread waiting on you.
+    expect(yourTurnCount(items)).toBe(2)
+    expect([...bySection(items).keys()]).toEqual(['yours', 'reviewer'])
   })
 })

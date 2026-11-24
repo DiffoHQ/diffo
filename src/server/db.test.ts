@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { DatabaseSync } from 'node:sqlite'
 import { afterEach, describe, expect, it } from 'vitest'
-import { DiffoDb, REVIEW_TTL_DAYS } from './db.js'
+import { DiffoDb, REVIEW_TTL_DAYS, reviewerHubKey } from './db.js'
 
 const cleanups: (() => void)[] = []
 afterEach(() => {
@@ -343,6 +343,22 @@ describe('review pruning', () => {
     expect(await fresh.maintain()).toEqual({ reviews: 1 })
     expect(fresh.getReview({ repoPath: root, branch: 'main', base: '' })).not.toBeNull()
     expect(fresh.getReview({ repoPath: root, branch: 'gone-branch', base: '' })).toBeNull()
+  })
+
+  it("a retired review takes its reviewer agents' state with it, and only its own", () => {
+    const dir = mkdtempSync(join(tmpdir(), 'diffo-db-'))
+    cleanups.push(() => rmSync(dir, { recursive: true, force: true }))
+    const root = repo('main')
+    const db = reopen(join(dir, 'diffo.db'))
+    db.setReview({ repoPath: root, branch: 'main', base: '' }, '{"threads":[]}')
+    db.setReview({ repoPath: root, branch: 'gone-branch', base: '' }, '{"threads":[]}')
+    const kept = reviewerHubKey(root, 'main', '')
+    const gone = reviewerHubKey(root, 'gone-branch', '')
+    db.setUiSetting(kept, '{"removed":["codex"]}')
+    db.setUiSetting(gone, '{"removed":["codex"]}')
+    expect(db.pruneRepo(root)).toBe(1)
+    expect(db.getUiSetting(gone)).toBeNull()
+    expect(db.getUiSetting(kept)).toBe('{"removed":["codex"]}')
   })
 
   it('pruneRepo retires only the repo it is given', () => {

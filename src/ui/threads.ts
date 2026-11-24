@@ -1,18 +1,32 @@
 import {
   anchorSpan,
+  betweenAgents,
   commitLabel,
   isPublic,
   type ReviewThread,
   untouchedAgentVoice,
 } from '../shared/review.js'
 
-export type Turn = 'yours' | 'unanswered' | 'proposed' | 'agent' | 'note' | 'posted' | 'resolved'
+/** `reviewer`: the author agent answered a reviewer agent, and the next move
+ * is that reviewer's: nobody is waiting on the human. */
+export type Turn =
+  | 'yours'
+  | 'unanswered'
+  | 'proposed'
+  | 'agent'
+  | 'reviewer'
+  | 'note'
+  | 'posted'
+  | 'resolved'
 
 export function threadTurn(thread: ReviewThread): Turn {
   if (thread.state === 'resolved') return 'resolved'
   // A public thread has two lives: a draft here, and a thread on GitHub. Neither
   // is anyone's turn in the agent sense — the conversation is with the PR.
   if (isPublic(thread)) return thread.state === 'open' && !thread.github ? 'note' : 'posted'
+  // Stopped for you (the agents ran out of rounds, or one asked you): whatever
+  // else is true of it, it waits on you.
+  if (thread.needsYou) return 'yours'
   // A fresh agent thread is the agent speaking, not a draft of yours. Once you
   // reply into it, it carries your words and falls through to the normal turns.
   if (untouchedAgentVoice(thread) && thread.state === 'open') return 'proposed'
@@ -21,7 +35,9 @@ export function threadTurn(thread: ReviewThread): Turn {
   // follow-up you are sitting on, and the card shows the unsent reply either way.
   // A `--more` reply is a promise, not an answer: the agent still holds the turn.
   if (thread.messages.at(-1)?.author === 'agent') {
-    return thread.awaitingFollowUp === true ? 'agent' : 'yours'
+    if (thread.awaitingFollowUp === true) return 'agent'
+    // An answer to a reviewer agent is that reviewer's to judge, not yours.
+    return betweenAgents(thread) ? 'reviewer' : 'yours'
   }
   if (thread.withheld) return 'note'
   if (!thread.unanswered) return 'agent'
@@ -45,6 +61,7 @@ export const TURN_ORDER: readonly Turn[] = [
   'unanswered',
   'proposed',
   'agent',
+  'reviewer',
   'note',
   'posted',
   'resolved',
@@ -55,17 +72,19 @@ export const TURN_LABEL: Record<Turn, string> = {
   unanswered: 'No answer',
   proposed: 'From the agent',
   agent: 'Waiting on agent',
+  reviewer: 'With a reviewer agent',
   note: 'Draft',
   posted: 'On GitHub',
   resolved: 'Resolved',
 }
 
-export type Section = 'yours' | 'proposed' | 'agent' | 'note' | 'posted' | 'settled'
+export type Section = 'yours' | 'proposed' | 'agent' | 'reviewer' | 'note' | 'posted' | 'settled'
 
 export const SECTION_ORDER: readonly Section[] = [
   'yours',
   'proposed',
   'agent',
+  'reviewer',
   'note',
   'posted',
   'settled',
@@ -75,6 +94,7 @@ export const SECTION_LABEL: Record<Section, string> = {
   yours: 'Your turn',
   proposed: 'From the agent',
   agent: 'Waiting on the agent',
+  reviewer: 'With a reviewer agent',
   note: 'Drafts',
   posted: 'On GitHub',
   settled: 'Settled',
@@ -89,6 +109,8 @@ export function sectionOf(turn: Turn): Section {
       return 'proposed'
     case 'agent':
       return 'agent'
+    case 'reviewer':
+      return 'reviewer'
     case 'note':
       return 'note'
     case 'posted':
@@ -272,6 +294,11 @@ export function bySection(items: readonly ThreadItem[]): Map<Section, ThreadItem
     if (group.length > 0) out.set(section, group)
   }
   return out
+}
+
+/** The threads the agents could not settle between them: the "Needs you" filter. */
+export function needsYou(items: readonly ThreadItem[]): ThreadItem[] {
+  return items.filter((i) => i.thread.needsYou !== undefined && i.turn !== 'resolved')
 }
 
 export function yourTurnCount(items: readonly ThreadItem[]): number {

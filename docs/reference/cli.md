@@ -36,6 +36,11 @@ nothing.
 | [`diffo comment`](#diffo-comment-file) | agent | Start a thread in the agent's own voice |
 | [`diffo layers`](#diffo-layers) | agent | Split the changeset into layers to read in order |
 | [`diffo end`](#diffo-end) | agent | Detach from the review |
+| [`diffo reviewer --suggest`](#reviewer-agent-commands) | agent | Flag that the change deserves a reviewer agent; you decide |
+| [`diffo join --role <id>`](#reviewer-agent-commands) | reviewer agent | Take a seat in a running review as a reviewer in that role |
+| [`diffo resolve <threadId> --as <name>`](#reviewer-agent-commands) | reviewer agent | Close a thread that reviewer opened |
+| [`diffo progress --as <name> --message "<line>"`](#reviewer-agent-commands) | reviewer agent | Say what it is doing; shown in the reviewer agents sidebar, and brings back your unread messages |
+| [`diffo chat --as <name> --message "<text>"`](#reviewer-agent-commands) | reviewer agent | Answer you in your private conversation with it; the author agent never sees it |
 | [`diffo help`](#help-and-version) | both | Help for the CLI, or for one command |
 | [`diffo help pr`](#help-and-version) | both | Help for reviewing a pull request: the spellings, the worktree, what `gh` needs |
 
@@ -209,6 +214,7 @@ from poll payloads.
 | --- | --- |
 | `-m`, `--message <text>` | The reply. Omit it to read the message from stdin |
 | `--more` | An interim reply: a follow-up on this thread is promised, so the reviewer keeps seeing the agent at work |
+| `--ask` | In a reviewer agent's thread only: hand it to you for a decision (what the product should do, a trade-off, a risk only you can accept, a disagreement the agents cannot settle). The reply says the question, the options and the agent's pick. The thread is marked **Needs your decision** and neither agent writes in it until you reply or resolve it. Either agent may use it; everything else they settle between them |
 | `--suggest-reply <one line>` | Offer the reviewer their answer. It appears as ghost text in their reply box; Tab takes it, and they still press send. For a message that ends in a decision that is theirs ("want me to extract this?" → `--suggest-reply "yes, extract it"`), never for one that only reports |
 | `--pr-comment <text>` | Pull requests only. Attach the review comment the reviewer would leave the author: in their voice, to the author, as GitHub will show it (Markdown; a ```` ```suggestion ```` block when the fix is local to the anchored lines). It appears under the reply with Add as PR comment draft, Edit and Dismiss; nothing posts until the reviewer submits. The agent's evidence stays in `--message`. Refused off a pull request. See [Reviewing a pull request](/guide/pr-review#the-agent-suggests-the-comment) |
 
@@ -338,11 +344,120 @@ An empty or non-string field, nothing to change, a built-in's id on `update`,
 or a new preset without a name fails with exit 1 and says which. `update`
 prints `{ "ok": true, "preset": { "id", "name" }, "next_step": "…" }`.
 
+### `diffo role`
+
+```bash
+diffo role list
+diffo role show <id>
+diffo role update <id> --json '{"focus":"…"}' --message "Memory is in now, as you asked."
+… | diffo role update <id> --stdin --message "…"
+diffo role reply <id> --message "Should it look at memory too, or only time?"
+```
+
+The reviewer's roles for reviewer agents, and the conversation about each one
+on the Reviewer agents page, the same way `diffo preset` works for presets. A
+reviewer's message reaches the agent as a `kind: "role"` poll payload with the
+role as it stands and the messages so far. A new role talks under a draft key
+(`draft-…`) until the agent makes it under an id of its own, taken from the
+role's name.
+
+| Command | What it does |
+| --- | --- |
+| `list` | Every role, built-ins first, with `builtIn`, plus the default (`general`) |
+| `show <id>` | One role with its three fields, and its conversation (a draft key shows the conversation only) |
+| `update <id>` | Sets the fields sent (`name` under 32 characters, `blurb` one line under 120, `focus` under 2000; any subset), makes the role when nobody has it yet (a name and a focus at least), and refuses a built-in's id or a draft key. `--message` is the agent's line on what changed; it shows in the conversation with an undo, and in the built-in's or draft's conversation that asked for the role |
+| `reply <id>` | A message in the conversation that changes nothing; a draft key answers a new role's conversation |
+
+A field over its limit, nothing to change, a built-in's id or a draft key on
+`update`, or a new role without a name and a focus fails with exit 1 and says
+which. `update` prints `{ "ok": true, "role": { "id", "name" }, "next_step": "…" }`.
+
 ### `diffo end`
 
 Detaches the calling session politely. If another session is the attached agent,
 nothing is touched and the output says so:
 `{ "ok": false, "reason": "not-owner", "ownerPid": 51234 }`. Safe to re-run.
+
+## Reviewer agent commands
+
+A review can hold more than the agent that wrote the change. A second AI
+session can join it as a **reviewer agent**: it reads the diff, leaves comments
+the way a person would, and the author agent answers them. The agents work a
+thread out between them, and you step in where they cannot.
+
+You bring one in from the review page: **+ Reviewer** in the top bar, or
+**Reviewer agents** in Settings. Pick the
+role it reads the change in, then either ask your agent to start it (it runs
+as a sub-agent and is handed one fixed line, so the agent that wrote the change
+never briefs its own reviewer), or copy that line into any other agent session.
+A different tool gives the most independent read.
+
+A **role** is what a reviewer looks for: `general` (the default), `security`,
+`tests`, `simplicity`, or one you write in that dialog (a name and what it
+looks for, saved for every review). Whatever its role, a reviewer is told how
+to review when it joins: comment only on what matters and what it can show,
+one finding per thread. Nothing caps how many threads it opens; that brief is
+what keeps it short. A role narrows the focus; it changes none of the rules
+below.
+
+A reviewer agent runs the same commands under a name, with `--as <name>`.
+`join` gives each new reviewer a short name of its own (`juno`, `remy`, …),
+never one the review has had, so two reviewers in one role are two reviewers
+and a new one never inherits another's threads or conversation. The role is
+what it looks for; the name is who it is. `join --as <name>` is for coming
+back under its own name after a restart:
+
+| Command | What it does |
+| --- | --- |
+| `diffo join --role <id>`, `diffo join --as <name>` | Take a seat in the review already running for this repo, and print the role's focus, how to review, what is under review, the threads already there, and the next step. It never starts a review. |
+| `diffo comment [<file>] [--line <n>] --as <name> -m "…"` | Open a thread as that reviewer. It goes to the author agent at once, with no Send. |
+| `diffo poll --as <name>` | Wait for an answer on a thread that reviewer opened: the author agent's, or yours. Prints `"status": "idle"` when nothing of its own is left to wait for. |
+| `diffo reply <threadId> --as <name> -m "…"` | Answer in a thread it opened, one message per turn. |
+| `diffo resolve <threadId> --as <name>` | Close a thread it opened. |
+| `diffo diff --as <name> [<file>…]` | Print the change as a unified diff: the hunks you read on the page, every file or the ones named. You see which files each reviewer read this way. |
+| `diffo covered --as <name> [--skipped <file>]…` | Before it stops: the changed files it did not read (none when it read them all). Shown in its view beside the files it fetched. |
+| `diffo progress --as <name> --message "<line>"` | Say what it is doing, in a few words. A status line for you, never a comment. When you wrote to it from the reviewer agents sidebar, your messages come back under `messages`. |
+| `diffo chat --as <name> --message "<text>"` | Answer you, privately: into your conversation with it in the sidebar. It opens no thread, and the author agent never sees it. |
+
+The rules, enforced by the server:
+
+- A reviewer agent writes in and closes only threads it opened. The author
+  agent closes none. You can close or reopen any.
+- A thread you reopened, or wrote in without sending, is yours until you
+  send it: a reviewer agent can neither answer nor close it, and does not see
+  your unsent words. Its poll keeps waiting for them.
+- You can write to a reviewer agent from the reviewer agents sidebar, in a
+  private conversation the author agent never sees. Its poll returns
+  `"status": "message"` with your words under `messages` (or its next
+  `progress` carries them); they steer its review but never widen what it may
+  run. It answers with `diffo chat`.
+- You can **stop** a reviewer agent from the reviewer agents sidebar: its
+  session is told to end (its poll returns `"status": "stopped"`), and it
+  stays in the list with what it did and your conversation with it. **Delete**
+  also takes it off the list, with its log and conversation. Either way its
+  review threads stay, its commands are refused until it joins again, and its
+  name is never given to another reviewer.
+- A thread holds three rounds between a reviewer agent and the author agent (a
+  round is a reviewer-agent message the author agent answered). After the
+  third it stops, is marked **Needs you**, and neither agent may write in it
+  until you reply or resolve it.
+- The two agents settle threads on their own: the author agent fixes what is
+  right and the reviewer agent closes the thread. Either one hands a thread to
+  you only when it needs your decision (`reply --ask`); it is then marked
+  **Needs your decision** and waits for your word.
+- A reviewer agent keeps listening while any of its threads waits on you, and
+  for five minutes after its last one closes, so your reply or message still
+  reaches it. Then it stops.
+- A reviewer agent's comment is another AI's feedback: the author agent may
+  disagree with it, and only your word is final.
+- Branch and working-tree reviews only, on this machine. Not pull requests.
+
+The agent that wrote the change never brings a reviewer in on its own. It can
+suggest one, `diffo reviewer --suggest "<why>" --role <id>`, and the **+
+Reviewer** button then reads as that suggestion until you start it or pass.
+
+Reviewer agents never edit code; only the author agent changes files.
+`diffo help reviewer` is the reviewer agent's whole protocol on one page.
 
 ## Help and version
 
@@ -351,6 +466,7 @@ nothing is touched and the output says so:
 | `diffo --help`, `-h` | The full usage page |
 | `diffo help <command>` | Help for one command, including its output shape |
 | `diffo help agent` | The agent's whole protocol on one page |
+| `diffo help reviewer` | The reviewer agent's whole protocol on one page |
 | `diffo help pr` | Reviewing a pull request: the target spellings, the worktree, and what `gh` needs |
 | `diffo --version`, `-v` | Print the version |
 

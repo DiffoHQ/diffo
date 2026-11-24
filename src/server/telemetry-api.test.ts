@@ -230,6 +230,91 @@ describe('review_finished from the finish route', () => {
     })
     expect(JSON.stringify(events)).not.toContain('secret')
     expect(JSON.stringify(events)).not.toContain(root)
+    // No reviewer agents: no reviewer counts at all.
+    expect(events[1]!.properties).not.toHaveProperty('reviewer_agents')
+  })
+})
+
+describe('reviewer agents in usage data', () => {
+  it('one event per ask with the count and built-in roles, then counts on finish', async () => {
+    const root = tempRepo()
+    const dbDir = `${root}-db`
+    cleanups.push(() => rmSync(dbDir, { recursive: true, force: true }))
+    const db = new DiffoDb(join(dbDir, 'diffo.db'))
+    cleanups.push(() => db.close())
+    const store = new ChangesetStore(root, { kind: 'working-tree' })
+    const review = new ReviewStore(root, db, { kind: 'working-tree' })
+    const { events, impl } = fakeFetch()
+    const telemetry = new Telemetry({
+      store: memoryStore(),
+      ids: memoryIds(),
+      env: {},
+      fetch: impl,
+    })
+    telemetry.acknowledge()
+    const settings = new Map<string, string>([
+      [
+        'reviewerRoles',
+        JSON.stringify([{ id: 'secret-role', name: 'Secret role', blurb: '', focus: 'x' }]),
+      ],
+    ])
+    const app = createApp(
+      {
+        root,
+        spec: { kind: 'working-tree' },
+        clientDir: '/nope',
+        telemetry,
+        uiSettings: {
+          get: (key) => settings.get(key) ?? null,
+          set: (key, value) => void settings.set(key, value),
+        },
+      },
+      store,
+      review,
+      new DeliveryQueue(),
+    )
+    await opened(app, { agent: 'claude' })
+    const json = { 'Content-Type': 'application/json' }
+    const ask = await app.request('/api/reviewer/request', {
+      method: 'POST',
+      headers: json,
+      body: JSON.stringify({ roles: ['general', 'ai-slop', 'secret-role'] }),
+    })
+    expect(ask.status).toBe(200)
+    // A reviewer joins and comments: none of it is an event of its own.
+    const cli = { ...json, 'x-diffo-agent': 'cli' }
+    await app.request('/api/reviewer/join', {
+      method: 'POST',
+      headers: cli,
+      body: JSON.stringify({ role: 'general' }),
+    })
+    const name = review.get().reviewers![0]!.name
+    await app.request('/api/review/threads', {
+      method: 'POST',
+      headers: cli,
+      body: JSON.stringify({ as: name, file: 'app.ts', line: 2, text: 'off by one' }),
+    })
+    await app.request('/api/review/finish', {
+      method: 'POST',
+      headers: json,
+      body: JSON.stringify({ coverage: { read: 'all' } }),
+    })
+    await telemetry.flush()
+
+    expect(events.map((e) => e.event)).toEqual([
+      'review_opened',
+      'reviewers_requested',
+      'review_finished',
+    ])
+    expect(events[1]!.properties).toMatchObject({
+      kind: 'tree',
+      count: 3,
+      roles: 'ai-slop,custom,general',
+      suggested: false,
+    })
+    expect(events[2]!.properties).toMatchObject({ reviewer_agents: 1, reviewer_threads: 1 })
+    expect(JSON.stringify(events)).not.toContain('secret-role')
+    expect(JSON.stringify(events)).not.toContain('off by one')
   })
 })
 

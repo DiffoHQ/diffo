@@ -2,14 +2,24 @@ import { describe, expect, it } from 'vitest'
 import {
   anchorSpan,
   describeAnchor,
+  isHumanMessage,
   liveSuggestion,
   MAX_TITLE_LEN,
   normalizeTitle,
+  openedByReviewerAgent,
   PR_COMMENT_MAX,
   parsePrComment,
+  parseReviewerChat,
+  parseReviewerName,
+  REVIEWER_LIMITS,
+  type ReviewMessage,
   type ReviewThread,
+  roundsOf,
   threadsInChangeset,
   undeliveredThreadIds,
+  unpostedReplies,
+  untouchedAgentVoice,
+  untouchedByHuman,
 } from './review.js'
 import type { DiffLine, FileChange, Hunk } from './types.js'
 
@@ -233,5 +243,99 @@ describe('liveSuggestion — the one suggested PR comment the reviewer can still
     expect(parsePrComment('   ')).toBeUndefined()
     expect(parsePrComment(42)).toBeUndefined()
     expect(parsePrComment('x'.repeat(PR_COMMENT_MAX + 5))).toHaveLength(PR_COMMENT_MAX)
+  })
+})
+
+describe('reviewer agents', () => {
+  let n = 0
+  const said = (author: ReviewMessage['author'], by?: string): ReviewMessage => ({
+    id: `m${n++}`,
+    author,
+    text: 'x',
+    at: '2026-11-22T00:00:00Z',
+    ...(by ? { by } : {}),
+  })
+  const human = () => said('reviewer')
+  const codex = () => said('reviewer', 'codex')
+  const author = () => said('agent')
+  const of = (messages: ReviewMessage[], over: Partial<ReviewThread> = {}): ReviewThread => ({
+    ...thread('t', { kind: 'changeset' }),
+    state: 'sent',
+    messages,
+    ...over,
+  })
+
+  it('a name is short, lowercase, and not a word the review already uses', () => {
+    expect(parseReviewerName('codex')).toEqual({ ok: true, name: 'codex' })
+    expect(parseReviewerName('  Claude-2 ')).toEqual({ ok: true, name: 'claude-2' })
+    expect(parseReviewerName('a'.repeat(24)).ok).toBe(true)
+    for (const bad of ['', 'a'.repeat(25), 'two words', 'snake_case', 'é', 42, undefined]) {
+      expect(parseReviewerName(bad).ok, String(bad)).toBe(false)
+    }
+    for (const taken of ['you', 'reviewer', 'agent', 'author', 'github', 'Agent']) {
+      expect(parseReviewerName(taken), taken).toMatchObject({ ok: false })
+    }
+  })
+
+  it('tells the human from a reviewer agent, and who opened a thread', () => {
+    expect(isHumanMessage(human())).toBe(true)
+    expect(isHumanMessage(codex())).toBe(false)
+    expect(isHumanMessage(author())).toBe(false)
+    expect(openedByReviewerAgent(of([codex(), author()]))).toBe('codex')
+    expect(openedByReviewerAgent(of([human(), author()]))).toBeNull()
+    expect(openedByReviewerAgent(of([author(), human()]))).toBeNull()
+    expect(openedByReviewerAgent(of([]))).toBeNull()
+  })
+
+  it('a round is a reviewer-agent message the author agent answered', () => {
+    expect(roundsOf(of([codex()]))).toBe(0)
+    expect(roundsOf(of([codex(), author()]))).toBe(1)
+    // An interim reply and its follow-up answer one message: one round.
+    expect(roundsOf(of([codex(), author(), author()]))).toBe(1)
+    expect(roundsOf(of([codex(), author(), codex()]))).toBe(1)
+    expect(roundsOf(of([codex(), author(), codex(), author(), codex(), author()]))).toBe(3)
+    // The human's word starts the count over, and their own exchange is no round.
+    expect(roundsOf(of([codex(), author(), codex(), author(), human()]))).toBe(0)
+    expect(roundsOf(of([codex(), author(), human(), author(), codex(), author()]))).toBe(1)
+    expect(roundsOf(of([human(), author(), human(), author()]))).toBe(0)
+    expect(REVIEWER_LIMITS).toEqual({ rounds: 3 })
+  })
+
+  it("a reviewer agent's word goes to the author agent like the human's; a stopped thread to nobody", () => {
+    expect(undeliveredThreadIds([of([codex()])])).toEqual(['t'])
+    expect(undeliveredThreadIds([of([codex(), author(), codex()])])).toEqual(['t'])
+    expect(undeliveredThreadIds([of([codex(), author()])])).toEqual([])
+    expect(undeliveredThreadIds([of([codex()], { needsYou: 'rounds' })])).toEqual([])
+  })
+
+  it('only the human makes an agent thread theirs, and only the human owes GitHub a reply', () => {
+    expect(untouchedAgentVoice(of([author()]))).toBe(true)
+    expect(untouchedAgentVoice(of([author(), codex()]))).toBe(true)
+    expect(untouchedAgentVoice(of([author(), human()]))).toBe(false)
+    // Coverage asks the wider question: has the human written here at all?
+    expect(untouchedByHuman(of([codex(), author()]))).toBe(true)
+    expect(untouchedByHuman(of([author()]))).toBe(true)
+    expect(untouchedByHuman(of([codex(), author(), human()]))).toBe(false)
+    expect(untouchedByHuman(of([human(), author()]))).toBe(false)
+    const posted = of([human(), codex()], {
+      audience: 'pr',
+      github: { threadId: 'T', kind: 'inline', resolved: false, outdated: false },
+    })
+    expect(unpostedReplies(posted)).toHaveLength(1)
+  })
+})
+
+describe('parseReviewerChat', () => {
+  it('reads the two sides, and drops a message from anyone else', () => {
+    expect(
+      parseReviewerChat([
+        { at: 'a', from: 'you', text: 'x' },
+        { at: 'b', from: 'agent', text: 'y' },
+        { at: 'c', from: 'someone', text: 'dropped' },
+      ]),
+    ).toEqual([
+      { at: 'a', from: 'you', text: 'x' },
+      { at: 'b', from: 'agent', text: 'y' },
+    ])
   })
 })

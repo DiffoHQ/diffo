@@ -76,6 +76,8 @@ describe('skills/diffo/SKILL.md (Agent Skills format)', () => {
     expect(body).toContain('npx -y @diffohq/diffo help agent')
     expect(body).toContain('npx -y @diffohq/diffo poll')
     expect(body).toContain('npx -y @diffohq/diffo end')
+    expect(body).toContain('npx -y @diffohq/diffo help reviewer')
+    expect(body).toContain('npx -y @diffohq/diffo join --role <id>')
     expect(body).toContain('nohup')
     expect(body).toMatch(/nothing the reviewer sent is lost/i)
     expect(body).toMatch(/held\s+in the review itself/)
@@ -132,8 +134,10 @@ describe('skills/diffo/SKILL.md (Agent Skills format)', () => {
     // from 6500 when it learned that the user's own pull request is a question
     // the CLI stops to ask, and from 6700 when the poll step learned to start
     // in the open's own response: one sentence each, the doctrine itself
-    // stays in the CLI.
-    expect(raw.length).toBeLessThan(7200)
+    // stays in the CLI. From 7200 when it learned that a second session joins
+    // a review as a reviewer agent: where that session starts, and that such a
+    // thread is not the user's word.
+    expect(raw.length).toBeLessThan(7600)
   })
 
   it('ships in the npm package', () => {

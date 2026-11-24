@@ -129,3 +129,36 @@ describe('badgeTitle', () => {
     expect(badgeTitle(0, 'Diffo')).toBe('Diffo')
   })
 })
+
+describe('collectNotices — reviewer agents', () => {
+  const codex = () => msg('reviewer', 'this leaks', { by: 'codex' })
+
+  it('an answer to a reviewer agent is not news for you, until the thread stops', () => {
+    const answer = msg('agent', 'fixed')
+    const talking = thread({ messages: [codex(), answer] })
+    expect(collectNotices([talking], new Set())).toEqual([])
+    const stopped = { ...talking, needsYou: 'rounds' as const }
+    expect(collectNotices([stopped], new Set())).toEqual([
+      expect.objectContaining({ kind: 'answer', threadId: talking.id, preview: 'fixed' }),
+    ])
+  })
+
+  it('a reviewer agent asking for your decision is news, in its own words', () => {
+    const asks = msg('reviewer', 'public or internal? I would keep it internal', { by: 'codex' })
+    const t = thread({
+      messages: [codex(), msg('agent', 'kept it'), asks],
+      needsYou: 'reviewer',
+    })
+    expect(collectNotices([t], new Set())).toEqual([
+      expect.objectContaining({
+        threadId: t.id,
+        preview: 'public or internal? I would keep it internal',
+      }),
+    ])
+  })
+
+  it('an answer to you in a reviewer agent’s thread still is', () => {
+    const t = thread({ messages: [codex(), msg('agent'), msg('reviewer'), msg('agent', 'ok')] })
+    expect(collectNotices([t], new Set())).toHaveLength(1)
+  })
+})

@@ -7,7 +7,66 @@ Until 1.0, minor versions may break things. When they do, the entry says how to 
 
 ## [Unreleased]
 
-Nothing yet.
+### Added
+
+- **Reviewer agents.** A second AI can join a review and read the change the
+  way a person would. **+ Reviewer** in the top bar brings them in: tick one
+  or more agents, or pick a quick set for the kind of change (agent-written
+  change, refactor, new API, UI, data, before release). Seventeen built-ins,
+  each narrow and quick to start. Six are active, in the picker: General,
+  Blast radius, AI slop, Simplicity, Code comments and Error handling. The
+  rest wait in the library on the Reviewer agents page (Tests, Security,
+  Scope, Conventions, Performance, API & types, Concurrency, Naming, Data &
+  migrations, Docs, Accessibility), where **Make active** moves one into the
+  picker; ones you write are active from the start. Each says what
+  counts as proof for its kind of finding and leaves the rest to the others,
+  and a habit that repeats is one comment listing its lines, not thirty. Then
+  have your agent start each as a sub-agent, or copy a line per role into any
+  other agent session. Each reviewer is a face in its own colour beside your
+  agent's chip, and walks the top bar as a small critter while it works. The
+  reviewer agents sidebar, on the right of the diff and opened from the top bar
+  like the file list, has two tabs. **Reviewers** lists each one the way a pull
+  request does, with its status (working, waiting for your agent, needs you,
+  done, not connected) and, on hover, what you can do: write to it, open the
+  thread it needs you in, start a new one, stop it, or delete it. **Activity** is what
+  they all did, newest first. A reviewer's own view is a private conversation
+  with it, which your agent never sees (it answers with `diffo chat`), with
+  what it did folded above. The log, your unread messages and removals
+  survive a restart. Settings → **Reviewer agents** is where each kind of
+  reviewer is written. It joins with `diffo join --role <id>`, is told how to review
+  (only what matters and what it can show), and uses `comment`, `reply`, `poll` and
+  `resolve` under its name. Its comments go straight to
+  the agent that wrote the change, the two answer each other in the thread,
+  and a thread they cannot settle in three rounds stops and is marked **Needs
+  you**. They settle threads on their own; either one hands a thread to you
+  only when it needs your decision (`diffo reply --ask`), and it is marked
+  **Needs your decision**. A reviewer keeps listening while a thread of its
+  own waits on you, and for five minutes after its last one closes. Each new
+  reviewer gets a short name of its own (juno, remy, …) beside its role, never
+  one the review has had, so two in one role are two reviewers. Stop ends a
+  reviewer's session and keeps what it did; Delete also takes it off the list,
+  and **Delete all** clears the list at once; its review threads stay either way. Each reviewer keeps a name and a colour across the review, the
+  threads list filters to what needs you, and the top bar shows which
+  reviewers are connected. Each reviewer's row shows how long it has worked
+  and its threads (open, closed); its own view says how much of the change it
+  read: the files it fetched through `diffo diff`, and its own word, before it
+  stops, on the files it skipped (`diffo covered`). Threads name each
+  reviewer's role beside its name. A reviewer closes only
+  its own; the writing agent closes none, and your word is final. Branch and
+  working-tree reviews, on this machine. Your agent can suggest a reviewer
+  (`diffo reviewer --suggest`) but never starts one unasked. `diffo help
+  reviewer` has the protocol.
+- **Usage data for reviewer agents**, kept small: one `reviewers_requested`
+  event when you start reviewer agents (how many, and which built-in roles;
+  one of your own is sent as `custom`), and two counts on `review_finished`
+  (reviewer agents in the review, threads they opened). Nothing per reviewer,
+  per comment or per poll. The [usage data page](https://diffohq.github.io/diffo/telemetry)
+  lists every field.
+- **Ask your agent to write a reviewer agent.** The Reviewer agents page has the
+  same conversation as Layers presets: describe a new role and your agent
+  writes it, ask it to change one of yours (every edit has an undo), or ask for
+  a built-in done differently and get a copy under your agents. Your agent
+  answers with `diffo role update` or `diffo role reply`.
 
 ## [0.33.0] — 2026-11-23
 

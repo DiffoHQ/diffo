@@ -2,6 +2,7 @@
 import { cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { Changeset } from '../../shared/types.js'
+import { ReviewersContext } from '../actors.js'
 import { Header } from './Header.js'
 
 afterEach(cleanup)
@@ -441,5 +442,147 @@ describe('Header — the layers suggestion', () => {
     )
     expect(screen.getByRole('button', { name: /Invite/ })).toBeTruthy()
     expect(document.querySelector('.presence-suggests')).toBeNull()
+  })
+})
+
+describe('Header — reviewer agents', () => {
+  const withReviewers = (ui: React.ReactElement, starting: string[] = []) =>
+    render(
+      <ReviewersContext.Provider
+        value={{
+          seats: ['codex', 'security'],
+          hues: new Map([
+            ['codex', 1],
+            ['security', 2],
+          ]),
+          states: new Map([['codex', 'listening']]),
+          starting,
+        }}
+      >
+        {ui}
+      </ReviewersContext.Provider>,
+    )
+  const faces = () => [...document.querySelectorAll('.stack-face .face')]
+  const who = () =>
+    [...document.querySelectorAll('.stack-face')].map(
+      (f) => f.getAttribute('data-tip')?.split(':')[0],
+    )
+  it('shows who is here as faces in their colours, each with its status badge', () => {
+    withReviewers(<Header changeset={changeset()} />)
+    expect(who()).toEqual(['codex', 'security'])
+    expect(faces()[0]!.querySelector('.critter-face')).toBeTruthy()
+    expect(faces()[0]!.className).toContain('actor-rev-1')
+    expect(faces()[1]!.className).toContain('actor-rev-2')
+    // Each face wears its status on its corner: codex waits on the author
+    // agent, security is gone (and faded).
+    const looks = [...document.querySelectorAll('.stack-face-in')].map((f) => f.className)
+    expect(looks).toEqual(['stack-face-in stack-waiting', 'stack-face-in stack-away'])
+    expect(document.querySelectorAll('.stack-badge .st-away')).toHaveLength(1)
+  })
+
+  it('each reviewer still at it walks the header as a critter in its own colour', () => {
+    const onShowReviewer = vi.fn()
+    withReviewers(
+      <Header changeset={changeset()} agent={{ presence: 'working', onShowReviewer }} />,
+      ['tests'],
+    )
+    // codex is connected, tests is on its way; security is away, so not on the floor.
+    const pals = [...document.querySelectorAll('.critter-pal')]
+    expect(pals.map((p) => p.getAttribute('title'))).toEqual([
+      'codex, a reviewer agent waiting for answers',
+      'tests, a reviewer agent on its way',
+    ])
+    expect(pals[0]!.className).toContain('actor-rev-1')
+    expect(pals[1]!.className).toContain('actor-rev-3')
+    fireEvent.click(pals[0]!)
+    expect(onShowReviewer).toHaveBeenCalledWith('codex')
+  })
+
+  it('one that needs you walks only while it is here', () => {
+    render(
+      <ReviewersContext.Provider
+        value={{
+          seats: ['codex', 'gemini'],
+          states: new Map([['codex', 'listening']]),
+          needsYou: new Map([
+            ['codex', 1],
+            ['gemini', 1],
+          ]),
+        }}
+      >
+        <Header changeset={changeset()} agent={{ presence: 'working' }} />
+      </ReviewersContext.Provider>,
+    )
+    const pals = [...document.querySelectorAll('.critter-pal')].map((p) => p.getAttribute('title'))
+    expect(pals).toEqual(['codex, a reviewer agent waiting for answers'])
+  })
+
+  it('a face opens that reviewer', () => {
+    const onShowReviewer = vi.fn()
+    withReviewers(<Header changeset={changeset()} agent={{ onShowReviewer }} />)
+    fireEvent.click(screen.getByRole('button', { name: 'codex: waiting for your agent. Open it' }))
+    expect(onShowReviewer).toHaveBeenCalledWith('codex')
+  })
+
+  it('holds a place for a reviewer the agent was asked to start, in the colour it will have', () => {
+    withReviewers(<Header changeset={changeset()} />, ['tests'])
+    const tests = faces().at(-1)!
+    expect(who().at(-1)).toBe('tests')
+    // Two seats wear 1 and 2: the next gets 3, never one already worn.
+    expect(tests.className).toContain('actor-rev-3')
+  })
+
+  it('keeps its width: past four faces the rest fold into one', () => {
+    withReviewers(<Header changeset={changeset()} />, ['tests', 'simplicity', 'general'])
+    expect(who()).toEqual(['codex', 'security', 'tests', 'simplicity'])
+    expect(document.querySelector('.stack-more')?.textContent).toBe('+1')
+  })
+
+  it("carries the agent's suggestion on the button, with its reason", () => {
+    const onAddReviewer = vi.fn()
+    render(
+      <Header
+        changeset={changeset()}
+        agent={{
+          onAddReviewer,
+          reviewerSuggested: { role: 'security', reason: 'builds a shell command' },
+        }}
+      />,
+    )
+    const button = screen.getByRole('button', {
+      name: 'Add the security reviewer your agent suggests',
+    })
+    expect(button.textContent).toBe('security reviewer?')
+    expect(button.getAttribute('data-tip')).toBe(
+      'Your agent suggests a security reviewer: builds a shell command',
+    )
+    fireEvent.click(button)
+    expect(onAddReviewer).toHaveBeenCalledOnce()
+  })
+
+  it('Settings opens the reviewer agents page, where there can be reviewers', () => {
+    const onShowReviewers = vi.fn()
+    render(<Header changeset={changeset()} settings={{ onShowReviewers }} />)
+    fireEvent.click(screen.getByRole('button', { name: 'Settings' }))
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Reviewer agents' }))
+    expect(onShowReviewers).toHaveBeenCalledOnce()
+    cleanup()
+    render(<Header changeset={changeset()} settings={{}} />)
+    fireEvent.click(screen.getByRole('button', { name: 'Settings' }))
+    expect(screen.queryByRole('menuitem', { name: 'Reviewer agents' })).toBeNull()
+  })
+
+  it('offers a way to add one, where one can join', () => {
+    const onAddReviewer = vi.fn()
+    render(<Header changeset={changeset()} agent={{ onAddReviewer }} />)
+    // Before the first reviewer, the button says what it does.
+    const add = screen.getByRole('button', { name: 'Add a reviewer agent' })
+    expect(add.textContent).toBe('Add reviewer')
+    fireEvent.click(add)
+    expect(onAddReviewer).toHaveBeenCalledOnce()
+    cleanup()
+    // No handler (a pull-request review) and no reviewers: nothing at all.
+    const { container } = render(<Header changeset={changeset()} />)
+    expect(container.querySelector('.stack')).toBeNull()
   })
 })
