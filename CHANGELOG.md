@@ -7,7 +7,17 @@ Until 1.0, minor versions may break things. When they do, the entry says how to 
 
 ## [Unreleased]
 
-Nothing yet.
+### Added
+
+- **Review from your phone.** Below 640px wide, Diffo takes a phone shape
+  instead of the desktop page squeezed down. It opens on a list: the layers'
+  steps when there are layers, the files when there are not. A file's code
+  opens when you tap it, one file at a time, in a single column with one
+  line-number gutter. Tap a line to pick it and another to stretch the pick,
+  then **Comment**: the box rises from the bottom with the lines quoted on
+  top. Threads sit in the code as one-line chips and open as a sheet you can
+  reply from, and **Previous** / **Next** at the bottom move between layers.
+  On a wider screen nothing changes.
 
 ## [0.35.0] — 2026-11-26
 
