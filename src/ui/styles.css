@@ -12950,3 +12950,906 @@ button.agents-row-open {
 .stack-stopped .face {
   opacity: 0.5;
 }
+
+/* ============================================================
+   Sheets (components/PhoneSheet.tsx)
+   ------------------------------------------------------------
+   What a side panel, a popover and an inline composer become on a phone:
+   a surface rising from the bottom edge, over a dimmed page. Portalled to
+   the body, so these rules stand outside the phone media query.
+   ============================================================ */
+.psheet-root {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+}
+
+.psheet-scrim {
+  position: absolute;
+  inset: 0;
+  border: 0;
+  padding: 0;
+  background: rgba(0, 0, 0, 0.42);
+  animation: fade-in 0.16s ease both;
+}
+
+.psheet {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  max-height: 88%;
+  display: flex;
+  flex-direction: column;
+  background: var(--paper);
+  color: var(--ink);
+  border-radius: 16px 16px 0 0;
+  box-shadow: 0 -12px 40px -12px rgba(0, 0, 0, 0.35);
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+  animation: psheet-in var(--dur-move) var(--ease-out) both;
+}
+
+@keyframes psheet-in {
+  from {
+    transform: translateY(24px);
+    opacity: 0;
+  }
+}
+
+.psheet-full {
+  top: 0;
+  max-height: none;
+  border-radius: 0;
+  padding-top: env(safe-area-inset-top, 0px);
+}
+
+.psheet-grab {
+  flex: none;
+  width: 38px;
+  height: 5px;
+  border-radius: 3px;
+  background: var(--fill-2);
+  margin: 8px auto 2px;
+}
+
+.psheet-head {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+  min-height: 52px;
+  padding: 0 var(--s-2) 0 var(--s-5);
+  border-bottom: 1px solid var(--hair);
+}
+
+.psheet-title {
+  flex: 1;
+  min-width: 0;
+  font-weight: 600;
+  font-size: var(--t-15);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.psheet-x {
+  flex: none;
+  width: 44px;
+  height: 44px;
+  display: grid;
+  place-items: center;
+  border: 0;
+  border-radius: var(--r);
+  background: none;
+  color: var(--ink-2);
+}
+
+.psheet-body {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+/* The composer, as a sheet: no card of its own, the sheet is the card. */
+.psheet-composer .cbox {
+  margin: 0;
+  max-width: none;
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+  background: none;
+}
+
+/* A thread, opened over the whole screen to be read and answered. */
+.psheet-thread .thread {
+  max-width: none;
+  margin: 0;
+  border: 0;
+  border-radius: 0;
+  font-size: var(--t-14);
+}
+
+/* The PhoneSheet's head names the thread, so the card's own goes. */
+.psheet-thread .thread-head {
+  display: none;
+}
+
+/* The commented lines open on top and scroll on their own past a quarter of
+   the screen, so the conversation under them is always in view. */
+.psheet-thread .thread-context {
+  max-height: 28vh;
+  overflow-y: auto;
+  margin: 0;
+}
+
+.psheet-thread .thread-context-toggle {
+  min-height: 40px;
+}
+
+/* The reply bar rides the sheet's foot, like a chat's: always at the thumb,
+   whatever the length of the thread above it. */
+.psheet-thread .thread-foot {
+  position: sticky;
+  bottom: 0;
+  z-index: 1;
+  flex-wrap: wrap;
+  gap: var(--s-2);
+  padding: var(--s-3);
+  background: var(--paper);
+  border-top: 1px solid var(--hair);
+}
+
+.psheet-thread .thread-foot .replybar,
+.psheet-thread .thread-foot .thread-input-wrap {
+  flex: 1 1 100%;
+  min-height: 44px;
+}
+
+.psheet-thread .thread-foot .btn {
+  min-height: 40px;
+}
+
+/* The lines a phone comment is about, pinned above its words. */
+.cbox-quote {
+  margin: var(--s-2) var(--s-3) var(--s-3);
+  border: 1px solid var(--hair);
+  border-radius: var(--r);
+  /* Long lines wrap tall: past a quarter of the screen the quote scrolls, so
+     the words being written always keep their room. */
+  max-height: 26vh;
+  overflow-y: auto;
+  font-size: 12px;
+  line-height: 1.55;
+}
+
+.cbox-quote-line {
+  display: flex;
+}
+
+.cbox-quote-no {
+  flex: 0 0 3.2em;
+  padding-right: 0.6em;
+  text-align: right;
+  color: var(--ink-3);
+  font-size: var(--t-11);
+}
+
+.cbox-quote-line.line-add .cbox-quote-no {
+  box-shadow: inset 3px 0 0 var(--add);
+}
+
+.cbox-quote-line.line-del .cbox-quote-no {
+  box-shadow: inset 3px 0 0 var(--del);
+}
+
+.cbox-quote-code {
+  flex: 1;
+  min-width: 0;
+  padding-right: 0.6em;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.cbox-quote-more {
+  padding: 2px 0.6em 3px 3.8em;
+  color: var(--ink-3);
+  font-family: var(--sans);
+  font-size: var(--t-12);
+  background: var(--fill);
+}
+
+/* ---------- the pick bar: lines picked by tap, waiting for Comment ----------
+   A card like the others on the page — paper, hairline, lifted — with the
+   page's own primary button, so it reads as Diffo and not as a system toast. */
+.pick-bar {
+  position: fixed;
+  left: 8px;
+  right: 8px;
+  bottom: calc(12px + env(safe-area-inset-bottom, 0px));
+  z-index: 45;
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+  padding: 8px 8px 8px 14px;
+  border: 1px solid var(--hair);
+  border-radius: var(--r-lg);
+  background: var(--paper);
+  color: var(--ink);
+  box-shadow: var(--lift-lg);
+  animation: psheet-in var(--dur-move) var(--ease-out) both;
+}
+
+.pick-bar-what {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  line-height: 1.3;
+}
+
+.pick-bar-what b {
+  font-size: var(--t-14);
+  font-weight: 600;
+}
+
+.pick-bar-what span {
+  font-family: var(--mono);
+  font-size: var(--t-11);
+  color: var(--ink-3);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pick-bar .btn {
+  min-height: 38px;
+  padding: 0 14px;
+}
+
+/* ---------- a thread, as a phone shows it in the diff ---------- */
+.thread-chip {
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+  width: 100%;
+  min-height: 40px;
+  padding: 6px 10px;
+  border: 1px solid var(--hair);
+  border-radius: var(--r);
+  background: var(--paper);
+  box-shadow: var(--lift);
+  color: var(--ink);
+  font-family: var(--sans);
+  font-size: var(--t-13);
+  text-align: left;
+  cursor: pointer;
+}
+
+.thread-chip .icon {
+  color: var(--ink-3);
+}
+
+.thread-chip-who {
+  flex: none;
+  font-weight: 600;
+}
+
+.thread-chip-text {
+  flex: 1;
+  min-width: 0;
+  color: var(--ink-2);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.thread-chip-state {
+  flex: none;
+  font-size: var(--t-11);
+  color: var(--ink-3);
+}
+
+.thread-chip-n {
+  flex: none;
+  min-width: 20px;
+  padding: 0 6px;
+  border-radius: 999px;
+  background: var(--fill);
+  color: var(--ink-2);
+  font-family: var(--mono);
+  font-size: var(--t-11);
+  text-align: center;
+}
+
+.thread-chip-needs {
+  border-color: var(--attn-line);
+}
+
+.thread-chip-needs .thread-chip-state {
+  color: var(--attn);
+  font-weight: 600;
+}
+
+.thread-chip-resolved {
+  box-shadow: none;
+  background: var(--fill);
+}
+
+.thread-chip-resolved .thread-chip-text {
+  color: var(--ink-3);
+}
+
+/* ============================================================
+   The phone layout (App.tsx, phone.ts)
+   ------------------------------------------------------------
+   One column of code, edge to edge; the header says where you are; the
+   rail is a sheet; the bar is at the bottom, at the thumb. Everything a
+   reviewer taps is at least 40px tall.
+   ============================================================ */
+@media (max-width: 640px) {
+  /* iOS enlarges the text of any block that runs past the screen sideways;
+     a diff would come out in a different size per hunk. */
+  html {
+    -webkit-text-size-adjust: 100%;
+    text-size-adjust: 100%;
+  }
+
+  /* No hover to reveal anything: rows that show their actions on hover show
+     them always. A finger cannot point at a row before tapping it, so an
+     action that waits for a hover is an action that does not exist. */
+  .row-acts,
+  .crow .crow-del,
+  .agents-acts,
+  .sec-row .sec-act {
+    display: flex;
+    opacity: 1;
+  }
+
+  .crow .crow-when {
+    display: none;
+  }
+
+  /* Below 16px, iOS zooms the page on focusing a field. The classes are the
+     fields that set a size of their own; this block comes last, so it wins. */
+  input,
+  textarea,
+  select,
+  .thread-input,
+  .cbox-input,
+  .rail input {
+    font-size: 16px;
+  }
+
+  .layout-phone {
+    padding-top: env(safe-area-inset-top, 0px);
+  }
+
+  /* ---------- header ---------- */
+  .top-phone {
+    gap: var(--s-2);
+    height: 54px;
+    padding: 0 var(--s-2) 0 var(--s-1);
+    border-bottom: 1px solid var(--hair);
+    background: var(--canvas);
+  }
+
+  .top-phone .top-nav {
+    margin: 0;
+    width: 44px;
+    height: 44px;
+  }
+
+  .top-phone-where {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    line-height: 1.25;
+  }
+
+  .top-phone-kicker {
+    display: flex;
+    align-items: center;
+    gap: var(--s-2);
+    font-family: var(--mono);
+    font-size: var(--t-11);
+    color: var(--ink-3);
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .top-phone-kicker-text {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .top-phone-kicker .dev-badge {
+    flex: none;
+  }
+
+  .top-phone-title {
+    font-weight: 600;
+    font-size: var(--t-14);
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .top-phone .presence-label {
+    display: none;
+  }
+
+  .top-phone .btn-primary {
+    min-height: 36px;
+    padding: 0 12px;
+  }
+
+  .top-phone .btn-icon {
+    width: 40px;
+    height: 40px;
+  }
+
+  /* ---------- the page: edge to edge ---------- */
+  .layout-phone .body {
+    padding: 0;
+    position: relative;
+  }
+
+  .layout-phone .rail-resize {
+    display: none;
+  }
+
+  .layout-phone .reading-pane {
+    border: 0;
+    border-radius: 0;
+    box-shadow: none;
+    scrollbar-gutter: auto;
+  }
+
+  .layout-phone .reading-col {
+    padding: var(--s-2) 0 var(--s-8);
+  }
+
+  .layout-phone .file-section {
+    border-left: 0;
+    border-right: 0;
+    border-radius: 0;
+    margin-bottom: var(--s-4);
+  }
+
+  /* A hunk stepped to lands under its file's sticky header, not behind it. */
+  .layout-phone .hunk {
+    scroll-margin-top: 47px;
+  }
+
+  .layout-phone .file-header {
+    min-height: 46px;
+    padding-left: var(--s-1);
+  }
+
+  /* The header's width goes to the path. Copy path lives in the file's menu
+     too, Preview says itself with its book, and a layer's part of a file
+     shows in its lit lines rather than a count. */
+  .layout-phone .file-header .file-copy,
+  .layout-phone .file-header .file-part {
+    display: none;
+  }
+
+  .layout-phone .file-preview-btn {
+    font-size: 0;
+    gap: 0;
+  }
+
+  /* Folded, the files are a list: one hairline row each, no card gaps, so
+     the changeset reads as a table of contents to open a file from. */
+  .layout-phone .file-section-collapsed {
+    margin-bottom: 0;
+    border-bottom: 0;
+  }
+
+  .layout-phone .file-section-collapsed .file-header {
+    background: var(--paper);
+  }
+
+  /* The size is what a list row is for: the numbers come back, the squares
+     stay out. The tick says Viewed by being a tick, a 44px target. */
+  .layout-phone .file-header .dstat {
+    display: flex;
+  }
+
+  .layout-phone .file-viewed-toggle {
+    font-size: 0;
+    gap: 0;
+    width: 40px;
+    height: 36px;
+    justify-content: center;
+    padding: 0;
+  }
+
+  /* The diff's widest row is the hunk band, whose words do not wrap: zero
+     width keeps it from widening the table, and it fills the cell anyway. */
+  .layout-phone .hunk-boundary-bar {
+    width: 0;
+    min-width: 100%;
+  }
+
+  /* ---------- one gutter ---------- */
+  .hunk-lines-phone td.line-no-one {
+    width: 1%;
+    min-width: 0;
+    padding: 0;
+    border-right: 1px solid var(--hair);
+  }
+
+  .line-tap {
+    position: relative;
+    display: block;
+    width: 100%;
+    min-width: 2.8em;
+    min-height: var(--line-h);
+    padding: 0 6px 0 8px;
+    border: 0;
+    background: none;
+    color: inherit;
+    font: inherit;
+    text-align: right;
+    cursor: pointer;
+  }
+
+  .hunk-lines-phone tr.line-add > td.line-no-one {
+    box-shadow: inset 3px 0 0 var(--add);
+  }
+
+  .hunk-lines-phone tr.line-del > td.line-no-one {
+    box-shadow: inset 3px 0 0 var(--del);
+  }
+
+  /* The pick, in the desktop selection's own colours. */
+  .hunk-lines-phone tr.line-sel > td.line-no-one {
+    box-shadow: inset 3px 0 0 var(--exp-ink);
+    color: var(--ink);
+    font-weight: 600;
+  }
+
+  /* A wrapped line hangs under its own start, so its continuation never
+     reads as the next line. */
+  .hunk-lines-phone .line-code {
+    padding: 0 var(--s-2) 0 calc(var(--s-2) + 2ch);
+    text-indent: -2ch;
+  }
+
+  .layout-phone .thread-row > td {
+    padding: var(--s-2) var(--s-2);
+  }
+
+  .layout-phone .thread {
+    max-width: none;
+  }
+
+  /* ---------- the rail, as the navigator sheet ---------- */
+  .layout-phone .rail,
+  .layout-phone .nav-hidden .rail {
+    position: fixed;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    top: calc(env(safe-area-inset-top, 0px) + 64px);
+    z-index: 31;
+    width: auto;
+    margin: 0;
+    padding: var(--s-2) var(--s-2) env(safe-area-inset-bottom, 0px);
+    background: var(--canvas);
+    border-radius: 16px 16px 0 0;
+    box-shadow: 0 -12px 40px -12px rgba(0, 0, 0, 0.35);
+    transition:
+      transform var(--dur-move) var(--ease-out),
+      visibility 0s;
+  }
+
+  .layout-phone .nav-hidden .rail {
+    transform: translateY(105%);
+    opacity: 1;
+    visibility: hidden;
+    transition:
+      transform var(--dur-move) var(--ease-out),
+      visibility 0s var(--dur-move);
+  }
+
+  .phone-scrim {
+    position: fixed;
+    inset: 0;
+    z-index: 30;
+    border: 0;
+    padding: 0;
+    background: rgba(0, 0, 0, 0.42);
+    animation: fade-in 0.16s ease both;
+  }
+
+  /* Reviewer agents: a sheet of their own, over everything. */
+  .layout-phone .agents {
+    position: fixed;
+    inset: calc(env(safe-area-inset-top, 0px) + 64px) 0 0;
+    width: auto;
+    margin: 0;
+    z-index: 32;
+    border-radius: 16px 16px 0 0;
+  }
+
+  /* ---------- progress: a hairline along the header's foot ---------- */
+  .top-phone {
+    position: relative;
+  }
+
+  .top-phone-prog {
+    position: absolute;
+    left: 0;
+    right: 0;
+    bottom: -1px;
+    width: auto;
+    height: 2px;
+    border-radius: 0;
+    background: transparent;
+  }
+
+  .top-phone-prog i {
+    height: 2px;
+    border-radius: 0 2px 2px 0;
+  }
+
+  /* No keyboard, no `j`: the selected hunk's ring would mark nothing. */
+  .layout-phone .hunk-selected {
+    box-shadow: none;
+  }
+
+  /* ---------- home: the steps to start from ---------- */
+  .phone-outline {
+    margin: var(--s-4) var(--s-3) var(--s-5);
+  }
+
+  .phone-outline-head {
+    margin: 0 0 var(--s-2) var(--s-1);
+    font-family: var(--mono);
+    font-size: var(--t-11);
+    font-weight: 500;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--ink-3);
+  }
+
+  .phone-outline-list {
+    margin: 0;
+    padding: 0;
+    list-style: none;
+    border: 1px solid var(--hair);
+    border-radius: var(--r-lg);
+    background: var(--paper);
+    overflow: hidden;
+  }
+
+  .phone-outline-list li + li {
+    border-top: 1px solid var(--hair);
+  }
+
+  .phone-outline-step {
+    display: flex;
+    align-items: center;
+    gap: var(--s-3);
+    width: 100%;
+    min-height: 56px;
+    padding: var(--s-3) var(--s-3) var(--s-3) var(--s-4);
+    border: 0;
+    background: none;
+    color: var(--ink);
+    font: inherit;
+    text-align: left;
+    cursor: pointer;
+  }
+
+  .phone-outline-n {
+    flex: none;
+    width: 26px;
+    height: 26px;
+    display: grid;
+    place-items: center;
+    border: 1.5px solid var(--hair);
+    border-radius: 50%;
+    font-family: var(--mono);
+    font-size: var(--t-12);
+    color: var(--ink-2);
+  }
+
+  .phone-outline-n-read {
+    border-color: var(--brand);
+    background: var(--brand);
+    color: var(--brand-fg);
+  }
+
+  .phone-outline-text {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
+
+  .phone-outline-title {
+    font-weight: 600;
+    font-size: var(--t-14);
+  }
+
+  .phone-outline-meta {
+    font-family: var(--mono);
+    font-size: var(--t-11);
+    color: var(--ink-3);
+  }
+
+  .phone-outline-step > .icon {
+    flex: none;
+    transform: rotate(-90deg);
+    color: var(--ink-3);
+  }
+
+  /* ---------- between layers: a bar at the thumb ----------
+     Previous and Next, each named by its title. Only between layers: within
+     one, scrolling is the navigation. */
+  .phone-layer-bar {
+    flex: none;
+    display: flex;
+    gap: var(--s-2);
+    padding: var(--s-2) var(--s-2) calc(var(--s-2) + env(safe-area-inset-bottom, 0px));
+    border-top: 1px solid var(--hair);
+    background: var(--canvas);
+  }
+
+  .phone-layer-go {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    align-items: center;
+    gap: var(--s-2);
+    min-height: 48px;
+    padding: 0 var(--s-3);
+    border: 1px solid var(--hair);
+    border-radius: var(--r);
+    background: var(--paper);
+    color: var(--ink);
+    font: inherit;
+    text-align: left;
+    cursor: pointer;
+  }
+
+  /* Next is the way a reader usually goes, so it reads first — by its weight
+     and its side, not by a fill: the only solid button stays Finish. */
+  .phone-layer-next {
+    justify-content: flex-end;
+    text-align: right;
+  }
+
+  .phone-layer-text {
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    line-height: 1.25;
+  }
+
+  .phone-layer-kicker {
+    font-family: var(--mono);
+    font-size: var(--t-11);
+    color: var(--ink-3);
+  }
+
+  .phone-layer-title {
+    font-weight: 600;
+    font-size: var(--t-13);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .phone-layer-go .icon {
+    flex: none;
+  }
+
+  .phone-layer-prev .icon {
+    transform: rotate(90deg);
+    color: var(--ink-3);
+  }
+
+  .phone-layer-next .icon {
+    transform: rotate(-90deg);
+    color: var(--ink-2);
+  }
+
+  /* The pick bar floats over the layer bar, not behind it. */
+  body:has(.phone-layer-bar) .pick-bar {
+    bottom: calc(76px + env(safe-area-inset-bottom, 0px));
+  }
+
+  /* ---------- the composer, as little as writing needs ---------- */
+  .psheet-composer .cbox-body {
+    padding: 0 var(--s-3);
+  }
+
+  .psheet-composer .cbox-input {
+    min-height: 96px;
+    border: 1px solid var(--hair);
+    border-radius: var(--r);
+    background: var(--raised);
+    padding: var(--s-3);
+  }
+
+  .psheet-composer .cbox-openers {
+    padding: var(--s-3) var(--s-3) 0;
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    scrollbar-width: none;
+  }
+
+  .psheet-composer .cbox-opener {
+    flex: none;
+  }
+
+  .psheet-composer .cbox-foot {
+    padding: var(--s-3);
+    border-top: 0;
+    background: none;
+  }
+
+  .psheet-composer .cbox-actions {
+    flex: 1;
+    display: flex;
+    gap: var(--s-2);
+  }
+
+  .psheet-composer .cbox-actions .btn {
+    flex: 1;
+    justify-content: center;
+    min-height: 44px;
+    font-size: var(--t-14);
+  }
+
+  /* ---------- menus: an action sheet at the bottom edge ---------- */
+  .menu-panel,
+  .menu-panel-left {
+    position: fixed;
+    left: 8px;
+    right: 8px;
+    top: auto;
+    bottom: calc(8px + env(safe-area-inset-bottom, 0px));
+    z-index: 60;
+    min-width: 0;
+    max-height: 72vh;
+    overflow-y: auto;
+    padding: 6px;
+    border-radius: 14px;
+  }
+
+  .menu-item {
+    min-height: 44px;
+  }
+
+  /* No keyboard to press them on. */
+  .btn-kbd,
+  .menu-item .kbd {
+    display: none;
+  }
+
+  /* ---------- dialogs: sheets from the bottom ---------- */
+  .modal-backdrop {
+    padding: 0;
+    align-items: flex-end;
+  }
+
+  .modal,
+  .modal-wide {
+    width: 100%;
+    max-height: calc(100% - env(safe-area-inset-top, 0px) - 24px);
+    border-radius: 16px 16px 0 0;
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+  }
+
+  .md-preview {
+    height: calc(100% - env(safe-area-inset-top, 0px) - 24px);
+  }
+}

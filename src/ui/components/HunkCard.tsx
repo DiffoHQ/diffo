@@ -1,4 +1,5 @@
 import { Fragment, type ReactNode, useEffect, useMemo, useState } from 'react'
+import { createPortal } from 'react-dom'
 import { highlightedRows } from '../../shared/layers.js'
 import type { LineRange, ReviewThread } from '../../shared/review.js'
 import { anchorSpan, type ThreadIntent } from '../../shared/review.js'
@@ -7,6 +8,7 @@ import { EXPAND_STEP } from '../gaps.js'
 import { type LineTokens, patchLineKind, symbolRuns, tokenizeLines } from '../highlight.js'
 import { useDarkMode } from '../hooks.js'
 import { intralineRanges, type Range, splitByRanges } from '../intraline.js'
+import { useIsPhone } from '../phone.js'
 import { anchorForRange, rangedRows, rangeStartRows, threadsByLine } from '../reviewPlacement.js'
 import { type SplitRow, toSplitRows } from '../splitRows.js'
 import { Icon } from './Icon.js'
@@ -305,6 +307,9 @@ interface LineExtras {
   shownRows?: ReadonlySet<number>
   /** Shows a folded run, by its line indices. */
   onUnfold?: (idxs: number[]) => void
+  /** The phone's gutter: a tap picks a line, a second tap stretches the pick
+   * to it. There is no hover and no drag on glass — the gutter is a button. */
+  onGutterTap?: (lineIdx: number) => void
 }
 
 /** The at-rest shape saying "a range conversation starts on this line" — a glyph
@@ -443,9 +448,10 @@ function UnifiedLines({
   shownRows,
   onUnfold,
   boundary,
+  onGutterTap,
 }: { lines: DiffLine[]; tokens: (LineTokens | null)[]; boundary?: ReactNode } & LineExtras) {
   return (
-    <table className="hunk-lines">
+    <table className={`hunk-lines${onGutterTap ? ' hunk-lines-phone' : ''}`}>
       <tbody>
         {boundary}
         {lines.map((line, i) => {
@@ -468,15 +474,37 @@ function UnifiedLines({
                 onMouseEnter={onLineEnter ? () => onLineEnter(i) : undefined}
                 onClick={onRowClick ? () => onRowClick(i) : undefined}
               >
-                <td className="line-no" onMouseDown={down}>
-                  {rangeStarts?.has(i) && <RangeGlyph />}
-                  {onComment && <CommentButton onClick={() => onComment(i)} />}
-                  {line.oldNo ?? ''}
-                </td>
-                <td className="line-no" onMouseDown={down}>
-                  {line.newNo ?? ''}
-                </td>
-                <td className="line-marker">{MARKER[line.kind]}</td>
+                {onGutterTap ? (
+                  // One gutter on a phone: the number the line has where it lives
+                  // now (a removed line keeps its old one), with the add/remove
+                  // bar on its edge doing the marker column's job.
+                  <td className="line-no line-no-one">
+                    <button
+                      type="button"
+                      className="line-tap"
+                      aria-label={`select line ${line.newNo ?? line.oldNo ?? ''} to comment`}
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        onGutterTap(i)
+                      }}
+                    >
+                      {rangeStarts?.has(i) && <RangeGlyph />}
+                      {line.newNo ?? line.oldNo ?? ''}
+                    </button>
+                  </td>
+                ) : (
+                  <>
+                    <td className="line-no" onMouseDown={down}>
+                      {rangeStarts?.has(i) && <RangeGlyph />}
+                      {onComment && <CommentButton onClick={() => onComment(i)} />}
+                      {line.oldNo ?? ''}
+                    </td>
+                    <td className="line-no" onMouseDown={down}>
+                      {line.newNo ?? ''}
+                    </td>
+                    <td className="line-marker">{MARKER[line.kind]}</td>
+                  </>
+                )}
                 <td
                   className="line-code"
                   {...cellAttrs(line, line.kind === 'del' ? 'base' : 'head')}
@@ -644,6 +672,90 @@ function SplitLines({
   )
 }
 
+/** Said when a hunk takes the phone's pick, so the hunk that held it lets go. */
+const PICK_EVENT = 'diffo:phone-pick'
+
+/** The picked lines' numbers, as the composer's chip will say them. */
+function pickLabel(lines: DiffLine[], pick: LineSpan): string {
+  const lo = lines[Math.min(pick.start, pick.end)]
+  const hi = lines[Math.max(pick.start, pick.end)]
+  const no = (l: DiffLine | undefined) => l?.newNo ?? l?.oldNo ?? '?'
+  return lo === hi ? `${no(lo)}` : `${no(lo)}–${no(hi)}`
+}
+
+/**
+ * The action bar over a phone's pick: how much is picked, and what to do with
+ * it. It floats over the bottom bar, where the thumb is, rather than beside
+ * the lines, where a finger would cover them.
+ */
+function PickBar({
+  label,
+  count,
+  onClear,
+  onComment,
+}: {
+  label: string
+  count: number
+  onClear: () => void
+  onComment: () => void
+}) {
+  return (
+    <div className="pick-bar" role="toolbar" aria-label="Picked lines">
+      <span className="pick-bar-what">
+        <b>
+          {count} {count === 1 ? 'line' : 'lines'}
+        </b>
+        <span>{count === 1 ? `${label} · tap another line for more` : label}</span>
+      </span>
+      <button type="button" className="btn btn-ghost btn-sm" onClick={onClear}>
+        Clear
+      </button>
+      <button type="button" className="btn btn-primary btn-sm" onClick={onComment}>
+        Comment
+      </button>
+    </div>
+  )
+}
+
+/** Most of a quote the phone composer shows: enough to recognise the lines
+ * with the keyboard up, never so much that it pushes the words off screen. */
+const QUOTE_MAX = 4
+
+/** The lines a phone comment is about, pinned above its words: on a phone the
+ * composer covers the code, so it brings the code along. */
+function QuotedLines({
+  lines,
+  tokens,
+  from,
+  to,
+}: {
+  lines: DiffLine[]
+  tokens: (LineTokens | null)[]
+  from: number
+  to: number
+}) {
+  const shown = lines.slice(from, Math.min(to, from + QUOTE_MAX - 1) + 1)
+  const more = to - from + 1 - shown.length
+  return (
+    <div className="cbox-quote hunk-lines">
+      {shown.map((line, i) => (
+        // biome-ignore lint/suspicious/noArrayIndexKey: a fixed slice of the hunk; position is the identity
+        <div key={i} className={`cbox-quote-line line-${line.kind}`}>
+          <span className="cbox-quote-no">{line.newNo ?? line.oldNo ?? ''}</span>
+          <span className="cbox-quote-code">
+            <CodeText line={line} tokens={tokens[from + i] ?? null} />
+          </span>
+        </div>
+      ))}
+      {more > 0 && (
+        <div className="cbox-quote-more">
+          and {more} more {more === 1 ? 'line' : 'lines'}
+        </div>
+      )}
+    </div>
+  )
+}
+
 export function HunkCard({
   hunk,
   fresh = false,
@@ -696,6 +808,20 @@ export function HunkCard({
   // keep adjusting relative to the line the reviewer actually chose.
   const [compose, setCompose] = useState<ComposeRange | null>(null)
   const [drag, setDrag] = useState<LineSpan | null>(null)
+  // The phone's selection: lines picked by tapping their numbers, waiting for
+  // Comment. It plays the drag's part — the drag is a mouse gesture, and a
+  // finger moving over code is a scroll. One hunk holds a pick at a time.
+  const phone = useIsPhone()
+  const [pick, setPick] = useState<LineSpan | null>(null)
+  useEffect(() => {
+    if (!pick) return
+    window.dispatchEvent(new CustomEvent(PICK_EVENT, { detail: hunk.id }))
+    const other = (e: Event) => {
+      if ((e as CustomEvent<string>).detail !== hunk.id) setPick(null)
+    }
+    window.addEventListener(PICK_EVENT, other)
+    return () => window.removeEventListener(PICK_EVENT, other)
+  }, [pick, hunk.id])
   // The line the reviewer last clicked — what `c` comments on. It belongs to
   // the selected hunk only: once `j`/`k` or a click moves the selection away,
   // a ring left behind here would say the wrong line is next.
@@ -767,6 +893,21 @@ export function HunkCard({
   const onLineEnter = drag
     ? (idx: number) => setDrag((d) => (d && d.end !== idx ? { ...d, end: idx } : d))
     : undefined
+  // A tap on a number: the first picks the line, the next stretches the pick
+  // to the tapped line, and tapping a lone picked line again lets it go. With
+  // the composer open, a tap moves the range's free edge — the shift-click.
+  const onGutterTap =
+    phone && reviewActions
+      ? (idx: number) => {
+          if (compose) {
+            setCompose({ at: compose.at, edge: idx })
+            return
+          }
+          if (!pick) setPick({ start: idx, end: idx })
+          else if (pick.start === pick.end && pick.start === idx) setPick(null)
+          else setPick({ start: pick.start, end: idx })
+        }
+      : undefined
 
   const lineThreads = threadsByLine(lines, threads)
   // Under the "lines" view only the lit lines and a little context show; the
@@ -784,7 +925,7 @@ export function HunkCard({
   // idx names which thread-row is hovered, so its own spine can light up too.
   const [hover, setHover] = useState<{ idx: number; rows: ReadonlySet<number> } | null>(null)
   const selRows = useMemo(() => {
-    const span = drag ?? (compose ? { start: compose.at, end: compose.edge } : null)
+    const span = drag ?? pick ?? (compose ? { start: compose.at, end: compose.edge } : null)
     const rows = new Set<number>(hover?.rows ?? [])
     if (span) {
       for (let i = Math.min(span.start, span.end); i <= Math.max(span.start, span.end); i++) {
@@ -792,7 +933,7 @@ export function HunkCard({
       }
     }
     return rows
-  }, [drag, compose, hover])
+  }, [drag, pick, compose, hover])
 
   const shownRows = useMemo(() => {
     const keep: number[] = [...selRows, ...[...lineThreads.keys()].filter((i) => i >= 0)]
@@ -812,6 +953,18 @@ export function HunkCard({
     const anchorFor = (wide: boolean) => (wide ? ({ kind: 'changeset' } as const) : anchor)
     return (
       <CommentBox
+        {...(phone
+          ? {
+              quote: (
+                <QuotedLines
+                  lines={lines}
+                  tokens={tokens}
+                  from={Math.min(span.at, span.edge)}
+                  to={Math.max(span.at, span.edge)}
+                />
+              ),
+            }
+          : {})}
         title={`Comment on ${label}`}
         placeholder="Leave a comment…"
         scope={{
@@ -961,7 +1114,9 @@ export function HunkCard({
           extraFor={extraFor}
           extraClass={extraClass}
           onComment={reviewActions ? (idx) => setCompose({ at: idx, edge: idx }) : undefined}
-          onRowClick={reviewActions ? setFocusLine : undefined}
+          // On a phone the whole line is the target: a tap anywhere on it
+          // picks it, as a tap on its number does.
+          onRowClick={onGutterTap ?? (reviewActions ? setFocusLine : undefined)}
           focusRow={focusLine}
           onGutterDown={onGutterDown}
           onLineEnter={onLineEnter}
@@ -972,8 +1127,23 @@ export function HunkCard({
           shownRows={shownRows}
           onUnfold={onUnfold}
           boundary={boundary}
+          onGutterTap={onGutterTap}
         />
       )}
+      {pick &&
+        reviewActions &&
+        createPortal(
+          <PickBar
+            label={`${hunk.path.slice(hunk.path.lastIndexOf('/') + 1)}:${pickLabel(lines, pick)}`}
+            count={Math.abs(pick.end - pick.start) + 1}
+            onClear={() => setPick(null)}
+            onComment={() => {
+              setCompose({ at: pick.start, edge: pick.end })
+              setPick(null)
+            }}
+          />,
+          document.body,
+        )}
       {strayThreads.length > 0 && reviewActions && (
         <ThreadList
           threads={strayThreads}

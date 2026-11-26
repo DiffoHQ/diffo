@@ -644,7 +644,16 @@ export function Header({
   starAsk,
   bar,
   nav,
+  phone,
 }: {
+  /** The phone's header: where you are, in place of the desktop's bar, how
+   * far through you are, and the View options the bar would have held. */
+  phone?: {
+    kicker: string
+    title: string
+    progress?: number | null
+    view?: (close: () => void) => ReactNode
+  }
   /** The reading pane's bar, docked: progress, the pager and the View menu
    * sit in this bar, so the shell has one bar and not two. */
   bar?: ReactNode
@@ -684,6 +693,248 @@ export function Header({
     const state = row.status === 'needs' && gone ? undefined : PAL_STATE[row.status]
     return state ? [{ name: row.name, hue: row.hue, state }] : []
   })
+  const settingsMenu = (
+    <Menu label="Settings" triggerClassName="btn btn-ghost btn-icon">
+      {(close) => (
+        <>
+          {/* On a phone the header has no room for these, so the menu carries them. */}
+          {phone && onOpenPalette && (
+            <MenuItem
+              icon="search"
+              onClick={() => {
+                close()
+                onOpenPalette()
+              }}
+            >
+              Jump to…
+            </MenuItem>
+          )}
+          {phone && agent.reviewersPanel && (
+            <MenuItem
+              icon="user"
+              onClick={() => {
+                close()
+                agent.reviewersPanel?.onToggle()
+              }}
+            >
+              {agent.reviewersPanel.open ? 'Hide reviewer agents' : 'Reviewer agents at work'}
+            </MenuItem>
+          )}
+          {phone && agent.onAddReviewer && (
+            <MenuItem
+              icon="plus"
+              onClick={() => {
+                close()
+                agent.onAddReviewer?.()
+              }}
+            >
+              Add reviewer agents
+            </MenuItem>
+          )}
+          {phone && (onOpenPalette || agent.reviewersPanel) && <MenuSep />}
+          {phone?.view && (
+            <>
+              {phone.view(close)}
+              <MenuSep />
+            </>
+          )}
+          {onSetTheme && (
+            <>
+              <MenuLabel>Theme</MenuLabel>
+              <MenuItem
+                icon="display"
+                checked={theme === 'system'}
+                onClick={() => {
+                  close()
+                  onSetTheme('system')
+                }}
+              >
+                System
+              </MenuItem>
+              <MenuItem
+                icon="sun"
+                checked={theme === 'light'}
+                onClick={() => {
+                  close()
+                  onSetTheme('light')
+                }}
+              >
+                Light
+              </MenuItem>
+              <MenuItem
+                icon="moon"
+                checked={theme === 'dark'}
+                onClick={() => {
+                  close()
+                  onSetTheme('dark')
+                }}
+              >
+                Dark
+              </MenuItem>
+            </>
+          )}
+          {onSetCritter && (
+            <>
+              {onSetTheme && <MenuSep />}
+              <MenuItem
+                icon="sparkle"
+                checked={critter}
+                onClick={() => {
+                  close()
+                  onSetCritter(!critter)
+                }}
+              >
+                Animations
+              </MenuItem>
+            </>
+          )}
+          {onShowVoice && (
+            <>
+              {(onSetTheme || onSetCritter) && <MenuSep />}
+              <MenuItem
+                icon="chat"
+                onClick={() => {
+                  close()
+                  onShowVoice()
+                }}
+              >
+                Voice
+              </MenuItem>
+            </>
+          )}
+          {onShowLayers && (
+            <>
+              {(onSetTheme || onSetCritter || onShowVoice) && <MenuSep />}
+              <MenuItem
+                icon="list"
+                onClick={() => {
+                  close()
+                  onShowLayers()
+                }}
+              >
+                Layers presets
+              </MenuItem>
+            </>
+          )}
+          {onShowReviewers && (
+            <MenuItem
+              icon="user"
+              onClick={() => {
+                close()
+                onShowReviewers()
+              }}
+            >
+              Reviewer agents
+            </MenuItem>
+          )}
+          {onShowShortcuts && (
+            <>
+              {(onSetTheme || onSetCritter || onShowVoice || onShowLayers) && <MenuSep />}
+              <MenuItem
+                icon="keys"
+                kbd="?"
+                onClick={() => {
+                  close()
+                  onShowShortcuts()
+                }}
+              >
+                Shortcuts
+              </MenuItem>
+            </>
+          )}
+          {onShowPrivacy && (
+            <>
+              {(onSetTheme || onSetCritter || onShowVoice || onShowLayers || onShowShortcuts) && (
+                <MenuSep />
+              )}
+              <MenuItem
+                icon="lock"
+                onClick={() => {
+                  close()
+                  onShowPrivacy()
+                }}
+              >
+                Privacy
+              </MenuItem>
+            </>
+          )}
+          {(onSetTheme ||
+            onSetCritter ||
+            onShowVoice ||
+            onShowLayers ||
+            onShowShortcuts ||
+            onShowPrivacy) && <MenuSep />}
+          <MenuItem
+            icon="star"
+            onClick={() => {
+              close()
+              openGithub()
+            }}
+          >
+            Star on GitHub
+          </MenuItem>
+        </>
+      )}
+    </Menu>
+  )
+  const finishLabel = changeset.pr
+    ? `Submit${publicDrafts > 0 ? ` (${publicDrafts})` : ''}`
+    : `Finish${openComments > 0 ? ` (${openComments})` : ''}`
+  if (phone) {
+    // The phone keeps what a reviewer needs within reach and drops the rest:
+    // the navigator's switch, where you are, the agent's face, and Finish.
+    // The comparison, the companion and the reviewer avatars live in the
+    // sheets, and the layers offer waits in the navigator's Layers tab.
+    return (
+      <header className="top top-phone">
+        {nav && (
+          <button
+            type="button"
+            className="pane-icon top-nav"
+            onClick={nav.onToggle}
+            aria-label="Steps, files and threads"
+            aria-expanded={!nav.hidden}
+          >
+            <Icon name="list" size="lg" />
+          </button>
+        )}
+        <span className="top-phone-where">
+          <span className="top-phone-kicker">
+            {isDevServer() && <span className="dev-badge">dev</span>}
+            <span className="top-phone-kicker-text">{phone.kicker}</span>
+          </span>
+          <span className="top-phone-title">{phone.title}</span>
+        </span>
+        {agent.presence && (
+          <PresenceChip
+            presence={agent.presence}
+            reason={agent.reason}
+            since={agent.since}
+            activity={agent.activity}
+            onInvite={agent.onInvite}
+            batch={agent.batch}
+            monitorOpen={agent.monitorOpen}
+            onOpenMonitor={agent.onOpenMonitor}
+            monitorPanel={agent.monitorPanel}
+            seat={seat}
+            faceAway={false}
+          />
+        )}
+        {onFinishReview && (
+          <button type="button" className="btn btn-primary btn-sm" onClick={onFinishReview}>
+            {changeset.pr && <Icon name="globe" size="sm" />}
+            {finishLabel}
+          </button>
+        )}
+        {settingsMenu}
+        {phone.progress != null && (
+          <span className="prog-track top-phone-prog" aria-hidden="true">
+            <i style={{ width: `${Math.round(phone.progress * 100)}%` }} />
+          </span>
+        )}
+      </header>
+    )
+  }
   return (
     <header className="top">
       {nav && (
@@ -799,147 +1050,7 @@ export function Header({
           )}
         </button>
       )}
-      <Menu label="Settings" triggerClassName="btn btn-ghost btn-icon">
-        {(close) => (
-          <>
-            {onSetTheme && (
-              <>
-                <MenuLabel>Theme</MenuLabel>
-                <MenuItem
-                  icon="display"
-                  checked={theme === 'system'}
-                  onClick={() => {
-                    close()
-                    onSetTheme('system')
-                  }}
-                >
-                  System
-                </MenuItem>
-                <MenuItem
-                  icon="sun"
-                  checked={theme === 'light'}
-                  onClick={() => {
-                    close()
-                    onSetTheme('light')
-                  }}
-                >
-                  Light
-                </MenuItem>
-                <MenuItem
-                  icon="moon"
-                  checked={theme === 'dark'}
-                  onClick={() => {
-                    close()
-                    onSetTheme('dark')
-                  }}
-                >
-                  Dark
-                </MenuItem>
-              </>
-            )}
-            {onSetCritter && (
-              <>
-                {onSetTheme && <MenuSep />}
-                <MenuItem
-                  icon="sparkle"
-                  checked={critter}
-                  onClick={() => {
-                    close()
-                    onSetCritter(!critter)
-                  }}
-                >
-                  Animations
-                </MenuItem>
-              </>
-            )}
-            {onShowVoice && (
-              <>
-                {(onSetTheme || onSetCritter) && <MenuSep />}
-                <MenuItem
-                  icon="chat"
-                  onClick={() => {
-                    close()
-                    onShowVoice()
-                  }}
-                >
-                  Voice
-                </MenuItem>
-              </>
-            )}
-            {onShowLayers && (
-              <>
-                {(onSetTheme || onSetCritter || onShowVoice) && <MenuSep />}
-                <MenuItem
-                  icon="list"
-                  onClick={() => {
-                    close()
-                    onShowLayers()
-                  }}
-                >
-                  Layers presets
-                </MenuItem>
-              </>
-            )}
-            {onShowReviewers && (
-              <MenuItem
-                icon="user"
-                onClick={() => {
-                  close()
-                  onShowReviewers()
-                }}
-              >
-                Reviewer agents
-              </MenuItem>
-            )}
-            {onShowShortcuts && (
-              <>
-                {(onSetTheme || onSetCritter || onShowVoice || onShowLayers) && <MenuSep />}
-                <MenuItem
-                  icon="keys"
-                  kbd="?"
-                  onClick={() => {
-                    close()
-                    onShowShortcuts()
-                  }}
-                >
-                  Shortcuts
-                </MenuItem>
-              </>
-            )}
-            {onShowPrivacy && (
-              <>
-                {(onSetTheme || onSetCritter || onShowVoice || onShowLayers || onShowShortcuts) && (
-                  <MenuSep />
-                )}
-                <MenuItem
-                  icon="lock"
-                  onClick={() => {
-                    close()
-                    onShowPrivacy()
-                  }}
-                >
-                  Privacy
-                </MenuItem>
-              </>
-            )}
-            {(onSetTheme ||
-              onSetCritter ||
-              onShowVoice ||
-              onShowLayers ||
-              onShowShortcuts ||
-              onShowPrivacy) && <MenuSep />}
-            <MenuItem
-              icon="star"
-              onClick={() => {
-                close()
-                openGithub()
-              }}
-            >
-              Star on GitHub
-            </MenuItem>
-          </>
-        )}
-      </Menu>
+      {settingsMenu}
       {/* The right edge's switch, last in the bar so it never moves: the twin of
           the file list's switch at the left edge. */}
       {agent.reviewersPanel && (
