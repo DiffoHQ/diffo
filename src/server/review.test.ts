@@ -1276,6 +1276,23 @@ describe('ReviewStore — reviewer agents', () => {
     expect(parseReview(bad)!.reviewerSuggested).toBeUndefined()
   })
 
+  it("keeps the author agent's pick of a set across a restart, until the review starts over", () => {
+    const root = tempRoot()
+    const store = makeStore(root)
+    store.pickReviewerSet('refactor', 'moves the retry logic')
+    expect(makeStore(root).get().reviewerSet).toEqual({
+      set: 'refactor',
+      reason: 'moves the retry logic',
+    })
+    // The newest pick stands.
+    store.pickReviewerSet('data')
+    expect(store.get().reviewerSet).toEqual({ set: 'data' })
+    store.reset()
+    expect(store.get().reviewerSet).toBeUndefined()
+    const bad = JSON.stringify({ version: 1, threads: [], reviewerSet: { set: 'Two Words' } })
+    expect(parseReview(bad)!.reviewerSet).toBeUndefined()
+  })
+
   it("remembers through which message a reviewer agent's inbox was handed over", () => {
     const root = tempRoot()
     const store = makeStore(root)

@@ -7,7 +7,48 @@ Until 1.0, minor versions may break things. When they do, the entry says how to 
 
 ## [Unreleased]
 
-Nothing yet.
+### Added
+
+- **Sets of reviewer agents, and your agent picks the one that fits.** The
+  quick sets in **+ Reviewer** are now yours to add to: the Reviewer agents
+  page has a **Sets** tab where you name a set, say what kind of change it is
+  for, and tick its agents. When a review opens, your agent says which
+  set fits the change (`diffo reviewer --set`), and **+ Reviewer** opens with
+  that set's agents already ticked and its reason beside them, for you to
+  change or start. Nothing starts on its own. To open on a set of your
+  choosing every time, make it the default on the Sets tab.
+
+### Changed
+
+- **The Reviewer agents page has two tabs, Agents and Sets**, and the library
+  of agents that are not in the picker is folded until you open it.
+
+### Fixed
+
+- **A reviewer agent no longer touches what you staged.** One ran
+  `git add -N .` to see new files in its own `git diff`, then `git reset` on
+  some paths, and left about eighty new files staged as added. Reviewer agents
+  were told only never to edit code; now they are told the checkout is
+  read-only, git included: nothing staged, reset, restored, stashed or
+  committed, and that the diff Diffo prints already carries new files. If it
+  happened to you, this puts those files back to untracked and leaves the
+  rest of what you staged alone:
+  `git diff --name-only --diff-filter=A -z | xargs -0 -r git reset -q --`
+- **Reviewer agents and your agent now talk in the review.** When your agent
+  polled again before answering a reviewer agent's comment, the thread read
+  "no answer, the agent moved on", the reviewer stopped waiting and left, and
+  your agent fixed things from the summaries its sub-agents handed back
+  instead of answering the threads. Now a reviewer agent's thread that was
+  polled past comes straight back to your agent, marked as handed over again,
+  while its reviewer keeps waiting (twice; after that it reads "No answer",
+  and the reviewer says so when it leaves). Reviewer agents hold their poll in
+  the foreground and end with one line, not a summary of their findings, and
+  your agent is told that what a sub-agent reports back is not feedback: the
+  threads are.
+- **The page no longer moves under you when a comment lands above.** A thread
+  that arrived, or got an answer, above what you were reading pushed the code
+  down by its height. With several reviewer agents commenting, the page kept
+  jumping. The reading pane now keeps what you are looking at where it is.
 
 ## [0.34.0] — 2026-11-24
 

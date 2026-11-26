@@ -38,9 +38,11 @@ import {
   PR_COMMENT_DOCTRINE,
   REVIEWER_AGENT_DOCTRINE,
   REVIEWER_BRIEF,
+  REVIEWER_HANDS_OFF,
   REVIEWER_NEXT_STEP,
   replyProtocol,
   reviewerCommands,
+  reviewerSetNudge,
   voiceLines,
 } from './prompt.js'
 
@@ -1097,6 +1099,16 @@ describe('the cleared payload (reviewer started the review over)', () => {
     expect(prompt).toContain('The changeset under review')
   })
 
+  it('the cleared prompt asks for the set again when the round owes one', () => {
+    // Clearing drops the pick; nothing else would ask before the next open.
+    const nudge = reviewerSetNudge({}, [{ id: 'refactor', when: 'Code moved.' }], true)
+    const asked = buildClearedPrompt({ repo, changeset: null }, nudge)
+    expect(asked).toMatch(/Also say which set of reviewer agents fits this change/)
+    expect(asked.indexOf('Also say which set')).toBeLessThan(
+      asked.indexOf('again to keep listening'),
+    )
+    expect(buildClearedPrompt({ repo, changeset: null })).not.toMatch(/which set of reviewer/)
+  })
   it('stands alone without a changeset, and always routes back to the poll', () => {
     const prompt = buildClearedPrompt({ repo, changeset: null })
     expect(prompt).toContain('cleared the review')
@@ -1182,6 +1194,21 @@ describe('layers doctrine', () => {
     expect(nudge).toContain(LAYERS.stance)
     expect(layersNudge({ layers: { items: [], postedAt: '' } })).toBeNull()
     expect(layersNudge({ layersSuggested: {} })).toBeNull()
+  })
+
+  it('asks which set of reviewers fits, once, and only when the picker follows the agent', () => {
+    const sets = [
+      { id: 'refactor', when: 'Code moved, with behaviour meant to stay the same.' },
+      { id: 'mine', when: '' },
+    ]
+    const nudge = reviewerSetNudge({}, sets, true)!
+    expect(nudge).toContain('reviewer --set <id>')
+    expect(nudge).toContain('refactor (Code moved, with behaviour meant to stay the same); mine.')
+    expect(nudge).toMatch(/starts nobody/)
+    // A pick stands, the human named a default of their own, or there is nothing to pick from.
+    expect(reviewerSetNudge({ reviewerSet: { set: 'refactor' } }, sets, true)).toBeNull()
+    expect(reviewerSetNudge({}, sets, false)).toBeNull()
+    expect(reviewerSetNudge({}, [], true)).toBeNull()
   })
 
   it('summaries inherit the guide’s stance verbatim', () => {
@@ -1640,7 +1667,14 @@ describe('reviewer agents in the author agent’s prompts', () => {
     // The human's message is answered privately, never in a thread.
     expect(REVIEWER_NEXT_STEP.message('codex')).toContain('chat --as codex')
     expect(REVIEWER_NEXT_STEP.message('codex')).toMatch(/author agent never sees/)
-    expect(REVIEWER_NEXT_STEP.join('codex')).toMatch(/You never edit code/)
+    // The checkout is the author's, index included: a reviewer that ran
+    // `git add -N .` to see new files in its own diff left them staged.
+    const join = REVIEWER_NEXT_STEP.join('codex')
+    expect(join).toContain(REVIEWER_HANDS_OFF)
+    expect(REVIEWER_HANDS_OFF).toMatch(/Never edit a file/)
+    expect(REVIEWER_HANDS_OFF).toMatch(/no `git add` \(not even `-N`\), `reset`/)
+    expect(REVIEWER_HANDS_OFF).toMatch(/New files need no staging/)
+    expect(REVIEWER_NEXT_STEP.poll('codex')).toMatch(/never stage, reset or stash/)
     // The human watches a reviewer work: the join says how to tell them.
     expect(REVIEWER_NEXT_STEP.join('codex')).toContain('progress --as codex')
     expect(REVIEWER_NEXT_STEP.join('codex')).toMatch(/never a comment/)
@@ -1659,7 +1693,7 @@ describe('bringing a reviewer agent in', () => {
   it('the invite line stands on its own: where, the command, the role, and the one rule', () => {
     const ask = buildReviewerAsk('/Users/me/code/demo', '/Users/me', security, 'diffo')
     expect(ask).toBe(
-      'Join the code review in ~/code/demo as its Security reviewer. From that directory run `diffo join --role security` and do what it prints: it says what to read, how to review, and how to answer. You comment through that command only; you never edit the code.',
+      'Join the code review in ~/code/demo as its Security reviewer. From that directory run `diffo join --role security` and do what it prints: it says what to read, how to review, and how to answer. You comment through that command only; you never edit the code, and you leave git as you found it: nothing staged, reset, stashed or committed.',
     )
     expect(buildReviewerAsk('/srv/demo', '/Users/me', security, 'diffo')).toContain(
       'in /srv/demo as',

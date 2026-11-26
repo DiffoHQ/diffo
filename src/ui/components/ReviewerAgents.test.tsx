@@ -2,7 +2,14 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { BUILT_IN_ROLES, type ReviewerRole, type RoleMessage } from '../../shared/roles.js'
+import {
+  AGENT_PICKS_SET,
+  BUILT_IN_ROLES,
+  BUILT_IN_SETS,
+  type ReviewerRole,
+  type ReviewerSet,
+  type RoleMessage,
+} from '../../shared/roles.js'
 import { notifyRolesChanged } from '../rolesPref.js'
 import { ReviewerAgents, type ReviewerAgentsPick } from './ReviewerAgents.js'
 
@@ -26,7 +33,22 @@ const activeOf = (roles: ReviewerRole[]) =>
     })
     .map((r) => r.id)
 
+let mySets: ReviewerSet[] = []
+let defaultSet: string = AGENT_PICKS_SET
+/** The sets saves the page made, as sent. */
+const setPuts: unknown[] = []
+const payload = (roles: ReviewerRole[]) => ({
+  roles,
+  default: 'general',
+  active: activeOf(roles),
+  sets: [...BUILT_IN_SETS, ...mySets],
+  defaultSet,
+})
+
 beforeEach(() => {
+  mySets = []
+  defaultSet = AGENT_PICKS_SET
+  setPuts.length = 0
   moved = []
   custom = []
   threads = {}
@@ -42,13 +64,27 @@ beforeEach(() => {
           custom = body.roles
         }
         const roles = [...BUILT_IN_ROLES, ...custom]
-        return json({ roles, default: 'general', active: activeOf(roles) })
+        return json(payload(roles))
+      }
+      if (input === '/api/reviewer/sets') {
+        const body = JSON.parse(String(init?.body)) as { sets: (ReviewerSet & { id?: string })[] }
+        setPuts.push(body.sets)
+        // The server names a new one from its name.
+        mySets = body.sets.map((set) => ({
+          ...set,
+          id: set.id ?? set.name.toLowerCase().replace(/[^a-z0-9]+/g, '-'),
+        }))
+        return json(payload([...BUILT_IN_ROLES, ...custom]))
+      }
+      if (input === '/api/reviewer/sets/default') {
+        defaultSet = (JSON.parse(String(init?.body)) as { id: string }).id
+        return json(payload([...BUILT_IN_ROLES, ...custom]))
       }
       const act = /^\/api\/reviewer\/roles\/([^/]+)\/active$/.exec(input)
       if (act) {
         moved.push([act[1]!, (JSON.parse(String(init?.body)) as { active: boolean }).active])
         const roles = [...BUILT_IN_ROLES, ...custom]
-        return json({ roles, default: 'general', active: activeOf(roles) })
+        return json(payload(roles))
       }
       const m = /^\/api\/reviewer\/roles\/([^/]+)\/(thread|messages)$/.exec(input)
       if (m) {
@@ -89,7 +125,7 @@ const stream = () => {
 function show(
   options: {
     initial?: ReviewerAgentsPick
-    onAdd?: (role?: string) => void
+    onAdd?: (roles: readonly string[]) => void
     agent?: boolean
     onClose?: () => void
   } = {},
@@ -130,7 +166,7 @@ describe('ReviewerAgents — active and library', () => {
     show()
     const group = (cap: string) => {
       const caps = [...document.querySelectorAll('.lp-side .lp-cap')]
-      const at = caps.find((c) => c.textContent === cap)
+      const at = caps.find((c) => c.textContent?.startsWith(cap))
       return [...(at?.nextElementSibling?.querySelectorAll('.lp-row-name') ?? [])].map(
         (n) => n.textContent,
       )
@@ -145,6 +181,12 @@ describe('ReviewerAgents — active and library', () => {
       'Error handling',
       'New agent',
     ])
+    // The library is folded until it is opened, with how many wait in it.
+    const fold = screen.getByRole('button', { name: /^Library/ })
+    expect(fold.getAttribute('aria-expanded')).toBe('false')
+    expect(fold.textContent).toBe('Library11')
+    expect(screen.queryByRole('button', { name: /^Security/ })).toBeNull()
+    fireEvent.click(fold)
     expect(group('Library')).toContain('Security')
     fireEvent.click(screen.getByRole('button', { name: /^Security/ }))
     fireEvent.click(await screen.findByRole('button', { name: 'Make active' }))
@@ -152,6 +194,14 @@ describe('ReviewerAgents — active and library', () => {
     expect(moved).toEqual([['security', true]])
     fireEvent.click(screen.getByRole('button', { name: 'Move to library' }))
     await waitFor(() => expect(group('Library')).toContain('Security'))
+  })
+
+  it('opens the library for an agent that waits in it', async () => {
+    show({ initial: { kind: 'role', id: 'security' } })
+    await screen.findByRole('heading', { name: 'Security' })
+    expect(screen.getByRole('button', { name: /^Library/ }).getAttribute('aria-expanded')).toBe(
+      'true',
+    )
   })
 })
 
@@ -173,9 +223,10 @@ describe('ReviewerAgents — roles', () => {
   it('the bar at the foot adds a reviewer in the role in view', async () => {
     const onAdd = vi.fn()
     show({ onAdd })
+    fireEvent.click(await row(/^Library/))
     fireEvent.click(await row(/^Security/))
     fireEvent.click(screen.getByRole('button', { name: 'Add to review' }))
-    expect(onAdd).toHaveBeenCalledWith('security')
+    expect(onAdd).toHaveBeenCalledWith(['security'])
   })
 
   it('has no bar where reviewers cannot be added', async () => {
@@ -380,5 +431,110 @@ describe('ReviewerAgents — the conversation with the agent', () => {
     await waitFor(() => expect(messages()).toHaveLength(2))
     fireEvent.click(screen.getByRole('button', { name: 'Close' }))
     expect(onClose).toHaveBeenCalledTimes(1)
+  })
+})
+
+describe('ReviewerAgents — sets', () => {
+  const openSets = async () => {
+    await screen.findByRole('heading', { name: 'General' })
+    fireEvent.click(screen.getByRole('tab', { name: 'Sets' }))
+  }
+  const setRows = () =>
+    [...document.querySelectorAll('nav[aria-label="Sets"] .lp-row-name')].map((n) => n.textContent)
+
+  it('lists the sets under the default, which is the agent choosing until you name one', async () => {
+    show()
+    await openSets()
+    expect(setRows()).toEqual([
+      'Let the agent chooseDefault',
+      'Agent-written change',
+      'Refactor',
+      'New API or command',
+      'UI change',
+      'Data or settings',
+      'Before release',
+      'New set',
+    ])
+    expect(title()).toBe('Let the agent choose')
+    fireEvent.click(screen.getByRole('button', { name: /^Refactor/ }))
+    expect(title()).toBe('Refactor')
+    expect([...document.querySelectorAll('.rs-name')].map((n) => n.textContent)).toEqual([
+      'Blast radius',
+      'Simplicity',
+      'Tests',
+    ])
+    // A built-in is read, not edited.
+    expect(screen.queryByRole('button', { name: 'Edit' })).toBeNull()
+    fireEvent.click(screen.getByRole('button', { name: 'Make default' }))
+    await waitFor(() => expect(setRows()).toContain('RefactorDefault'))
+    expect(defaultSet).toBe('refactor')
+    expect(setRows()).toContain('Let the agent choose')
+  })
+
+  it('makes a set of your own: a name, when to use it, and the agents ticked', async () => {
+    show()
+    await openSets()
+    fireEvent.click(screen.getByRole('button', { name: 'New set' }))
+    const save = screen.getByRole('button', { name: 'Save' }) as HTMLButtonElement
+    expect(save.disabled).toBe(true)
+    fireEvent.change(screen.getByLabelText('Name'), { target: { value: 'Auth changes' } })
+    fireEvent.change(screen.getByLabelText('When to use it'), { target: { value: 'Login.' } })
+    // The library's agents are on offer too.
+    fireEvent.click(screen.getByRole('checkbox', { name: /^Security/ }))
+    fireEvent.click(screen.getByRole('checkbox', { name: /^Error handling/ }))
+    fireEvent.click(save)
+    await waitFor(() => expect(title()).toBe('Auth changes'))
+    // Sent with no id, in the order the agents are listed.
+    expect(setPuts).toEqual([
+      [{ name: 'Auth changes', when: 'Login.', roles: ['errors', 'security'] }],
+    ])
+    expect(setRows()).toContain('Auth changes')
+    expect(screen.getByRole('button', { name: 'Edit' })).toBeTruthy()
+  })
+
+  it('edits and deletes one of your own, and copies a built-in', async () => {
+    mySets = [{ id: 'auth', name: 'Auth changes', when: 'Login.', roles: ['security'] }]
+    show()
+    await openSets()
+    fireEvent.click(screen.getByRole('button', { name: /^Auth changes/ }))
+    fireEvent.click(screen.getByRole('button', { name: 'Edit' }))
+    fireEvent.click(screen.getByRole('checkbox', { name: /^Tests/ }))
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }))
+    await waitFor(() =>
+      expect([...document.querySelectorAll('.rs-name')].map((n) => n.textContent)).toEqual([
+        'Tests',
+        'Security',
+      ]),
+    )
+    expect(mySets[0]).toMatchObject({ id: 'auth', roles: ['tests', 'security'] })
+
+    fireEvent.click(screen.getByRole('button', { name: 'Set options' }))
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Delete' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Delete set' }))
+    await waitFor(() => expect(setRows()).not.toContain('Auth changes'))
+
+    fireEvent.click(screen.getByRole('button', { name: /^Refactor/ }))
+    fireEvent.click(screen.getByRole('button', { name: 'Set options' }))
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Make a copy to edit' }))
+    expect((screen.getByLabelText('Name') as HTMLInputElement).value).toBe('Refactor (mine)')
+    expect([...document.querySelectorAll<HTMLInputElement>('.rs-pick input:checked')].length).toBe(
+      3,
+    )
+  })
+
+  it('"Add to review" opens the picker on the set in view', async () => {
+    const onAdd = vi.fn()
+    show({ onAdd })
+    await openSets()
+    fireEvent.click(screen.getByRole('button', { name: /^Data or settings/ }))
+    fireEvent.click(screen.getByRole('button', { name: 'Add to review' }))
+    expect(onAdd).toHaveBeenCalledWith(['data', 'blast-radius'])
+  })
+
+  it('keeps the Agents tab as it was left while you look at the sets', async () => {
+    show()
+    await openSets()
+    fireEvent.click(screen.getByRole('tab', { name: 'Agents' }))
+    expect(screen.getByRole('heading', { name: 'General' })).toBeTruthy()
   })
 })

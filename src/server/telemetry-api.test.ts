@@ -294,6 +294,17 @@ describe('reviewer agents in usage data', () => {
       headers: cli,
       body: JSON.stringify({ as: name, file: 'app.ts', line: 2, text: 'off by one' }),
     })
+    // A second ask, for exactly the set the agent picked for this change.
+    await app.request('/api/reviewer/pick', {
+      method: 'POST',
+      headers: cli,
+      body: JSON.stringify({ set: 'refactor', reason: 'secret-reason' }),
+    })
+    await app.request('/api/reviewer/request', {
+      method: 'POST',
+      headers: json,
+      body: JSON.stringify({ roles: ['tests', 'blast-radius', 'simplicity'] }),
+    })
     await app.request('/api/review/finish', {
       method: 'POST',
       headers: json,
@@ -304,6 +315,7 @@ describe('reviewer agents in usage data', () => {
     expect(events.map((e) => e.event)).toEqual([
       'review_opened',
       'reviewers_requested',
+      'reviewers_requested',
       'review_finished',
     ])
     expect(events[1]!.properties).toMatchObject({
@@ -312,7 +324,12 @@ describe('reviewer agents in usage data', () => {
       roles: 'ai-slop,custom,general',
       suggested: false,
     })
-    expect(events[2]!.properties).toMatchObject({ reviewer_agents: 1, reviewer_threads: 1 })
+    // No set, no word about one.
+    expect(events[1]!.properties).not.toHaveProperty('set')
+    expect(events[1]!.properties).not.toHaveProperty('agent_pick')
+    expect(events[2]!.properties).toMatchObject({ count: 3, set: 'refactor', agent_pick: true })
+    expect(events[3]!.properties).toMatchObject({ reviewer_agents: 1, reviewer_threads: 1 })
+    expect(JSON.stringify(events)).not.toContain('secret-reason')
     expect(JSON.stringify(events)).not.toContain('secret-role')
     expect(JSON.stringify(events)).not.toContain('off by one')
   })

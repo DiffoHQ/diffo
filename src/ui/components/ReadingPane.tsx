@@ -15,6 +15,7 @@ import {
   materializeGap,
   NO_EXPANSION,
 } from '../gaps.js'
+import { useHeldPlace } from '../holdPlace.js'
 import { fileAnchor } from '../hooks.js'
 import type { LayerListKind } from '../layerListPref.js'
 import type { LayerScopeKind } from '../layerScopePref.js'
@@ -1447,6 +1448,10 @@ export function ReadingPane({
     }
   }, [])
 
+  // A thread arriving or growing above the view must not move what is being
+  // read (see holdPlace.ts). Keyed on the threads as placed, so the pane's own
+  // moves (a sweep, a jump, a fold) are never second-guessed.
+  useHeldPlace(paneRef, handlers.comments?.partition)
   // Paid back before the browser paints, so the removal is never a visible jump.
   // No-ops unless the sweep just took something.
   useLayoutEffect(() => {

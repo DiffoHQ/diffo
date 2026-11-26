@@ -40,7 +40,14 @@ function tempRepo(): string {
 }
 
 function setup(
-  options: { pr?: boolean; pollMaxMs?: number; reviewerStartMs?: number; graceMs?: number } = {},
+  options: {
+    pr?: boolean
+    pollMaxMs?: number
+    reviewerStartMs?: number
+    graceMs?: number
+    /** How long a delivered batch may sit before a re-poll closes it. */
+    settleMs?: number
+  } = {},
 ) {
   const root = tempRepo()
   const dbDir = `${root}-db`
@@ -49,7 +56,7 @@ function setup(
   const review = new ReviewStore(root, new DiffoDb(join(dbDir, 'diffo.db')), {
     kind: 'working-tree',
   })
-  const queue = new DeliveryQueue()
+  const queue = new DeliveryQueue(undefined, undefined, {}, options.settleMs)
   const settings = new Map<string, string>()
   const app = createApp(
     {
@@ -182,6 +189,93 @@ async function round(app: App, id: string, as: string) {
 }
 
 const tick = () => new Promise((r) => setTimeout(r, 30))
+
+describe('reviewer agents — a thread the author agent polls past', () => {
+  it('is handed to the author again, flagged, while its reviewer keeps waiting', async () => {
+    const { app, review } = setup({ settleMs: 0 })
+    const thread = await comment(app, 'codex')
+    expect((await authorPoll(app)).threadIds).toEqual([thread.id])
+
+    const waiting = reviewerPoll(app, 'codex')
+    let settled = false
+    void waiting.then(() => {
+      settled = true
+    })
+    // The author polls again without a word: the thread comes straight back.
+    const again = await authorPoll(app)
+    expect(again.threadIds).toEqual([thread.id])
+    expect(again.prompt).toMatch(/YOU NEVER ANSWERED THIS/)
+    expect(again.prompt).toMatch(/HANDED TO YOU AGAIN.*reviewer agent codex is still waiting/)
+    await tick()
+    // Never "no answer" on the page, and the reviewer has not been sent away.
+    expect(review.get().threads[0]!.unanswered).toBeUndefined()
+    expect(settled).toBe(false)
+
+    await authorReply(app, thread.id)
+    const payload = await waiting
+    expect(payload.status).toBe('feedback')
+    expect(payload.threads).toHaveLength(1)
+  })
+
+  it('is handed over again when the author edited the line and polled on without a reply', async () => {
+    const { app, review } = setup({ settleMs: 0 })
+    const thread = await comment(app, 'codex')
+    expect((await authorPoll(app)).threadIds).toEqual([thread.id])
+    // The author changed the commented hunk: the thread reads addressed, with
+    // nothing said to its reviewer.
+    review.reconcile(new Set())
+    expect(review.get().threads[0]!.state).toBe('addressed')
+
+    const again = await authorPoll(app)
+    expect(again.threadIds).toEqual([thread.id])
+    await tick()
+    expect(review.get().threads[0]!.unanswered).toBeUndefined()
+  })
+
+  it('gives up after two more tries, and tells the reviewer why it is leaving', async () => {
+    const { app, review } = setup({ settleMs: 0, pollMaxMs: 60 })
+    const thread = await comment(app, 'codex')
+    for (let i = 0; i < 3; i++) expect((await authorPoll(app)).threadIds).toEqual([thread.id])
+    // The fourth poll finds nothing: the thread is marked, not handed over.
+    expect((await authorPoll(app)) as unknown as { status: string }).toMatchObject({
+      status: 'timeout',
+    })
+    expect(review.get().threads[0]!.unanswered).toBe(true)
+
+    const payload = await reviewerPoll(app, 'codex')
+    expect(payload.status).toBe('idle')
+    expect(payload.counts).toMatchObject({ unanswered: 1, waiting: 0 })
+    expect(payload.next_step).toMatch(/polled on without answering/)
+    expect(payload.next_step).toMatch(/Do not repeat or summarize what you found/)
+  })
+
+  it('counts from the last answer: a new round gets its own tries', async () => {
+    const { app, review } = setup({ settleMs: 0, pollMaxMs: 60 })
+    const thread = await comment(app, 'codex')
+    for (let i = 0; i < 3; i++) await authorPoll(app)
+    await authorReply(app, thread.id)
+    await reviewerPoll(app, 'codex')
+    await reviewerReply(app, thread.id, 'codex')
+    for (let i = 0; i < 3; i++) expect((await authorPoll(app)).threadIds).toEqual([thread.id])
+    expect(review.get().threads[0]!.unanswered).toBeUndefined()
+  })
+
+  it("leaves the human's own thread as it was: no answer until they send it again", async () => {
+    const { app, review } = setup({ settleMs: 0, pollMaxMs: 60 })
+    const mine = (await (
+      await page(app, '/api/review/threads', {
+        anchor: { kind: 'changeset' },
+        text: 'why?',
+      })
+    ).json()) as ReviewThread
+    await page(app, `/api/review/threads/${mine.id}/send`)
+    expect((await authorPoll(app)).threadIds).toEqual([mine.id])
+    expect((await authorPoll(app)) as unknown as { status: string }).toMatchObject({
+      status: 'timeout',
+    })
+    expect(review.get().threads[0]!.unanswered).toBe(true)
+  })
+})
 
 describe('reviewer agents — joining', () => {
   it('seats the reviewer and tells it what is under review and what is already said', async () => {
@@ -1433,6 +1527,102 @@ describe('reviewer agents — bringing one in', () => {
     expect((await page(app, '/api/reviewer/request', { roles: ['security'] })).status).toBe(400)
     expect((await app.request('/api/reviewer/invite?role=security')).status).toBe(400)
     expect(queue.take()).toBeNull()
+  })
+})
+
+describe('reviewer agents — sets', () => {
+  const offer = async (app: App) =>
+    (await (await app.request('/api/reviewer/roles')).json()) as {
+      sets: { id: string; name: string; roles: string[]; builtIn?: true }[]
+      defaultSet: string
+    }
+  const put = (app: App, path: string, body: unknown) => page(app, path, body, 'PUT')
+
+  it('offers the built-in sets with the roles, and opens on the agent’s pick by default', async () => {
+    const { app } = setup()
+    const { sets, defaultSet } = await offer(app)
+    expect(sets.map((s) => s.id)).toEqual([
+      'agent-written',
+      'refactor',
+      'new-api',
+      'ui-change',
+      'data',
+      'release',
+    ])
+    expect(sets.every((s) => s.builtIn)).toBe(true)
+    expect(defaultSet).toBe('agent')
+  })
+
+  it('keeps sets of the human’s own, named by the server, and a default among them', async () => {
+    const { app } = setup()
+    const saved = await put(app, '/api/reviewer/sets', {
+      sets: [{ name: 'Auth changes', when: 'Login.', roles: ['security', 'errors'] }],
+    })
+    expect(saved.status).toBe(200)
+    expect((await offer(app)).sets.at(-1)).toEqual({
+      id: 'auth-changes',
+      name: 'Auth changes',
+      when: 'Login.',
+      roles: ['security', 'errors'],
+    })
+    expect((await put(app, '/api/reviewer/sets/default', { id: 'auth-changes' })).status).toBe(200)
+    expect((await offer(app)).defaultSet).toBe('auth-changes')
+    expect((await put(app, '/api/reviewer/sets/default', { id: 'nope' })).status).toBe(400)
+    // Deleting the default set goes back to the agent's pick.
+    await put(app, '/api/reviewer/sets', { sets: [] })
+    expect((await offer(app)).defaultSet).toBe('agent')
+  })
+
+  it('refuses a set that names no real agent, and anything from the CLI', async () => {
+    const { app } = setup()
+    const bad = await put(app, '/api/reviewer/sets', { sets: [{ name: 'X', roles: ['nope'] }] })
+    expect(bad.status).toBe(400)
+    expect(await error(bad)).toMatch(/"nope", which is not a reviewer agent/)
+    const fromCli = (path: string, body: unknown) =>
+      app.request(path, { method: 'PUT', headers: CLI, body: JSON.stringify(body) })
+    expect((await fromCli('/api/reviewer/sets', { sets: [] })).status).toBe(403)
+    expect((await fromCli('/api/reviewer/sets/default', { id: 'refactor' })).status).toBe(403)
+  })
+
+  it('a set outlives a role of the human’s it named', async () => {
+    const { app } = setup()
+    await put(app, '/api/reviewer/roles', {
+      roles: [{ id: 'perf', name: 'Performance', blurb: 'slow', focus: 'Loops.' }],
+    })
+    await put(app, '/api/reviewer/sets', {
+      sets: [{ name: 'Hot path', roles: ['perf', 'general'] }],
+    })
+    await put(app, '/api/reviewer/roles', { roles: [] })
+    expect((await offer(app)).sets.at(-1)).toMatchObject({ id: 'hot-path', roles: ['general'] })
+  })
+
+  it('the author agent says which set fits, and starts nobody', async () => {
+    const { app, review, queue } = setup()
+    const res = await cli(app, '/api/reviewer/pick', {
+      set: 'refactor',
+      reason: '  moves the retry logic  ',
+    })
+    expect(await res.json()).toEqual({
+      picked: true,
+      set: 'refactor',
+      roles: ['blast-radius', 'simplicity', 'tests'],
+    })
+    expect(review.get().reviewerSet).toEqual({ set: 'refactor', reason: 'moves the retry logic' })
+    // Not an offer, and nothing started.
+    expect(review.get().reviewerSuggested).toBeUndefined()
+    expect(queue.take()).toBeNull()
+    expect(review.get().reviewers).toBeUndefined()
+  })
+
+  it('a pick is the CLI’s to make, for a set there is, off a pull request', async () => {
+    const { app, review } = setup()
+    expect((await page(app, '/api/reviewer/pick', { set: 'refactor' })).status).toBe(403)
+    const unknown = await cli(app, '/api/reviewer/pick', { set: 'nope' })
+    expect(unknown.status).toBe(400)
+    expect(await error(unknown)).toMatch(/the sets are agent-written, refactor, /)
+    expect(review.get().reviewerSet).toBeUndefined()
+    const onPr = setup({ pr: true })
+    expect((await cli(onPr.app, '/api/reviewer/pick', { set: 'refactor' })).status).toBe(400)
   })
 })
 

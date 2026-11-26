@@ -18,9 +18,13 @@ import { Confirm } from './Confirm.js'
 import { Icon } from './Icon.js'
 import { Menu, MenuItem } from './Menu.js'
 import { Modal } from './Modal.js'
+import { ReviewerSets } from './ReviewerSets.js'
 
 /** What the page shows on the right. */
 export type ReviewerAgentsPick = { kind: 'role'; id: string } | { kind: 'new'; from?: RoleDraft }
+
+/** The page's two lists: the agents, and the sets they are started in. */
+type Tab = 'agents' | 'sets'
 
 const EMPTY: RoleDraft = { name: '', blurb: '', focus: '' }
 
@@ -48,6 +52,11 @@ const NEW_PLACEHOLDER =
  *
  * The reviewers at work in this review live in the agents panel, not here;
  * adding one is the Add dialog's job (`onAdd`), opened on the role in view.
+ *
+ * A second tab holds the sets (ReviewerSets): the agents started together for
+ * a kind of change, and which set the Add dialog opens on. The agents not in
+ * the picker wait in a library, folded until it is opened: most visits are
+ * about the few that are active.
  */
 export function ReviewerAgents({
   initial,
@@ -59,14 +68,16 @@ export function ReviewerAgents({
   initial?: ReviewerAgentsPick
   /** An author agent is on the review: it can make and change roles. */
   agentAttached?: boolean
-  /** Open the Add dialog on a role. Absent where reviewer agents cannot join
-   * (a pull request). */
-  onAdd?: (role?: string) => void
+  /** Open the Add dialog on a role or a set. Absent where reviewer agents
+   * cannot join (a pull request). */
+  onAdd?: (roles: readonly string[]) => void
   onClose: () => void
 }) {
   const client = useQueryClient()
   const { data, isLoading, error } = useReviewerRoles()
   const [pick, setPick] = useState<ReviewerAgentsPick | null>(initial ?? null)
+  const [tab, setTab] = useState<Tab>('agents')
+  const [libraryOpen, setLibraryOpen] = useState(false)
   // One of the reviewer's own, with its fields open to edit.
   const [editing, setEditing] = useState(false)
   // A new role written by hand: the form, above the conversation.
@@ -180,6 +191,8 @@ export function ReviewerAgents({
   )
 
   const viewed = shown?.kind === 'role' ? roles.find((r) => r.id === shown.id) : undefined
+  // The one in view is never hidden: its library opens with it.
+  const libraryShown = libraryOpen || (viewed !== undefined && !activeIds.has(viewed.id))
   const newForm = shown?.kind === 'new' && (shown.from !== undefined || byHand)
 
   /** Everything done to a role, behind one "more". */
@@ -228,7 +241,22 @@ export function ReviewerAgents({
       {error && (
         <p className="cov-note">Couldn't load the reviewer agents: {(error as Error).message}</p>
       )}
-      <div className="lp-grid">
+      <div className="tabs ra-tabs" role="tablist" aria-label="Reviewer agents and sets">
+        {(['agents', 'sets'] as const).map((id) => (
+          <button
+            key={id}
+            type="button"
+            role="tab"
+            className="tab"
+            aria-selected={tab === id}
+            onClick={() => setTab(id)}
+          >
+            {id === 'agents' ? 'Agents' : 'Sets'}
+          </button>
+        ))}
+      </div>
+      {tab === 'sets' && data && <ReviewerSets data={data} {...(onAdd ? { onAdd } : {})} />}
+      <div className="lp-grid" hidden={tab !== 'agents'}>
         <nav className="lp-side" aria-label="Reviewer agents">
           <div className="lp-cap">Active</div>
           <div className="lp-group">
@@ -251,8 +279,20 @@ export function ReviewerAgents({
           </div>
           {library.length > 0 && (
             <>
-              <div className="lp-cap">Library</div>
-              <div className="lp-group">{library.map(roleRow)}</div>
+              <button
+                type="button"
+                className="lp-cap ra-fold"
+                aria-expanded={libraryShown}
+                title="Agents that are not in the Add reviewer list"
+                onClick={() => setLibraryOpen(!libraryShown)}
+              >
+                <span className={`chevron${libraryShown ? '' : ' chevron-shut'}`}>
+                  <Icon name="chev" size="sm" />
+                </span>
+                Library
+                <span className="ra-fold-n">{library.length}</span>
+              </button>
+              {libraryShown && <div className="lp-group">{library.map(roleRow)}</div>}
             </>
           )}
         </nav>
@@ -270,7 +310,7 @@ export function ReviewerAgents({
                       type="button"
                       className="btn btn-sm btn-primary"
                       title={`Add ${/^[aeiou]/i.test(viewed.name) ? 'an' : 'a'} ${viewed.name} reviewer to this review`}
-                      onClick={() => onAdd(viewed.id)}
+                      onClick={() => onAdd([viewed.id])}
                     >
                       Add to review
                     </button>
@@ -350,7 +390,7 @@ export function ReviewerAgents({
                       <dd className="lp-fact-body">
                         <p className="lp-fro">
                           Comment only on what matters, and only on what it can show. One finding
-                          per thread, and never edit the code.
+                          per thread. Never edit the code, and leave git as it is.
                         </p>
                       </dd>
                     </div>

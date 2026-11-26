@@ -66,14 +66,19 @@ import {
   untouchedAgentVoice,
 } from '../shared/review.js'
 import {
+  AGENT_PICKS_SET,
   allRoles,
+  allSets,
   DEFAULT_ROLE,
   findRole,
+  findSet,
   isActiveRole,
   isDraftRoleKey,
   parseCustomRoles,
+  parseCustomSets,
   parseRolePatch,
   type ReviewerRole,
+  type ReviewerSet,
   ROLE_MESSAGE_MAX,
 } from '../shared/roles.js'
 import type { ChangesetSpec, PrInfo } from '../shared/types.js'
@@ -139,6 +144,7 @@ import {
   REVIEWER_BRIEF,
   REVIEWER_NEXT_STEP,
   reviewerCommands,
+  reviewerSetNudge,
   specLine,
 } from './prompt.js'
 import { parseAnchor, ReviewStore } from './review.js'
@@ -197,6 +203,9 @@ const POLL_HEARTBEAT_MS = 15_000
  * aborts, and a listening poll blocks the daemon's idle reap.
  */
 const POLL_MAX_MS = 30 * 60_000
+/** Times a reviewer agent's thread is handed to the author agent again after a
+ * poll that skipped it, before it reads as unanswered. */
+const REDELIVER_MAX = 2
 /** How long a reviewer agent stays listening once all its threads are closed:
  * the human's last word on one, or a message to it, still reaches it. */
 const REVIEWER_GRACE_MS = 5 * 60_000
@@ -284,9 +293,42 @@ export function createApp(
 ) {
   const app = new Hono()
 
+  // How often each reviewer agent's thread was handed to the author agent again
+  // since its last answer (see the batch listener below).
+  const redelivered = new Map<string, number>()
   if (review && queue) {
     queue.onBatchClosed((closed) => {
-      if (closed.unanswered.length > 0) review.markUnanswered(closed.unanswered)
+      if (closed.unanswered.length === 0) return
+      // A thread the author agent polled past reads "no answer" until someone
+      // sends it again. The human does that for their own comment; a reviewer
+      // agent's has nobody to: its reviewer would stop waiting and leave, and
+      // the two would never talk. So the server sends it again itself: it
+      // rides the very poll that skipped it, flagged, and its reviewer keeps
+      // waiting. Capped, so an agent that never answers cannot spin on it.
+      const again =
+        closed.reason === 'repoll'
+          ? review
+              .get()
+              .threads.filter(
+                (t) =>
+                  closed.unanswered.includes(t.id) &&
+                  openedByReviewerAgent(t) !== null &&
+                  // `addressed` too: editing the commented hunk makes a sent
+                  // thread addressed with no reply written, and an author
+                  // that fixes the line and polls on is the usual way to
+                  // skip one. A thread it replied to is never in `unanswered`.
+                  (t.state === 'sent' || t.state === 'addressed') &&
+                  !t.needsYou &&
+                  (redelivered.get(t.id) ?? 0) < REDELIVER_MAX,
+              )
+              .map((t) => t.id)
+          : []
+      const dropped = closed.unanswered.filter((id) => !again.includes(id))
+      for (const id of dropped) redelivered.delete(id)
+      if (dropped.length > 0) review.markUnanswered(dropped)
+      if (again.length === 0) return
+      for (const id of again) redelivered.set(id, (redelivered.get(id) ?? 0) + 1)
+      queue.enqueueThreads(again)
     })
   }
 
@@ -385,6 +427,7 @@ export function createApp(
   // conversation with the agent beside it (server/roles.ts).
   const roleStore = ctx.uiSettings ? new RoleStore(ctx.uiSettings) : null
   const customRoles = (): ReviewerRole[] => roleStore?.roles() ?? []
+  const customSets = (): ReviewerSet[] => roleStore?.sets() ?? []
   const NO_REVIEWERS_ON_PR =
     'reviewer agents join branch and working-tree reviews only; this review is of a pull request'
 
@@ -1300,6 +1343,7 @@ export function createApp(
         return c.json({ error: 'a suggested PR comment needs a pull request under review' }, 400)
       }
       const waitedMs = queue?.agentReplied(id, more) ?? null
+      if (!more) redelivered.delete(id)
       const seenThroughMs = waitedMs === null ? undefined : Date.now() - waitedMs
       const thread = review.addMessage(
         id,
@@ -1802,7 +1846,18 @@ export function createApp(
         status: 'feedback' as const,
         kind: 'cleared' as const,
         threadIds: [] as string[],
-        prompt: buildClearedPrompt({ repo: repoInfo(), changeset: store?.get() ?? null }),
+        prompt: buildClearedPrompt(
+          { repo: repoInfo(), changeset: store?.get() ?? null },
+          // Clearing dropped the round's pick, so the fresh round asks again,
+          // as the open does.
+          ctx.pr
+            ? null
+            : reviewerSetNudge(
+                review?.get() ?? {},
+                allSets(customSets()),
+                (roleStore?.setDefault() ?? AGENT_PICKS_SET) === AGENT_PICKS_SET,
+              ),
+        ),
       }
     }
     if (snapshot.kind === 'artifacts') {
@@ -1869,7 +1924,11 @@ export function createApp(
         ),
       }
     }
-    const delivered = threads.filter((t) => snapshot.threadIds.includes(t.id))
+    const delivered = threads
+      .filter((t) => snapshot.threadIds.includes(t.id))
+      // Handed over again after a poll that skipped it: say so, the way a
+      // thread the human sent again does.
+      .map((t) => (redelivered.has(t.id) ? { ...t, unanswered: true } : t))
     const prompt =
       delivered.length === 1
         ? buildThreadPrompt(delivered[0]!, { ...promptCtx(delivered[0]!.id), protocol })
@@ -2136,9 +2195,61 @@ export function createApp(
       roles,
       default: DEFAULT_ROLE,
       active: roles.filter((r) => isActiveRole(r, activity)).map((r) => r.id),
+      // The sets ride with the roles they name: one read, one refresh.
+      sets: allSets(customSets()),
+      defaultSet: roleStore?.setDefault() ?? AGENT_PICKS_SET,
     }
   }
   app.get('/api/reviewer/roles', (c) => c.json(rolesPayload(customRoles())))
+
+  // The human's own sets, replaced whole (the Sets tab of the Reviewer agents
+  // page). A set they just made has no id: the server gives it one.
+  app.put('/api/reviewer/sets', async (c) => {
+    if (!roleStore) return c.json({ error: 'settings unavailable' }, 503)
+    if (fromCli(c)) return c.json({ error: 'only the human edits their sets' }, 403)
+    const body = await c.req.json().catch(() => null)
+    const known = new Set(allRoles(customRoles()).map((r) => r.id))
+    const parsed = parseCustomSets(body?.sets, known)
+    if (!parsed.ok) return c.json({ error: parsed.error }, 400)
+    roleStore.saveSets(parsed.sets)
+    return c.json(rolesPayload(customRoles()))
+  })
+
+  // Which set the picker opens on: one of the sets, or the author agent's
+  // pick for the change (`AGENT_PICKS_SET`).
+  app.put('/api/reviewer/sets/default', async (c) => {
+    if (!roleStore) return c.json({ error: 'settings unavailable' }, 503)
+    if (fromCli(c)) return c.json({ error: 'only the human picks their default set' }, 403)
+    const body = await c.req.json().catch(() => null)
+    const id: unknown = body?.id
+    if (typeof id !== 'string' || (id !== AGENT_PICKS_SET && !findSet(customSets(), id))) {
+      return c.json({ error: `no set "${String(id)}"` }, 400)
+    }
+    roleStore.saveSetDefault(id)
+    return c.json(rolesPayload(customRoles()))
+  })
+
+  // The author agent says which set fits the change it wrote (`diffo reviewer
+  // --set`). It starts nobody: the human's picker opens with that set's agents
+  // ticked, and the reason beside them.
+  app.post('/api/reviewer/pick', async (c) => {
+    if (!review) return c.json({ error: 'review unavailable' }, 503)
+    if (!fromCli(c)) return c.json({ error: 'a set is picked through the diffo CLI' }, 403)
+    if (ctx.pr) return c.json({ error: NO_REVIEWERS_ON_PR }, 400)
+    const body = await c.req.json().catch(() => null)
+    const sets = allSets(customSets())
+    const set = typeof body?.set === 'string' ? sets.find((s) => s.id === body.set) : undefined
+    if (!set) {
+      return c.json(
+        {
+          error: `no set "${String(body?.set ?? '')}"; the sets are ${sets.map((s) => s.id).join(', ')}`,
+        },
+        400,
+      )
+    }
+    review.pickReviewerSet(set.id, parseSuggestReason(body?.reason))
+    return c.json({ picked: true, set: set.id, roles: set.roles })
+  })
 
   // The human moves a role into the picker, or back to the library.
   app.put('/api/reviewer/roles/:id/active', async (c) => {
@@ -2263,6 +2374,19 @@ export function createApp(
     return c.json({ role: role.id, ask: buildReviewerAsk(resolve(ctx.root), homedir(), role) })
   })
 
+  /** Whether the roles asked for are exactly a set, for the one usage event:
+   * a built-in set by its id, one of the human's own as `custom`. */
+  const setAsked = (ids: readonly string[]): { set?: string; agentPick?: true } => {
+    const same = (set: ReviewerSet) =>
+      set.roles.length === ids.length && set.roles.every((id) => ids.includes(id))
+    const set = allSets(customSets()).find(same)
+    if (!set) return {}
+    return {
+      set: set.builtIn ? set.id : 'custom',
+      ...(review?.get().reviewerSet?.set === set.id ? { agentPick: true as const } : {}),
+    }
+  }
+
   // The reviewer's other way in: ask the agent that wrote the change to start
   // the reviewer itself, as a sub-agent. The ask rides the author agent's poll
   // like a layers request, and the page shows the reviewer as on its way until
@@ -2289,6 +2413,7 @@ export function createApp(
       count: roles.length,
       roles: [...new Set(roles.map((r) => (r.builtIn ? r.id : 'custom')))].sort(),
       suggested: suggested !== undefined && roles.some((r) => r.id === suggested),
+      ...setAsked(roles.map((r) => r.id)),
     })
     for (const role of roles) {
       queue.enqueueReviewer(role.id)
@@ -2633,7 +2758,11 @@ export function createApp(
               hub.log(
                 name,
                 'waiting',
-                opened === 0 ? 'has raised nothing yet' : 'has answers to reply to or close',
+                opened === 0
+                  ? 'has raised nothing yet'
+                  : inbox.yourMove.length === 0 && counts.unanswered > 0
+                    ? 'got no answer from the author agent'
+                    : 'has answers to reply to or close',
               )
             }
             await s.write(
@@ -2649,7 +2778,9 @@ export function createApp(
                     ? REVIEWER_NEXT_STEP.idleNone(name)
                     : inbox.yourMove.length > 0
                       ? REVIEWER_NEXT_STEP.idleYourMove(name)
-                      : REVIEWER_NEXT_STEP.idle(name),
+                      : counts.unanswered > 0
+                        ? REVIEWER_NEXT_STEP.idleUnanswered(name, counts.unanswered)
+                        : REVIEWER_NEXT_STEP.idle(name),
               }),
             )
             return

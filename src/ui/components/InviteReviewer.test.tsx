@@ -2,7 +2,13 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { BUILT_IN_ROLES, type ReviewerRole } from '../../shared/roles.js'
+import {
+  AGENT_PICKS_SET,
+  BUILT_IN_ROLES,
+  BUILT_IN_SETS,
+  type ReviewerRole,
+  type ReviewerSet,
+} from '../../shared/roles.js'
 import { type Reviewers, ReviewersContext } from '../actors.js'
 import { InviteReviewer } from './InviteReviewer.js'
 
@@ -12,6 +18,8 @@ const copied: string[] = []
 /** What the page sent, in order: `METHOD path` and the body. */
 const sent: { call: string; body: unknown }[] = []
 let custom: ReviewerRole[] = []
+let mySets: ReviewerSet[] = []
+let defaultSet: string = AGENT_PICKS_SET
 
 const json = (body: unknown, status = 200) => new Response(JSON.stringify(body), { status })
 
@@ -19,6 +27,8 @@ beforeEach(() => {
   copied.length = 0
   sent.length = 0
   custom = []
+  mySets = []
+  defaultSet = AGENT_PICKS_SET
   vi.stubGlobal(
     'fetch',
     vi.fn(async (input: string, init?: RequestInit) => {
@@ -30,7 +40,13 @@ beforeEach(() => {
         const roles = [...BUILT_IN_ROLES, ...custom]
         // The quick picks and the reviewer's own are active, as the server says.
         const active = roles.filter((r) => r.quick || !r.builtIn).map((r) => r.id)
-        return json({ roles, default: 'general', active })
+        return json({
+          roles,
+          default: 'general',
+          active,
+          sets: [...BUILT_IN_SETS, ...mySets],
+          defaultSet,
+        })
       }
       if (input.startsWith('/api/reviewer/invite')) {
         const role = new URL(input, 'http://x').searchParams.get('role')
@@ -56,7 +72,8 @@ function show(
     onClose?: () => void
     onManage?: () => void
     suggested?: { role: string; reason?: string }
-    preselect?: string
+    preselect?: readonly string[]
+    picked?: { set: string; reason?: string }
     reviewers?: Reviewers
   } = {},
 ) {
@@ -70,6 +87,7 @@ function show(
           {...(options.onManage ? { onManage: options.onManage } : {})}
           {...(options.suggested ? { suggested: options.suggested } : {})}
           {...(options.preselect ? { preselect: options.preselect } : {})}
+          {...(options.picked ? { picked: options.picked } : {})}
         />
       </ReviewersContext.Provider>
     </QueryClientProvider>,
@@ -157,15 +175,15 @@ describe('InviteReviewer — picking roles', () => {
   })
 
   it('opens on a role the page asked for', async () => {
-    show({ preselect: 'simplicity' })
+    show({ preselect: ['simplicity'] })
     expect(await ticked('Simplicity')).toBe(true)
     expect(await ticked('General')).toBe(false)
   })
 
-  it('"Edit agents" hands over to the page', async () => {
+  it('"Edit agents and sets" hands over to the page', async () => {
     const onManage = vi.fn()
     show({ onManage })
-    fireEvent.click(await screen.findByRole('button', { name: 'Edit agents' }))
+    fireEvent.click(await screen.findByRole('button', { name: 'Edit agents and sets' }))
     expect(onManage).toHaveBeenCalledOnce()
   })
 })
@@ -239,5 +257,73 @@ describe('InviteReviewer — the agent suggested one', () => {
     show()
     await box('General')
     expect(screen.queryByRole('button', { name: 'Not now' })).toBeNull()
+  })
+})
+
+describe('InviteReviewer — what it opens on', () => {
+  const tickedNames = () =>
+    [...document.querySelectorAll<HTMLInputElement>('.rv-roles input:checked')].map(
+      (input) => input.closest('label')?.querySelector('.rv-role-name')?.textContent,
+    )
+
+  it('opens on the set the agent picked, its agents ticked and its reason said', async () => {
+    show({ picked: { set: 'refactor', reason: 'moves the retry logic, behaviour unchanged' } })
+    await box('Blast radius')
+    // Tests waits in the library, and shows because the set ticked it.
+    expect(tickedNames()).toEqual(['Blast radius', 'Simplicity', 'Tests'])
+    expect(screen.getByRole('button', { name: 'Refactor' }).getAttribute('aria-pressed')).toBe(
+      'true',
+    )
+    expect(document.querySelector('.rv-picked')?.textContent).toBe(
+      'Your agent picked Refactor for this change: moves the retry logic, behaviour unchanged',
+    )
+    expect(screen.getByRole('button', { name: 'Start 3 reviewers' })).toBeTruthy()
+  })
+
+  it('opens on General alone until the agent has picked', async () => {
+    show()
+    await box('General')
+    expect(tickedNames()).toEqual(['General'])
+    expect(document.querySelector('.rv-picked')).toBeNull()
+  })
+
+  it("opens on the human's default set, whatever the agent picked", async () => {
+    mySets = [{ id: 'auth', name: 'Auth changes', when: 'Login.', roles: ['security', 'errors'] }]
+    defaultSet = 'auth'
+    show({ picked: { set: 'refactor' } })
+    await box('Security')
+    expect(tickedNames()).toEqual(['Error handling', 'Security'])
+    // The agent's pick is still said, and one click away.
+    expect(document.querySelector('.rv-picked')?.textContent).toMatch(/picked Refactor/)
+    fireEvent.click(screen.getByRole('button', { name: 'Refactor' }))
+    expect(tickedNames()).toEqual(['Blast radius', 'Simplicity', 'Tests'])
+  })
+
+  it('adds the role the agent flagged to the set it opens on', async () => {
+    show({ picked: { set: 'data' }, suggested: { role: 'security' } })
+    await box('Security')
+    expect(tickedNames()).toEqual(['Blast radius', 'Security', 'Data & migrations'])
+  })
+
+  it('opens on the roles the page asked for, over every default', async () => {
+    show({ preselect: ['docs', 'scope'], picked: { set: 'refactor' } })
+    await box('Scope')
+    expect(tickedNames()).toEqual(['Scope', 'Docs & changelog'])
+  })
+
+  it('never ticks an agent that is already in the review', async () => {
+    show({
+      picked: { set: 'refactor' },
+      reviewers: { ...NOBODY, roles: new Map([['juno', 'simplicity']]) },
+    })
+    await box('Blast radius')
+    expect(tickedNames()).toEqual(['Blast radius', 'Tests'])
+  })
+
+  it('a pick for a set that is gone changes nothing', async () => {
+    show({ picked: { set: 'deleted-set' } })
+    await box('General')
+    expect(tickedNames()).toEqual(['General'])
+    expect(document.querySelector('.rv-picked')).toBeNull()
   })
 })

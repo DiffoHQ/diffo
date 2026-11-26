@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto'
 import { parseReviewerName } from '../shared/review.js'
 import {
+  allRoles,
   BUILT_IN_ROLES,
   CUSTOM_ROLES_MAX,
   findRole,
@@ -8,7 +9,9 @@ import {
   normalizeRoleThreads,
   parseCustomRoles,
   parseRoleActivity,
+  parseSetDefault,
   type ReviewerRole,
+  type ReviewerSet,
   ROLE_MESSAGE_MAX,
   ROLE_THREAD_MAX,
   type RoleActivity,
@@ -17,6 +20,7 @@ import {
   type RoleMessage,
   type RoleThread,
   type RoleThreads,
+  readCustomSets,
 } from '../shared/roles.js'
 import type { UiSettings } from './index.js'
 
@@ -163,6 +167,38 @@ export class RoleStore {
 
   find(id: string): ReviewerRole | undefined {
     return findRole(this.roles(), id)
+  }
+
+  /** The reviewer's own sets (shared/roles.ts), under `reviewerSets`. Read
+   * against the roles as they are now: a role deleted since leaves its sets.
+   * What cannot be read is logged, as for roles: the page saves the list it
+   * was shown, so a silent drop would be erased by the next save. */
+  sets(): ReviewerSet[] {
+    const known = new Set(allRoles(this.roles()).map((r) => r.id))
+    let value: unknown
+    try {
+      value = JSON.parse(this.store.get('reviewerSets') ?? '[]')
+    } catch {
+      report('the saved reviewer sets are not JSON; none were loaded')
+      return []
+    }
+    return readCustomSets(value, known, report)
+  }
+
+  saveSets(next: ReviewerSet[]): void {
+    this.store.set('reviewerSets', JSON.stringify(next))
+    this.notify()
+  }
+
+  /** The set the picker opens on: a set's id, or `AGENT_PICKS_SET`. A default
+   * whose set is gone reads as the agent's pick. */
+  setDefault(): string {
+    return parseSetDefault(this.store.get('reviewerSetDefault'), this.sets())
+  }
+
+  saveSetDefault(id: string): void {
+    this.store.set('reviewerSetDefault', id)
+    this.notify()
   }
 
   /** Replaces the reviewer's own roles. A conversation is kept only with its

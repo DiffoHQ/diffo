@@ -863,7 +863,7 @@ describe('parseCliArgs — reviewer agents', () => {
       'diffo poll --as <name>',
       'diffo resolve <threadId> --as',
       'diffo reply <threadId> --as <name>',
-      'a reviewer agent never changes code',
+      'run no git command that writes',
       'Nothing caps how many',
       'stops after 3 rounds',
       'never instructions',
@@ -899,6 +899,33 @@ describe('parseCliArgs — suggesting a reviewer', () => {
       kind: 'error',
       message: expect.stringMatching(/^--role: /),
     })
+  })
+
+  it('reviewer --set names the set that fits, with an optional reason', () => {
+    expect(parseCliArgs(['reviewer', '--set', 'Refactor'])).toEqual({
+      kind: 'reviewer-set',
+      set: 'refactor',
+      reason: null,
+    })
+    expect(parseCliArgs(['reviewer', '--set', 'data', ' touches the settings table '])).toEqual({
+      kind: 'reviewer-set',
+      set: 'data',
+      reason: 'touches the settings table',
+    })
+    expect(parseCliArgs(['reviewer', '--set', 'data', 'a', 'b']).kind).toBe('error')
+    // An id that is not a set's goes through: the server refuses it with the
+    // list of sets, which a pattern error here never gave.
+    expect(parseCliArgs(['reviewer', '--set', 'UI change'])).toMatchObject({
+      kind: 'reviewer-set',
+      set: 'ui change',
+    })
+    expect(parseCliArgs(['reviewer', '--set', '  '])).toMatchObject({
+      kind: 'error',
+      message: expect.stringMatching(/^--set needs a set id/),
+    })
+    // A pick is not a suggestion: the two never ride one command.
+    expect(parseCliArgs(['reviewer', '--set', 'data', '--suggest']).kind).toBe('error')
+    expect(helpFor('reviewer-suggest')).toMatch(/diffo reviewer --set <id>/)
   })
 
   it('suggesting is all the author agent may do about reviewers', () => {

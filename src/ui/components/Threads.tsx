@@ -119,12 +119,15 @@ function PendingReply({
   unanswered,
   followUp,
   since,
+  owedTo,
 }: {
   working: boolean
   place?: number
   unanswered?: boolean
   followUp?: boolean
   since?: string
+  /** The reviewer agent whose comment went unanswered; absent for the human's own. */
+  owedTo?: string
 }) {
   const when = unanswered
     ? 'no answer, the agent moved on'
@@ -146,7 +149,11 @@ function PendingReply({
       </div>
       <div className="cmt-body pending-reply" role="status" aria-label={when}>
         {unanswered ? (
-          <span className="pending-none">Send it again, or resolve it if you've let it go.</span>
+          <span className="pending-none">
+            {owedTo
+              ? `Reply to send it to the agent again, or resolve it if ${owedTo}'s point can go.`
+              : "Send it again, or resolve it if you've let it go."}
+          </span>
         ) : (
           <span className="pending-dots">
             <i />
@@ -640,7 +647,9 @@ export function ThreadCard({
         : agentsTalking
           ? lastAuthor === 'agent'
             ? `With ${opener}`
-            : 'With the agent'
+            : thread.unanswered
+              ? TURN_LABEL.unanswered
+              : 'With the agent'
           : thread.state === 'addressed' && thread.intent === 'fix'
             ? 'Addressed'
             : STATE_LABEL[thread.state]
@@ -650,7 +659,7 @@ export function ThreadCard({
       : thread.state === 'resolved'
         ? 'mute'
         : 'pr'
-    : proposed || withheld
+    : proposed || withheld || (agentsTalking && lastAuthor !== 'agent' && thread.unanswered)
       ? 'attn'
       : STATE_TONE[thread.state]
 
@@ -759,6 +768,7 @@ export function ThreadCard({
         followUp={followUp}
         unanswered={thread.unanswered === true && queuePosition === undefined && !working}
         since={thread.updatedAt}
+        {...(opener !== null && lastAuthor !== 'agent' ? { owedTo: opener } : {})}
       />
     ) : null
   // While the agent is composing, the indicator sits where the answer will land:

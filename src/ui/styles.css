@@ -11757,8 +11757,147 @@ span.elsewhere-go {
   outline-offset: 2px;
 }
 
+.rv-combo {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.rv-combo svg {
+  color: var(--ink-3);
+}
+
+/* Which set the agent picked for this change, and why: one quiet line under
+   the sets, never a banner. The agents it ticked are in the list below. */
+.rv-picked {
+  display: flex;
+  gap: var(--s-2);
+  margin: 0 0 var(--s-3);
+  font-size: var(--t-12);
+  line-height: 1.45;
+  color: var(--ink-2);
+}
+
+.rv-picked svg {
+  flex: none;
+  margin-top: 2px;
+  color: var(--ink-3);
+}
+
+.rv-picked b {
+  font-weight: 600;
+  color: var(--ink);
+}
+
 .rv-more {
   margin-top: var(--s-2);
+}
+
+/* Reviewer agents page: Agents | Sets, as the agents panel's two lists are. */
+.ra-tabs {
+  flex: none;
+  align-self: flex-start;
+  width: 224px;
+  margin: 0 0 var(--s-4);
+}
+
+/* The Agents tab stays mounted under Sets: a conversation half written is
+   kept. The Sets tab is not: it unmounts, and a set half typed goes with it. */
+.lp-grid[hidden] {
+  display: none;
+}
+
+/* The library's caption is its fold. */
+.ra-fold {
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+  border: 0;
+  background: none;
+  font-family: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.ra-fold:hover {
+  color: var(--ink-2);
+}
+
+.ra-fold:focus-visible {
+  outline: 2px solid var(--acc);
+  outline-offset: 2px;
+  border-radius: var(--r-sm);
+}
+
+.ra-fold-n {
+  margin-left: auto;
+  letter-spacing: 0;
+}
+
+.lp-row-name .lp-row-state {
+  margin-left: var(--s-2);
+}
+
+/* A set's agents, read: a name and its one line. */
+.rs-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.rs-item {
+  display: flex;
+  align-items: baseline;
+  gap: var(--s-3);
+  min-width: 0;
+  font-size: var(--t-13);
+}
+
+.rs-name {
+  flex: none;
+  font-weight: 600;
+  color: var(--ink);
+}
+
+.rs-blurb {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: var(--t-12);
+  color: var(--ink-3);
+}
+
+/* A set's agents, picked: the picker's own rows, in the form. */
+.rs-pick {
+  display: block;
+  margin: 0;
+  border: 0;
+  min-width: 0;
+}
+
+.rs-pick .lp-flabel {
+  float: left;
+  width: 96px;
+  padding: 2px 0 0;
+}
+
+.rs-pick .rv-roles {
+  margin-left: calc(96px + var(--s-3));
+}
+
+.rs-pick .rv-role-pick {
+  padding: var(--s-2) var(--s-3);
+}
+
+.rs-count {
+  display: block;
+  margin-top: 2px;
+  font-size: var(--t-11);
+  color: var(--ink-3);
 }
 
 .rv-roles {
