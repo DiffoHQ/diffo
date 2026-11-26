@@ -705,7 +705,7 @@ function remoteSetup(): { relay: string; key: string } | null {
   }
   if (!resolved) {
     fail(
-      "--remote needs a relay: run your relay's setup (`pnpm run setup` in its checkout), or set both $DIFFO_RELAY_URL and $DIFFO_RELAY_KEY",
+      '--remote is a private beta and needs a relay of your own, which this machine does not have (`diffo help remote`)',
     )
   }
   return { relay: resolved.relay, key: resolved.key }

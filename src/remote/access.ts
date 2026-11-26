@@ -39,8 +39,10 @@ const WRITES: { method: string; route: string }[] = [
   { method: 'POST', route: '/api/review/finish' },
   { method: 'POST', route: '/api/review/layers/request' },
   { method: 'DELETE', route: '/api/review/layers' },
-  // Only the reviewer's own display settings; relayBodyAllows narrows the body.
+  // Only the reviewer's own display settings; relayBodyRefusal narrows the body.
   { method: 'PUT', route: '/api/settings' },
+  // Only the notice's "seen it": whether usage data is sent stays a local choice.
+  { method: 'PUT', route: '/api/telemetry' },
 ]
 
 const ALLOWED = [...READS, ...WRITES].map(({ method, route }) => ({
@@ -102,6 +104,13 @@ export function relayBodyRefusal(method: string, path: string, body: unknown): s
     if (!fields) return 'need a JSON object'
     const other = Object.keys(fields).filter((k) => !RELAY_SETTINGS.has(k))
     return other.length > 0 ? `not from a remote device: ${other.join(', ')}` : null
+  }
+  if (m === 'PUT' && path === '/api/telemetry') {
+    const keys = fields ? Object.keys(fields) : []
+    const notice = (fields as { notice?: unknown } | null)?.notice
+    return keys.length === 1 && (notice === 'shown' || notice === 'acknowledged')
+      ? null
+      : 'not from a remote device: the usage-data setting'
   }
   // The thread routes speak for someone else when the body says so:
   // `author: "agent"` is the author agent, `as: <seat>` a reviewer agent. The

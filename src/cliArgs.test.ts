@@ -74,10 +74,8 @@ describe('parseCliArgs', () => {
     expect(parseCliArgs(['--remote', '--relay-key', 'secret'])).toMatchObject({ kind: 'error' })
   })
 
-  it('keeps remote mode to one beta line in the help', () => {
-    const help = HELP_TEXT
-    const lines = help.split('\n').filter((l) => /remote|relay/i.test(l))
-    expect(lines).toEqual([expect.stringMatching(/^\s+--remote\s+\(beta\)/)])
+  it('keeps remote mode, a private beta, out of the help', () => {
+    expect(HELP_TEXT).not.toMatch(/remote|relay/i)
     expect(helpFor('agent')).not.toMatch(/remote|relay/i)
     expect(helpFor('pr')).not.toMatch(/remote|relay/i)
   })

@@ -102,7 +102,6 @@ Options (for opening the review):
   -p, --port <port>  Port to serve on (default: the port this repo last used,
                      else the first free one)
   --no-open          Don't open the browser automatically
-  --remote           (beta) Also reach it from another device through a relay
   --foreground       Run the server in this terminal instead of leaving a
                      background one behind (Ctrl-C stops it)
   -v, --version      Show version

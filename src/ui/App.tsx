@@ -141,6 +141,7 @@ import {
 } from './threads.js'
 import { useAgentNotifications } from './useAgentNotifications.js'
 import { useViewed } from './useViewed.js'
+import { isViaRelay } from './viaRelay.js'
 import { loadViewed, storageKey } from './viewedStore.js'
 import { useVoice } from './voicePref.js'
 
@@ -2469,7 +2470,7 @@ function Review() {
             since: presenceSince,
             activity,
             onInvite: () => setInviteOpen(true),
-            ...(pr === null
+            ...(pr === null && !isViaRelay()
               ? {
                   onAddReviewer: () => setReviewerView({ kind: 'add' }),
                   onShowReviewer: (name?: string) => openAgents(name),

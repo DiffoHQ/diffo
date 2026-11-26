@@ -685,10 +685,12 @@ describe('diffo remote setup / forget / --remote resolution', () => {
     expect(existsSync(config)).toBe(false)
   })
 
-  it('--remote with no relay anywhere says how to set one up', { timeout: 30_000 }, async () => {
+  it('--remote with no relay anywhere says it needs one, and where to read more', {
+    timeout: 30_000,
+  }, async () => {
     const { run } = sandbox()
     const res = await run(['--remote', '--no-open'])
     expect(res.code).toBe(1)
-    expect(res.stderr).toMatch(/setup.*\$DIFFO_RELAY_URL and \$DIFFO_RELAY_KEY/)
+    expect(res.stderr).toMatch(/needs a relay of your own.*diffo help remote/)
   })
 })

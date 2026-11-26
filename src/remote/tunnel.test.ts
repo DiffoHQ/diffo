@@ -464,6 +464,36 @@ describe('/api/remote', () => {
     expect(remote.stops).toBe(0)
   })
 
+  it('is opened, ended and read from this machine only, never through a reverse proxy', async () => {
+    vi.stubEnv('DIFFO_PUBLIC_URL', 'https://diffo-{port}.devbox.internal')
+    try {
+      const remote = fake()
+      const app = createApp({ ...base, port: 4949, remote })
+      // Through the proxy: its public Host, or loopback Host with forwarding headers.
+      const throughProxy: Record<string, string>[] = [
+        { host: 'diffo-4949.devbox.internal' },
+        { 'x-forwarded-for': '203.0.113.7' },
+        { forwarded: 'for=203.0.113.7' },
+        { 'x-real-ip': '203.0.113.7' },
+      ]
+      for (const headers of throughProxy) {
+        const post = await call(app, 'POST', { relay: 'https://evil.example', key: KEY }, headers)
+        expect(post.status, JSON.stringify(headers)).toBe(403)
+        expect((await call(app, 'DELETE', undefined, headers)).status).toBe(403)
+      }
+      expect(remote.started).toEqual([])
+      expect(remote.stops).toBe(0)
+      // The unpaired link pairs whoever opens it first: only this machine reads it.
+      await call(app, 'POST', { relay: 'https://relay.example.dev', key: KEY })
+      const viaProxy = await call(app, 'GET', undefined, { host: 'diffo-4949.devbox.internal' })
+      expect((await viaProxy.json()).url).toBeNull()
+      const local = await call(app, 'GET')
+      expect((await local.json()).url).toBe('https://relay.example.dev/s/session')
+    } finally {
+      vi.unstubAllEnvs()
+    }
+  })
+
   it('DELETE turns it off for a loopback client', async () => {
     const remote = fake()
     const app = createApp({ ...base, remote })

@@ -40,6 +40,7 @@ describe('relayAllows', () => {
     ['POST', '/api/review/layers/request'],
     ['DELETE', '/api/review/layers'],
     ['PUT', '/api/settings'],
+    ['PUT', '/api/telemetry'],
     // Lowercase methods are the same methods.
     ['post', '/api/review/threads'],
   ]
@@ -71,7 +72,7 @@ describe('relayAllows', () => {
     ['GET', '/api/health'],
     ['POST', '/api/presets/p1/messages'],
     ['DELETE', '/api/presets/p1/thread'],
-    ['PUT', '/api/telemetry'],
+    ['POST', '/api/telemetry'],
     ['POST', '/api/telemetry/opened'],
     // A write on a read route, a read on a write route, and the page.
     ['POST', '/api/review'],
@@ -163,6 +164,23 @@ describe('relayBodyRefusal', () => {
       expect(
         relayBodyRefusal('POST', '/api/review/threads/t1/messages', { text: 'x', as }),
       ).not.toBeNull()
+    }
+  })
+
+  it('lets a remote device dismiss the usage-data notice, never change the setting', () => {
+    for (const body of [{ notice: 'shown' }, { notice: 'acknowledged' }]) {
+      expect(relayBodyRefusal('PUT', '/api/telemetry', body)).toBeNull()
+    }
+    for (const body of [
+      { enabled: false },
+      { enabled: true },
+      { notice: 'shown', enabled: false },
+      { notice: 'other' },
+      {},
+      null,
+      [],
+    ]) {
+      expect(relayBodyRefusal('PUT', '/api/telemetry', body)).not.toBeNull()
     }
   })
 

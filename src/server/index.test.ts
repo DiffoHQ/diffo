@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { DEFAULT_PRESET_SETTINGS } from '../shared/presets.js'
 import { VOICE_MAX } from '../shared/voice.js'
-import { createApp, markDevIndex } from './index.js'
+import { createApp, markDevIndex, markRelayIndex } from './index.js'
 
 const ctx = {
   root: '/nonexistent-repo',
@@ -18,6 +18,16 @@ const INDEX = [
   '  <body><div id="root"></div></body>',
   '</html>',
 ].join('\n')
+
+describe('markRelayIndex', () => {
+  const INDEX = '<html><head><title>Diffo</title>\n  </head><body></body></html>'
+  it('marks a page that came through the relay, and only that page', () => {
+    expect(markRelayIndex(INDEX, false)).toBe(INDEX)
+    const marked = markRelayIndex(INDEX, true)
+    expect(marked).toContain('<meta name="diffo-via" content="relay" />')
+    expect(markRelayIndex(marked, true)).toBe(marked)
+  })
+})
 
 describe('markDevIndex', () => {
   it('leaves a released page exactly as built', () => {
