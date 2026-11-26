@@ -110,8 +110,6 @@ export function PaneBar({
   // In layer mode the size is the layer's; the changeset's total belongs to
   // the Files tab, where the whole change is what is being read.
   const size = layer ? layer.stats : stats
-  const filtersOn =
-    (!layer && onlyChanged ? 1 : 0) + (!layer && hideReviewed ? 1 : 0) + (hideTests ? 1 : 0)
   // The rail's typed filter, echoed: with the rail folded it is the only trace
   // of why files are missing, so it shows in both forms of the bar.
   const queryChip = !layer && trimmedQuery !== '' && onClearQuery && (
@@ -180,81 +178,22 @@ export function PaneBar({
       {docked ? (
         <>
           {queryChip}
-          <Menu
-            label="View options"
-            tip="Layout and filters"
-            triggerClassName="pane-icon pane-view"
-            trigger={
-              <>
-                <Icon name="filter" size="md" />
-                {filtersOn > 0 && <span className="tab-dot" aria-hidden="true" />}
-              </>
-            }
-          >
-            {(close) => (
-              <>
-                <MenuLabel>Layout</MenuLabel>
-                <MenuItem
-                  icon="unified"
-                  kbd="u"
-                  checked={viewMode === 'unified'}
-                  onClick={() => {
-                    close()
-                    onSetViewMode('unified')
-                  }}
-                >
-                  Unified
-                </MenuItem>
-                <MenuItem
-                  icon="split"
-                  checked={viewMode === 'split'}
-                  onClick={() => {
-                    close()
-                    onSetViewMode('split')
-                  }}
-                >
-                  Split
-                </MenuItem>
-                {(showTests || (!layer && (showChanged || showReviewed))) && (
-                  <>
-                    <MenuSep />
-                    <MenuLabel>Hide</MenuLabel>
-                  </>
-                )}
-                {!layer && showChanged && (
-                  <MenuItem checked={onlyChanged} onClick={() => onOnlyChanged(!onlyChanged)}>
-                    {changedCount > 0
-                      ? `Everything but ${changedCount} since review`
-                      : 'Everything but changes since review'}
-                  </MenuItem>
-                )}
-                {!layer && showReviewed && (
-                  <MenuItem
-                    kbd="h"
-                    checked={hideReviewed}
-                    onClick={() => onHideReviewed(!hideReviewed)}
-                  >
-                    {done > 0 ? `${done} reviewed` : 'Reviewed files'}
-                  </MenuItem>
-                )}
-                {showTests && (
-                  <MenuItem checked={hideTests} onClick={() => onHideTests(!hideTests)}>
-                    {testCount > 0 ? tests : 'Test files'}
-                  </MenuItem>
-                )}
-                <MenuSep />
-                <MenuItem
-                  icon="fold"
-                  onClick={() => {
-                    close()
-                    onToggleCollapseAll()
-                  }}
-                >
-                  {allCollapsed ? 'Expand all files' : 'Collapse all files'}
-                </MenuItem>
-              </>
-            )}
-          </Menu>
+          <ViewMenu
+            layer={layer !== undefined}
+            done={done}
+            hideReviewed={hideReviewed}
+            onHideReviewed={onHideReviewed}
+            hideTests={hideTests}
+            onHideTests={onHideTests}
+            testCount={testCount}
+            onlyChanged={onlyChanged}
+            onOnlyChanged={onOnlyChanged}
+            changedCount={changedCount}
+            viewMode={viewMode}
+            onSetViewMode={onSetViewMode}
+            allCollapsed={allCollapsed}
+            onToggleCollapseAll={onToggleCollapseAll}
+          />
         </>
       ) : (
         <>
@@ -356,6 +295,149 @@ export function PaneBar({
         </>
       )}
     </div>
+  )
+}
+
+/** What the View menu's filters need: the same props as the bar's. */
+export interface ViewMenuProps {
+  /** In layer mode the outline is the narrowing: only Hide tests reaches it. */
+  layer: boolean
+  /** Files marked reviewed so far. */
+  done: number
+  hideReviewed: boolean
+  onHideReviewed: (on: boolean) => void
+  hideTests: boolean
+  onHideTests: (on: boolean) => void
+  testCount: number
+  onlyChanged: boolean
+  onOnlyChanged: (on: boolean) => void
+  changedCount: number
+  viewMode: ViewMode
+  onSetViewMode: (mode: ViewMode) => void
+  allCollapsed: boolean
+  onToggleCollapseAll: () => void
+  /** Offer Unified / Split. Off on a phone, which reads unified only. */
+  layouts?: boolean
+}
+
+/** How many filters are on — the View trigger's dot. */
+function filtersOn({ layer, onlyChanged, hideReviewed, hideTests }: ViewMenuProps): number {
+  return (!layer && onlyChanged ? 1 : 0) + (!layer && hideReviewed ? 1 : 0) + (hideTests ? 1 : 0)
+}
+
+/**
+ * The View menu's items: the layout and the filters. The docked bar draws
+ * them under their own trigger; the phone, which has no bar, folds them into
+ * the header's menu.
+ */
+export function ViewMenuItems({
+  close,
+  layouts = true,
+  ...props
+}: ViewMenuProps & { close: () => void }) {
+  const {
+    layer,
+    done,
+    hideReviewed,
+    onHideReviewed,
+    hideTests,
+    onHideTests,
+    testCount,
+    onlyChanged,
+    onOnlyChanged,
+    changedCount,
+    viewMode,
+    onSetViewMode,
+    allCollapsed,
+    onToggleCollapseAll,
+  } = props
+  const showTests = testCount > 0 || hideTests
+  const showChanged = changedCount > 0 || onlyChanged
+  const showReviewed = done > 0 || hideReviewed
+  const tests = `${testCount} test ${testCount === 1 ? 'file' : 'files'}`
+  const hides = showTests || (!layer && (showChanged || showReviewed))
+  return (
+    <>
+      {layouts && (
+        <>
+          <MenuLabel>Layout</MenuLabel>
+          <MenuItem
+            icon="unified"
+            kbd="u"
+            checked={viewMode === 'unified'}
+            onClick={() => {
+              close()
+              onSetViewMode('unified')
+            }}
+          >
+            Unified
+          </MenuItem>
+          <MenuItem
+            icon="split"
+            checked={viewMode === 'split'}
+            onClick={() => {
+              close()
+              onSetViewMode('split')
+            }}
+          >
+            Split
+          </MenuItem>
+        </>
+      )}
+      {hides && (
+        <>
+          {layouts && <MenuSep />}
+          <MenuLabel>Hide</MenuLabel>
+        </>
+      )}
+      {!layer && showChanged && (
+        <MenuItem checked={onlyChanged} onClick={() => onOnlyChanged(!onlyChanged)}>
+          {changedCount > 0
+            ? `Everything but ${changedCount} since review`
+            : 'Everything but changes since review'}
+        </MenuItem>
+      )}
+      {!layer && showReviewed && (
+        <MenuItem kbd="h" checked={hideReviewed} onClick={() => onHideReviewed(!hideReviewed)}>
+          {done > 0 ? `${done} reviewed` : 'Reviewed files'}
+        </MenuItem>
+      )}
+      {showTests && (
+        <MenuItem checked={hideTests} onClick={() => onHideTests(!hideTests)}>
+          {testCount > 0 ? tests : 'Test files'}
+        </MenuItem>
+      )}
+      {(layouts || hides) && <MenuSep />}
+      <MenuItem
+        icon="fold"
+        onClick={() => {
+          close()
+          onToggleCollapseAll()
+        }}
+      >
+        {allCollapsed ? 'Expand all files' : 'Collapse all files'}
+      </MenuItem>
+    </>
+  )
+}
+
+/** The View menu: the layout and the filters folded into one control. */
+function ViewMenu(props: ViewMenuProps) {
+  const on = filtersOn(props)
+  return (
+    <Menu
+      label="View options"
+      tip="Layout and filters"
+      triggerClassName="pane-icon pane-view"
+      trigger={
+        <>
+          <Icon name="filter" size="md" />
+          {on > 0 && <span className="tab-dot" aria-hidden="true" />}
+        </>
+      }
+    >
+      {(close) => <ViewMenuItems {...props} close={close} />}
+    </Menu>
   )
 }
 

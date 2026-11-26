@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import { type ReactNode, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { type Anchor, isPublic, type LineRange, type ReviewThread } from '../../shared/review.js'
 import type { DiffLine, FileChange, Hunk } from '../../shared/types.js'
 import { layerOwner } from '../artifacts.js'
@@ -1333,6 +1333,7 @@ export function ReadingPane({
   landed,
   layer,
   overview = false,
+  outline,
   ...handlers
 }: {
   files: FileChange[]
@@ -1348,6 +1349,9 @@ export function ReadingPane({
   /** Layer mode, standing on the Overview: the pane is the changeset threads —
    * the guide first — and nothing else. */
   overview?: boolean
+  /** Atop the Overview: the outline's steps to start from. The phone passes it,
+   * where the Overview is the home screen and has no rail beside it. */
+  outline?: ReactNode
 } & ReviewHandlers) {
   const [fileComposerFor, setFileComposerFor] = useState<string | null>(null)
   const [doneDismissed, setDoneDismissed] = useState(false)
@@ -1863,6 +1867,7 @@ export function ReadingPane({
         {/* Above even the changeset notes: the stale guide sits in there, and this
             banner is the reason it reads stale. */}
         {landed && !emptyChangeset && <ReviewLanded {...landed} shape="docked" />}
+        {overview && outline}
         {changesetSection}
         {pastSection}
         {body}
