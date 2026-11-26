@@ -6,6 +6,14 @@ import { type Context, Hono } from 'hono'
 import { stream, streamSSE } from 'hono/streaming'
 import { SRC_STAMP } from '../devStamp.js'
 import type { ForgeClient, PrRef, ReviewEvent } from '../forge/types.js'
+import { relayAllows, relayBodyRefusal } from '../remote/access.js'
+import {
+  createRemoteControl,
+  normalizeRelayUrl,
+  REMOTE_OFF,
+  type RemoteControl,
+  VIA_RELAY_HEADER,
+} from '../remote/tunnel.js'
 import { publicUrl } from '../serverUrl.js'
 import type { FoundPack } from '../share/pack.js'
 import { findHunk, translateHunkAnchor } from '../shared/anchors.js'
@@ -105,6 +113,7 @@ import {
   getHeadFileBytes,
   getHeadSha,
   isAncestor,
+  isTrackedPathAsync,
   MissingBaseError,
   resolveBaseRef,
 } from './git.js'
@@ -234,6 +243,14 @@ export interface UiSettings {
   set(key: string, value: string): void
 }
 
+/** Per-request facts the middleware establishes once, for every route. */
+type AppEnv = {
+  Variables: {
+    /** The request came through the remote-mode relay: the reviewer's role only. */
+    viaRelay: boolean
+  }
+}
+
 export interface ServerContext {
   root: string
   spec: ChangesetSpec
@@ -266,6 +283,8 @@ export interface ServerContext {
   /** Could `diffo share` post from this repo (a GitHub origin `gh` is signed in
    * to)? Finish offers to share only then. Absent ⇒ never. */
   canShare?: () => Promise<boolean>
+  /** Remote mode: the tunnel to a relay, so another device can open this review. */
+  remote?: RemoteControl
 }
 
 export interface PrContext {
@@ -291,7 +310,7 @@ export function createApp(
   review?: ReviewStore,
   queue?: DeliveryQueue,
 ) {
-  const app = new Hono()
+  const app = new Hono<AppEnv>()
 
   // How often each reviewer agent's thread was handed to the author agent again
   // since its last answer (see the batch listener below).
@@ -375,6 +394,27 @@ export function createApp(
       if (!LOOPBACK.has(originUrl.hostname.toLowerCase()) && originUrl.origin !== pub?.origin) {
         return c.text('Forbidden: cross-origin request', 403)
       }
+    }
+    return next()
+  })
+
+  // Remote mode: a request the tunnel brought in from the relay carries the
+  // reviewer's role only. The tunnel always sets the header and drops any copy
+  // the remote device sent, so its absence means a loopback client. This is
+  // the one place the header is read; routes ask `c.get('viaRelay')`.
+  app.use('*', async (c, next) => {
+    const viaRelay = c.req.header(VIA_RELAY_HEADER) !== undefined
+    c.set('viaRelay', viaRelay)
+    if (!viaRelay) return next()
+    if (!relayAllows(c.req.method, c.req.path)) {
+      return c.json({ error: 'not available from a remote device' }, 403)
+    }
+    const method = c.req.method.toUpperCase()
+    if (method !== 'GET' && method !== 'HEAD') {
+      // Read here and cached by Hono, so the route reads the same body.
+      const body: unknown = await c.req.json().catch(() => null)
+      const refusal = relayBodyRefusal(method, c.req.path, body)
+      if (refusal !== null) return c.json({ error: refusal }, 403)
     }
     return next()
   })
@@ -521,6 +561,39 @@ export function createApp(
       ...(SRC_STAMP === null ? {} : { srcStamp: SRC_STAMP }),
     }),
   )
+
+  // Remote mode. The CLI (a loopback client) asks the server to open its
+  // tunnel, or to end it; a request that itself came through the relay may
+  // read the state but never re-point or end the tunnel. The access policy
+  // already refuses those writes; the checks here hold even if it changes.
+  app.get('/api/remote', (c) => {
+    const status = ctx.remote?.status() ?? REMOTE_OFF
+    // The link is used up once a device is on it, but there is still no
+    // reason to hand it to that device.
+    return c.json(c.get('viaRelay') ? { ...status, url: null, viaRelay: true } : status)
+  })
+  app.post('/api/remote', async (c) => {
+    if (c.get('viaRelay')) return c.json({ error: 'not from a remote device' }, 403)
+    if (!ctx.remote) return c.json({ error: 'remote mode is not available on this server' }, 501)
+    const body = (await c.req.json().catch(() => null)) as { relay?: unknown; key?: unknown } | null
+    const relay = typeof body?.relay === 'string' ? normalizeRelayUrl(body.relay) : null
+    if (!relay)
+      return c.json({ error: 'relay must be an https URL (http only for localhost)' }, 400)
+    // Never echoed back, whatever is wrong with it.
+    const key = typeof body?.key === 'string' ? body.key : ''
+    if (key === '' || key.length > 1024 || /\s/.test(key)) {
+      return c.json({ error: 'need the relay access key' }, 400)
+    }
+    try {
+      return c.json(await ctx.remote.start(relay, key))
+    } catch (err) {
+      return c.json({ error: (err as Error).message }, 502)
+    }
+  })
+  app.delete('/api/remote', (c) => {
+    if (c.get('viaRelay')) return c.json({ error: 'not from a remote device' }, 403)
+    return c.json(ctx.remote?.stop() ?? REMOTE_OFF)
+  })
 
   app.post('/api/shutdown', (c) => {
     setImmediate(() => ctx.onShutdownRequest?.())
@@ -2910,6 +2983,17 @@ export function createApp(
         }
         bytes = getBaseFileBytes(ctx.root, rev, path)
       } else {
+        // From a remote device, the working tree is readable only where git
+        // tracks it or the changeset touches it: an untracked or ignored file
+        // (a `.env`, a key) never leaves this machine.
+        if (
+          side === 'head' &&
+          c.get('viaRelay') &&
+          !store?.get().files.some((f) => f.path === path) &&
+          !(await isTrackedPathAsync(ctx.root, path))
+        ) {
+          return c.json({ error: 'no such file on that side' }, 404)
+        }
         bytes =
           side === 'head'
             ? getHeadFileBytes(ctx.root, path)
@@ -3036,7 +3120,7 @@ export function createApp(
     }),
   )
 
-  const serveIndex = async (c: Context) => {
+  const serveIndex = async (c: Context<AppEnv>) => {
     try {
       const index = await readFile(resolve(ctx.clientDir, 'index.html'))
       return c.html(markDevIndex(index.toString(), IS_DEV))
@@ -3243,12 +3327,14 @@ export function startServer(options: ServerContext & { port: number }) {
     idle.start()
   }
   puller?.start()
+  const remote = createRemoteControl(options.port, log)
   const app = createApp(
     {
       ...options,
       ...(prContext ? { pr: prContext } : {}),
       idle,
       telemetry,
+      remote,
       onShutdownRequest: options.onShutdownRequest ?? (() => process.exit(0)),
       uiSettings: {
         get: (key) => db.getUiSetting(key),
@@ -3315,6 +3401,7 @@ export function startServer(options: ServerContext & { port: number }) {
     review,
     queue,
     telemetry,
+    remote,
     stopWatching: async () => {
       clearTimeout(maintenance)
       idle?.stop()

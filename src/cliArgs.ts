@@ -102,6 +102,7 @@ Options (for opening the review):
   -p, --port <port>  Port to serve on (default: the port this repo last used,
                      else the first free one)
   --no-open          Don't open the browser automatically
+  --remote           (beta) Also reach it from another device through a relay
   --foreground       Run the server in this terminal instead of leaving a
                      background one behind (Ctrl-C stops it)
   -v, --version      Show version
@@ -879,6 +880,21 @@ URL. Exits 0 when a server is running, 1 when none is. Safe to re-run.
 
 Example:
   diffo status --json`,
+  remote: `diffo remote: remote mode (beta)
+
+Usage: diffo remote <setup|off|forget>
+
+  setup --relay <url>  Store your relay and its access key (read from stdin,
+                       or typed with echo off); your relay's setup runs this
+  off                  End this repo's remote session; the review stays open
+                       on this machine
+  forget               Delete the stored relay and key
+
+Turn it on with \`diffo --remote\`. It uses $DIFFO_RELAY_URL and
+$DIFFO_RELAY_KEY when both are set, else the relay \`remote setup\` stored.
+
+Example:
+  diffo remote off`,
   stop: `diffo stop: stop this repo's review server
 
 Usage: diffo stop
@@ -946,6 +962,9 @@ export type CliCommand =
       target?: string
       port: number | undefined
       open: boolean
+      /** `--remote`: open the tunnel to a relay too. Which relay is never on
+       * this command line: it comes from the environment or `remote setup`. */
+      remote: boolean
       foreground: boolean
       /** Spelled `diffo pr <target>`: the explicit PR review, which is the
        * answer when the pull request is the user's own. A bare `diffo <PR>`
@@ -1009,6 +1028,8 @@ export type CliCommand =
     }
   | { kind: 'status'; json: boolean }
   | { kind: 'stop' }
+  | { kind: 'remote'; action: 'off' | 'forget' | 'check' }
+  | { kind: 'remote'; action: 'setup'; relay: string }
   | { kind: 'error'; message: string }
 
 /** What `diffo preset` (or `diffo role`) does: one of the four, each with
@@ -1050,6 +1071,7 @@ const VERBS = new Set([
   'artifact',
   'status',
   'stop',
+  'remote',
   'clean',
   'share',
   'pr',
@@ -1196,6 +1218,7 @@ export function parseCliArgs(argv: string[]): CliCommand {
         port: { type: 'string', short: 'p' },
         base: { type: 'string' },
         'no-open': { type: 'boolean', default: false },
+        remote: { type: 'boolean', default: false },
         foreground: { type: 'boolean', default: false },
         help: { type: 'boolean', short: 'h' },
         version: { type: 'boolean', short: 'v' },
@@ -1245,6 +1268,7 @@ export function parseCliArgs(argv: string[]): CliCommand {
     ...(target !== undefined ? { target } : {}),
     port,
     open: !values['no-open'],
+    remote: values.remote === true,
     foreground: values.foreground === true,
     explicitPr,
   }
@@ -1451,6 +1475,51 @@ function parseTelemetryVerb(rest: string[]): CliCommand {
   return { kind: 'telemetry', action }
 }
 
+/**
+ * `remote setup --relay <url>` is the one place a relay is named on a command
+ * line: the key arrives on stdin, never as a flag (a flag lands in shell
+ * history and process lists). `remote setup --check` is how a relay's setup
+ * script tells a Diffo that has the command from one that does not.
+ */
+function parseRemoteVerb(rest: string[]): CliCommand {
+  const parsed = tryParse(() =>
+    parseArgs({
+      args: rest,
+      allowPositionals: true,
+      options: {
+        relay: { type: 'string' },
+        check: { type: 'boolean' },
+        help: { type: 'boolean', short: 'h' },
+      },
+    }),
+  )
+  if (!parsed.ok) return { kind: 'error', message: parsed.message }
+  const { values, positionals } = parsed.value
+  if (values.help) return { kind: 'help', topic: 'remote' }
+  const action = positionals.length === 1 ? positionals[0] : null
+  if (action !== 'setup' && action !== 'off' && action !== 'forget') {
+    return {
+      kind: 'error',
+      message: 'remote takes: setup, off, or forget (turn it on with `diffo --remote`)',
+    }
+  }
+  if (action !== 'setup') {
+    if (values.relay !== undefined || values.check) {
+      return { kind: 'error', message: `'remote ${action}' takes no options` }
+    }
+    return { kind: 'remote', action }
+  }
+  if (values.check) {
+    return values.relay === undefined
+      ? { kind: 'remote', action: 'check' }
+      : { kind: 'error', message: '--check takes no --relay: it only says setup is supported' }
+  }
+  if (values.relay === undefined || values.relay.trim() === '') {
+    return { kind: 'error', message: 'remote setup needs --relay <url> (the key comes on stdin)' }
+  }
+  return { kind: 'remote', action: 'setup', relay: values.relay }
+}
+
 function parseShareVerb(rest: string[]): CliCommand {
   const parsed = tryParse(() =>
     parseArgs({
@@ -1624,6 +1693,7 @@ function parseVerb(verb: string, rest: string[]): CliCommand {
   if (verb === 'chat') return parseAsMessageVerb('chat', rest)
   if (verb === 'diff' || verb === 'covered') return parseCoverageVerb(verb, rest)
   if (verb === 'layers') return parseLayersVerb(rest)
+  if (verb === 'remote') return parseRemoteVerb(rest)
   if (verb === 'preset') return parsePresetVerb(rest)
   if (verb === 'role') return parseRoleVerb(rest)
   if (verb === 'clean') return parseCleanVerb(rest)

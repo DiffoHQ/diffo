@@ -140,6 +140,11 @@ describe('skills/diffo/SKILL.md (Agent Skills format)', () => {
     expect(raw.length).toBeLessThan(7600)
   })
 
+  it('never offers remote mode: only a machine with a relay hears of it, from the open', () => {
+    const { raw } = readSkill()
+    expect(raw).not.toMatch(/--remote|relay/i)
+  })
+
   it('ships in the npm package', () => {
     const pkg = JSON.parse(readFileSync(join(repoRoot, 'package.json'), 'utf-8')) as {
       files: string[]

@@ -507,6 +507,24 @@ export async function getCommitDiffAsync(root: string, sha: string): Promise<str
   return gitAsync(root, ['show', '--format=', '--patch', ...DIFF_FLAGS, sha])
 }
 
+/** Whether git tracks this exact path (literal, no pathspec magic). */
+export async function isTrackedPathAsync(root: string, relPath: string): Promise<boolean> {
+  if (!isSafeRepoPath(root, relPath)) return false
+  try {
+    const out = await gitAsync(root, [
+      '--literal-pathspecs',
+      'ls-files',
+      '-z',
+      '--error-unmatch',
+      '--',
+      relPath,
+    ])
+    return out.split('\0').includes(relPath)
+  } catch {
+    return false
+  }
+}
+
 function isSafeRepoPath(root: string, relPath: string): boolean {
   const full = resolve(root, relPath)
   return full.startsWith(resolve(root) + sep)

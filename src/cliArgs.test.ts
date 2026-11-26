@@ -9,9 +9,77 @@ describe('parseCliArgs', () => {
       spec: { kind: 'working-tree' },
       port: undefined,
       open: true,
+      remote: false,
       foreground: false,
       explicitPr: false,
     })
+  })
+
+  it('--remote opens the relay tunnel too, and never names the relay itself', () => {
+    expect(parseCliArgs(['--remote'])).toMatchObject({ kind: 'run', remote: true })
+    expect(parseCliArgs(['main', '--remote', '--no-open'])).toMatchObject({
+      kind: 'run',
+      spec: { kind: 'branch', base: 'main' },
+      remote: true,
+      open: false,
+    })
+    // A relay on an agent's command line could redirect the tunnel, and the key.
+    expect(parseCliArgs(['--remote', '--relay', 'https://r.example'])).toMatchObject({
+      kind: 'error',
+    })
+    expect(parseCliArgs(['--relay', 'https://r.example'])).toMatchObject({ kind: 'error' })
+  })
+
+  it('diffo remote: setup, off, forget; nothing else is a remote command', () => {
+    expect(parseCliArgs(['remote', 'off'])).toEqual({ kind: 'remote', action: 'off' })
+    expect(parseCliArgs(['remote', 'forget'])).toEqual({ kind: 'remote', action: 'forget' })
+    expect(parseCliArgs(['remote', 'setup', '--relay', 'https://r.example'])).toEqual({
+      kind: 'remote',
+      action: 'setup',
+      relay: 'https://r.example',
+    })
+    expect(parseCliArgs(['remote', 'setup', '--check'])).toEqual({
+      kind: 'remote',
+      action: 'check',
+    })
+    expect(parseCliArgs(['remote', '--help'])).toEqual({ kind: 'help', topic: 'remote' })
+    expect(parseCliArgs(['remote', 'setup', '--help'])).toEqual({ kind: 'help', topic: 'remote' })
+    for (const argv of [
+      ['remote'],
+      ['remote', 'on'],
+      ['remote', 'off', 'now'],
+      ['remote', '--key', 'x'],
+      ['remote', 'setup'],
+      ['remote', 'setup', '--relay', ''],
+      ['remote', 'setup', '--relay', 'https://r.example', '--key', 'x'],
+      ['remote', 'setup', '--relay', 'https://r.example', 'extra'],
+      ['remote', 'setup', '--check', '--relay', 'https://r.example'],
+      ['remote', 'off', '--relay', 'https://r.example'],
+      ['remote', 'forget', '--check'],
+      ['remote', '--check'],
+    ]) {
+      expect(parseCliArgs(argv)).toMatchObject({ kind: 'error' })
+    }
+  })
+
+  it('lists the remote commands on their own help page', () => {
+    const page = helpFor('remote')
+    for (const verb of ['setup --relay <url>', 'off', 'forget']) {
+      expect(page).toMatch(new RegExp(`^  ${verb.replace(/[<>]/g, '.')}\\s`, 'm'))
+    }
+  })
+
+  it('never takes the relay key as a flag', () => {
+    expect(parseCliArgs(['--remote', '--key', 'secret'])).toMatchObject({ kind: 'error' })
+    expect(parseCliArgs(['--remote', '--relay-key', 'secret'])).toMatchObject({ kind: 'error' })
+  })
+
+  it('keeps remote mode to one beta line in the help', () => {
+    const help = HELP_TEXT
+    const lines = help.split('\n').filter((l) => /remote|relay/i.test(l))
+    expect(lines).toEqual([expect.stringMatching(/^\s+--remote\s+\(beta\)/)])
+    expect(helpFor('agent')).not.toMatch(/remote|relay/i)
+    expect(helpFor('pr')).not.toMatch(/remote|relay/i)
   })
 
   it('--foreground holds the server in this process', () => {
@@ -267,6 +335,7 @@ describe('parseCliArgs — a pull request of your own', () => {
       kind: 'run',
       explicitPr: false,
       open: false,
+      remote: false,
     })
     expect(parseCliArgs(['pr', 'acme/widgets#482'])).toMatchObject({
       kind: 'run',
@@ -278,6 +347,7 @@ describe('parseCliArgs — a pull request of your own', () => {
       target: '482',
       explicitPr: true,
       open: false,
+      remote: false,
     })
   })
 
@@ -440,6 +510,7 @@ describe('parseCliArgs — unknown commands', () => {
         target: raw,
         spec: { kind: 'working-tree' },
         open: false,
+        remote: false,
       })
     }
     expect(parseCliArgs(['pr', 'acme/widgets#482'])).toMatchObject({

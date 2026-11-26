@@ -1,5 +1,5 @@
 import { execFileSync } from 'node:child_process'
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
@@ -123,5 +123,83 @@ describe('GET /api/file', () => {
     expect(res.headers.get('content-security-policy')).toBe('sandbox')
     const text = await server.request('/api/file?path=seed.ts&side=head')
     expect(text.headers.get('content-security-policy')).toBe('sandbox')
+  })
+})
+
+describe('GET /api/file from a remote device', () => {
+  const relayed = { headers: { 'x-diffo-via': 'relay' } }
+
+  it('reads tracked files and the changeset, never an ignored or untracked one', async () => {
+    const repo = tempRepo()
+    writeFileSync(join(repo, '.gitignore'), '.env\n')
+    writeFileSync(join(repo, 'kept.ts'), 'tracked, unchanged\n')
+    git(repo, 'add', '-A')
+    git(repo, 'commit', '-m', 'c1')
+    writeFileSync(join(repo, 'new.ts'), 'untracked, in the changeset\n')
+    writeFileSync(join(repo, '.env'), 'SECRET=1\n')
+
+    const server = app(repo)
+    const read = (path: string) => server.request(`/api/file?path=${path}&side=head`, relayed)
+    expect((await read('kept.ts')).status).toBe(200)
+    expect(await (await read('new.ts')).text()).toBe('untracked, in the changeset\n')
+    expect((await read('.env')).status).toBe(404)
+    // The same file is still readable on this machine.
+    expect((await server.request('/api/file?path=.env&side=head')).status).toBe(200)
+  })
+
+  it('takes the path literally, so pathspec magic cannot match an ignored file', async () => {
+    const repo = tempRepo()
+    writeFileSync(join(repo, '.gitignore'), '.env\n')
+    git(repo, 'add', '-A')
+    git(repo, 'commit', '-m', 'c1')
+    writeFileSync(join(repo, '.env'), 'SECRET=1\n')
+
+    const server = app(repo)
+    for (const path of [':(glob)*env', '*env', ':/.env']) {
+      const res = await server.request(
+        `/api/file?path=${encodeURIComponent(path)}&side=head`,
+        relayed,
+      )
+      expect(res.status).toBe(404)
+    }
+  })
+
+  it('never leaves the repo: traversal, absolute paths, symlinks, and unlisted revs', async () => {
+    const outside = mkdtempSync(join(tmpdir(), 'diffo-outside-'))
+    cleanups.push(outside)
+    writeFileSync(join(outside, 'secret.txt'), 'OUTSIDE\n')
+    const repo = tempRepo()
+    writeFileSync(join(repo, 'a.ts'), 'x\n')
+    symlinkSync(join(outside, 'secret.txt'), join(repo, 'link.txt'))
+    symlinkSync(outside, join(repo, 'dirlink'))
+    git(repo, 'add', '-A')
+    git(repo, 'commit', '-m', 'c1')
+    mkdirSync(join(repo, 'sub'))
+
+    const server = app(repo)
+    const read = async (query: string) => {
+      const res = await server.request(`/api/file?${query}`, relayed)
+      return { status: res.status, text: await res.text() }
+    }
+    for (const side of ['head', 'base']) {
+      for (const path of [
+        '../secret.txt',
+        `${outside}/secret.txt`,
+        'sub/../../secret.txt',
+        'dirlink/secret.txt',
+        '.git/config',
+      ]) {
+        const res = await read(`path=${encodeURIComponent(path)}&side=${side}`)
+        expect(res.status).toBe(404)
+        expect(res.text).not.toContain('OUTSIDE')
+      }
+    }
+    // A tracked symlink is its link text, never its target.
+    const link = await read('path=link.txt&side=head')
+    expect(link.text).not.toContain('OUTSIDE')
+    // Only a sha the changeset lists, so never another ref or a revision expression.
+    for (const rev of ['HEAD', 'main', 'HEAD~0', git(repo, 'rev-parse', 'HEAD').trim()]) {
+      expect((await read(`path=a.ts&side=head&rev=${encodeURIComponent(rev)}`)).status).toBe(404)
+    }
   })
 })
