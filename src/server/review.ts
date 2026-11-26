@@ -530,6 +530,12 @@ export class ReviewStore {
     this.commit()
   }
 
+  /** The author agent's pick of a set for this change. The newest stands. */
+  pickReviewerSet(set: string, reason?: string): void {
+    this.state = { ...this.state, reviewerSet: { set, ...(reason ? { reason } : {}) } }
+    this.commit()
+  }
+
   /** The suggestion is settled: the human started a reviewer or passed, or one
    * joined. With a role, only a suggestion for that role goes. False when
    * there was none to clear. */
@@ -579,8 +585,16 @@ export class ReviewStore {
    */
   reset(): string[] {
     const ids = this.state.threads.map((t) => t.id)
-    const { lastFinish, landed, title, layers, layersSuggested, reviewers, reviewerSuggested } =
-      this.state
+    const {
+      lastFinish,
+      landed,
+      title,
+      layers,
+      layersSuggested,
+      reviewers,
+      reviewerSuggested,
+      reviewerSet,
+    } = this.state
     if (
       ids.length === 0 &&
       !lastFinish &&
@@ -589,7 +603,8 @@ export class ReviewStore {
       !layers &&
       !layersSuggested &&
       !reviewers &&
-      !reviewerSuggested
+      !reviewerSuggested &&
+      !reviewerSet
     ) {
       return []
     }
@@ -603,6 +618,9 @@ export class ReviewStore {
       // A seat belongs to the round: the next one's reviewers join again.
       reviewers: _reviewers,
       reviewerSuggested: _reviewerSuggested,
+      // The pick was for the change as it stood. The cleared prompt asks the
+      // agent for the next round's, as the open does.
+      reviewerSet: _reviewerSet,
       ...rest
     } = this.state
     this.state = { ...rest, threads: [] }
@@ -1111,10 +1129,15 @@ export function parseReview(raw: string): ReviewState | null {
   const suggestedWhy = parseSuggestReason(
     (parsed.reviewerSuggested as { reason?: unknown } | null)?.reason,
   )
+  const pickedSet = storedName((parsed.reviewerSet as { set?: unknown } | null)?.set)
+  const pickedWhy = parseSuggestReason((parsed.reviewerSet as { reason?: unknown } | null)?.reason)
   return {
     version: 1,
     threads: [...valid, ...migrated],
     ...(reviewers.length > 0 ? { reviewers } : {}),
+    ...(pickedSet
+      ? { reviewerSet: { set: pickedSet, ...(pickedWhy ? { reason: pickedWhy } : {}) } }
+      : {}),
     ...(suggestedRole
       ? {
           reviewerSuggested: {

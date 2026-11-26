@@ -37,6 +37,7 @@ nothing.
 | [`diffo layers`](#diffo-layers) | agent | Split the changeset into layers to read in order |
 | [`diffo end`](#diffo-end) | agent | Detach from the review |
 | [`diffo reviewer --suggest`](#reviewer-agent-commands) | agent | Flag that the change deserves a reviewer agent; you decide |
+| [`diffo reviewer --set <id>`](#reviewer-agent-commands) | agent | Say which set of reviewer agents fits the change; starts nobody |
 | [`diffo join --role <id>`](#reviewer-agent-commands) | reviewer agent | Take a seat in a running review as a reviewer in that role |
 | [`diffo resolve <threadId> --as <name>`](#reviewer-agent-commands) | reviewer agent | Close a thread that reviewer opened |
 | [`diffo progress --as <name> --message "<line>"`](#reviewer-agent-commands) | reviewer agent | Say what it is doing; shown in the reviewer agents sidebar, and brings back your unread messages |
@@ -456,7 +457,17 @@ The agent that wrote the change never brings a reviewer in on its own. It can
 suggest one, `diffo reviewer --suggest "<why>" --role <id>`, and the **+
 Reviewer** button then reads as that suggestion until you start it or pass.
 
-Reviewer agents never edit code; only the author agent changes files.
+A **set** is a few reviewer agents for one kind of change: Refactor, New API
+or command, UI change and more, plus any you make on the Sets tab of the
+Reviewer agents page. When a review opens, the author agent says which set
+fits, `diffo reviewer --set <id> "<why>"`. That starts nobody and shows
+nothing on the page: when you open **+ Reviewer**, that set's agents are
+already ticked, with the agent's reason beside them, and you change the ticks
+or start them. To have **+ Reviewer** open on a set of your choosing, whatever
+the change, make it the default on the Sets tab; the agent is then not asked.
+
+Reviewer agents only read the checkout: they never edit a file, and never
+stage, reset, stash or commit. Only the author agent changes files.
 `diffo help reviewer` is the reviewer agent's whole protocol on one page.
 
 ## Help and version

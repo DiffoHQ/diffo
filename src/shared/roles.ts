@@ -29,10 +29,22 @@ export interface ReviewerRole {
   quick?: true
 }
 
-/** A set of roles opened together in one click, for a kind of change. */
-export interface RoleCombo {
-  label: string
-  roles: readonly string[]
+/**
+ * A set: the reviewer agents that fit one kind of change, started together.
+ * The picker offers them, the human can keep sets of their own, and the
+ * author agent can say which one fits the change it wrote (`diffo reviewer
+ * --set`), so the picker opens with those agents already ticked.
+ */
+export interface ReviewerSet {
+  /** Said in commands, so it obeys a name's rules, like a role's id. */
+  id: string
+  name: string
+  /** The kind of change it is for, in a line: what the author agent reads
+   * to pick one, and the human to remember why they made it. */
+  when: string
+  /** Role ids, in the order they are listed. */
+  roles: string[]
+  builtIn?: true
 }
 
 export const ROLE_NAME_MAX = 32
@@ -41,15 +53,62 @@ export const ROLE_FOCUS_MAX = 2000
 /** How many roles of their own a reviewer may keep. */
 export const CUSTOM_ROLES_MAX = 20
 
-/** Ready-made sets for the picker: the roles that matter for a kind of change. */
-export const ROLE_COMBOS: readonly RoleCombo[] = [
-  { label: 'Agent-written change', roles: ['general', 'ai-slop', 'comments'] },
-  { label: 'Refactor', roles: ['blast-radius', 'simplicity', 'tests'] },
-  { label: 'New API or command', roles: ['api-design', 'blast-radius', 'security'] },
-  { label: 'UI change', roles: ['general', 'accessibility', 'concurrency'] },
-  { label: 'Data or settings', roles: ['data', 'blast-radius'] },
-  { label: 'Before release', roles: ['docs', 'scope'] },
+export const SET_NAME_MAX = 32
+export const SET_WHEN_MAX = 120
+/** How many sets of their own a reviewer may keep. */
+export const CUSTOM_SETS_MAX = 20
+
+/** The sets Diffo ships: the roles that matter for a kind of change. */
+export const BUILT_IN_SETS: readonly ReviewerSet[] = [
+  {
+    id: 'agent-written',
+    name: 'Agent-written change',
+    when: 'A change an agent wrote end to end, of no special kind.',
+    roles: ['general', 'ai-slop', 'comments'],
+    builtIn: true,
+  },
+  {
+    id: 'refactor',
+    name: 'Refactor',
+    when: 'Code moved, renamed or reshaped, with behaviour meant to stay the same.',
+    roles: ['blast-radius', 'simplicity', 'tests'],
+    builtIn: true,
+  },
+  {
+    id: 'new-api',
+    name: 'New API or command',
+    when: 'A new route, exported function, CLI command or flag that others will call.',
+    roles: ['api-design', 'blast-radius', 'security'],
+    builtIn: true,
+  },
+  {
+    id: 'ui-change',
+    name: 'UI change',
+    when: 'Screens, components, or how something on the page behaves.',
+    roles: ['general', 'accessibility', 'concurrency'],
+    builtIn: true,
+  },
+  {
+    id: 'data',
+    name: 'Data or settings',
+    when: 'Stored data, a migration, config keys or defaults.',
+    roles: ['data', 'blast-radius'],
+    builtIn: true,
+  },
+  {
+    id: 'release',
+    name: 'Before release',
+    when: 'The last read before it ships: is it documented, and is it what was asked.',
+    roles: ['docs', 'scope'],
+    builtIn: true,
+  },
 ]
+
+/**
+ * The default the picker opens on when the human has not named a set: the one
+ * the author agent picked for this change. Never a set's id (`setIdFor`).
+ */
+export const AGENT_PICKS_SET = 'agent'
 
 /** The role of a reviewer that named none. */
 export const DEFAULT_ROLE = 'general'
@@ -430,4 +489,149 @@ export function roleIdFor(name: string, taken: ReadonlySet<string>): string | nu
     if (!taken.has(id) && !isDraftRoleKey(id) && parseReviewerName(id).ok) return id
   }
   return null
+}
+
+/** Every set on offer: the built-ins, then the reviewer's own. */
+export function allSets(custom: readonly ReviewerSet[]): ReviewerSet[] {
+  return [...BUILT_IN_SETS, ...custom]
+}
+
+export function findSet(custom: readonly ReviewerSet[], id: string): ReviewerSet | undefined {
+  return allSets(custom).find((s) => s.id === id)
+}
+
+/** An id for a new set, from its name: a role's rules, and never a built-in
+ * set's id or the word that means "the agent picks". */
+export function setIdFor(name: string, taken: ReadonlySet<string>): string | null {
+  return roleIdFor(name, new Set([...taken, AGENT_PICKS_SET, ...BUILT_IN_SETS.map((s) => s.id)]))
+}
+
+/**
+ * The reviewer's own sets, as stored or as the page sends them: the whole
+ * list, replaced. A set the page just made has no id yet and gets one from
+ * its name. Refused whole on a bad entry, with the reason. `known` is every
+ * role there is: a set names real roles, at least one.
+ */
+export function parseCustomSets(
+  value: unknown,
+  known: ReadonlySet<string>,
+): { ok: true; sets: ReviewerSet[] } | { ok: false; error: string } {
+  if (!Array.isArray(value)) return { ok: false, error: 'expected a list of sets' }
+  if (value.length > CUSTOM_SETS_MAX) {
+    return { ok: false, error: `keep at most ${CUSTOM_SETS_MAX} sets of your own` }
+  }
+  const given = new Set<string>()
+  for (const raw of value) {
+    const id = (raw as { id?: unknown } | null)?.id
+    if (typeof id === 'string') given.add(id)
+  }
+  const seen = new Set<string>()
+  const sets: ReviewerSet[] = []
+  for (const raw of value) {
+    if (typeof raw !== 'object' || raw === null) return { ok: false, error: 'a set is an object' }
+    const v = raw as Record<string, unknown>
+    const name = flat(v.name)
+    if (name === '') return { ok: false, error: 'a set needs a name' }
+    if (name.length > SET_NAME_MAX) {
+      return { ok: false, error: `keep a set's name under ${SET_NAME_MAX} characters` }
+    }
+    const when = flat(v.when)
+    if (when.length > SET_WHEN_MAX) {
+      return {
+        ok: false,
+        error: `keep "when to use it" to one line under ${SET_WHEN_MAX} characters`,
+      }
+    }
+    const roles = Array.isArray(v.roles)
+      ? [...new Set(v.roles.filter((r): r is string => typeof r === 'string'))]
+      : []
+    if (roles.length === 0) return { ok: false, error: `set "${name}" needs at least one agent` }
+    const stranger = roles.find((r) => !known.has(r))
+    if (stranger !== undefined) {
+      return {
+        ok: false,
+        error: `set "${name}" names "${stranger}", which is not a reviewer agent`,
+      }
+    }
+    let id: string
+    if (typeof v.id === 'string' && v.id !== '') {
+      const parsed = parseReviewerName(v.id)
+      if (!parsed.ok) return { ok: false, error: `set id "${v.id}": ${parsed.error}` }
+      if (parsed.name === AGENT_PICKS_SET || BUILT_IN_SETS.some((s) => s.id === parsed.name)) {
+        return { ok: false, error: `"${parsed.name}" is a built-in set's id` }
+      }
+      id = parsed.name
+    } else {
+      const made = setIdFor(name, new Set([...given, ...seen]))
+      if (made === null) {
+        return { ok: false, error: `set "${name}" needs a letter or a digit in its name` }
+      }
+      id = made
+    }
+    if (seen.has(id)) return { ok: false, error: `two sets share the id "${id}"` }
+    seen.add(id)
+    sets.push({ id, name, when, roles })
+  }
+  return { ok: true, sets }
+}
+
+/**
+ * The stored sets, read leniently: a bad entry is dropped alone, and so is a
+ * role that is gone (a set outlives a role of the human's it named). A set
+ * left with no role is dropped too. Every drop goes to `report`: a set that
+ * vanished without a word is erased for good by the next save, which writes
+ * the list as it was read. A set saved before a built-in took its id is kept,
+ * as `my-<id>` (or `my-<id>-2`, …).
+ */
+export function readCustomSets(
+  value: unknown,
+  known: ReadonlySet<string>,
+  report: (message: string) => void = () => {},
+): ReviewerSet[] {
+  if (!Array.isArray(value)) return []
+  const builtIn = new Set([AGENT_PICKS_SET, ...BUILT_IN_SETS.map((s) => s.id)])
+  const idOf = (raw: unknown) => (raw as { id?: unknown } | null)?.id
+  const taken = new Set([
+    ...builtIn,
+    ...value.flatMap((raw) => (typeof idOf(raw) === 'string' ? [idOf(raw) as string] : [])),
+  ])
+  const sets: ReviewerSet[] = []
+  for (const [i, raw] of value.entries()) {
+    const id = idOf(raw)
+    const dropped = (why: string) =>
+      report(`dropped saved reviewer set ${JSON.stringify(id ?? null)}: ${why}`)
+    if (i >= CUSTOM_SETS_MAX) {
+      dropped(`past the ${CUSTOM_SETS_MAX}-set limit`)
+      continue
+    }
+    let entry: unknown = raw
+    if (typeof raw === 'object' && raw !== null && typeof id === 'string' && builtIn.has(id)) {
+      const base = `my-${id}`.slice(0, 21)
+      let next = base
+      for (let n = 2; taken.has(next); n++) next = `${base}-${n}`
+      taken.add(next)
+      entry = { ...raw, id: next }
+    }
+    const roles: unknown = (entry as { roles?: unknown } | null)?.roles
+    const kept = Array.isArray(roles)
+      ? { ...(entry as object), roles: roles.filter((r) => typeof r === 'string' && known.has(r)) }
+      : entry
+    const parsed = parseCustomSets([kept], known)
+    if (!parsed.ok) {
+      dropped(parsed.error)
+      continue
+    }
+    const set = parsed.sets[0]!
+    if (sets.some((s) => s.id === set.id)) {
+      dropped('its id is taken')
+      continue
+    }
+    sets.push(set)
+  }
+  return sets
+}
+
+/** The default as stored: a set that exists, or the agent's pick. */
+export function parseSetDefault(value: unknown, custom: readonly ReviewerSet[]): string {
+  return typeof value === 'string' && findSet(custom, value) ? value : AGENT_PICKS_SET
 }

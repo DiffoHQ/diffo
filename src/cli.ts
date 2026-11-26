@@ -46,6 +46,8 @@ import {
   POLL_STANCE,
   prOpenNote,
   REVIEWER_NEXT_STEP,
+  REVIEWER_POLL_STANCE,
+  reviewerSetNudge,
   sharedLayersNote,
   TAB_TITLE,
 } from './server/prompt.js'
@@ -73,7 +75,7 @@ import { boxOf, checkArtifacts, describeArtifact } from './shared/artifacts.js'
 import { parseLayersPost, type UncoveredRef } from './shared/layers.js'
 import { parsePresetPatch } from './shared/presets.js'
 import type { Layers, ReviewState } from './shared/review.js'
-import { isDraftRoleKey, parseRolePatch } from './shared/roles.js'
+import { AGENT_PICKS_SET, isDraftRoleKey, parseRolePatch } from './shared/roles.js'
 import type { ChangesetSpec as CliSpec, PrInfo } from './shared/types.js'
 import { VERSION } from './version.js'
 
@@ -750,6 +752,26 @@ if (command.kind === 'join') {
   process.exit(0)
 }
 
+if (command.kind === 'reviewer-set') {
+  const port = await requireServer()
+  const { status, body } = await postJson(port, '/api/reviewer/pick', {
+    set: command.set,
+    ...(command.reason === null ? {} : { reason: command.reason }),
+  })
+  if (status !== 200) fail(`reviewer refused: ${refusal(body, `the server answered ${status}`)}`)
+  const { set, roles } = body as { set: string; roles: string[] }
+  console.log(
+    JSON.stringify({
+      ok: true,
+      picked: true,
+      set,
+      roles,
+      next_step: ACK_NEXT_STEP.reviewerSetPicked,
+    }),
+  )
+  process.exit(0)
+}
+
 if (command.kind === 'reviewer-suggest') {
   const port = await requireServer()
   const { status, body } = await postJson(port, '/api/reviewer/suggest', {
@@ -855,7 +877,7 @@ if (command.kind === 'resolve') {
 if (command.kind === 'poll' && command.as !== undefined) {
   const port = await requireServer()
   process.stderr.write(
-    `diffo: waiting for answers on your threads. Keep this process attended: ${POLL_STANCE}.\n` +
+    `diffo: waiting for answers on your threads. Hold this process ${REVIEWER_POLL_STANCE}.\n` +
       'If it dies, just re-run it; answers are held in the review and survive.\n',
   )
   try {
@@ -1420,7 +1442,27 @@ if (!process.env.DIFFO_DAEMON) {
   }
 }
 
-/** Agents read piped stdout; a human's terminal never shows these lines. */
+/** The sets of reviewer agents on offer, and whether the picker opens on the
+ * agent's pick, for the open's nudge. Null when the server cannot say. */
+async function reviewerSetOffer(
+  port: number,
+): Promise<{ sets: Array<{ id: string; when: string }>; agentPicks: boolean } | null> {
+  try {
+    const { status, body } = await getJson(port, '/api/reviewer/roles')
+    if (status !== 200) return null
+    const { sets, defaultSet } = body as {
+      sets?: Array<{ id: string; when: string }>
+      defaultSet?: string
+    }
+    return {
+      sets: (sets ?? []).map((s) => ({ id: s.id, when: s.when })),
+      agentPicks: defaultSet === AGENT_PICKS_SET,
+    }
+  } catch {
+    return null
+  }
+}
+
 /** The presets the reviewer has on, for the open's layers nudge. Empty when
  * the server cannot say: the nudge then goes without them. */
 async function activePresetList(port: number): Promise<Array<{ id: string; blurb: string }>> {
@@ -1434,6 +1476,7 @@ async function activePresetList(port: number): Promise<Array<{ id: string; blurb
   }
 }
 
+/** Agents read piped stdout; a human's terminal never shows these lines. */
 async function printAgentNextStep(port: number, pr?: PrInfo): Promise<void> {
   if (process.stdout.isTTY) return
   // A courtesy that must not block the open: if the review can't be read, the
@@ -1461,6 +1504,13 @@ async function printAgentNextStep(port: number, pr?: PrInfo): Promise<void> {
     review && !review.layers && !review.layersSuggested ? await activePresetList(port) : []
   const layers = review ? layersNudge(review, D, presets) : null
   if (layers) console.log(`also: ${layers}`)
+  // Not on a pull request: reviewer agents join branch and working-tree
+  // reviews only.
+  if (review && !pr) {
+    const offer = review.reviewerSet ? null : await reviewerSetOffer(port)
+    const sets = offer ? reviewerSetNudge(review, offer.sets, offer.agentPicks) : null
+    if (sets) console.log(`also: ${sets}`)
+  }
   const shared = review?.layers?.shared
   if (shared && review?.layers) {
     console.log(

@@ -1434,6 +1434,21 @@ describe('ThreadCard — reviewer agents', () => {
     expect(document.querySelector('.thread-hint')).toBeNull()
   })
 
+  it("a reviewer agent's comment the author walked away from says so, and what you can do", () => {
+    card(
+      fromCodex({
+        unanswered: true,
+        messages: [{ id: 'm1', author: 'reviewer', by: 'codex', text: 'no backoff', at }],
+      }),
+    )
+    // Not "With the agent": nobody is working on it.
+    expect(document.querySelector('.chip')!.textContent).toBe('No answer')
+    expect(screen.getByText(/no answer, the agent moved on/)).toBeTruthy()
+    expect(
+      screen.getByText(/Reply to send it to the agent again.*codex's point can go/),
+    ).toBeTruthy()
+  })
+
   it('a stopped thread asks for you, and your reply or resolve is how it moves', () => {
     const act = actions()
     card(fromCodex({ needsYou: 'rounds' }), act)

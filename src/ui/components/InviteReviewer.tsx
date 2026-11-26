@@ -1,6 +1,6 @@
 import { useQueryClient } from '@tanstack/react-query'
 import { useState } from 'react'
-import { type ReviewerRole, ROLE_COMBOS } from '../../shared/roles.js'
+import { AGENT_PICKS_SET, type ReviewerRole } from '../../shared/roles.js'
 import { useReviewers } from '../actors.js'
 import { reviewerApi, useReviewerInvite, useReviewerRoles } from '../api.js'
 import { copyText } from '../clipboard.js'
@@ -19,12 +19,17 @@ type How = 'agent' | 'paste'
  *
  * The dialog is the quick action. It lists the active roles; the rest wait
  * in the library on the Reviewer agents page, where any can be made active. A
- * row of ready-made sets ticks the roles a kind of change wants in one click,
- * from the library too. What a role looks for is one click away on each row.
+ * row of sets ticks the roles a kind of change wants in one click, from the
+ * library too. What a role looks for is one click away on each row.
+ *
+ * It opens with a set already ticked, so the roles are there to read before
+ * anything starts: the human's default set, or, until they name one, the set
+ * the author agent said fits this change (`picked`), with its reason.
  */
 export function InviteReviewer({
   agentAttached,
   suggested,
+  picked: agentPick,
   preselect,
   onManage,
   onStarted,
@@ -35,9 +40,12 @@ export function InviteReviewer({
   /** The agent's standing suggestion: that role comes ticked, with its reason,
    * and the dialog offers to pass on it. */
   suggested?: { role: string; reason?: string }
-  /** A role to open ticked: the page's "Add to this review". */
-  preselect?: string
-  /** Open the Reviewer agents page, where roles are written. */
+  /** The set the author agent said fits this change, and why. */
+  picked?: { set: string; reason?: string }
+  /** The roles to open ticked: the page's "Add to this review", for the role
+   * or the set in view there. */
+  preselect?: readonly string[]
+  /** Open the Reviewer agents page, where roles and sets are written. */
   onManage?: () => void
   /** Reviewers were asked for: the page opens where they show up. */
   onStarted?: () => void
@@ -58,10 +66,22 @@ export function InviteReviewer({
   const roles = data?.roles ?? []
   const inReview = new Set(seated?.values() ?? [])
   const onTheWay = new Set(starting)
-  const first = preselect ?? suggested?.role ?? data?.default
-  // The default pick is one role, and never one already here or on its way.
-  const fallback =
-    first !== undefined && !inReview.has(first) && !onTheWay.has(first) ? [first] : []
+  const known = new Set(roles.map((r) => r.id))
+  const sets = (data?.sets ?? []).filter((s) => s.roles.every((id) => known.has(id)))
+  const agentSet = agentPick ? sets.find((s) => s.id === agentPick.set) : undefined
+  // The set it opens on: the human's default, or the agent's pick when the
+  // default is to follow the agent.
+  const opensOn =
+    data?.defaultSet === AGENT_PICKS_SET ? agentSet : sets.find((s) => s.id === data?.defaultSet)
+  // What comes ticked: what the page asked for, else that set and the role the
+  // agent flagged, else the one default role. Never one already here or on
+  // its way.
+  const asked = preselect?.filter((id) => known.has(id)) ?? [
+    ...(opensOn?.roles ?? []),
+    ...(suggested ? [suggested.role] : []),
+  ]
+  const first = asked.length > 0 ? asked : data?.default !== undefined ? [data.default] : []
+  const fallback = first.filter((id) => !inReview.has(id) && !onTheWay.has(id))
   const picked = touched ?? new Set(fallback)
   const chosen = roles.filter((r) => picked.has(r.id))
   const toggle = (id: string) => {
@@ -70,8 +90,6 @@ export function InviteReviewer({
     else next.add(id)
     setTouched(next)
   }
-  const known = new Set(roles.map((r) => r.id))
-  const combos = ROLE_COMBOS.filter((c) => c.roles.every((id) => known.has(id)))
   const isPicked = (ids: readonly string[]) =>
     ids.length === picked.size && ids.every((id) => picked.has(id))
   // The active roles, and any other ticked (a quick set, the page's pick, the
@@ -179,31 +197,42 @@ export function InviteReviewer({
               <span className="la-cap">Reviewer agents</span>
               {onManage && (
                 <button type="button" className="la-link" onClick={onManage}>
-                  Edit agents
+                  Edit agents and sets
                 </button>
               )}
             </div>
-            {combos.length > 0 && (
+            {sets.length > 0 && (
               <fieldset className="rv-combos">
-                <legend className="rv-combos-cap">Quick sets</legend>
-                {combos.map((combo) => {
-                  const names = combo.roles
+                <legend className="rv-combos-cap">Sets</legend>
+                {sets.map((set) => {
+                  const names = set.roles
                     .map((id) => roles.find((r) => r.id === id)?.name ?? id)
                     .join(', ')
+                  const agents = set.id === agentSet?.id
                   return (
                     <button
-                      key={combo.label}
+                      key={set.id}
                       type="button"
                       className="rv-combo"
-                      aria-pressed={isPicked(combo.roles)}
-                      title={names}
-                      onClick={() => setTouched(new Set(combo.roles))}
+                      aria-pressed={isPicked(set.roles)}
+                      title={agents ? `Your agent's pick for this change: ${names}` : names}
+                      onClick={() => setTouched(new Set(set.roles))}
                     >
-                      {combo.label}
+                      {agents && <Icon name="sparkle" size="sm" />}
+                      {set.name}
                     </button>
                   )
                 })}
               </fieldset>
+            )}
+            {agentSet && (
+              <p className="rv-picked">
+                <Icon name="sparkle" size="sm" />
+                <span>
+                  Your agent picked <b>{agentSet.name}</b> for this change
+                  {agentPick?.reason ? `: ${agentPick.reason}` : '.'}
+                </span>
+              </p>
             )}
             <ul className="rv-roles">{listed.map(row)}</ul>
             {onManage && inLibrary > 0 && (

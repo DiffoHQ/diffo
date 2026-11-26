@@ -207,6 +207,11 @@ export interface ReviewersRequestedProps {
   roles: string[]
   /** The agent had suggested a reviewer in one of these roles. */
   suggested: boolean
+  /** The roles are exactly a set: a built-in set's id, or `custom` for one
+   * of the reviewer's own, never its name. Absent when they are no set. */
+  set?: string
+  /** That set is the one the author agent picked for this change. */
+  agentPick?: true
 }
 
 /**
@@ -371,6 +376,8 @@ export class Telemetry {
       // One flat value, as every property is: "ai-slop,comments,general".
       roles: props.roles.join(','),
       suggested: props.suggested,
+      ...(props.set !== undefined ? { set: props.set } : {}),
+      ...(props.agentPick ? { agent_pick: true } : {}),
     })
   }
 

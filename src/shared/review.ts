@@ -804,6 +804,12 @@ export interface ReviewState {
    * joins in that role.
    */
   reviewerSuggested?: { role: string; reason?: string }
+  /**
+   * The set of reviewer agents the author agent says fits this change
+   * (shared/roles.ts, `diffo reviewer --set`), and why. Quieter than a
+   * suggestion: it only decides which agents the picker opens with ticked.
+   */
+  reviewerSet?: { set: string; reason?: string }
 }
 
 /**

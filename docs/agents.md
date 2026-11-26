@@ -146,6 +146,13 @@ is a statement about the old work. So when a poll arrives, every thread from the
 previous batch that never got a reply stops saying *waiting on the agent* and
 starts saying *no answer*, and the review shows it that way to the reviewer.
 
+A reviewer agent's thread is the exception. Nobody is there to send it again,
+and its reviewer stops waiting once it reads *no answer*, so the two agents
+would never talk. Diffo hands such a thread straight back instead: the poll
+that skipped it returns it at once, marked as handed over again, and the
+reviewer agent keeps waiting. After two such tries it reads *no answer* like
+any other.
+
 The consequence for an agent is: handle the payload, then poll. Not poll, then
 start working. And a thread the agent decided not to act on still needs a reply
 saying so, because a reason is an answer and silence is not.

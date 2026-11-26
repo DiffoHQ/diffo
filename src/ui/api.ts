@@ -10,7 +10,7 @@ import type {
   ReviewThread,
   ThreadIntent,
 } from '../shared/review.js'
-import type { ReviewerRole } from '../shared/roles.js'
+import type { ReviewerRole, ReviewerSet } from '../shared/roles.js'
 import {
   type Changeset,
   type CommitChangeset,
@@ -168,6 +168,10 @@ export interface ReviewerRoles {
   default: string
   /** The roles in the Add reviewer picker; the rest wait in the library. */
   active: string[]
+  /** The sets on offer: the built-ins, then the reviewer's own. */
+  sets: ReviewerSet[]
+  /** The set the picker opens on: a set's id, or `AGENT_PICKS_SET`. */
+  defaultSet: string
 }
 
 export function useReviewerRoles() {
@@ -204,6 +208,25 @@ export const reviewerApi = {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ active }),
+      }),
+    ),
+  /** Replace the reviewer's own sets. One with no id is new: the server
+   * names it. Answers with everything on offer, like `saveRoles`. */
+  saveSets: async (sets: Array<Omit<ReviewerSet, 'id'> & { id?: string }>) =>
+    handle<ReviewerRoles>(
+      await fetch('/api/reviewer/sets', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ sets }),
+      }),
+    ),
+  /** The set the picker opens on: a set's id, or `AGENT_PICKS_SET`. */
+  setDefaultSet: async (id: string) =>
+    handle<ReviewerRoles>(
+      await fetch('/api/reviewer/sets/default', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id }),
       }),
     ),
   /** Ask the agent that wrote the change to start a reviewer in each role. */

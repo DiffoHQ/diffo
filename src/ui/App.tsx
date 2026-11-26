@@ -553,7 +553,7 @@ function Review() {
   // Reviewer agents: the quick Add dialog, or the page with every reviewer
   // and role. One at a time; each can hand over to the other.
   const [reviewerView, setReviewerView] = useState<
-    null | { kind: 'add'; role?: string } | { kind: 'page'; on?: ReviewerAgentsPick }
+    null | { kind: 'add'; roles?: readonly string[] } | { kind: 'page'; on?: ReviewerAgentsPick }
   >(null)
   const [theme, setTheme] = useTheme()
   const [critter, setCritter] = useCritter()
@@ -2692,7 +2692,8 @@ function Review() {
           <InviteReviewer
             agentAttached={presence !== 'waiting'}
             {...(review?.reviewerSuggested ? { suggested: review.reviewerSuggested } : {})}
-            {...(reviewerView.role !== undefined ? { preselect: reviewerView.role } : {})}
+            {...(review?.reviewerSet ? { picked: review.reviewerSet } : {})}
+            {...(reviewerView.roles !== undefined ? { preselect: reviewerView.roles } : {})}
             onManage={() => setReviewerView({ kind: 'page' })}
             onStarted={() => openAgents()}
             onClose={() => setReviewerView(null)}
@@ -2702,9 +2703,7 @@ function Review() {
           <ReviewerAgents
             {...(reviewerView.on ? { initial: reviewerView.on } : {})}
             agentAttached={presence !== 'waiting'}
-            onAdd={(role) =>
-              setReviewerView(role === undefined ? { kind: 'add' } : { kind: 'add', role })
-            }
+            onAdd={(roles) => setReviewerView({ kind: 'add', roles })}
             onClose={() => setReviewerView(null)}
           />
         )}
