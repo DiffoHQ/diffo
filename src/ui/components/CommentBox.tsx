@@ -1,9 +1,11 @@
-import { useRef, useState } from 'react'
+import { type ReactNode, useRef, useState } from 'react'
 import type { Audience, ThreadIntent } from '../../shared/review.js'
 import type { GhUser } from '../../shared/types.js'
+import { useIsPhone } from '../phone.js'
 import { usePr } from '../prMode.js'
 import { Icon, type IconName } from './Icon.js'
 import { Markdown } from './Markdown.js'
+import { PhoneSheet } from './PhoneSheet.js'
 
 /** `github` is a person on the pull request: their avatar when GitHub gave one,
  * the first letter of their login otherwise. */
@@ -203,7 +205,12 @@ export function CommentBox({
   initialText,
   fixedAudience,
   citing,
+  quote,
 }: {
+  /** The code the comment is about, drawn above the words. Only the phone
+   * shows it: there the composer is a sheet over the code, so it brings the
+   * lines along; on a wide screen they are right there above the box. */
+  quote?: ReactNode
   title: string
   placeholder: string
   scope?: CommentBoxScope
@@ -256,6 +263,7 @@ export function CommentBox({
   const setIntent = onDraftIntent ?? setOwnIntent
   const box = useRef<HTMLTextAreaElement>(null)
   const ready = text.trim().length > 0
+  const phone = useIsPhone()
 
   // The cited block rides at the top of what is sent, as a markdown quote.
   const withCite = (words: string) =>
@@ -342,32 +350,43 @@ export function CommentBox({
     </button>
   )
 
-  return (
+  const card = (
     // biome-ignore lint/a11y/noStaticElementInteractions: the handler only contains a mouse click
     // biome-ignore lint/a11y/useKeyWithClickEvents: the handler only contains a mouse click
     <div
       className={`cbox thread-composer${audience ? ` cbox-${audience}` : ''}`}
       onClick={(e) => e.stopPropagation()}
     >
-      <div className={`cbox-head${switchable ? ' cbox-head-aud' : ''}`}>
-        {switchable ? (
-          <>
+      {phone && quote}
+      {/* On a phone the quote says what the comment is on, and the sheet
+          closes by its scrim: the head is only the PR / private switch. */}
+      {phone ? (
+        switchable && (
+          <div className="cbox-head cbox-head-aud">
             <AudienceTabs value={audience} onChange={setOwnAudience} />
-            <span className="cbox-head-right">
+          </div>
+        )
+      ) : (
+        <div className={`cbox-head${switchable ? ' cbox-head-aud' : ''}`}>
+          {switchable ? (
+            <>
+              <AudienceTabs value={audience} onChange={setOwnAudience} />
+              <span className="cbox-head-right">
+                {scopeBits}
+                {closeButton}
+              </span>
+            </>
+          ) : (
+            <>
+              <span className="cbox-title">
+                {fixedAudience === 'agent' ? 'Ask your agent' : scope ? 'Comment on' : title}
+              </span>
               {scopeBits}
               {closeButton}
-            </span>
-          </>
-        ) : (
-          <>
-            <span className="cbox-title">
-              {fixedAudience === 'agent' ? 'Ask your agent' : scope ? 'Comment on' : title}
-            </span>
-            {scopeBits}
-            {closeButton}
-          </>
-        )}
-      </div>
+            </>
+          )}
+        </div>
+      )}
 
       {citing && (
         <div className="cbox-cite">
@@ -466,21 +485,23 @@ export function CommentBox({
       )}
 
       <div className="cbox-foot">
-        <button
-          type="button"
-          className="cbox-rich"
-          aria-pressed={rich}
-          data-tip="Formatting and preview"
-          aria-label="Formatting and preview"
-          onClick={toggleRich}
-        >
-          Aa
-        </button>
+        {!phone && (
+          <button
+            type="button"
+            className="cbox-rich"
+            aria-pressed={rich}
+            data-tip="Formatting and preview"
+            aria-label="Formatting and preview"
+            onClick={toggleRich}
+          >
+            Aa
+          </button>
+        )}
         {audience === 'pr' && (
           <span className="cbox-hint">Posts to GitHub when you submit the review</span>
         )}
         {audience === 'agent' && <span className="cbox-hint">Private, stays on this machine</span>}
-        {audience === undefined && (
+        {audience === undefined && !phone && (
           <span className="cbox-intent" role="radiogroup" aria-label="What this comment wants">
             {INTENTS.map(({ intent: value, label, title }) => (
               // biome-ignore lint/a11y/useSemanticElements: styled chips; a native radio cannot carry this treatment
@@ -504,9 +525,11 @@ export function CommentBox({
           </span>
         )}
         <span className="cbox-actions">
-          <button type="button" className="btn btn-sm btn-ghost" onClick={onCancel}>
-            Close
-          </button>
+          {!phone && (
+            <button type="button" className="btn btn-sm btn-ghost" onClick={onCancel}>
+              Close
+            </button>
+          )}
           {onSend && !forGithub && !askOnly && (
             <button
               type="button"
@@ -545,4 +568,15 @@ export function CommentBox({
       </div>
     </div>
   )
+  // On a phone the composer is a sheet at the thumb, over the keyboard, with
+  // the lines it is about pinned on top; the inline spot it would take in the
+  // diff stays empty while it is up.
+  if (phone) {
+    return (
+      <PhoneSheet onClose={onCancel} label={title} className="psheet-composer">
+        {card}
+      </PhoneSheet>
+    )
+  }
+  return card
 }

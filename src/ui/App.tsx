@@ -66,6 +66,9 @@ import { LeftPanel } from './components/LeftPanel.js'
 import { LivingMark } from './components/LivingMark.js'
 import { Monitor } from './components/Monitor.js'
 import { Nav, treeOrder } from './components/Nav.js'
+import { ViewMenuItems } from './components/PaneBar.js'
+import { PhoneLayerBar } from './components/PhoneLayerBar.js'
+import { PhoneOutline } from './components/PhoneOutline.js'
 import { Privacy } from './components/Privacy.js'
 import {
   ControlsBar,
@@ -114,6 +117,7 @@ import {
 import { computeDelta, EMPTY_DELTA } from './liveDelta.js'
 import { timeAgo } from './markdown.js'
 import type { PaletteItem } from './palette.js'
+import { PhoneContext, usePhoneQuery } from './phone.js'
 import { notifyPresetsChanged, useLayersPresets } from './presetsPref.js'
 import { PrContext } from './prMode.js'
 import { isTestFile, useReviewFilter } from './reviewFilter.js'
@@ -424,6 +428,13 @@ function Review() {
     fileProgress,
   } = useViewed(data)
   const [viewMode, setViewMode] = useState<ViewMode>('unified')
+  // The phone layout: one column of code, a bar at the bottom, and the rail
+  // as a sheet that opens over the page and closes once you have picked.
+  const phone = usePhoneQuery()
+  const [phoneNav, setPhoneNav] = useState(false)
+  // A phone has room for one column: split is a desktop choice it never shows,
+  // and it is left as it was for when the window is wide again.
+  const shownMode: ViewMode = phone ? 'unified' : viewMode
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [focusPath, setFocusPath] = useState<string | null>(null)
   const [collapsed, setCollapsed] = useState<ReadonlySet<string>>(new Set())
@@ -1292,14 +1303,40 @@ function Review() {
     if (done.length > 0) setCollapsed((prev) => new Set([...prev, ...done]))
   }, [viewedLoaded, data, viewed])
 
-  const toggleCollapsed = useCallback((path: string) => {
-    setCollapsed((prev) => {
-      const next = new Set(prev)
-      if (next.has(path)) next.delete(path)
-      else next.add(path)
-      return next
-    })
-  }, [])
+  // Every path in the changeset, for the phone's one-file-open folding.
+  const allPaths = useMemo(() => data?.files.map((f) => f.path) ?? [], [data])
+  const toggleCollapsed = useCallback(
+    (path: string) => {
+      setCollapsed((prev) => {
+        // On a phone a file is read on its own: opening one folds the rest,
+        // so the page is one file's code and a list of the others, never a
+        // wall of every diff at once.
+        if (phone && prev.has(path)) return new Set(allPaths.filter((p) => p !== path))
+        const next = new Set(prev)
+        if (next.has(path)) next.delete(path)
+        else next.add(path)
+        return next
+      })
+      // ...and brings it to the top, where its header was tapped.
+      if (phone) {
+        requestAnimationFrame(() => {
+          const node = document.getElementById(fileAnchor(path))
+          if (node && !node.classList.contains('file-section-collapsed')) {
+            node.scrollIntoView({ block: 'start' })
+          }
+        })
+      }
+    },
+    [phone, allPaths],
+  )
+
+  // A phone opens on the list: every file folded to its header — path, size,
+  // threads, Viewed — and code only for the file the reviewer opens. Again on
+  // every new layer, which is a new list. The desktop's folds are its own.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: arriving on a phone, the data's first load and a new layer are the triggers
+  useEffect(() => {
+    if (phone && data) setCollapsed(new Set(data.files.map((f) => f.path)))
+  }, [phone, activeLayerKey, data === undefined])
 
   /**
    * Where to stand after a file you just finished leaves the pane. With Hide
@@ -1404,9 +1441,13 @@ function Review() {
 
   const pickFile = useCallback(
     (path: string) => {
+      // Picked from the phone's navigator sheet: the sheet steps aside for it.
+      setPhoneNav(false)
       enterLayerFor(path)
       revealFile(path)
       setCollapsed((prev) => {
+        // A phone reads one file at a time: the one picked opens, the rest fold.
+        if (phone) return new Set(allPaths.filter((p) => p !== path))
         if (!prev.has(path)) return prev
         const next = new Set(prev)
         next.delete(path)
@@ -1414,7 +1455,7 @@ function Review() {
       })
       scrollToFile(path)
     },
-    [revealFile, enterLayerFor, scrollToFile],
+    [revealFile, enterLayerFor, scrollToFile, phone, allPaths],
   )
 
   // A usage picked in the symbol hover card. Unlike a `path:line` reference the
@@ -1793,10 +1834,12 @@ function Review() {
       requestAnimationFrame(() => {
         document
           .querySelector(`[data-hunk-id="${id}"]`)
-          ?.scrollIntoView({ behavior: 'instant', block: 'center' })
+          // On a phone the hunk starts at the top: there is no room to centre
+          // it with context around, and its head is what says where you are.
+          ?.scrollIntoView({ behavior: 'instant', block: phone ? 'start' : 'center' })
       })
     },
-    [hunkOrder, selectedId, revealFile],
+    [hunkOrder, selectedId, revealFile, phone],
   )
 
   // biome-ignore lint/correctness/useExhaustiveDependencies: rebinding on hunkOrder is wanted
@@ -2139,6 +2182,14 @@ function Review() {
   const layersEmptyState: LayersEmptyState =
     presence === 'waiting' ? 'noagent' : (layersRequest ?? 'quiet')
 
+  // On a phone the navigator is a sheet over the page: picking a step, a file,
+  // a commit or a thread is going there, so the sheet steps aside. Switching
+  // the sheet's own tabs or ticking files moves none of these, so it stays.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: each of these changing is the trigger
+  useEffect(() => {
+    setPhoneNav(false)
+  }, [activeLayerKey, focusPath, threadFocus, activeCommit?.sha])
+
   if (isLoading) {
     return (
       <div className="center-note">
@@ -2319,7 +2370,7 @@ function Review() {
     onFinish: () => setFinishOpen(true),
     stats: data.stats,
     unsent: openComments,
-    viewMode,
+    viewMode: shownMode,
     onSetViewMode: setViewMode,
     allCollapsed: collapsed.size >= data.files.length && data.files.length > 0,
     onToggleCollapseAll: () =>
@@ -2327,19 +2378,90 @@ function Review() {
         prev.size >= data.files.length ? new Set() : new Set(data.files.map((f) => f.path)),
       ),
   }
+  // The phone's header says where you are in words: the step and its title,
+  // the commit, or the changeset itself.
+  const phoneWhere = (() => {
+    // What is under review, by the name the agent gave it (the tab's title),
+    // the pull request's, or the branch's last segment: never the repo's
+    // folder, which on a worktree is a generated name.
+    const name =
+      data.pr?.title ??
+      review?.title ??
+      data.repo.branch?.slice(data.repo.branch.lastIndexOf('/') + 1) ??
+      'Working tree'
+    const n = data.files.length
+    const size = `${n} ${n === 1 ? 'file' : 'files'} · +${data.stats.additions.toLocaleString('en-US')} −${data.stats.deletions.toLocaleString('en-US')}`
+    if (commitSource && activeCommit) {
+      return { kicker: commitBar?.text.split(' · ')[0] ?? 'Commit', title: activeCommit.subject }
+    }
+    if (inLayers && onOverview) return { kicker: 'Overview', title: name }
+    if (inLayers && paneLayerActive) {
+      return {
+        kicker: paneLayerActive.derived
+          ? 'Since your review'
+          : `Step ${paneLayerActive.number} of ${layerCount}`,
+        title: paneLayerActive.title,
+      }
+    }
+    return { kicker: size, title: name }
+  })()
+  // The phone's progress, a hairline under its header: the layer's when
+  // reading one, the changeset's hunks otherwise.
+  const phoneProgress = (() => {
+    const layer = paneControls.layer
+    if (layer) return layer.progress
+    const { hunksRead, hunksTotal, left, total } = paneControls
+    if (hunksTotal !== undefined && hunksRead !== undefined && hunksTotal > 0) {
+      return hunksRead / hunksTotal
+    }
+    return total === 0 ? 0 : (total - left) / total
+  })()
+  const railShut = phone ? !phoneNav : navHidden || focusMode
   return (
-    <ReviewContexts pr={pr} reviewers={reviewers} focus={threadFocus}>
-      <div className="layout">
+    <ReviewContexts pr={pr} reviewers={reviewers} focus={threadFocus} phone={phone}>
+      <div className={`layout${phone ? ' layout-phone' : ''}`}>
         <Header
           starAsk={starAsk}
           bar={<ControlsBar controls={paneControls} docked />}
-          nav={{
-            hidden: navHidden || focusMode,
-            onToggle: () => {
-              if (focusMode) setFocusMode(false)
-              else toggleNav()
-            },
-          }}
+          {...(phone
+            ? {
+                phone: {
+                  ...phoneWhere,
+                  progress: phoneProgress,
+                  view: (close: () => void) => (
+                    <ViewMenuItems
+                      close={close}
+                      layouts={false}
+                      layer={paneControls.layer !== undefined}
+                      done={paneControls.total - paneControls.left}
+                      hideReviewed={paneControls.hideReviewed}
+                      onHideReviewed={paneControls.onHideReviewed}
+                      hideTests={paneControls.hideTests}
+                      onHideTests={paneControls.onHideTests}
+                      testCount={paneControls.testCount}
+                      onlyChanged={paneControls.onlyChanged}
+                      onOnlyChanged={paneControls.onOnlyChanged}
+                      changedCount={paneControls.changedCount}
+                      viewMode={paneControls.viewMode}
+                      onSetViewMode={paneControls.onSetViewMode}
+                      allCollapsed={paneControls.allCollapsed}
+                      onToggleCollapseAll={paneControls.onToggleCollapseAll}
+                    />
+                  ),
+                },
+              }
+            : {})}
+          nav={
+            phone
+              ? { hidden: !phoneNav, onToggle: () => setPhoneNav((open) => !open) }
+              : {
+                  hidden: navHidden || focusMode,
+                  onToggle: () => {
+                    if (focusMode) setFocusMode(false)
+                    else toggleNav()
+                  },
+                }
+          }
           changeset={data}
           agent={{
             presence,
@@ -2413,10 +2535,21 @@ function Review() {
         />
         <div
           ref={bodyRef}
-          className={`body${navHidden || focusMode ? ' nav-hidden' : ''}${railDragging ? ' rail-dragging' : ''}`}
+          className={`body${railShut ? ' nav-hidden' : ''}${railDragging ? ' rail-dragging' : ''}`}
           style={{ '--rail-w': `${railWidthRef.current}px` } as CSSProperties}
         >
-          {(navHidden || focusMode) && inLayers && (
+          {phone && (phoneNav || agentsPanel !== null) && (
+            <button
+              type="button"
+              className="phone-scrim"
+              aria-label={phoneNav ? 'Close the navigator' : 'Close reviewer agents'}
+              onClick={() => {
+                setPhoneNav(false)
+                setAgentsPanel(null)
+              }}
+            />
+          )}
+          {!phone && (navHidden || focusMode) && inLayers && (
             <PlanStrip
               layers={inLayers ? shownLayers : EMPTY_LAYERS}
               activeIndex={onOverview ? -1 : activeIndex}
@@ -2582,12 +2715,30 @@ function Review() {
             onLoadMore={loadMoreFiles}
             layer={commitSource ? commitView : layerView}
             overview={!inCommits && inLayers && onOverview}
+            {...(phone && inLayers && onOverview
+              ? {
+                  outline: (
+                    <PhoneOutline
+                      steps={shownLayers.map((l) => {
+                        const p = layerProgress(l, viewed)
+                        return {
+                          number: l.number,
+                          title: l.title,
+                          files: p.files,
+                          done: p.doneFiles,
+                        }
+                      })}
+                      onPick={goLayer}
+                    />
+                  ),
+                }
+              : {})}
             controls={paneControls}
             viewed={viewed}
             onToggleFileViewed={toggleViewedHere}
             selectedId={selectedId}
             onSelect={setSelectedId}
-            viewMode={viewMode}
+            viewMode={shownMode}
             collapsed={collapsed}
             onToggleCollapsed={toggleCollapsed}
             comments={paneComments}
@@ -2603,6 +2754,7 @@ function Review() {
             />
           )}
         </div>
+        {phone && paneControls.layer && <PhoneLayerBar layer={paneControls.layer} />}
         {finishOpen &&
           (data.pr ? (
             <SubmitReview
@@ -2726,17 +2878,22 @@ function ReviewContexts({
   pr,
   reviewers,
   focus,
+  phone,
   children,
 }: {
   pr: PrInfo | null
   reviewers: Reviewers
   focus: { id: string; n: number } | null
+  /** The phone layout is on: cards, composers and threads take their phone form. */
+  phone: boolean
   children: ReactNode
 }) {
   return (
     <PrContext.Provider value={pr}>
       <ReviewersContext.Provider value={reviewers}>
-        <ThreadFocusContext.Provider value={focus}>{children}</ThreadFocusContext.Provider>
+        <ThreadFocusContext.Provider value={focus}>
+          <PhoneContext.Provider value={phone}>{children}</PhoneContext.Provider>
+        </ThreadFocusContext.Provider>
       </ReviewersContext.Provider>
     </PrContext.Provider>
   )

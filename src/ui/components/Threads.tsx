@@ -31,11 +31,13 @@ import { reviewerHue, useReviewers } from '../actors.js'
 import { messageOwner } from '../artifacts.js'
 import { linkPaths, type RefLinks, refClickTarget } from '../layers.js'
 import { timeAgo } from '../markdown.js'
+import { useIsPhone } from '../phone.js'
 import { usePr } from '../prMode.js'
 import { firstLine, isUnsent, TURN_LABEL } from '../threads.js'
 import { Avatar, CommentBox } from './CommentBox.js'
 import { Icon } from './Icon.js'
 import { Markdown } from './Markdown.js'
+import { PhoneSheet } from './PhoneSheet.js'
 
 export interface ReviewActions {
   create: (
@@ -166,8 +168,10 @@ function PendingReply({
   )
 }
 
-function ThreadContext({ code }: { code: string }) {
-  const [open, setOpen] = useState(false)
+function ThreadContext({ code, defaultOpen = false }: { code: string; defaultOpen?: boolean }) {
+  // Open from the start where the thread is read away from its code — the
+  // phone's sheet covers the diff, so the lines must come along, shown.
+  const [open, setOpen] = useState(defaultOpen)
   const lines = code.split('\n')
   return (
     <div className="thread-context-wrap">
@@ -456,11 +460,18 @@ export function ThreadCard({
   const [replyOpen, setReplyOpen] = useState(false)
   const [expanded, setExpanded] = useState(false)
   const [shut, setShut] = useState(false)
+  // On a phone a thread is a one-line chip in the diff, and opens as a sheet
+  // sized to the conversation — its code on top, the reply bar at the foot —
+  // to be read and answered: a card squeezed under a line of code, beside the
+  // keyboard, is no place for a conversation.
+  const phone = useIsPhone()
+  const [full, setFull] = useState(false)
   const focus = useContext(ThreadFocusContext)
   useEffect(() => {
     if (focus?.id !== thread.id) return
     setExpanded(true)
     setShut(false)
+    setFull(true)
   }, [focus, thread.id])
   // The message being rewritten and its draft. One at a time: the editor takes
   // that message's body in place, and the error is the server's own words — a
@@ -890,6 +901,43 @@ export function ThreadCard({
     </button>
   )
 
+  if (phone && !full) {
+    const first = thread.messages[0]
+    const who = opener ?? (first && isHumanMessage(first) ? 'You' : 'Agent')
+    const status =
+      thread.state === 'resolved'
+        ? 'resolved'
+        : thread.needsYou
+          ? 'needs you'
+          : working
+            ? 'agent working'
+            : awaitingAgent
+              ? 'with the agent'
+              : unsent
+                ? 'not sent'
+                : null
+    return (
+      <button
+        type="button"
+        className={`thread-chip thread-chip-${thread.state}${thread.needsYou ? ' thread-chip-needs' : ''}`}
+        data-thread-id={thread.id}
+        onClick={(e) => {
+          e.stopPropagation()
+          setExpanded(true)
+          setFull(true)
+        }}
+      >
+        <Icon name="chat" size="sm" />
+        <span className="thread-chip-who">{who}</span>
+        <span className="thread-chip-text">{firstLine(first?.text ?? '')}</span>
+        {status && <span className="thread-chip-state">{status}</span>}
+        {thread.messages.length > 1 && (
+          <span className="thread-chip-n">{thread.messages.length}</span>
+        )}
+      </button>
+    )
+  }
+
   if (thread.state === 'resolved' && !expanded) {
     const first = thread.messages[0]
     return (
@@ -925,7 +973,7 @@ export function ThreadCard({
     )
   }
 
-  return (
+  const cardNode = (
     // biome-ignore lint/a11y/noStaticElementInteractions: the handler only contains a mouse click
     // biome-ignore lint/a11y/useKeyWithClickEvents: the handler only contains a mouse click
     <div
@@ -984,7 +1032,9 @@ export function ThreadCard({
         </button>
       ) : (
         <>
-          {showContext && thread.codeContext && <ThreadContext code={thread.codeContext} />}
+          {(showContext || (phone && full)) && thread.codeContext && (
+            <ThreadContext code={thread.codeContext} defaultOpen={phone && full} />
+          )}
           {showManualHint && (
             <div className="thread-hint">
               waiting on your agent: paste the copied prompt into it; replies land here live
@@ -1369,6 +1419,18 @@ export function ThreadCard({
       )}
     </div>
   )
+  if (phone && full) {
+    return (
+      <PhoneSheet
+        title={anchorLabel(thread, gone)}
+        onClose={() => setFull(false)}
+        className="psheet-thread"
+      >
+        {cardNode}
+      </PhoneSheet>
+    )
+  }
+  return cardNode
 }
 
 /** What the thread hangs off, said the way GitHub says it — the card needs a top
