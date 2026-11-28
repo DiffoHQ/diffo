@@ -175,12 +175,19 @@ changeset has nowhere to anchor, so that one stays quoted prose.
 - **At-least-once.** `take()` hands out a snapshot; `confirm()` marks it delivered only
   after the write succeeds. Hono swallows stream write errors, so a "successful" write is
   not proof of receipt; an unconfirmed snapshot re-delivers on the next poll.
-- **Batches.** A delivery opens a batch; a re-poll, an `end`, or a dead connection closes
-  it. Whatever was still on the clock is reported as `unanswered` and the `ReviewStore`
-  records it, so the UI stops waiting on a thread the agent has moved past.
-- **Presence,** derived from all of the above, with a 5-minute stall threshold, a
-  90-second post-reply grace, and a 2-second settle window so a fast re-poll doesn't read
-  as "hasn't started".
+- **Batches.** A delivery opens a batch, and a later one joins it. A poll never closes
+  one: polling means *listening*, and only a reply takes a thread off the clock. A batch
+  ends when every thread is answered, on `end`, or when the session dies; whatever was
+  still owed then is reported as `unanswered` and the `ReviewStore` records it.
+- **Reminders.** One stall window (5 minutes, pushed back by edits in the tree) with no
+  reply puts a strike on each owed thread and hands them to the agent again, waking a
+  listening poll. After `REMINDER_MAX` reminders the thread lapses as unanswered. Owed
+  threads alone never resolve a poll; only a clock that ran out does.
+- **Coalescing.** A send made while a batch is open is held for a few quiet seconds
+  before it wakes the poll, so a burst is one interrupt. A finish is never held.
+- **Presence,** derived from all of the above, with a 5-minute stall threshold and a
+  90-second post-reply grace, plus `listening`: whether a poll is attached, whatever the
+  state.
 
 The queue is **not** persisted. It's rebuilt on startup by `rehydrateQueue`, which derives
 what's owed from the threads themselves: handed over, not already ruled unanswered, not

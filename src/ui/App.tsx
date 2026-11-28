@@ -194,6 +194,8 @@ function useLiveUpdates(): {
   presence: Presence
   reason: PresenceReason
   since: number | null
+  /** A poll is attached right now, whatever the agent is doing. */
+  listening: boolean
   workingOn: ReadonlySet<string>
   queuedOn: ReadonlyMap<string, number>
   answeredOn: ReadonlySet<string>
@@ -216,6 +218,7 @@ function useLiveUpdates(): {
   const [layersRequest, setLayersRequest] = useState<LayersRequest>(null)
   const [reason, setReason] = useState<PresenceReason>('no-agent')
   const [since, setSince] = useState<number | null>(null)
+  const [listening, setListening] = useState(false)
   const [workingOn, setWorkingOn] = useState<ReadonlySet<string>>(NO_THREADS)
   const [queuedOn, setQueuedOn] = useState<ReadonlyMap<string, number>>(NO_QUEUE)
   const [answeredOn, setAnsweredOn] = useState<ReadonlySet<string>>(NO_THREADS)
@@ -265,6 +268,7 @@ function useLiveUpdates(): {
           state: Presence
           reason?: PresenceReason
           since?: number
+          listening?: boolean
           workingOn?: string[]
           queued?: string[]
           answered?: string[]
@@ -282,6 +286,7 @@ function useLiveUpdates(): {
           )
           if (detail.reason) setReason(detail.reason)
           setSince(typeof detail.since === 'number' ? detail.since : null)
+          setListening(detail.listening === true)
           setWorkingOn(
             state === 'working' && Array.isArray(detail.workingOn)
               ? new Set(detail.workingOn.filter((id) => typeof id === 'string'))
@@ -330,6 +335,7 @@ function useLiveUpdates(): {
     presence,
     reason,
     since,
+    listening,
     workingOn,
     queuedOn,
     answeredOn,
@@ -407,6 +413,7 @@ function Review() {
     presence,
     reason: presenceReason,
     since: presenceSince,
+    listening: agentListening,
     workingOn,
     queuedOn,
     answeredOn,
@@ -2467,6 +2474,7 @@ function Review() {
             presence,
             reason: presenceReason,
             since: presenceSince,
+            listening: agentListening,
             activity,
             onInvite: () => setInviteOpen(true),
             ...(pr === null

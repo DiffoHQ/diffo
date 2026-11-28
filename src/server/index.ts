@@ -97,6 +97,7 @@ import {
   type LayersAsk,
   pidAlive,
   QUIET_POLL_LIMIT,
+  REMINDER_MAX,
   type Snapshot,
 } from './delivery.js'
 import {
@@ -122,6 +123,7 @@ import { PrPuller } from './pr/puller.js'
 import { removeWorktree } from './pr/worktree.js'
 import { DELETED, PresetStore } from './presets.js'
 import {
+  type AgentState,
   answeredByAgent,
   buildArtifactsPrompt,
   buildClearedPrompt,
@@ -140,12 +142,17 @@ import {
   IS_DEV,
   layersSharedError,
   nextStepFor,
+  OWED_LAYERS,
+  type OwedEntry,
+  owedEntry,
   type PromptContext,
   REVIEWER_BRIEF,
   REVIEWER_NEXT_STEP,
+  reminderStep,
   reviewerCommands,
   reviewerSetNudge,
   specLine,
+  timeoutMessage,
 } from './prompt.js'
 import { parseAnchor, ReviewStore } from './review.js'
 import {
@@ -203,9 +210,6 @@ const POLL_HEARTBEAT_MS = 15_000
  * aborts, and a listening poll blocks the daemon's idle reap.
  */
 const POLL_MAX_MS = 30 * 60_000
-/** Times a reviewer agent's thread is handed to the author agent again after a
- * poll that skipped it, before it reads as unanswered. */
-const REDELIVER_MAX = 2
 /** How long a reviewer agent stays listening once all its threads are closed:
  * the human's last word on one, or a message to it, still reaches it. */
 const REVIEWER_GRACE_MS = 5 * 60_000
@@ -293,42 +297,14 @@ export function createApp(
 ) {
   const app = new Hono()
 
-  // How often each reviewer agent's thread was handed to the author agent again
-  // since its last answer (see the batch listener below).
-  const redelivered = new Map<string, number>()
   if (review && queue) {
+    // Threads that left the agent's hands with no reply: it detached, its
+    // session died, or the reminders ran out on them. The review stops waiting
+    // on them and says so. A thread the agent is merely slow on is not here:
+    // a new poll closes nothing, and the queue reminds the agent itself
+    // (delivery.ts `stallRanOut`), a reviewer agent's thread and the human's alike.
     queue.onBatchClosed((closed) => {
-      if (closed.unanswered.length === 0) return
-      // A thread the author agent polled past reads "no answer" until someone
-      // sends it again. The human does that for their own comment; a reviewer
-      // agent's has nobody to: its reviewer would stop waiting and leave, and
-      // the two would never talk. So the server sends it again itself: it
-      // rides the very poll that skipped it, flagged, and its reviewer keeps
-      // waiting. Capped, so an agent that never answers cannot spin on it.
-      const again =
-        closed.reason === 'repoll'
-          ? review
-              .get()
-              .threads.filter(
-                (t) =>
-                  closed.unanswered.includes(t.id) &&
-                  openedByReviewerAgent(t) !== null &&
-                  // `addressed` too: editing the commented hunk makes a sent
-                  // thread addressed with no reply written, and an author
-                  // that fixes the line and polls on is the usual way to
-                  // skip one. A thread it replied to is never in `unanswered`.
-                  (t.state === 'sent' || t.state === 'addressed') &&
-                  !t.needsYou &&
-                  (redelivered.get(t.id) ?? 0) < REDELIVER_MAX,
-              )
-              .map((t) => t.id)
-          : []
-      const dropped = closed.unanswered.filter((id) => !again.includes(id))
-      for (const id of dropped) redelivered.delete(id)
-      if (dropped.length > 0) review.markUnanswered(dropped)
-      if (again.length === 0) return
-      for (const id of again) redelivered.set(id, (redelivered.get(id) ?? 0) + 1)
-      queue.enqueueThreads(again)
+      if (closed.unanswered.length > 0) review.markUnanswered(closed.unanswered)
     })
   }
 
@@ -1343,7 +1319,6 @@ export function createApp(
         return c.json({ error: 'a suggested PR comment needs a pull request under review' }, 400)
       }
       const waitedMs = queue?.agentReplied(id, more) ?? null
-      if (!more) redelivered.delete(id)
       const seenThroughMs = waitedMs === null ? undefined : Date.now() - waitedMs
       const thread = review.addMessage(
         id,
@@ -1482,11 +1457,10 @@ export function createApp(
           409,
         )
       }
-      // Closed before the author agent was handed it: nothing left to hand over.
-      // A thread it is already answering stays on its clock, untouched.
-      if (queue?.queuedThreadIds().includes(id) && !queue.deliveredThreadIds().includes(id)) {
-        queue.drop(id)
-      }
+      // Closed: nothing left to hand over, and no reply left to wait for. A
+      // thread the author agent is answering comes off its clock without
+      // counting as unanswered; a reply that still arrives lands as usual.
+      queue?.drop(id)
       const thread = review.setState(id, 'resolved', who.name)
       if (thread) {
         hub.log(who.name, 'closed', `closed its thread on ${describeAnchor(thread.anchor)}`, id)
@@ -1503,6 +1477,9 @@ export function createApp(
       const thread = review.queueResolve(id, state === 'resolved')
       return thread ? c.json(thread) : c.json({ error: 'no such thread' }, 404)
     }
+    // Resolved by the human: the agent owes it no reply any more, so it is
+    // never reminded of it. What is queued for the agent stays queued.
+    if (state === 'resolved') queue?.release(id)
     const thread = review.setState(id, state)
     return thread ? c.json(thread) : c.json({ error: 'no such thread' }, 404)
   })
@@ -1924,11 +1901,7 @@ export function createApp(
         ),
       }
     }
-    const delivered = threads
-      .filter((t) => snapshot.threadIds.includes(t.id))
-      // Handed over again after a poll that skipped it: say so, the way a
-      // thread the human sent again does.
-      .map((t) => (redelivered.has(t.id) ? { ...t, unanswered: true } : t))
+    const delivered = threads.filter((t) => snapshot.threadIds.includes(t.id))
     const prompt =
       delivered.length === 1
         ? buildThreadPrompt(delivered[0]!, { ...promptCtx(delivered[0]!.id), protocol })
@@ -1940,6 +1913,60 @@ export function createApp(
       prompt,
     }
   }
+
+  /** What the agent was handed and has not answered, for a payload or an ack.
+   * `except` leaves out the threads a payload is itself handing over. */
+  const owedList = (except: readonly string[] = []): OwedEntry[] => {
+    if (!review || !queue) return []
+    const threads = review.get().threads
+    const now = Date.now()
+    const entries = queue.owed().flatMap((o): OwedEntry[] => {
+      if (except.includes(o.threadId)) return []
+      const thread = threads.find((t) => t.id === o.threadId)
+      return thread ? [owedEntry(thread, now - o.deliveredAt, o.reminders)] : []
+    })
+    return queue.owesLayers()
+      ? [...entries, { ...OWED_LAYERS, waiting: 'since the reviewer asked' }]
+      : entries
+  }
+
+  /** The stall clock ran out on threads still owed: they go out again in
+   * full, marked, because the likeliest reason for the silence is a session
+   * that no longer has their text (a compacted context). */
+  const reminderPayload = () => {
+    const owed = queue?.owed() ?? []
+    const ids = new Set(owed.map((o) => o.threadId))
+    const threads = (review?.get().threads ?? [])
+      .filter((t) => ids.has(t.id))
+      .map((t) => ({ ...t, unanswered: true }))
+    if (threads.length === 0) return null
+    const protocol = queue?.needsFullProtocol() === false ? ('compact' as const) : undefined
+    const threadIds = threads.map((t) => t.id)
+    return {
+      status: 'feedback' as const,
+      kind: 'reminder' as const,
+      threadIds,
+      reminder: Math.max(...owed.map((o) => o.reminders)) + 1,
+      prompt:
+        threads.length === 1
+          ? buildThreadPrompt(threads[0]!, { ...promptCtx(threads[0]!.id), protocol })
+          : buildCoalescedPrompt(threads, { ...promptCtx(...threadIds), protocol }),
+      next_step: reminderStep(REMINDER_MAX),
+    }
+  }
+
+  // Where the author agent stands, for the line every command's ack ends
+  // with: whether a poll is listening, what is still owed, what is queued.
+  // Read-only, and it names no thread text.
+  app.get('/api/agent/state', (c) => {
+    if (!review || !queue) return c.json({ error: 'review unavailable' }, 503)
+    const state: AgentState = {
+      listening: queue.hasListener(),
+      owed: owedList(),
+      waiting: queue.pendingCount(),
+    }
+    return c.json(state)
+  })
 
   app.get('/api/agent/poll', (c) => {
     if (!review || !queue) return c.json({ error: 'review unavailable' }, 503)
@@ -2009,17 +2036,39 @@ export function createApp(
               await s.write(quietPayload(quietLimit))
               return
             }
+            const owed = owedList()
             await s.write(
               JSON.stringify({
                 status: 'timeout',
-                message:
-                  'no feedback within the poll window. Nothing is lost; re-run `diffo poll` to keep listening',
+                message: timeoutMessage(owed.length),
+                ...(owed.length > 0 ? { owed } : {}),
               }),
             )
             return
           }
           const outcome = await attach
           if (outcome === 'gone') {
+            return
+          }
+          if (outcome === 'replaced') {
+            await s.write(
+              JSON.stringify({
+                status: 'superseded',
+                message:
+                  'you started a newer poll from this same session, and that one is listening ' +
+                  'now. This one is released: do nothing here, and do not start another.',
+              }),
+            )
+            return
+          }
+          if (outcome === 'reminder') {
+            const reminder = reminderPayload()
+            // Everything owed was settled between the clock and this write.
+            if (!reminder) continue
+            await s.write(JSON.stringify(reminder))
+            if (aborted) return
+            queue.confirmReminder(reminder.threadIds)
+            queue.markProtocolSent()
             return
           }
           if (outcome === 'superseded') {
@@ -2048,9 +2097,17 @@ export function createApp(
           const snapshot = queue.take()
           if (!snapshot) continue
           const inner = pollPayload(snapshot)
+          // What was handed over before this and is still unanswered rides
+          // every payload, so the agent is never more than one poll away from
+          // seeing what it owes.
+          const owed = owedList(inner.threadIds)
           const payload = {
             ...inner,
-            next_step: nextStepFor(inner.kind, inner.threadIds.length),
+            ...(owed.length > 0 ? { owed } : {}),
+            next_step: nextStepFor(inner.kind, inner.threadIds.length, {
+              owed: owed.length,
+              midWork: queue.owed().length > 0,
+            }),
           }
           await s.write(JSON.stringify(payload))
           // If the client vanished during the write, don't mark it delivered: Hono's
@@ -3149,8 +3206,10 @@ export function startServer(options: ServerContext & { port: number }) {
   const unsubscribeBatch = queue.onBatchClosed((closed) => {
     const took = Math.round((closed.closedAt - closed.deliveredAt) / 1000)
     log(
-      `agent finished a batch of ${closed.threadIds.length} in ${took}s (${closed.reason})` +
-        (closed.unanswered.length > 0 ? `, ${closed.unanswered.length} unanswered` : ''),
+      closed.reason === 'lapsed'
+        ? `agent never answered ${closed.threadIds.length} after ${REMINDER_MAX} reminders (${took}s)`
+        : `agent finished a batch of ${closed.threadIds.length} in ${took}s (${closed.reason})` +
+            (closed.unanswered.length > 0 ? `, ${closed.unanswered.length} unanswered` : ''),
     )
   })
   const landedGit = {
@@ -3212,6 +3271,8 @@ export function startServer(options: ServerContext & { port: number }) {
     const before = review.scope.branch
     review.rescope(changeset.repo.branch)
     queue.rescope(changeset.repo.branch)
+    // The tree moved: an agent holding a batch is at work, not stalled.
+    queue.noteEdit()
     if (review.scope.branch !== before)
       log(`branch ${before || 'detached'} → ${changeset.repo.branch || 'detached'}`)
     const hunkIds = new Set(changeset.files.flatMap((f) => f.hunks.map((h) => h.id)))

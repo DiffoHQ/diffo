@@ -8,6 +8,7 @@ import { DEFAULT_VOICE } from '../shared/voice.js'
 import { DEV_SKILL_NAME, SKILL_NAME } from '../skill.js'
 import {
   ACK_NEXT_STEP,
+  ackStep,
   buildClearedPrompt,
   buildCoalescedPrompt,
   buildConnectAsk,
@@ -34,15 +35,21 @@ import {
   layersNudge,
   layersSharedError,
   nextStepFor,
+  OWED_LAYERS,
+  owedEntry,
   ownPrAsk,
+  POLL_FIRST,
+  POLL_STANCE,
   PR_COMMENT_DOCTRINE,
   REVIEWER_AGENT_DOCTRINE,
   REVIEWER_BRIEF,
   REVIEWER_HANDS_OFF,
   REVIEWER_NEXT_STEP,
+  reminderStep,
   replyProtocol,
   reviewerCommands,
   reviewerSetNudge,
+  timeoutMessage,
   voiceLines,
 } from './prompt.js'
 
@@ -886,12 +893,92 @@ describe('the poll envelope (next_step per payload kind)', () => {
     expect(empty).not.toMatch(/act on each thread/i)
   })
 
-  it('a layers payload points at the post, then back to the poll', () => {
+  it('a layers payload starts the next poll first, then points at the post', () => {
     const step = nextStepFor('layers', 0)
     expect(step).toContain(CLI_COMMANDS.layers)
     expect(step).toContain(CLI_COMMANDS.layersStdin)
-    expect(step).toMatch(/keep listening/i)
+    expect(step.indexOf(CLI_COMMANDS.poll)).toBeLessThan(step.indexOf(CLI_COMMANDS.layers))
     expect(step).not.toMatch(/act on each thread/i)
+  })
+
+  it('a threads payload listens before it acts, and says a reply is what settles a thread', () => {
+    const step = nextStepFor('threads', 2)
+    expect(step).toContain(POLL_FIRST)
+    expect(step.indexOf(CLI_COMMANDS.poll)).toBeLessThan(step.indexOf(CLI_COMMANDS.reply))
+    expect(step).toMatch(/a reply is what settles a thread; a new poll does not/i)
+    // Both harness shapes, because only the agent knows which it has.
+    expect(POLL_FIRST).toMatch(/background task whose completion wakes you/)
+    expect(POLL_FIRST).toMatch(/hold your turn \(a foreground poll\), act and reply first/)
+    expect(POLL_FIRST).toMatch(/never a detached process/i)
+  })
+
+  it('a payload that lands mid-work says so, and one with debts points at "owed"', () => {
+    expect(nextStepFor('threads', 1)).not.toMatch(/arrived while you were working/)
+    expect(nextStepFor('threads', 1, { midWork: true })).toMatch(
+      /^This arrived while you were working: read it before you go on/,
+    )
+    expect(nextStepFor('threads', 1)).not.toContain('"owed"')
+    expect(nextStepFor('threads', 1, { owed: 2 })).toMatch(
+      /"owed" lists 2 things handed to you earlier/,
+    )
+    expect(nextStepFor('preset', 0, { owed: 1 })).toMatch(/"owed" lists one thing/)
+    // The finish lead wins: the reviewer being done is the bigger news.
+    expect(nextStepFor('finish', 3, { midWork: true })).toMatch(/^The reviewer is done reading/)
+  })
+
+  it('a reminder says what happens to a thread that stays unanswered', () => {
+    const step = reminderStep(3)
+    expect(step).toContain(POLL_FIRST)
+    expect(step).toContain(CLI_COMMANDS.reply)
+    expect(step).toMatch(/--more/)
+    expect(step).toMatch(/reminded 3 times with no reply is shown to the reviewer as "no answer"/)
+    expect(timeoutMessage(0)).not.toContain('"owed"')
+    expect(timeoutMessage(1)).toContain('"owed" lists one thing')
+  })
+
+  it("an owed entry is built from the thread's state, never its words", () => {
+    const t = thread({ intent: 'fix' })
+    expect(owedEntry(t, 6 * 60_000, 0)).toEqual({
+      what: 'thread',
+      id: t.id,
+      where: describeAnchor(t.anchor),
+      intent: 'issue',
+      state: 'no reply yet',
+      waiting: '6m',
+    })
+    expect(owedEntry({ ...t, state: 'addressed' }, 40_000, 2)).toMatchObject({
+      state: 'code changed, no reply yet',
+      waiting: '40s',
+      reminders: 2,
+    })
+    expect(owedEntry({ ...t, awaitingFollowUp: true }, 0, 0).state).toMatch(/follow-up promised/)
+    expect(JSON.stringify(owedEntry(t, 0, 0))).not.toContain(t.messages[0]!.text)
+  })
+
+  it('an ack says the one true thing about polling right now', () => {
+    const owed = [owedEntry(thread({ intent: 'fix' }), 60_000, 0)]
+    // Listening: never a second poll.
+    const listening = ackStep(ACK_NEXT_STEP.reply, { listening: true, owed: [], waiting: 0 })
+    expect(listening).toBe('Reply posted. Your poll is still listening: do not start another.')
+    // Not listening, nothing owed: poll now.
+    const idle = ackStep(ACK_NEXT_STEP.reply, { listening: false, owed: [], waiting: 2 })
+    expect(idle).toContain(`No poll is listening: run \`${CLI_COMMANDS.poll}\` now`)
+    expect(idle).toContain(POLL_STANCE)
+    expect(idle).toContain('2 new items wait for it.')
+    // Not listening, mid-batch: a foreground poll would block on nothing.
+    const midBatch = ackStep(ACK_NEXT_STEP.reply, { listening: false, owed, waiting: 0 })
+    expect(midBatch).toContain(`Still owed: ${owed[0]!.id} (`)
+    expect(midBatch).toMatch(/if it would hold your turn, finish what you owe first, then run it/)
+    // The server could not say: cover both.
+    expect(ackStep(ACK_NEXT_STEP.reply, null)).toMatch(/if none is running, run/)
+    // Owed layers alone do not make it a mid-batch.
+    expect(
+      ackStep(ACK_NEXT_STEP.comment, {
+        listening: false,
+        owed: [{ ...OWED_LAYERS, waiting: '2m' }],
+        waiting: 0,
+      }),
+    ).toContain('No poll is listening: run')
   })
 
   it('a cleared payload points at the guide, then back to the poll', () => {
@@ -902,7 +989,13 @@ describe('the poll envelope (next_step per payload kind)', () => {
   })
 
   it('every ack teaches the next step; end pairs the prohibition with its alternative', () => {
-    expect(ACK_NEXT_STEP.reply).toContain('poll')
+    // Whether to poll is not an ack's to say on its own: `ackStep` adds it
+    // from the review's state (see the test above).
+    for (const [key, step] of Object.entries(ACK_NEXT_STEP)) {
+      if (key === 'end' || key === 'replyAsked' || key === 'reviewerSuggested') continue
+      expect(step, key).not.toMatch(/\bpoll\b/)
+    }
+    expect(ACK_NEXT_STEP.replyMore).toMatch(/stays owed until the follow-up lands as a plain reply/)
     expect(ACK_NEXT_STEP.comment).toMatch(/replies to take it up, or resolves it/i)
     expect(ACK_NEXT_STEP.end).toMatch(/do not reopen or re-poll/i)
     expect(ACK_NEXT_STEP.end).toMatch(/directly in the conversation/i)
@@ -1058,7 +1151,7 @@ describe('the layers payload (reviewer pressed Outline)', () => {
     expect(step).toContain('src/a.ts:88-95, src/a.ts:140-162, src/b.ts (whole)')
     expect(step).toContain('Since your review')
     expect(step).toContain(CLI_COMMANDS.layers)
-    expect(step).toContain(CLI_COMMANDS.poll)
+    expect(step).not.toContain(CLI_COMMANDS.poll)
   })
 
   it('an outline claiming a line in two layers is refused with the lines and layers', () => {
@@ -1220,9 +1313,12 @@ describe('layers doctrine', () => {
     expect(LAYERS.mechanical).toMatch(/if unsure, don't tag/)
   })
 
-  it('every layers ack names the next poll', () => {
+  it('every layers ack gets its polling line from the review, like any ack', () => {
     for (const key of ['layers', 'layersSuggested', 'layersAlready'] as const) {
-      expect(ACK_NEXT_STEP[key]).toContain(CLI_COMMANDS.poll)
+      expect(ACK_NEXT_STEP[key]).not.toContain(CLI_COMMANDS.poll)
+      expect(ackStep(ACK_NEXT_STEP[key], { listening: false, owed: [], waiting: 0 })).toContain(
+        CLI_COMMANDS.poll,
+      )
     }
     expect(ACK_NEXT_STEP.layersSuggested).toContain(CLI_COMMANDS.layers)
   })

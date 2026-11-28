@@ -3,7 +3,7 @@ import { cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { Changeset } from '../../shared/types.js'
 import { ReviewersContext } from '../actors.js'
-import { Header } from './Header.js'
+import { Header, presenceTitle, sendsWait } from './Header.js'
 
 afterEach(cleanup)
 
@@ -584,5 +584,42 @@ describe('Header — reviewer agents', () => {
     // No handler (a pull-request review) and no reviewers: nothing at all.
     const { container } = render(<Header changeset={changeset()} />)
     expect(container.querySelector('.stack')).toBeNull()
+  })
+})
+
+describe('Header — working and listening are two facts', () => {
+  it('says "sends wait" only when a batch is in hand and no poll is attached', () => {
+    expect(sendsWait('working', 'delivered', false)).toBe(true)
+    expect(sendsWait('working', 'stalled', undefined)).toBe(true)
+    expect(sendsWait('working', 'delivered', true)).toBe(false)
+    // Other reasons already say what a send does, or owe nothing.
+    expect(sendsWait('working', 'replied', false)).toBe(false)
+    expect(sendsWait('working', 'repolling', false)).toBe(false)
+    expect(sendsWait('listening', 'polling', true)).toBe(false)
+    expect(sendsWait('waiting', 'no-agent', false)).toBe(false)
+  })
+
+  it('the hover says what a send does right now', () => {
+    expect(presenceTitle('working', 'delivered', true)).toMatch(/still listening.*within moments/)
+    expect(presenceTitle('working', 'delivered', false)).toMatch(/not listening meanwhile.*queues/)
+    expect(presenceTitle('working', 'repolling', false)).toMatch(/its last poll ended/)
+    expect(presenceTitle('listening', 'polling', true)).toMatch(/reaches it right away/)
+  })
+
+  it('the chip carries the words', () => {
+    const { rerender } = render(
+      <Header
+        changeset={changeset()}
+        agent={{ presence: 'working', reason: 'delivered', since: Date.now(), listening: false }}
+      />,
+    )
+    expect(screen.getByText(/sends wait/)).toBeTruthy()
+    rerender(
+      <Header
+        changeset={changeset()}
+        agent={{ presence: 'working', reason: 'delivered', since: Date.now(), listening: true }}
+      />,
+    )
+    expect(screen.queryByText(/sends wait/)).toBeNull()
   })
 })

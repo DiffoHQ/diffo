@@ -243,6 +243,13 @@ const PRESENCE_TITLE: Record<Presence, string> = {
   working: 'the agent received feedback and is working on it',
 }
 
+/** Working a batch says nothing about whether a send reaches the agent now:
+ * that is whether a poll is attached, a second fact the chip's hover spells out. */
+const WORKING_LISTENING_TITLE =
+  'the agent is working on your feedback and still listening; a new send reaches it within moments, while it works'
+const WORKING_DEAF_TITLE =
+  'the agent is working on your feedback and is not listening meanwhile; a new send queues and reaches it when it polls again'
+
 /** Between polls because the poll ended on its own (the window closed, or the
  * process was killed under its harness), not because anyone left: the chip
  * keeps the agent, and the tooltip says what a send does meanwhile. */
@@ -299,11 +306,29 @@ function chipEyes(
   return 'plus'
 }
 
-function presenceTitle(presence: Presence, reason: PresenceReason | undefined): string {
+export function presenceTitle(
+  presence: Presence,
+  reason: PresenceReason | undefined,
+  listening?: boolean,
+): string {
   if (presence !== 'working') return PRESENCE_TITLE[presence]
   if (reason === 'repolling') return REPOLLING_TITLE
   if (reason === 'arriving') return ARRIVING_TITLE
+  if (reason === 'delivered' || reason === 'stalled') {
+    return listening ? WORKING_LISTENING_TITLE : WORKING_DEAF_TITLE
+  }
   return PRESENCE_TITLE[presence]
+}
+
+/** A batch in the agent's hands with no poll attached: what the reviewer sends
+ * now waits for it to finish. Said on the chip, because it changes what a Send
+ * does; the usual case, working and listening, needs no words. */
+export function sendsWait(
+  presence: Presence,
+  reason: PresenceReason | undefined,
+  listening: boolean | undefined,
+): boolean {
+  return presence === 'working' && (reason === 'delivered' || reason === 'stalled') && !listening
 }
 
 function formatAgo(ms: number): string {
@@ -330,6 +355,7 @@ function PresenceChip({
   presence,
   reason,
   since,
+  listening,
   activity,
   onInvite,
   batch,
@@ -344,6 +370,7 @@ function PresenceChip({
   presence: Presence
   reason?: PresenceReason
   since?: number | null
+  listening?: boolean
   activity?: string | null
   onInvite?: () => void
   batch?: AgentBatch
@@ -419,6 +446,9 @@ function PresenceChip({
           </>
         )}
         {showAgo && <span className="presence-ago"> · {formatAgo(Date.now() - since)}</span>}
+        {sendsWait(presence, reason, listening) && (
+          <span className="presence-ago"> · sends wait</span>
+        )}
       </span>
     </>
   )
@@ -458,7 +488,7 @@ function PresenceChip({
     return (
       <span
         className={`presence presence-${presence}`}
-        title={presenceTitle(presence, reason)}
+        title={presenceTitle(presence, reason, listening)}
         onPointerEnter={hover}
       >
         {body}
@@ -476,7 +506,7 @@ function PresenceChip({
         aria-expanded={monitorOpen}
         onClick={() => onOpenMonitor(!monitorOpen)}
         onPointerEnter={hover}
-        title={`${PRESENCE_TITLE[presence]}. ${batch!.done} of ${total} answered; click to watch the queue`}
+        title={`${presenceTitle(presence, reason, listening)}. ${batch!.done} of ${total} answered; click to watch the queue`}
       >
         {filled > 0 && (
           <span className="presence-fill" style={{ width: `${filled}%` }} aria-hidden="true" />
@@ -588,6 +618,8 @@ export interface HeaderAgent {
   /** Why the state holds — only `repolling` and `arriving` change what the chip says. */
   reason?: PresenceReason
   since?: number | null
+  /** A poll is attached right now: a send reaches the agent even mid-work. */
+  listening?: boolean
   /** What the agent is doing right now — replaces the static working label. */
   activity?: string | null
   onInvite?: () => void
@@ -910,6 +942,7 @@ export function Header({
             presence={agent.presence}
             reason={agent.reason}
             since={agent.since}
+            listening={agent.listening}
             activity={agent.activity}
             onInvite={agent.onInvite}
             batch={agent.batch}
@@ -999,6 +1032,7 @@ export function Header({
           presence={agent.presence}
           reason={agent.reason}
           since={agent.since}
+          listening={agent.listening}
           activity={agent.activity}
           onInvite={agent.onInvite}
           batch={agent.batch}

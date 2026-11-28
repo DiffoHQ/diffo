@@ -37,8 +37,8 @@ agent's behalf. Three things follow from it.
 | 2. Guide | `diffo comment -m "…"` | One comment on the whole changeset (a map of the change, not a reading order), only when the changeset needs it, written while the reviewer is opening the page. See [the guide comment](#the-guide-comment) |
 | 2b. Layers | `diffo layers --suggest "…"` | Optional: a flag that this read benefits from layers. The layers themselves are posted only when the reviewer asks. See [layers](#layers) |
 | 3. Attach | `diffo poll --title "…"` | Blocks until the reviewer acts, then prints one payload. The title becomes the reviewer's browser tab name; see [the tab title](#the-tab-title) |
-| 4. Act | (edits, and `diffo reply`) | Work the threads the payload named, and answer each one |
-| 5. Re-attach | `diffo poll` | Also a statement: see [re-polling closes the batch](#re-polling-closes-the-batch) |
+| 4. Re-attach | `diffo poll` | Before the work, not after it, so the agent keeps listening while it acts: see [listening while working](#listening-while-working) |
+| 5. Act | (edits, and `diffo reply`) | Work the threads the payload named, and answer each one. A reply is what settles a thread |
 | 6. Detach | `diffo end` | When the review is over |
 
 Step 1 returns immediately, leaving a background server, so it is a short command
@@ -81,7 +81,7 @@ One JSON object, discriminated by `status`:
 | `feedback` | Work is waiting. The only status that carries any |
 | `timeout` | The 30-minute cap on this poll closed. Nothing is lost; poll again |
 | `quiet` | Twenty polls in a row brought nothing from the reviewer (timed out, or cut off by the harness). Stop, ask the user whether to keep listening, and re-poll only on a yes; the next poll starts a fresh count |
-| `superseded` | Another session took the review. Do not re-poll |
+| `superseded` | Another session took the review, or this session started a newer poll of its own. Do not re-poll |
 | `ended` | The agent side detached with `diffo end`. Do not re-poll |
 
 A `feedback` payload:
@@ -91,11 +91,23 @@ A `feedback` payload:
   "status": "feedback",
   "kind": "threads",           // "threads" = individual sends · "finish" = the reviewer is done reading
                                // "layers" = the reviewer asked for layers · "cleared" = they started over
+                               // "reminder" = threads handed over earlier that still have no reply
   "threadIds": ["4f1c9a2e-…"], // reply to each of these
   "prompt": "…",               // the authoritative instruction (see below)
-  "next_step": "…"             // what to do once they are all handled
+  "owed": [                    // handed over before this payload and still unanswered; absent when nothing is
+    { "what": "thread", "id": "9b2d…", "where": "src/db.ts:214", "intent": "issue",
+      "state": "no reply yet", "waiting": "6m" }
+  ],
+  "next_step": "…"             // what to do now: start the next poll, then act
 }
 ```
+
+`owed` is written by the server from each thread's state, never from the
+reviewer's words: the id, where it is anchored, and why it still counts (`no reply
+yet`, `code changed, no reply yet`, or a `--more` promise not yet kept). It rides
+every payload, a `timeout` included, so an agent is never more than one poll away
+from seeing what it has not answered. Layers the reviewer asked for and nobody
+posted appear there too, as `"what": "layers"`.
 
 `prompt` is prose, built server-side, and it is what the agent actually acts on.
 It carries the thread text, a snapshot of the hunk each thread is anchored to as
@@ -136,30 +148,68 @@ The prompt adds two rules with the same intent: change only what the threads ask
 about, and re-read the current file before editing, because the snapshot in the
 prompt was frozen when the comment was written.
 
-## Re-polling closes the batch
+## Listening while working
 
-The single behaviour most worth understanding, because it is not obvious from the
-command.
+Two facts about an agent are kept apart, because for a long time they were one and
+that was the loop's weakest point.
 
-**A new poll is read as "I have finished the previous lot."** Asking for more work
-is a statement about the old work. So when a poll arrives, every thread from the
-previous batch that never got a reply stops saying *waiting on the agent* and
-starts saying *no answer*, and the review shows it that way to the reviewer.
+**Listening** is whether a poll is attached. **Owed** is the list of threads the
+agent was handed and has not answered. A poll says only the first: *I am listening*.
+It never says *I am done*. Only a reply settles a thread (or the reviewer resolving
+or deleting it, or `diffo end`).
 
-A reviewer agent's thread is the exception. Nobody is there to send it again,
-and its reviewer stops waiting once it reads *no answer*, so the two agents
-would never talk. Diffo hands such a thread straight back instead: the poll
-that skipped it returns it at once, marked as handed over again, and the
-reviewer agent keeps waiting. After two such tries it reads *no answer* like
-any other.
+So the order is: read the payload, start the next poll, then work. A reviewer who
+writes *stop, do it the other way* while the agent is mid-fix is heard mid-fix,
+instead of after the whole batch. The payload's `next_step` says this every time,
+in both shapes, because only the agent knows which harness it runs in:
 
-The consequence for an agent is: handle the payload, then poll. Not poll, then
-start working. And a thread the agent decided not to act on still needs a reply
-saying so, because a reason is an answer and silence is not.
+| The poll… | Order |
+| --- | --- |
+| runs as a background task whose completion wakes the agent | poll first, then act |
+| holds the turn (a foreground poll) | act and reply first, then poll |
 
-A batch also closes when the agent runs `diffo end`, or when its connection dies.
-Whatever was still owed is recorded as unanswered, so the review stops waiting on
-a thread the agent has moved past.
+What keeps a listening agent from being interrupted for every keystroke, and from
+quietly dropping a thread:
+
+- **Sends are batched while it works.** With a batch in its hands, a new send waits
+  until the sends stop for **8 seconds** (**30 seconds** at most), so three quick
+  comments are one interrupt. A **Finish review** is never held. An idle agent is
+  woken at once.
+- **Every payload lists what is owed**, and so does every command's ack (below).
+- **A stalled thread is handed over again.** After **5 minutes** with no reply, the
+  owed threads return as a `kind: "reminder"` payload, in full, because the likeliest
+  reason for the silence is a session that lost their text. Edits in the working
+  tree read as the agent at work and push that back, for up to **15 minutes**.
+- **After 3 reminders the review stops waiting.** One more silent window and the
+  thread reads *no answer*, and the reviewer can send it again. A thread the agent
+  decided not to act on still needs a reply saying so: a reason is an answer and
+  silence is not.
+- **Owed threads alone never end a poll.** Only new feedback, a reminder whose clock
+  ran out, the poll window, or a detach does. Otherwise every poll would return at
+  once and the agent would spin on its own debts.
+
+A reviewer agent's thread follows the same rule as the human's. Its reviewer keeps
+waiting through the reminders, and leaves once the thread reads *no answer*.
+
+A batch also ends when the agent runs `diffo end`, or when its session dies.
+Whatever was still owed is recorded as unanswered. When another session takes the
+review over, what the first one still owed goes to the newcomer in full: it never
+saw those threads.
+
+### What an ack says about polling
+
+Every command the agent runs (`reply`, `comment`, `layers`, …) ends its `next_step`
+with the one true thing about polling at that moment, read from the review:
+
+| State | The ack says |
+| --- | --- |
+| A poll is attached | *Your poll is still listening: do not start another* |
+| No poll, nothing owed | *No poll is listening: run `diffo poll` now* |
+| No poll, threads owed | Start it now if it runs in the background; if it would hold the turn, finish what is owed first |
+
+A fixed *then run poll* line told an agent that was already listening to start a
+second poll, which released the first and woke it for nothing. A second poll from
+the same session still releases the first, and the first is told exactly that.
 
 ## The guide comment
 
@@ -212,7 +262,7 @@ Two commands, one doctrine:
 | --- | --- |
 | **Suggest** | `diffo layers --suggest "<why, in one line>"`, at open, next to the guide. It flags that this read benefits from layers, without writing them. The review shows the offer to the reviewer; the reason is quoted next to it. Add `--preset <id>` when one of the reviewer's presets fits the change (the open's output lists the ones that are on): the Layers tab then opens on it, with your reason, unless the reviewer has a default of their own. A preset that is not on is dropped, and the ack's `note` says so |
 | **Post** | `diffo layers --json '<post>'`, or the same JSON piped to `diffo layers --stdin`. A post is `{ "preset", "layers": Layer[] }`, or a bare `Layer[]` for layers that follow no preset. Posted only when the reviewer asks, because writing layers is the heavy step and most changesets never need them. When the JSON is too long to inline, write it to a file in one command and pipe that file in the next, never both in one: a harness that screens each command on its own (Claude Code's auto mode, for one) refuses a post it cannot trace back to the session, such as a pipe from a file the session never visibly wrote |
-| **The ask** | The reviewer's click arrives through the poll as a `kind: "layers"` payload, with the doctrine restated and no threads to answer. The Layers tab reads *Layering…* and the presence chip *layering the change* until the post lands; a re-poll without a post lets the request lapse and gives the reviewer their button back. Layers owed for three minutes with neither read as **stalled**: the tab says the post never came and why it might not have, and offers the ask again, which withdraws the old one |
+| **The ask** | The reviewer's click arrives through the poll as a `kind: "layers"` payload, with the doctrine restated and no threads to answer. The Layers tab reads *Layering…* and the presence chip *layering the change* until the post lands; a poll does not end the wait, because the agent listens while it writes them. Layers owed for three minutes read as **stalled**: the tab says the post never came and why it might not have, and offers the ask again, which withdraws the old one. After six the request lapses on its own |
 | **Preset** | What the layers are for, chosen before you write them (see [What the layers are for](/guide/layers#what-the-layers-are-for)). The ask names it: the reviewer picked a preset, and the payload carries its instructions, which decide what goes in the layers, in what order, and what goes to background; or the pick was left to you, and the payload lists the presets that are on, each with its *use it when* and instructions — choose by the change, follow it, and post `"preset": { "id": "<its id>", "picked": true, "why": "<one line>" }` so the reviewer sees the pick and the reason |
 | **Note** | The reviewer's words for this change only, sent with the ask. On top of a preset the payload quotes it after the preset's instructions: follow both, and the note where they disagree. With no preset (*One-time instructions*) the note is the whole ask, and the post carries no `preset`. The note is never part of the post: the server keeps it with the layers the post answers, and a re-post nobody asked for keeps it too |
 | **Talking about a preset** | Every preset has a conversation with you in the Layers presets dialog. A `kind: "preset"` poll payload carries the preset as it stands and the messages so far; the last reviewer message is what to act on. The reviewer can start a new conversation, which clears the messages and keeps the preset, so never rely on an earlier turn being there. When they want it changed, `diffo preset update <id> --json '{ "<field>": "…" }' --message "<what changed>"` sends only the fields you change — a preset nobody has yet is made from them (a name at least), and a built-in is never edited: copy it under a new id of your own and say so. The message is your line on what you changed and why; it shows in the conversation with an undo. When no edit is needed, a question or advice against the change, `diffo preset reply <id> --message "<text>"`. One of the two per message; nothing else is owed. `diffo preset list` and `diffo preset show <id>` read; `diffo help preset` has the fields: a name under forty characters, a one-line blurb saying in plain words what the layers show, *use it when* for an agent choosing among presets, and instructions concrete enough that two agents following them post the same layers |
@@ -332,11 +382,15 @@ from the connection and the queue, never asserted by the agent:
 | | `ended` | An agent detached deliberately |
 | | `disconnected` | A poll died without detaching, and the agent never came back |
 | **listening** | `polling` | A poll is open. A Send arrives now |
-| **working** | `delivered` | Feedback handed over, no reply yet |
+| **working** | `delivered` | Feedback handed over, no reply yet. Whether the agent is also listening is the separate `listening` flag below |
 | | `arriving` | The agent's CLI opened the review and it has not polled yet: it is reading the change and writing its guide. A Send queues for the first poll |
 | | `replied` | A reply just landed; a grace window before the next state |
 | | `repolling` | The poll ended on its own (the window closed, the process was killed) and the session is alive; its next poll is expected |
-| | `stalled` | Delivered over **5 minutes** ago with nothing back |
+| | `stalled` | Delivered over **5 minutes** ago with nothing back, and no edits in the tree since. The agent is being reminded |
+
+Beside the state, the stream carries `listening`: whether a poll is attached right
+now. A **working** agent that is listening hears a new send within moments; one
+that is not hears it at its next poll, and the chip then reads *· sends wait*.
 
 Three deliberate choices here. `stalled` stays *inside* **working** rather than
 becoming its own state, because a slow agent and a dead agent look identical from
@@ -379,7 +433,8 @@ holds:
   than re-poll, because two agents trading a review back and forth helps nobody.
 
 Nothing queued is lost in a handover: undelivered feedback lives in the review, not
-in the poll, so it is re-derived and re-queued for whoever is listening.
+in the poll, so it is re-derived and re-queued for whoever is listening. Threads the
+displaced session was handed and never answered are queued again too, in full.
 
 Reviews are scoped per **branch** as well. A checkout under a running server swaps
 both the review and the delivery queue to that branch's work, so feedback queued on

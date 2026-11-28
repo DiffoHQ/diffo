@@ -19,6 +19,10 @@ export interface PresenceDetail {
   reason: PresenceReason
   /** Epoch ms when this (state, reason) pair began. */
   since: number
+  /** A poll is attached right now, whatever the state: a `working` agent that
+   * is also listening hears a new send mid-work; one that is not hears it
+   * when it polls next. */
+  listening: boolean
 }
 
 export const STALL_AFTER_MS = 5 * 60_000
@@ -35,14 +39,33 @@ export const SESSION_GRACE_CAP_MS = 10 * 60_000
  * whole changeset. */
 export const ARRIVE_GRACE_MS = 5 * 60_000
 
-/** A re-poll within this window of a delivery reads as "hasn't started yet". */
-export const BATCH_SETTLE_MS = 2_000
-
 /** An outline owed this long with no post reads as stalled: the reviewer gets
  * the reason and their button back instead of "Outlining…" for good. Shorter
  * than a reply's stall — an agent whose harness refused the post is told to
- * stop, and nothing else ends the wait: no re-poll, no reply clock. */
+ * stop. Owed twice this long, the request lapses: a poll no longer ends it,
+ * so the clock is the only thing that can. */
 export const OUTLINE_STALL_MS = 3 * 60_000
+
+/** How many times an owed thread is handed to the agent again (one per stall
+ * window with no reply) before the review stops waiting on it and says "no
+ * answer". */
+export const REMINDER_MAX = 3
+
+/** Edits in the working tree read as the agent at work and push the stall
+ * clock back, but never past this from the clock's start: a tree that never
+ * stops changing must not hold a reminder off for good. */
+export const STALL_EDIT_CAP_MS = 15 * 60_000
+
+/** While the agent is working a batch, new feedback is held this long after
+ * the last send before it interrupts, so three quick Sends are one interrupt. */
+export const COALESCE_MS = 8_000
+
+/** The longest a held send waits, however many follow it. */
+export const COALESCE_MAX_MS = 30_000
+
+/** How long "answered" shows once the last owed reply lands under a poll that
+ * is already listening. Without a poll the reply's grace window says it. */
+export const REPLIED_MOMENT_MS = 3_000
 
 /** Polls in a row that may end with nothing from the reviewer (timed out, or
  * cut off by the agent's harness) before the agent is told to stop and ask
@@ -50,7 +73,13 @@ export const OUTLINE_STALL_MS = 3 * 60_000
  * night spends tokens on nobody. */
 export const QUIET_POLL_LIMIT = 20
 
-export type BatchCloseReason = 'repoll' | 'ended' | 'gone'
+/**
+ * Why threads left the agent's hands: every one got its reply (`answered`),
+ * the reminders ran out on the ones named (`lapsed`: the rest of the batch
+ * stays open), the agent detached (`ended`), or its session died (`gone`).
+ * A new poll is never a reason: listening and being done are separate facts.
+ */
+export type BatchCloseReason = 'answered' | 'lapsed' | 'ended' | 'gone'
 
 export interface BatchClosed {
   threadIds: string[]
@@ -71,7 +100,21 @@ export function pidAlive(pid: number): boolean {
   }
 }
 
-export type AttachOutcome = 'data' | 'superseded' | 'ended' | 'gone'
+/**
+ * How a poll ends. `replaced` is `superseded` by the same session's own newer
+ * poll; `reminder` is the stall clock running out on threads still owed.
+ */
+export type AttachOutcome = 'data' | 'superseded' | 'replaced' | 'ended' | 'gone' | 'reminder'
+
+/** The knobs tests turn; production takes every default. */
+export interface QueueTuning {
+  outlineStallMs?: number
+  coalesceMs?: number
+  coalesceMaxMs?: number
+  repliedMomentMs?: number
+  reminderMax?: number
+  editCapMs?: number
+}
 
 export type Snapshot =
   | { kind: 'threads'; threadIds: string[] }
@@ -152,8 +195,8 @@ interface ScopePending {
   /** The request was delivered and the outline is owed: epoch ms of the
    * delivery, or null. Per scope like the request itself — a branch switch
    * must not carry "outlining" to a review nobody asked about. No batch and no
-   * reply clock: the post that answers it (`layersPosted`) or a settled
-   * re-poll without one ends it. */
+   * reply clock: the post that answers it (`layersPosted`) ends it, or the
+   * lapse two stall windows on (`watchOutlineLapse`). */
   outlining: number | null
   /** The ask the agent was last handed, until a post answers it. It outlives
    * a lapsed request: a post that comes late still answers the reviewer's
@@ -196,7 +239,18 @@ export class DeliveryQueue {
    * anonymous session (null pid) always gets the full form again. */
   private protocolPid: number | null = null
 
-  private batch: { threadIds: string[]; deliveredAt: number; sawReply: boolean } | null = null
+  private batch: { threadIds: string[]; deliveredAt: number } | null = null
+  /** Thread id -> stall windows it has sat through unanswered (see `REMINDER_MAX`). */
+  private strikes = new Map<string, number>()
+  /** Thread id -> reminders actually written to a poll, for the payload's count. */
+  private remindersSent = new Map<string, number>()
+  /** The stall clock ran out on owed threads and the agent has not been told. */
+  private reminderDue = false
+  /** When the stall clock last started for real; edits re-arm the timer but
+   * not this (see `STALL_EDIT_CAP_MS`). */
+  private stallOrigin = 0
+  private holdTimer: ReturnType<typeof setTimeout> | null = null
+  private holdSince: number | null = null
   private batchWatch: ReturnType<typeof setInterval> | null = null
   private waiterWatch: ReturnType<typeof setInterval> | null = null
   private batchListeners = new Set<(closed: BatchClosed) => void>()
@@ -211,9 +265,12 @@ export class DeliveryQueue {
       /** The anonymous arrival's window (see `agentArrived`). */
       arriveGraceMs?: number
     } = {},
-    private batchSettleMs: number = BATCH_SETTLE_MS,
-    private outlineStallMs: number = OUTLINE_STALL_MS,
+    private tuning: QueueTuning = {},
   ) {}
+
+  private get outlineStallMs(): number {
+    return this.tuning.outlineStallMs ?? OUTLINE_STALL_MS
+  }
 
   onBatchClosed(listener: (closed: BatchClosed) => void): () => void {
     this.batchListeners.add(listener)
@@ -233,11 +290,32 @@ export class DeliveryQueue {
     }
     this.batch = null
     this.deliveredAt.clear()
+    this.strikes.clear()
+    this.remindersSent.clear()
+    this.reminderDue = false
     this.awaitingReply = false
     this.stalled = false
     this.clearStall()
     this.clearBatchWatch()
     for (const listener of this.batchListeners) listener(closed)
+  }
+
+  /** Every owed thread got its answer: the batch is over, with nothing unanswered. */
+  private closeIfAnswered(): void {
+    if (this.batch !== null && this.deliveredAt.size === 0) this.closeBatch('answered')
+  }
+
+  /**
+   * Nothing is owed any more (the last reply landed, or the last owed thread
+   * was dropped or lapsed): the agent stops reading as working on a batch, and
+   * whatever was held back so as not to interrupt it goes now.
+   */
+  private settle(): void {
+    this.awaitingReply = false
+    this.stalled = false
+    this.reminderDue = false
+    this.clearStall()
+    if (this.holdTimer !== null) this.releaseHold()
   }
 
   private armBatchWatch(): void {
@@ -290,10 +368,33 @@ export class DeliveryQueue {
   claimSession(pid: number | null): number | null {
     const claimant = DeliveryQueue.clean(pid)
     const previous = this.ownerConnected() ? this.owner : null
-    // A different session is a fresh listener: the quiet streak was not its own.
-    if (claimant !== this.owner) this.quietPolls = 0
+    if (claimant !== this.owner) {
+      // A different session is a fresh listener: the quiet streak was not its own.
+      this.quietPolls = 0
+      // And what the last session still owed is this one's now. It never saw
+      // those threads, so they go out again in full rather than as a line
+      // under "owed" naming ids it has no text for.
+      this.requeueOwed()
+    } else if (claimant !== null && this.waiter !== null) {
+      // The same session started a second poll: the first is told so, not that
+      // "another session" took the review.
+      this.releaseWaiter('replaced')
+    }
     this.owner = claimant
     return previous !== null && previous !== claimant ? previous : null
+  }
+
+  private requeueOwed(): void {
+    const owed = [...this.deliveredAt.keys()]
+    if (owed.length === 0) return
+    const bucket = this.bucket()
+    for (const id of owed) bucket.threads.add(id)
+    this.batch = null
+    this.deliveredAt.clear()
+    this.strikes.clear()
+    this.remindersSent.clear()
+    this.clearBatchWatch()
+    this.settle()
   }
 
   /**
@@ -341,8 +442,10 @@ export class DeliveryQueue {
     // from a dead one, so `reason`/`since` carry how long it has been quiet.
     if (this.awaitingReply) return 'working'
     if (this.outlining() !== null) return 'working'
-    if (this.waiter) return 'listening'
+    // Ahead of the waiter: with a poll already listening, the moment after the
+    // last reply still reads as "answered" before it reads as listening.
     if (this.betweenPolls) return 'working'
+    if (this.waiter) return 'listening'
     return 'waiting'
   }
 
@@ -362,18 +465,14 @@ export class DeliveryQueue {
    * ask: parked until the next poll, behind open threads. */
   enqueuePreset(id: string): void {
     this.bucket().presets.add(id)
-    const queued = this.waiter === null
-    this.wake()
-    if (queued) this.notify()
+    this.offer()
   }
 
   /** The reviewer wrote to the agent about a reviewer role. Rides like a
    * preset message. */
   enqueueRole(key: string): void {
     this.bucket().roles.add(key)
-    const queued = this.waiter === null
-    this.wake()
-    if (queued) this.notify()
+    this.offer()
   }
 
   private outlining(): number | null {
@@ -388,14 +487,19 @@ export class DeliveryQueue {
   }
 
   presenceDetail(): PresenceDetail {
-    return { state: this.presence(), reason: this.reason(), since: this.since }
+    return {
+      state: this.presence(),
+      reason: this.reason(),
+      since: this.since,
+      listening: this.waiter !== null,
+    }
   }
 
   private reason(): PresenceReason {
     if (this.awaitingReply) return this.stalled ? 'stalled' : 'delivered'
     if (this.outlining() !== null) return this.outlineStalled() ? 'stalled' : 'delivered'
-    if (this.waiter) return 'polling'
     if (this.betweenPolls) return this.parked
+    if (this.waiter) return 'polling'
     return this.lastDetach ?? 'no-agent'
   }
 
@@ -409,8 +513,6 @@ export class DeliveryQueue {
 
   currentBatch(): { threadIds: string[]; answered: string[] } | null {
     if (!this.batch) return null
-    // A re-poll mid-batch replaces `batch.threadIds` with the newest delivery, so
-    // union in whatever is still on the clock — the older threads are still owed.
     const ids = new Set(this.batch.threadIds)
     for (const id of this.deliveredAt.keys()) ids.add(id)
     return {
@@ -440,16 +542,89 @@ export class DeliveryQueue {
     for (const listener of this.listeners) listener(state)
   }
 
-  private armStall(): void {
+  /**
+   * The stall clock: one window with no reply. `fresh` starts it for real (a
+   * delivery, a reply, a reminder handed over); an edit only pushes the timer
+   * back, and `stallOrigin` keeps how long that has been going on.
+   */
+  private armStall(fresh = true): void {
     this.clearStall()
+    if (fresh) this.stallOrigin = Date.now()
     const timer = setTimeout(() => {
       this.stallTimer = null
-      if (!this.awaitingReply || this.stalled) return
-      this.stalled = true
-      this.notify()
+      if (!this.awaitingReply) return
+      this.stallRanOut()
     }, this.stallAfterMs)
     timer.unref?.()
     this.stallTimer = timer
+  }
+
+  /**
+   * A whole window passed with no reply. Each owed thread takes a strike. One
+   * that already has `REMINDER_MAX` is given up on: the review says "no
+   * answer" and stops waiting. The rest are owed a reminder, which wakes a
+   * listening poll now and otherwise waits for the next one. The clock starts
+   * over either way, so a thread nobody ever answers still ends, poll or no poll.
+   */
+  private stallRanOut(): void {
+    const max = this.tuning.reminderMax ?? REMINDER_MAX
+    const lapsed: string[] = []
+    for (const id of this.deliveredAt.keys()) {
+      const strikes = this.strikes.get(id) ?? 0
+      if (strikes >= max) lapsed.push(id)
+      else this.strikes.set(id, strikes + 1)
+    }
+    if (lapsed.length > 0) this.lapse(lapsed)
+    if (this.deliveredAt.size === 0) {
+      this.notify()
+      return
+    }
+    this.stalled = true
+    this.reminderDue = true
+    this.armStall()
+    if (this.waiter !== null) this.releaseWaiter('reminder')
+    this.notify()
+  }
+
+  /** The reminders ran out on these threads: they leave the agent's hands as
+   * unanswered. The batch stays open for whatever else is still owed. */
+  private lapse(threadIds: string[]): void {
+    const batch = this.batch
+    for (const id of threadIds) {
+      this.deliveredAt.delete(id)
+      this.strikes.delete(id)
+      this.remindersSent.delete(id)
+    }
+    const closed: BatchClosed = {
+      threadIds,
+      unanswered: threadIds,
+      deliveredAt: batch?.deliveredAt ?? Date.now(),
+      closedAt: Date.now(),
+      reason: 'lapsed',
+    }
+    if (batch) batch.threadIds = batch.threadIds.filter((id) => !threadIds.includes(id))
+    if (this.deliveredAt.size === 0) {
+      this.batch = null
+      this.clearBatchWatch()
+      this.settle()
+    }
+    for (const listener of this.batchListeners) listener(closed)
+  }
+
+  /**
+   * The working tree changed. While a batch is owed that reads as the agent at
+   * work: a stall it was showing clears, and the clock is pushed back, up to
+   * `STALL_EDIT_CAP_MS` from where it really started.
+   */
+  noteEdit(): void {
+    if (!this.awaitingReply) return
+    const cap = this.tuning.editCapMs ?? STALL_EDIT_CAP_MS
+    if (Date.now() - this.stallOrigin >= cap) return
+    if (this.stallTimer !== null) this.armStall(false)
+    if (this.stalled) {
+      this.stalled = false
+      this.notify()
+    }
   }
 
   private clearStall(): void {
@@ -475,9 +650,29 @@ export class DeliveryQueue {
       this.outlineTimer = null
       if (this.outlining() !== since) return
       const left = since + this.outlineStallMs - Date.now()
-      if (left > 0) this.watchOutline(since, left)
-      else this.notify()
+      if (left > 0) {
+        this.watchOutline(since, left)
+        return
+      }
+      this.notify()
+      this.watchOutlineLapse(since)
     }, ms)
+    timer.unref?.()
+    this.outlineTimer = timer
+  }
+
+  /** Stalled for a whole second window: the request lapses, so the agent stops
+   * reading as working on layers that are not coming. A poll used to end this;
+   * a poll now only means "listening", so the clock does. The ask is kept (see
+   * `ScopePending.asked`): a post that comes late still answers it. */
+  private watchOutlineLapse(since: number): void {
+    const timer = setTimeout(() => {
+      this.outlineTimer = null
+      const bucket = this.buckets.get(this.scope)
+      if (!bucket || bucket.outlining !== since) return
+      bucket.outlining = null
+      this.notify()
+    }, this.outlineStallMs)
     timer.unref?.()
     this.outlineTimer = timer
   }
@@ -498,7 +693,16 @@ export class DeliveryQueue {
       this.graceTimer = null
       if (!this.betweenPolls) return
       this.betweenPolls = false
+      this.closeIfAnswered()
       this.notify()
+    }
+    // A poll is already listening: there is no re-poll to wait for, only the
+    // moment "answered" is on screen before the chip says listening again.
+    if (this.waiter !== null) {
+      const timer = setTimeout(drop, this.tuning.repliedMomentMs ?? REPLIED_MOMENT_MS)
+      timer.unref?.()
+      this.graceTimer = timer
+      return
     }
     const pid = this.owner
     if (pid === null) {
@@ -547,9 +751,9 @@ export class DeliveryQueue {
     const pid = this.owner
     const isAlive = this.liveness.isAlive ?? pidAlive
     const sessionGone = pid !== null && !isAlive(pid)
-    // Mid-batch (a re-poll inside the settle window) the batch already says
-    // working, and an outline in progress says so too; the grace is for the
-    // poll that was the only thing holding the agent.
+    // Mid-batch the batch already says working, and an outline in progress
+    // says so too; the grace is for the poll that was the only thing holding
+    // the agent.
     if (!sessionGone && !this.awaitingReply && this.outlining() === null) {
       this.armGrace('repolling')
     }
@@ -580,32 +784,27 @@ export class DeliveryQueue {
   enqueueThreads(threadIds: string[]): void {
     const bucket = this.bucket()
     for (const id of threadIds) bucket.threads.add(id)
-    const queued = this.waiter === null
-    this.wake()
-    if (queued) this.notify()
+    this.offer()
   }
 
   enqueueFinish(coverage: Coverage): void {
     this.bucket().finish = coverage
-    this.wake()
+    // The reviewer is done reading: the whole batch goes now, held or not.
+    this.wake(true)
   }
 
   /** The reviewer cleared the review. A boolean, not a queue: clearing twice
    * before a poll still owes exactly one heads-up. */
   enqueueCleared(): void {
     this.bucket().cleared = true
-    const queued = this.waiter === null
-    this.wake()
-    if (queued) this.notify()
+    this.offer()
   }
 
   /** The reviewer submitted the PR review. A notice, not feedback: it rides
    * behind everything else and owes the agent no reply. */
   enqueueSubmitted(submitted: Submitted): void {
     this.bucket().submitted = submitted
-    const queued = this.waiter === null
-    this.wake()
-    if (queued) this.notify()
+    this.offer()
   }
 
   /** An agent artifact broke in the reviewer's browser. Reports for the same
@@ -623,9 +822,7 @@ export class DeliveryQueue {
       ].slice(0, REPORT_ISSUES_MAX)
       bucket.artifacts[same] = { ...prev, issues }
     } else bucket.artifacts.push({ ...report, issues: report.issues.slice(0, REPORT_ISSUES_MAX) })
-    const queued = this.waiter === null
-    this.wake()
-    if (queued) this.notify()
+    this.offer()
   }
 
   /** The reviewer asked for a reviewer agent in this role, started by the
@@ -633,9 +830,7 @@ export class DeliveryQueue {
    * behind the threads the reviewer is already owed an answer on. */
   enqueueReviewer(role: string): void {
     this.bucket().reviewers.add(role)
-    const queued = this.waiter === null
-    this.wake()
-    if (queued) this.notify()
+    this.offer()
   }
 
   /** The reviewer cleared a preset's conversation, or deleted the preset: a
@@ -664,9 +859,7 @@ export class DeliveryQueue {
       bucket.outlining = null
       this.clearOutlineWatch()
     }
-    const queued = this.waiter === null
-    this.wake()
-    if (queued) this.notify()
+    this.offer()
   }
 
   /** The reviewer cleared the review: whatever request was standing is
@@ -709,8 +902,23 @@ export class DeliveryQueue {
 
   drop(threadId: string): void {
     for (const bucket of this.buckets.values()) bucket.threads.delete(threadId)
-    this.deliveredAt.delete(threadId)
     if (this.batch) this.batch.threadIds = this.batch.threadIds.filter((id) => id !== threadId)
+    this.release(threadId)
+  }
+
+  /**
+   * The thread needs no reply from the agent any more (the reviewer resolved
+   * or deleted it): it comes off the reply clock without counting as
+   * unanswered, and is never reminded. Anything still queued for it stays.
+   */
+  release(threadId: string): void {
+    const owed = this.deliveredAt.delete(threadId)
+    this.strikes.delete(threadId)
+    this.remindersSent.delete(threadId)
+    if (owed && this.deliveredAt.size === 0 && this.awaitingReply) {
+      this.settle()
+      this.armGrace()
+    }
     this.notify()
   }
 
@@ -722,24 +930,15 @@ export class DeliveryQueue {
   attach(onAbort?: (detach: () => void) => void): Promise<AttachOutcome> {
     this.releaseWaiter('superseded')
     this.clearGrace()
-    if (this.batch !== null) {
-      const worked =
-        this.batch.sawReply || Date.now() - this.batch.deliveredAt >= this.batchSettleMs
-      if (worked) this.closeBatch('repoll')
-    }
-    // A settled re-poll without a post: the agent declined or forgot, and the
-    // request lapses so the reviewer's button comes back. Within the settle
-    // window it reads as "hasn't started yet", same as a batch.
-    const owing = this.buckets.get(this.scope)
-    if (
-      owing !== undefined &&
-      owing.outlining !== null &&
-      Date.now() - owing.outlining >= this.batchSettleMs
-    ) {
-      owing.outlining = null
-      this.clearOutlineWatch()
-    }
+    // A poll says "I am listening", never "I am done": threads still owed a
+    // reply stay owed, and so does an outline. Only a batch with nothing left
+    // on the clock is over.
+    this.closeIfAnswered()
     if (this.hasPending()) return Promise.resolve('data')
+    // The stall clock ran out while nobody was listening: the reminder goes
+    // first. Never for owed threads alone — only a clock that ran out — or
+    // every poll would return at once and the agent would spin on it.
+    if (this.reminderDue && this.deliveredAt.size > 0) return Promise.resolve('reminder')
     return new Promise((resolve) => {
       const waiter = (outcome: AttachOutcome) => resolve(outcome)
       this.waiter = waiter
@@ -762,7 +961,9 @@ export class DeliveryQueue {
    * the user says yes to listens again.
    */
   beginPoll(limit: number = QUIET_POLL_LIMIT): 'listen' | 'quiet' {
-    if (!this.hasPending() && this.quietPolls >= limit) {
+    // An agent working a batch polls to listen while it works: those polls are
+    // not the reviewer going quiet.
+    if (!this.hasPending() && !this.awaitingReply && this.quietPolls >= limit) {
       this.wentQuiet()
       return 'quiet'
     }
@@ -794,6 +995,7 @@ export class DeliveryQueue {
     const waiter = this.waiter
     this.waiter = null
     this.clearWaiterWatch()
+    this.clearHold()
     if (waiter && outcome !== null) waiter(outcome)
   }
 
@@ -833,9 +1035,99 @@ export class DeliveryQueue {
     )
   }
 
-  private wake(): void {
+  /**
+   * Hand a listening poll what is pending. An agent working a batch is not
+   * interrupted for every send: the wake is held until the sends stop for
+   * `COALESCE_MS` (or `COALESCE_MAX_MS` in all), so several arrive as one.
+   * `now` skips the hold. An idle agent is always woken at once.
+   */
+  private wake(now = false): void {
     if (this.waiter === null) return
+    if (!now && this.awaitingReply) {
+      this.hold()
+      return
+    }
     this.releaseWaiter('data')
+  }
+
+  /** Something was queued: wake the poll, and tell the page unless the poll
+   * took it at once (its confirm announces that). */
+  private offer(): void {
+    const listening = this.waiter !== null
+    this.wake()
+    if (!listening || this.waiter !== null) this.notify()
+  }
+
+  private hold(): void {
+    const now = Date.now()
+    this.holdSince ??= now
+    const quiet = this.tuning.coalesceMs ?? COALESCE_MS
+    const most = this.tuning.coalesceMaxMs ?? COALESCE_MAX_MS
+    if (this.holdTimer !== null) clearTimeout(this.holdTimer)
+    const timer = setTimeout(
+      () => this.releaseHold(),
+      Math.max(0, Math.min(quiet, this.holdSince + most - now)),
+    )
+    timer.unref?.()
+    this.holdTimer = timer
+  }
+
+  private releaseHold(): void {
+    this.clearHold()
+    if (this.waiter !== null && this.hasPending()) this.releaseWaiter('data')
+  }
+
+  private clearHold(): void {
+    if (this.holdTimer !== null) clearTimeout(this.holdTimer)
+    this.holdTimer = null
+    this.holdSince = null
+  }
+
+  /** The threads the agent holds and has not answered, oldest delivery first,
+   * with how many times each was handed to it again. */
+  owed(): { threadId: string; deliveredAt: number; reminders: number }[] {
+    return [...this.deliveredAt.entries()]
+      .map(([threadId, deliveredAt]) => ({
+        threadId,
+        deliveredAt,
+        reminders: this.remindersSent.get(threadId) ?? 0,
+      }))
+      .sort((a, b) => a.deliveredAt - b.deliveredAt)
+  }
+
+  /** The reminder for these threads was fully written to a poll. */
+  confirmReminder(threadIds: readonly string[]): void {
+    this.quietPolls = 0
+    this.reminderDue = false
+    for (const id of threadIds) {
+      if (this.deliveredAt.has(id)) {
+        this.remindersSent.set(id, (this.remindersSent.get(id) ?? 0) + 1)
+      }
+    }
+    this.notify()
+  }
+
+  /** How many things are queued for the next poll: threads sent since the
+   * last delivery, and one for each other kind of ask that is parked. */
+  pendingCount(): number {
+    const bucket = this.buckets.get(this.scope)
+    if (!bucket) return 0
+    return (
+      bucket.threads.size +
+      bucket.presets.size +
+      bucket.roles.size +
+      bucket.reviewers.size +
+      bucket.artifacts.length +
+      (bucket.finish !== null ? 1 : 0) +
+      (bucket.layers !== null ? 1 : 0) +
+      (bucket.cleared ? 1 : 0) +
+      (bucket.submitted !== null ? 1 : 0)
+    )
+  }
+
+  /** Whether the reviewer's layers are owed (asked for, handed over, not posted). */
+  owesLayers(): boolean {
+    return this.outlining() !== null
   }
 
   /**
@@ -941,12 +1233,35 @@ export class DeliveryQueue {
         for (const id of snapshot.threadIds) bucket.threads.delete(id)
       }
     }
+    // A delivery that owes no reply (a finish whose threads are all answered)
+    // opens nothing: there is no clock to run, and the agent polls on.
+    if (deliveredThreadIds.length === 0) {
+      if (!this.awaitingReply) this.armGrace()
+      this.notify()
+      return
+    }
     const now = Date.now()
-    for (const id of deliveredThreadIds) this.deliveredAt.set(id, now)
+    this.clearGrace()
+    this.closeIfAnswered()
+    for (const id of deliveredThreadIds) {
+      this.deliveredAt.set(id, now)
+      // Handed over afresh (the reviewer wrote in it again): its reminders start over.
+      this.strikes.delete(id)
+      this.remindersSent.delete(id)
+    }
     this.awaitingReply = true
-    this.batch = { threadIds: [...deliveredThreadIds], deliveredAt: now, sawReply: false }
+    // The agent listens while it works, so a delivery can land on a batch that
+    // is still open: it joins that batch rather than replacing it.
+    if (this.batch) {
+      for (const id of deliveredThreadIds) {
+        if (!this.batch.threadIds.includes(id)) this.batch.threadIds.push(id)
+      }
+    } else {
+      this.batch = { threadIds: [...deliveredThreadIds], deliveredAt: now }
+    }
     this.armBatchWatch()
     this.stalled = false
+    this.reminderDue = false
     this.armStall()
     this.notify()
   }
@@ -969,17 +1284,22 @@ export class DeliveryQueue {
       this.awaitingReply = true
       this.clearGrace()
     }
-    if (this.batch) this.batch.sawReply = true
+    if (!interim) {
+      this.strikes.delete(threadId)
+      this.remindersSent.delete(threadId)
+    }
     if (this.deliveredAt.size > 0) {
       if (this.awaitingReply) {
+        // Any reply is the agent at work: the stall clock starts over.
         this.stalled = false
+        this.reminderDue = false
         this.armStall()
         this.notify()
       }
     } else if (this.awaitingReply || this.stalled || this.betweenPolls) {
-      this.awaitingReply = false
-      this.stalled = false
-      this.clearStall()
+      // Sends held back so as not to interrupt go to the poll now; its
+      // delivery, a moment later, ends the grace this starts.
+      this.settle()
       this.armGrace()
       this.notify()
     }
@@ -1001,9 +1321,13 @@ export class DeliveryQueue {
     }
     this.clearOutlineWatch()
     this.stalled = false
+    this.reminderDue = false
     this.clearStall()
     this.clearGrace()
+    this.clearHold()
     this.deliveredAt.clear()
+    this.strikes.clear()
+    this.remindersSent.clear()
     this.lastDetach = 'ended'
     this.notify()
     return true

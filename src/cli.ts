@@ -34,6 +34,8 @@ import {
 } from './server/pr/worktree.js'
 import {
   ACK_NEXT_STEP,
+  type AgentState,
+  ackStep,
   CHECKOUT_ROOT,
   CLI_COMMANDS,
   doctrineFor,
@@ -620,6 +622,31 @@ async function getJson(port: number, path: string): Promise<{ status: number; bo
   return { status: res.status, body: await res.json().catch(() => null) }
 }
 
+/**
+ * Where this agent stands with the review, for the line an ack ends with (see
+ * `ackStep`): asked after the command's own request, so it reads the state the
+ * command left. Null when the server cannot say, and the ack then covers both
+ * cases; an ack never fails for it.
+ */
+async function agentState(port: number): Promise<AgentState | null> {
+  try {
+    const res = await fetch(apiUrl(port, '/api/agent/state'), {
+      headers: sessionHeaders(),
+      signal: AbortSignal.timeout(POST_TIMEOUT_MS),
+    })
+    if (!res.ok) return null
+    const body = (await res.json()) as Partial<AgentState> | null
+    if (!body || typeof body.listening !== 'boolean' || !Array.isArray(body.owed)) return null
+    return {
+      listening: body.listening,
+      owed: body.owed,
+      waiting: typeof body.waiting === 'number' ? body.waiting : 0,
+    }
+  } catch {
+    return null
+  }
+}
+
 if (command.kind === 'status') {
   const db = new DiffoDb()
   let record: ReturnType<DiffoDb['getServer']>
@@ -791,7 +818,10 @@ if (command.kind === 'reviewer-suggest') {
       ok: true,
       suggested,
       role,
-      next_step: suggested ? ACK_NEXT_STEP.reviewerSuggested : ACK_NEXT_STEP.reviewerAlready,
+      next_step: ackStep(
+        suggested ? ACK_NEXT_STEP.reviewerSuggested : ACK_NEXT_STEP.reviewerAlready,
+        await agentState(port),
+      ),
     }),
   )
   process.exit(0)
@@ -1021,13 +1051,16 @@ if (command.kind === 'reply') {
       ...art,
       ...(command.prComment ? { prComment: 'suggested' } : {}),
       ...(command.ask ? { asked: true } : {}),
-      next_step: command.ask
-        ? ACK_NEXT_STEP.replyAsked
-        : command.more
-          ? ACK_NEXT_STEP.replyMore
-          : command.prComment
-            ? ACK_NEXT_STEP.replyPrComment
-            : ACK_NEXT_STEP.reply,
+      next_step: ackStep(
+        command.ask
+          ? ACK_NEXT_STEP.replyAsked
+          : command.more
+            ? ACK_NEXT_STEP.replyMore
+            : command.prComment
+              ? ACK_NEXT_STEP.replyPrComment
+              : ACK_NEXT_STEP.reply,
+        await agentState(port),
+      ),
     }),
   )
   process.exit(0)
@@ -1093,7 +1126,10 @@ if (command.kind === 'comment') {
       threadId: thread.id,
       ...art,
       ...(command.prComment ? { prComment: 'suggested' } : {}),
-      next_step: command.prComment ? ACK_NEXT_STEP.commentPrComment : ACK_NEXT_STEP.comment,
+      next_step: ackStep(
+        command.prComment ? ACK_NEXT_STEP.commentPrComment : ACK_NEXT_STEP.comment,
+        await agentState(port),
+      ),
     }),
   )
   process.exit(0)
@@ -1118,7 +1154,10 @@ if (command.kind === 'layers') {
         ok: true,
         suggested,
         ...(note ? { note } : {}),
-        next_step: suggested ? ACK_NEXT_STEP.layersSuggested : ACK_NEXT_STEP.layersAlready,
+        next_step: ackStep(
+          suggested ? ACK_NEXT_STEP.layersSuggested : ACK_NEXT_STEP.layersAlready,
+          await agentState(port),
+        ),
       }),
     )
     process.exit(0)
@@ -1157,7 +1196,10 @@ if (command.kind === 'layers') {
       ...art,
       ...(uncovered.length > 0 ? { uncovered } : {}),
       ...(note ? { note } : {}),
-      next_step: uncovered.length === 0 ? ACK_NEXT_STEP.layers : layersIncompleteStep(uncovered),
+      next_step: ackStep(
+        uncovered.length === 0 ? ACK_NEXT_STEP.layers : layersIncompleteStep(uncovered),
+        await agentState(port),
+      ),
     }),
   )
   process.exit(0)
@@ -1201,7 +1243,11 @@ if (command.kind === 'preset') {
       fail(`preset reply refused: ${(body as { error?: string } | null)?.error ?? 'bad request'}`)
     if (status !== 200) fail(`preset reply failed (${status})`)
     console.log(
-      JSON.stringify({ ok: true, presetId: action.id, next_step: ACK_NEXT_STEP.presetReply }),
+      JSON.stringify({
+        ok: true,
+        presetId: action.id,
+        next_step: ackStep(ACK_NEXT_STEP.presetReply, await agentState(port)),
+      }),
     )
     process.exit(0)
   }
@@ -1229,7 +1275,7 @@ if (command.kind === 'preset') {
     JSON.stringify({
       ok: true,
       preset: { id: preset.id, name: preset.name },
-      next_step: ACK_NEXT_STEP.presetUpdate,
+      next_step: ackStep(ACK_NEXT_STEP.presetUpdate, await agentState(port)),
     }),
   )
   process.exit(0)
@@ -1275,7 +1321,13 @@ if (command.kind === 'role') {
     if (status === 400)
       fail(`role reply refused: ${(body as { error?: string } | null)?.error ?? 'bad request'}`)
     if (status !== 200) fail(`role reply failed (${status})`)
-    console.log(JSON.stringify({ ok: true, roleId: action.id, next_step: ACK_NEXT_STEP.roleReply }))
+    console.log(
+      JSON.stringify({
+        ok: true,
+        roleId: action.id,
+        next_step: ackStep(ACK_NEXT_STEP.roleReply, await agentState(port)),
+      }),
+    )
     process.exit(0)
   }
   const text = action.source.kind === 'json' ? action.source.text : await readStdin()
@@ -1300,7 +1352,7 @@ if (command.kind === 'role') {
     JSON.stringify({
       ok: true,
       role: { id: role.id, name: role.name },
-      next_step: ACK_NEXT_STEP.roleUpdate,
+      next_step: ackStep(ACK_NEXT_STEP.roleUpdate, await agentState(port)),
     }),
   )
   process.exit(0)

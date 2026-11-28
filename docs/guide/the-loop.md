@@ -96,9 +96,16 @@ automatically, the diff updates live under your cursor, and the thread flips
 to *addressed*. A **Question** gets its answer as an inline reply in the
 thread.
 
+A comment the agent never answers does not quietly disappear. Diffo hands it
+to the agent again after five quiet minutes, up to three times, and only then
+marks it *no answer* so you can send it again.
+
 The UI always shows the agent's presence (*waiting* / *listening* /
 *working*), so you know whether a Send reaches a live agent or waits in the
-queue. If nothing is attached, every thread carries a **Copy prompt** you
+queue. The agent keeps listening while it works: a comment you send mid-fix,
+or a *stop, do it the other way*, reaches it within moments instead of after
+the whole batch. When it cannot listen while it works, the chip says *sends
+wait*. If nothing is attached, every thread carries a **Copy prompt** you
 can paste into any agent, registered or not.
 
 ## No background agents, ever

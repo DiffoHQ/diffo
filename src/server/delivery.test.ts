@@ -183,16 +183,18 @@ describe('DeliveryQueue', () => {
     expect(q.presence()).toBe('waiting')
   })
 
-  it('a batch closed after only an interim reply counts the thread unanswered', async () => {
-    const q = new DeliveryQueue(5 * 60_000, 10, {}, 0)
+  it('a thread left on an interim reply stays owed through a new poll, and is unanswered when the agent leaves', async () => {
+    const q = new DeliveryQueue(5 * 60_000, 10)
     q.enqueueThreads(['t1'])
     q.confirm(q.take()!, ['t1'])
     q.agentReplied('t1', true)
     let closed: { unanswered: string[] } | null = null
     q.onBatchClosed((c) => (closed = c))
-    // The re-poll closes the batch — the promised follow-up never came.
+    // A new poll is the agent listening, not the agent done: the promise stands.
     void q.attach()
-    expect(closed).not.toBeNull()
+    expect(closed).toBeNull()
+    expect(q.deliveredThreadIds()).toEqual(['t1'])
+    q.end()
     expect(closed!.unanswered).toEqual(['t1'])
   })
 
@@ -370,19 +372,24 @@ describe('DeliveryQueue', () => {
 })
 
 describe('DeliveryQueue presence honesty', () => {
-  it("a re-poll before replying stays 'working' — listening no longer masks it", async () => {
-    const q = new DeliveryQueue()
+  it("a poll while working stays 'working', and says the agent is listening too", async () => {
+    const q = new DeliveryQueue(undefined, undefined, {}, { repliedMomentMs: 10 })
     q.enqueueThreads(['t1'])
     q.confirm(q.take()!, ['t1'])
     expect(q.presence()).toBe('working')
+    expect(q.presenceDetail().listening).toBe(false)
 
     void q.attach()
     expect(q.presence()).toBe('working')
-    expect(q.presenceDetail().reason).toBe('delivered')
+    expect(q.presenceDetail()).toMatchObject({ reason: 'delivered', listening: true })
 
+    // The last reply lands under a poll that is already listening: "answered"
+    // shows for a moment, then the chip is back to listening. No re-poll needed.
     q.agentReplied('t1')
-    expect(q.presence()).toBe('listening')
-    expect(q.presenceDetail().reason).toBe('polling')
+    expect(q.presenceDetail()).toMatchObject({ state: 'working', reason: 'replied' })
+    await new Promise((r) => setTimeout(r, 30))
+    expect(q.presenceDetail()).toMatchObject({ state: 'listening', reason: 'polling' })
+    q.end()
   })
 
   it('an unanswered delivery is reported, not acted on — the agent still has it', async () => {
@@ -462,7 +469,7 @@ describe('DeliveryQueue presence honesty', () => {
 })
 
 describe('DeliveryQueue batch boundary', () => {
-  const eager = () => new DeliveryQueue(5 * 60_000, 5 * 60_000, {}, 0)
+  const eager = () => new DeliveryQueue(5 * 60_000, 5 * 60_000)
 
   const closes = (q: DeliveryQueue) => {
     const seen: Parameters<Parameters<DeliveryQueue['onBatchClosed']>[0]>[0][] = []
@@ -470,7 +477,7 @@ describe('DeliveryQueue batch boundary', () => {
     return seen
   }
 
-  it("the agent's next poll closes the batch and names what it never answered", async () => {
+  it('a new poll closes nothing: what has no reply yet is still owed', async () => {
     const q = eager()
     const closed = closes(q)
     q.enqueueThreads(['t1', 't2', 't3'])
@@ -479,15 +486,14 @@ describe('DeliveryQueue batch boundary', () => {
     expect(q.deliveredThreadIds()).toEqual(['t1', 't3'])
 
     void q.attach()
-    expect(closed).toHaveLength(1)
-    expect(closed[0]!.reason).toBe('repoll')
-    expect(closed[0]!.threadIds).toEqual(['t1', 't2', 't3'])
-    expect(closed[0]!.unanswered).toEqual(['t1', 't3'])
-    expect(q.deliveredThreadIds()).toEqual([])
-    expect(closed[0]!.closedAt).toBeGreaterThanOrEqual(closed[0]!.deliveredAt)
+    expect(closed).toHaveLength(0)
+    expect(q.deliveredThreadIds()).toEqual(['t1', 't3'])
+    expect(q.currentBatch()).toEqual({ threadIds: ['t1', 't2', 't3'], answered: ['t2'] })
+    expect(q.owed().map((o) => o.threadId)).toEqual(['t1', 't3'])
+    q.end()
   })
 
-  it('currentBatch is the flight, not the ledger: fills as replies land, gone when the poll closes it', () => {
+  it('currentBatch is the flight, not the ledger: fills as replies land, gone once a poll finds it answered', () => {
     const q = eager()
     expect(q.currentBatch()).toBeNull()
     q.enqueueThreads(['t1', 't2'])
@@ -501,8 +507,9 @@ describe('DeliveryQueue batch boundary', () => {
     expect(q.currentBatch()).toBeNull()
   })
 
-  it('a no-work re-poll that picks up more keeps the older threads in the flight', () => {
-    const q = new DeliveryQueue(5 * 60_000, 5 * 60_000, {}, 60_000)
+  it('a delivery that lands mid-batch joins the flight instead of replacing it', () => {
+    const q = eager()
+    const closed = closes(q)
     q.enqueueThreads(['t1', 't2'])
     q.confirm(q.take()!, ['t1', 't2'])
     q.enqueueThreads(['t3'])
@@ -510,29 +517,24 @@ describe('DeliveryQueue batch boundary', () => {
     const snapshot = q.take()
     if (snapshot) q.confirm(snapshot, ['t3'])
     const batch = q.currentBatch()!
-    expect(new Set(batch.threadIds)).toEqual(new Set(['t1', 't2', 't3']))
+    expect(batch.threadIds).toEqual(['t1', 't2', 't3'])
     expect(batch.answered).toEqual([])
+    expect(closed).toHaveLength(0)
+    q.end()
   })
 
-  it('a re-attach with nothing to show for itself is not a finished batch', async () => {
-    const q = new DeliveryQueue(5 * 60_000, 5 * 60_000, {}, 60_000)
+  it('a delivery after an answered batch starts a new one', () => {
+    const q = eager()
     const closed = closes(q)
     q.enqueueThreads(['t1'])
     q.confirm(q.take()!, ['t1'])
-    void q.attach()
-    expect(closed).toHaveLength(0)
-    expect(q.deliveredThreadIds()).toEqual(['t1'])
-  })
-
-  it('a reply beats the clock — proof of work closes the batch however fast', async () => {
-    const q = new DeliveryQueue(5 * 60_000, 5 * 60_000, {}, 60_000)
-    const closed = closes(q)
-    q.enqueueThreads(['t1', 't2'])
-    q.confirm(q.take()!, ['t1', 't2'])
     q.agentReplied('t1')
-    void q.attach()
+    q.enqueueThreads(['t2'])
+    q.confirm(q.take()!, ['t2'])
     expect(closed).toHaveLength(1)
-    expect(closed[0]!.unanswered).toEqual(['t2'])
+    expect(closed[0]).toMatchObject({ reason: 'answered', threadIds: ['t1'], unanswered: [] })
+    expect(q.currentBatch()).toEqual({ threadIds: ['t2'], answered: [] })
+    q.end()
   })
 
   it('`diffo end` closes the batch it was holding', () => {
@@ -569,12 +571,30 @@ describe('DeliveryQueue batch boundary', () => {
     q.enqueueThreads(['t1', 't2'])
     q.confirm(q.take()!, ['t1', 't2'])
     q.drop('t2')
-    void q.attach()
+    q.end()
     expect(closed[0]!.threadIds).toEqual(['t1'])
     expect(closed[0]!.unanswered).toEqual(['t1'])
   })
 
-  it('every thread answered still waits for the re-poll — code edits land after replies', () => {
+  it('a thread the reviewer resolved comes off the clock without counting as unanswered', () => {
+    const q = eager()
+    const closed = closes(q)
+    q.enqueueThreads(['t1', 't2'])
+    q.confirm(q.take()!, ['t1', 't2'])
+    q.release('t1')
+    expect(q.deliveredThreadIds()).toEqual(['t2'])
+    expect(q.presence()).toBe('working')
+    // The last one released: nothing is owed, so the agent stops reading as
+    // working on a batch, exactly as after a last reply.
+    q.release('t2')
+    expect(q.presenceDetail()).toMatchObject({ state: 'working', reason: 'replied' })
+    void q.attach()
+    expect(closed).toHaveLength(1)
+    expect(closed[0]).toMatchObject({ reason: 'answered', unanswered: [] })
+    q.end()
+  })
+
+  it('every thread answered closes at the next poll, with nothing unanswered', () => {
     const q = eager()
     const closed = closes(q)
     q.enqueueThreads(['t1'])
@@ -583,7 +603,22 @@ describe('DeliveryQueue batch boundary', () => {
     expect(closed).toHaveLength(0)
     void q.attach()
     expect(closed).toHaveLength(1)
-    expect(closed[0]!.unanswered).toEqual([])
+    expect(closed[0]).toMatchObject({ reason: 'answered', unanswered: [] })
+  })
+
+  it('with a poll already listening, the last reply closes the batch once the answered moment passes', async () => {
+    const q = new DeliveryQueue(5 * 60_000, 5 * 60_000, {}, { repliedMomentMs: 10 })
+    const closed = closes(q)
+    q.enqueueThreads(['t1'])
+    q.confirm(q.take()!, ['t1'])
+    void q.attach()
+    q.agentReplied('t1')
+    expect(closed).toHaveLength(0)
+    await new Promise((r) => setTimeout(r, 30))
+    expect(closed).toHaveLength(1)
+    expect(closed[0]!.reason).toBe('answered')
+    expect(q.presence()).toBe('listening')
+    q.end()
   })
 
   it('a poll with no batch outstanding closes nothing', async () => {
@@ -662,8 +697,8 @@ describe('DeliveryQueue — a poll that ended without detaching', () => {
     return new Promise<void>((r) => setImmediate(r)).then(() => expect(outcome).toBe('data'))
   })
 
-  it('a poll dropped inside the settle window leaves the batch to say working', async () => {
-    const q = new DeliveryQueue(5 * 60_000, 5 * 60_000, {}, 60_000)
+  it('a poll dropped mid-batch leaves the batch to say working', async () => {
+    const q = new DeliveryQueue(5 * 60_000, 5 * 60_000)
     q.enqueueThreads(['t1'])
     q.confirm(q.take()!, ['t1'])
     const detach = dropPoll(q)
@@ -885,14 +920,32 @@ describe('DeliveryQueue — two sessions, one review', () => {
     expect(q.claimSession(222)).toBeNull()
   })
 
-  it('reports nothing when the SAME session re-polls', async () => {
+  it('reports nothing when the SAME session re-polls, and tells its older poll it was replaced', async () => {
     const q = shared()
     q.claimSession(111)
     const first = q.attach()
     await new Promise((r) => setTimeout(r, 10))
     expect(q.claimSession(111)).toBeNull()
     void q.attach()
-    expect(await first).toBe('superseded')
+    // Not "superseded": no other session took anything.
+    expect(await first).toBe('replaced')
+  })
+
+  it('a session that takes the review over is handed what the last one still owed, in full', async () => {
+    const q = shared()
+    const closed: unknown[] = []
+    q.onBatchClosed((c) => closed.push(c))
+    q.claimSession(111)
+    q.enqueueThreads(['t1', 't2'])
+    q.confirm(q.take()!, ['t1', 't2'])
+    q.agentReplied('t1')
+    q.claimSession(222)
+    // Queued again for the newcomer, which never saw it: not owed, not unanswered.
+    expect(q.deliveredThreadIds()).toEqual([])
+    expect(q.queuedThreadIds()).toEqual(['t2'])
+    expect(closed).toHaveLength(0)
+    expect(await q.attach()).toBe('data')
+    q.end(222)
   })
 
   it("ignores a non-owner's reply instead of retargeting the liveness watch", async () => {
@@ -1064,26 +1117,35 @@ describe('DeliveryQueue — the layers request', () => {
     expect(q.layersPosted()).toBeNull()
   })
 
-  it('a settled re-poll without a post lapses the request; a quick one does not', async () => {
-    const quick = new DeliveryQueue(undefined, undefined, {}, 50)
-    quick.enqueueLayers()
-    quick.confirm(quick.take()!, [])
-    void quick.attach()
-    expect(quick.layersRequest()).toBe('outlining')
-    quick.end()
+  it('a poll does not lapse the request: the agent listens while it writes the layers', async () => {
+    const q = new DeliveryQueue(undefined, undefined, {}, { outlineStallMs: 10_000 })
+    q.enqueueLayers()
+    q.confirm(q.take()!, [])
+    await sleep(15)
+    void q.attach()
+    expect(q.layersRequest()).toBe('outlining')
+    expect(q.owesLayers()).toBe(true)
+    expect(q.presenceDetail()).toMatchObject({ state: 'working', listening: true })
+    q.end()
+  })
 
-    const slow = new DeliveryQueue(undefined, undefined, {}, 10)
-    slow.enqueueLayers()
-    slow.confirm(slow.take()!, [])
-    await sleep(25)
-    void slow.attach()
-    expect(slow.layersRequest()).toBeNull()
-    expect(slow.presence()).toBe('listening')
-    slow.end()
+  it('an outline stalled for a whole second window lapses, poll or no poll', async () => {
+    const q = new DeliveryQueue(undefined, undefined, {}, { outlineStallMs: 20 })
+    q.enqueueLayers()
+    q.confirm(q.take()!, [])
+    void q.attach()
+    await sleep(30)
+    expect(q.layersRequest()).toBe('stalled')
+    await sleep(30)
+    expect(q.layersRequest()).toBeNull()
+    expect(q.presence()).toBe('listening')
+    // A post that comes late still answers the ask it was given.
+    expect(q.takeLayersAsk()).toEqual({ kind: 'auto' })
+    q.end()
   })
 
   it('an outline owed past the stall window reads as stalled, and announces the crossing', async () => {
-    const q = new DeliveryQueue(undefined, undefined, {}, undefined, 20)
+    const q = new DeliveryQueue(undefined, undefined, {}, { outlineStallMs: 20 })
     const seen: string[] = []
     q.subscribe(() => seen.push(q.presenceDetail().reason))
     q.enqueueLayers()
@@ -1110,10 +1172,10 @@ describe('DeliveryQueue — the layers request', () => {
   })
 
   it('asking again over a stalled outline withdraws it and parks the new ask', async () => {
-    const q = new DeliveryQueue(undefined, undefined, {}, undefined, 10)
+    const q = new DeliveryQueue(undefined, undefined, {}, { outlineStallMs: 30 })
     q.enqueueLayers()
     q.confirm(q.take()!, [])
-    await sleep(20)
+    await sleep(40)
     expect(q.layersRequest()).toBe('stalled')
     q.enqueueLayers()
     expect(q.layersRequest()).toBe('queued')
@@ -1121,7 +1183,7 @@ describe('DeliveryQueue — the layers request', () => {
     // ...and the next poll carries it again.
     expect(q.take()).toEqual({ kind: 'layers', ask: { kind: 'auto' } })
     // Before the window, a second click changes nothing: the outline is still being written.
-    const fresh = new DeliveryQueue(undefined, undefined, {}, undefined, 10_000)
+    const fresh = new DeliveryQueue(undefined, undefined, {}, { outlineStallMs: 10_000 })
     fresh.enqueueLayers()
     fresh.confirm(fresh.take()!, [])
     fresh.enqueueLayers()
@@ -1207,9 +1269,18 @@ describe('DeliveryQueue quiet polls', () => {
     q.beginPoll(2)
     q.enqueueThreads(['t1'])
     q.confirm(q.take()!, ['t1'])
+    q.agentReplied('t1')
     expect(q.beginPoll(2)).toBe('listen')
     expect(q.beginPoll(2)).toBe('listen')
     expect(q.beginPoll(2)).toBe('quiet')
+  })
+
+  it('polls made while a batch is owed are the agent listening as it works, never the reviewer gone quiet', () => {
+    const q = new DeliveryQueue()
+    q.enqueueThreads(['t1'])
+    q.confirm(q.take()!, ['t1'])
+    for (let i = 0; i < 5; i++) expect(q.beginPoll(2)).toBe('listen')
+    q.end()
   })
 
   it('a quiet stop releases a cut-off poll still attached, so feedback waits for the next', async () => {
@@ -1236,5 +1307,251 @@ describe('DeliveryQueue quiet polls', () => {
     expect(q.beginPoll(1)).toBe('listen')
     q.claimSession(5678)
     expect(q.beginPoll(1)).toBe('quiet')
+  })
+})
+
+describe('DeliveryQueue — reminders for what the agent never answered', () => {
+  const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms))
+  const deliver = (q: DeliveryQueue, ...ids: string[]) => {
+    q.enqueueThreads(ids)
+    q.confirm(q.take()!, ids)
+  }
+
+  it('owed threads alone never end a poll: only the stall clock does', async () => {
+    const q = new DeliveryQueue(10_000)
+    deliver(q, 't1')
+    let outcome: string | null = null
+    void q.attach().then((o) => (outcome = o))
+    await sleep(20)
+    // Otherwise every poll would return at once and the agent would spin.
+    expect(outcome).toBeNull()
+    expect(q.presenceDetail()).toMatchObject({ state: 'working', listening: true })
+    q.end()
+  })
+
+  it('a stall wakes a listening poll with a reminder, and the count rides the owed list', async () => {
+    const q = new DeliveryQueue(20)
+    deliver(q, 't1', 't2')
+    q.agentReplied('t2')
+    expect(await q.attach()).toBe('reminder')
+    expect(q.presenceDetail().reason).toBe('stalled')
+    expect(q.owed()).toMatchObject([{ threadId: 't1', reminders: 0 }])
+    q.confirmReminder(['t1'])
+    expect(q.owed()).toMatchObject([{ threadId: 't1', reminders: 1 }])
+    q.end()
+  })
+
+  it('a stall with nobody listening holds the reminder for the next poll, once', async () => {
+    const q = new DeliveryQueue(20)
+    deliver(q, 't1')
+    await sleep(30)
+    expect(q.presenceDetail()).toMatchObject({ reason: 'stalled', listening: false })
+    expect(await q.attach()).toBe('reminder')
+    q.confirmReminder(['t1'])
+    // Told once: the next poll waits for the clock again instead of spinning.
+    let outcome: string | null = null
+    void q.attach().then((o) => (outcome = o))
+    await sleep(5)
+    expect(outcome).toBeNull()
+    q.end()
+  })
+
+  it('a reminder nobody confirmed is still owed to the next poll', async () => {
+    const q = new DeliveryQueue(20)
+    deliver(q, 't1')
+    expect(await q.attach()).toBe('reminder')
+    // The write never landed (the client vanished): no confirm.
+    expect(await q.attach()).toBe('reminder')
+    q.end()
+  })
+
+  it('new feedback goes ahead of a reminder that is due', async () => {
+    const q = new DeliveryQueue(20)
+    deliver(q, 't1')
+    await sleep(30)
+    q.enqueueThreads(['t2'])
+    expect(await q.attach()).toBe('data')
+    q.end()
+  })
+
+  it('a reply restarts the clock and clears the stall', async () => {
+    const q = new DeliveryQueue(30)
+    deliver(q, 't1', 't2')
+    await sleep(40)
+    expect(q.presenceDetail().reason).toBe('stalled')
+    q.agentReplied('t1')
+    expect(q.presenceDetail().reason).toBe('delivered')
+    // The reminder that was due is withdrawn with it: the agent is at work.
+    let outcome: string | null = null
+    void q.attach().then((o) => (outcome = o))
+    await sleep(5)
+    expect(outcome).toBeNull()
+    q.end()
+  })
+
+  it('after the last reminder the thread lapses as unanswered, and the rest of the batch stays', async () => {
+    const q = new DeliveryQueue(15, undefined, {}, { reminderMax: 2 })
+    const closed: { reason: string; threadIds: string[]; unanswered: string[] }[] = []
+    q.onBatchClosed((c) => closed.push(c))
+    deliver(q, 't1')
+    await sleep(40)
+    // Two windows gone: two strikes on t1. A second thread arrives now, with none.
+    deliver(q, 't2')
+    await sleep(20)
+    expect(closed).toEqual([
+      expect.objectContaining({ reason: 'lapsed', threadIds: ['t1'], unanswered: ['t1'] }),
+    ])
+    expect(q.deliveredThreadIds()).toEqual(['t2'])
+    expect(q.presence()).toBe('working')
+    q.end()
+  })
+
+  it('when everything owed lapses, the agent stops reading as working', async () => {
+    const q = new DeliveryQueue(10, undefined, {}, { reminderMax: 1 })
+    const closed: { reason: string }[] = []
+    q.onBatchClosed((c) => closed.push(c))
+    deliver(q, 't1')
+    void q.attach().then((outcome) => {
+      if (outcome !== 'reminder') return
+      q.confirmReminder(['t1'])
+      void q.attach()
+    })
+    await sleep(40)
+    expect(closed.map((c) => c.reason)).toEqual(['lapsed'])
+    expect(q.deliveredThreadIds()).toEqual([])
+    expect(q.presence()).toBe('listening')
+    q.end()
+  })
+
+  it('a thread the reviewer wrote in again starts its reminders over', async () => {
+    const q = new DeliveryQueue(20)
+    deliver(q, 't1')
+    expect(await q.attach()).toBe('reminder')
+    q.confirmReminder(['t1'])
+    deliver(q, 't1')
+    expect(q.owed()).toMatchObject([{ threadId: 't1', reminders: 0 }])
+    q.end()
+  })
+
+  it('edits in the tree push the reminder back, but not past the cap', async () => {
+    const q = new DeliveryQueue(30, undefined, {}, { editCapMs: 60 })
+    deliver(q, 't1')
+    let outcome: string | null = null
+    void q.attach().then((o) => (outcome = o))
+    for (let i = 0; i < 4; i++) {
+      await sleep(15)
+      q.noteEdit()
+    }
+    // 60ms in, still no reminder: the agent is visibly at work.
+    expect(outcome).toBeNull()
+    // Past the cap the edits stop counting, and the clock runs out.
+    await sleep(15)
+    q.noteEdit()
+    await sleep(40)
+    expect(outcome).toBe('reminder')
+    q.end()
+  })
+
+  it('an edit clears a stall it was showing', async () => {
+    const q = new DeliveryQueue(15)
+    deliver(q, 't1')
+    await sleep(25)
+    expect(q.presenceDetail().reason).toBe('stalled')
+    q.noteEdit()
+    expect(q.presenceDetail().reason).toBe('delivered')
+    q.end()
+  })
+})
+
+describe('DeliveryQueue — sends made while the agent works', () => {
+  const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms))
+  const tuned = () =>
+    new DeliveryQueue(undefined, undefined, {}, { coalesceMs: 20, coalesceMaxMs: 60 })
+
+  it('an idle agent is woken at once', async () => {
+    const q = tuned()
+    const poll = q.attach()
+    q.enqueueThreads(['t1'])
+    expect(await poll).toBe('data')
+  })
+
+  it('a working agent is interrupted once for several quick sends', async () => {
+    const q = tuned()
+    q.enqueueThreads(['t1'])
+    q.confirm(q.take()!, ['t1'])
+    let woke = 0
+    void q.attach().then(() => woke++)
+    q.enqueueThreads(['t2'])
+    await sleep(10)
+    q.enqueueThreads(['t3'])
+    await sleep(10)
+    // Held: each send restarted the short wait. The page still sees them queued.
+    expect(woke).toBe(0)
+    expect(q.queuedThreadIds()).toEqual(['t2', 't3'])
+    expect(q.hasListener()).toBe(true)
+    await sleep(30)
+    expect(woke).toBe(1)
+    expect(q.take()).toEqual({ kind: 'threads', threadIds: ['t2', 't3'] })
+    q.end()
+  })
+
+  it('the hold never outlasts its cap, however many sends follow', async () => {
+    const q = tuned()
+    q.enqueueThreads(['t0'])
+    q.confirm(q.take()!, ['t0'])
+    let woke = 0
+    void q.attach().then(() => woke++)
+    for (let i = 1; i <= 8; i++) {
+      q.enqueueThreads([`t${i}`])
+      await sleep(12)
+    }
+    expect(woke).toBe(1)
+    q.end()
+  })
+
+  it('a finish is never held: the reviewer is done reading', async () => {
+    const q = tuned()
+    q.enqueueThreads(['t1'])
+    q.confirm(q.take()!, ['t1'])
+    const poll = q.attach()
+    q.enqueueFinish({ viewedHunks: 1, totalHunks: 1, skippedFiles: [] })
+    expect(await poll).toBe('data')
+    q.end()
+  })
+
+  it('the last reply releases what was held, without waiting out the hold', async () => {
+    const q = new DeliveryQueue(
+      undefined,
+      undefined,
+      {},
+      { coalesceMs: 10_000, coalesceMaxMs: 10_000 },
+    )
+    q.enqueueThreads(['t1'])
+    q.confirm(q.take()!, ['t1'])
+    const poll = q.attach()
+    q.enqueueThreads(['t2'])
+    q.agentReplied('t1')
+    expect(await poll).toBe('data')
+    q.end()
+  })
+
+  it('a poll that attaches with sends already waiting takes them at once', async () => {
+    const q = tuned()
+    q.enqueueThreads(['t1'])
+    q.confirm(q.take()!, ['t1'])
+    q.enqueueThreads(['t2'])
+    expect(await q.attach()).toBe('data')
+    q.end()
+  })
+
+  it('pendingCount is what the next poll would bring', () => {
+    const q = tuned()
+    expect(q.pendingCount()).toBe(0)
+    q.enqueueThreads(['t1', 't2'])
+    q.enqueueLayers()
+    expect(q.pendingCount()).toBe(3)
+    q.confirm(q.take()!, ['t1', 't2'])
+    expect(q.pendingCount()).toBe(1)
+    q.end()
   })
 })

@@ -7,6 +7,29 @@ Until 1.0, minor versions may break things. When they do, the entry says how to 
 
 ## [Unreleased]
 
+### Changed
+
+- **The agent keeps listening while it works.** A poll used to mean two things:
+  *I am listening* and *I am done with the last batch*. So an agent could not
+  listen while it worked, your next comment waited for the whole batch, and a
+  thread it had not answered yet read **no answer** the moment it polled again.
+  A poll now only means listening. The agent starts its next poll before it
+  acts, so a comment you send mid-fix, or a *stop*, reaches it within moments;
+  quick sends in a row arrive as one. Only a reply settles a thread. Agents
+  whose poll holds their turn work as before: they act, reply, then poll, and
+  the chip says **sends wait** meanwhile.
+- **A thread the agent never answered is handed to it again.** Every poll
+  result lists what the agent still owes, and so does the result of each
+  command it runs. After five minutes with no reply and no edits the thread
+  goes out again in full, up to three times; only then does it read **no
+  answer**. A reviewer agent's thread follows the same rule, in place of the
+  two instant retries it had.
+- **Commands tell the agent whether it is already listening**, instead of
+  always ending with *then run poll*. An agent that was listening used to
+  start a second poll, which released the first and woke it for nothing.
+- **Layers the agent was asked for no longer lapse when it polls.** They read
+  as stalled after three minutes, as before, and lapse on their own after six.
+
 ### Added
 
 - **Review from your phone.** Below 640px wide, Diffo takes a phone shape

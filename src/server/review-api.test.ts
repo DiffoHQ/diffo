@@ -5,7 +5,7 @@ import { join, resolve } from 'node:path'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { type OutgoingThread, type ReviewThread, undeliveredThreadIds } from '../shared/review.js'
 import { DiffoDb } from './db.js'
-import { DeliveryQueue } from './delivery.js'
+import { DeliveryQueue, type QueueTuning } from './delivery.js'
 import { createApp } from './index.js'
 import { buildConnectAsk, CLI_COMMANDS } from './prompt.js'
 import { ReviewStore } from './review.js'
@@ -46,14 +46,16 @@ function makeDb(root: string): DiffoDb {
 
 function setup(
   pollHeartbeatMs?: number,
-  batchSettleMs?: number,
+  /** The queue's clocks: the stall window, and the knobs behind it. */
+  clocks?: { stallMs?: number } & QueueTuning,
   pollMaxMs?: number,
   pollQuietLimit?: number,
 ) {
   const root = tempRepo()
   const store = new ChangesetStore(root, { kind: 'working-tree' })
   const review = new ReviewStore(root, makeDb(root), { kind: 'working-tree' })
-  const queue = new DeliveryQueue(undefined, undefined, {}, batchSettleMs)
+  const { stallMs, ...tuning } = clocks ?? {}
+  const queue = new DeliveryQueue(stallMs, undefined, {}, tuning)
   const app = createApp(
     {
       root,
@@ -1192,8 +1194,8 @@ describe('the pull loop', () => {
     ])
   })
 
-  it("the agent's next poll strands what it skipped; re-sending puts it back on the clock", async () => {
-    const { app, review } = setup(undefined, 0)
+  it('a new poll leaves a skipped thread owed; it is reminded, and only then reads no answer', async () => {
+    const { app, review } = setup(undefined, { stallMs: 40, reminderMax: 1 })
     const answered = (await (
       await post(app, '/api/review/threads', { anchor: { kind: 'changeset' }, text: 'q1' })
     ).json()) as ReviewThread
@@ -1207,10 +1209,33 @@ describe('the pull loop', () => {
       author: 'agent',
       text: 'because X',
     })
-    expect(review.get().threads.every((t) => t.unanswered === undefined)).toBe(true)
 
-    void app.request('/api/agent/poll', { headers: { 'x-diffo-agent': 'cli' } })
+    // The agent listens on. Nothing is stranded: the thread is still its to answer.
+    const next = Promise.resolve(
+      app.request('/api/agent/poll', { headers: { 'x-diffo-agent': 'cli' } }),
+    ).then(pollResult)
     await tick()
+    expect(review.get().threads.every((t) => t.unanswered === undefined)).toBe(true)
+    const state = (await (await app.request('/api/agent/state')).json()) as {
+      listening: boolean
+      owed: { id: string; state: string }[]
+      waiting: number
+    }
+    expect(state.listening).toBe(true)
+    expect(state.waiting).toBe(0)
+    expect(state.owed).toMatchObject([{ what: 'thread', id: skipped.id, state: 'no reply yet' }])
+
+    // The stall window passes: the poll comes back with the thread, in full.
+    const reminder = await next
+    expect(reminder).toMatchObject({ status: 'feedback', kind: 'reminder', reminder: 1 })
+    expect(reminder.threadIds).toEqual([skipped.id])
+    expect(reminder.prompt).toContain('YOU NEVER ANSWERED THIS')
+    expect(reminder.prompt).toContain('q2')
+    expect(reminder.next_step).toContain('Start listening again before you act')
+
+    // Still nothing: after the last reminder the review stops waiting on it.
+    void app.request('/api/agent/poll', { headers: { 'x-diffo-agent': 'cli' } })
+    await new Promise((r) => setTimeout(r, 80))
     const stranded = review.get().threads.find((t) => t.id === skipped.id)!
     expect(stranded.unanswered).toBe(true)
     expect(review.get().threads.find((t) => t.id === answered.id)!.unanswered).toBeUndefined()
@@ -1220,8 +1245,60 @@ describe('the pull loop', () => {
     expect(review.get().threads.find((t) => t.id === skipped.id)!.unanswered).toBeUndefined()
   })
 
+  it('every payload lists what is still owed, and says when it lands mid-work', async () => {
+    const { app } = setup()
+    const first = (await (
+      await post(app, '/api/review/threads', { anchor: { kind: 'changeset' }, text: 'q1' })
+    ).json()) as ReviewThread
+    const second = (await (
+      await post(app, '/api/review/threads', { anchor: { kind: 'changeset' }, text: 'q2' })
+    ).json()) as ReviewThread
+    await post(app, `/api/review/threads/${first.id}/send`)
+    const opening = await pollResult(
+      await app.request('/api/agent/poll', { headers: { 'x-diffo-agent': 'cli' } }),
+    )
+    expect(opening.owed).toBeUndefined()
+    expect(opening.next_step).toContain('Start listening again before you act')
+    expect(opening.next_step).not.toContain('arrived while you were working')
+
+    // The agent is working on the first when the second is sent.
+    await post(app, `/api/review/threads/${second.id}/send`)
+    const midWork = await pollResult(
+      await app.request('/api/agent/poll', { headers: { 'x-diffo-agent': 'cli' } }),
+    )
+    expect(midWork.threadIds).toEqual([second.id])
+    expect(midWork.owed).toMatchObject([{ what: 'thread', id: first.id, state: 'no reply yet' }])
+    expect(midWork.next_step).toContain('arrived while you were working')
+    expect(midWork.next_step).toContain('"owed" lists one thing')
+  })
+
+  it('a thread the reviewer resolves is no longer owed', async () => {
+    const { app, queue } = setup()
+    const thread = (await (
+      await post(app, '/api/review/threads', { anchor: { kind: 'changeset' }, text: 'q1' })
+    ).json()) as ReviewThread
+    await post(app, `/api/review/threads/${thread.id}/send`)
+    await pollResult(await app.request('/api/agent/poll', { headers: { 'x-diffo-agent': 'cli' } }))
+    expect(queue.deliveredThreadIds()).toEqual([thread.id])
+    await post(app, `/api/review/threads/${thread.id}/state`, { state: 'resolved' })
+    expect(queue.deliveredThreadIds()).toEqual([])
+    expect(queue.presenceDetail().reason).toBe('replied')
+  })
+
+  it("the same session's second poll releases its first, and says who replaced it", async () => {
+    const { app } = setup()
+    const headers = { 'x-diffo-agent': 'cli', 'x-diffo-session-pid': String(process.pid) }
+    const first = Promise.resolve(app.request('/api/agent/poll', { headers })).then(pollResult)
+    await tick()
+    void app.request('/api/agent/poll', { headers })
+    const released = await first
+    expect(released.status).toBe('superseded')
+    expect(released.message).toContain('newer poll from this same session')
+    await post(app, '/api/agent/end', {})
+  })
+
   it('a finish records the changeset it was read against, and the poll collects it', async () => {
-    const { app, review, store } = setup(undefined, 0)
+    const { app, review, store } = setup()
     await post(app, '/api/review/threads', { anchor: { kind: 'changeset' }, text: 'q1' })
     await post(app, '/api/review/finish', {
       coverage: { viewedHunks: 1, totalHunks: 1, skippedFiles: [] },
@@ -1237,13 +1314,15 @@ describe('the pull loop', () => {
   })
 
   it('a thread the agent abandoned is named in the next batch’s prompt', async () => {
-    const { app } = setup(undefined, 0)
+    const { app } = setup()
     const thread = (await (
       await post(app, '/api/review/threads', { anchor: { kind: 'changeset' }, text: 'why?' })
     ).json()) as ReviewThread
     const cov = { coverage: { viewedHunks: 1, totalHunks: 1, skippedFiles: [] } }
     await post(app, '/api/review/finish', cov)
     await pollResult(await app.request('/api/agent/poll', { headers: { 'x-diffo-agent': 'cli' } }))
+    // The agent leaves without a word, and comes back later.
+    await post(app, '/api/agent/end', {})
     const next = Promise.resolve(
       app.request('/api/agent/poll', { headers: { 'x-diffo-agent': 'cli' } }),
     ).then(pollResult)

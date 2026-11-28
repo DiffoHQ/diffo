@@ -45,8 +45,11 @@ function setup(
     pollMaxMs?: number
     reviewerStartMs?: number
     graceMs?: number
-    /** How long a delivered batch may sit before a re-poll closes it. */
-    settleMs?: number
+    /** The stall window: how long a delivered thread may sit with no reply
+     * before the author agent is reminded of it. */
+    stallMs?: number
+    /** Reminders before a thread reads "no answer". */
+    reminderMax?: number
   } = {},
 ) {
   const root = tempRepo()
@@ -56,7 +59,14 @@ function setup(
   const review = new ReviewStore(root, new DiffoDb(join(dbDir, 'diffo.db')), {
     kind: 'working-tree',
   })
-  const queue = new DeliveryQueue(undefined, undefined, {}, options.settleMs)
+  const queue = new DeliveryQueue(
+    options.stallMs,
+    undefined,
+    {},
+    {
+      ...(options.reminderMax !== undefined ? { reminderMax: options.reminderMax } : {}),
+    },
+  )
   const settings = new Map<string, string>()
   const app = createApp(
     {
@@ -190,9 +200,9 @@ async function round(app: App, id: string, as: string) {
 
 const tick = () => new Promise((r) => setTimeout(r, 30))
 
-describe('reviewer agents — a thread the author agent polls past', () => {
-  it('is handed to the author again, flagged, while its reviewer keeps waiting', async () => {
-    const { app, review } = setup({ settleMs: 0 })
+describe('reviewer agents — a thread the author agent leaves unanswered', () => {
+  it('is handed to the author again as a reminder, flagged, while its reviewer keeps waiting', async () => {
+    const { app, review } = setup({ stallMs: 40 })
     const thread = await comment(app, 'codex')
     expect((await authorPoll(app)).threadIds).toEqual([thread.id])
 
@@ -201,11 +211,14 @@ describe('reviewer agents — a thread the author agent polls past', () => {
     void waiting.then(() => {
       settled = true
     })
-    // The author polls again without a word: the thread comes straight back.
+    // The author listens on without a word: nothing closes, and once the
+    // stall window passes the thread comes back, in full.
     const again = await authorPoll(app)
+    expect(again.kind).toBe('reminder')
     expect(again.threadIds).toEqual([thread.id])
     expect(again.prompt).toMatch(/YOU NEVER ANSWERED THIS/)
     expect(again.prompt).toMatch(/HANDED TO YOU AGAIN.*reviewer agent codex is still waiting/)
+    expect(again.next_step).toMatch(/shown to the reviewer as "no answer"/)
     await tick()
     // Never "no answer" on the page, and the reviewer has not been sent away.
     expect(review.get().threads[0]!.unanswered).toBeUndefined()
@@ -217,8 +230,8 @@ describe('reviewer agents — a thread the author agent polls past', () => {
     expect(payload.threads).toHaveLength(1)
   })
 
-  it('is handed over again when the author edited the line and polled on without a reply', async () => {
-    const { app, review } = setup({ settleMs: 0 })
+  it('is reminded when the author edited the line and never replied', async () => {
+    const { app, review } = setup({ stallMs: 40 })
     const thread = await comment(app, 'codex')
     expect((await authorPoll(app)).threadIds).toEqual([thread.id])
     // The author changed the commented hunk: the thread reads addressed, with
@@ -227,16 +240,18 @@ describe('reviewer agents — a thread the author agent polls past', () => {
     expect(review.get().threads[0]!.state).toBe('addressed')
 
     const again = await authorPoll(app)
+    expect(again.kind).toBe('reminder')
     expect(again.threadIds).toEqual([thread.id])
     await tick()
     expect(review.get().threads[0]!.unanswered).toBeUndefined()
   })
 
-  it('gives up after two more tries, and tells the reviewer why it is leaving', async () => {
-    const { app, review } = setup({ settleMs: 0, pollMaxMs: 60 })
+  it('gives up after the last reminder, and tells the reviewer why it is leaving', async () => {
+    const { app, review } = setup({ stallMs: 25, reminderMax: 2, pollMaxMs: 200 })
     const thread = await comment(app, 'codex')
-    for (let i = 0; i < 3; i++) expect((await authorPoll(app)).threadIds).toEqual([thread.id])
-    // The fourth poll finds nothing: the thread is marked, not handed over.
+    expect((await authorPoll(app)).threadIds).toEqual([thread.id])
+    for (let i = 0; i < 2; i++) expect((await authorPoll(app)).kind).toBe('reminder')
+    // The next poll finds nothing: the thread is marked, not handed over.
     expect((await authorPoll(app)) as unknown as { status: string }).toMatchObject({
       status: 'timeout',
     })
@@ -245,23 +260,25 @@ describe('reviewer agents — a thread the author agent polls past', () => {
     const payload = await reviewerPoll(app, 'codex')
     expect(payload.status).toBe('idle')
     expect(payload.counts).toMatchObject({ unanswered: 1, waiting: 0 })
-    expect(payload.next_step).toMatch(/polled on without answering/)
+    expect(payload.next_step).toMatch(/more than once and never answered/)
     expect(payload.next_step).toMatch(/Do not repeat or summarize what you found/)
   })
 
-  it('counts from the last answer: a new round gets its own tries', async () => {
-    const { app, review } = setup({ settleMs: 0, pollMaxMs: 60 })
+  it('counts from the last answer: a new round gets its own reminders', async () => {
+    const { app, review } = setup({ stallMs: 25, reminderMax: 2 })
     const thread = await comment(app, 'codex')
-    for (let i = 0; i < 3; i++) await authorPoll(app)
+    await authorPoll(app)
+    for (let i = 0; i < 2; i++) expect((await authorPoll(app)).kind).toBe('reminder')
     await authorReply(app, thread.id)
     await reviewerPoll(app, 'codex')
     await reviewerReply(app, thread.id, 'codex')
-    for (let i = 0; i < 3; i++) expect((await authorPoll(app)).threadIds).toEqual([thread.id])
+    expect((await authorPoll(app)).kind).toBe('threads')
+    for (let i = 0; i < 2; i++) expect((await authorPoll(app)).kind).toBe('reminder')
     expect(review.get().threads[0]!.unanswered).toBeUndefined()
   })
 
-  it("leaves the human's own thread as it was: no answer until they send it again", async () => {
-    const { app, review } = setup({ settleMs: 0, pollMaxMs: 60 })
+  it("the human's own thread is reminded the same way, then reads no answer", async () => {
+    const { app, review } = setup({ stallMs: 25, reminderMax: 1, pollMaxMs: 150 })
     const mine = (await (
       await page(app, '/api/review/threads', {
         anchor: { kind: 'changeset' },
@@ -270,10 +287,28 @@ describe('reviewer agents — a thread the author agent polls past', () => {
     ).json()) as ReviewThread
     await page(app, `/api/review/threads/${mine.id}/send`)
     expect((await authorPoll(app)).threadIds).toEqual([mine.id])
+    const again = await authorPoll(app)
+    expect(again.kind).toBe('reminder')
+    expect(again.threadIds).toEqual([mine.id])
+    expect(review.get().threads[0]!.unanswered).toBeUndefined()
     expect((await authorPoll(app)) as unknown as { status: string }).toMatchObject({
       status: 'timeout',
     })
     expect(review.get().threads[0]!.unanswered).toBe(true)
+  })
+
+  it('a thread its reviewer closed is never reminded', async () => {
+    const { app, queue } = setup({ stallMs: 25, pollMaxMs: 120 })
+    const thread = await comment(app, 'codex')
+    expect((await authorPoll(app)).threadIds).toEqual([thread.id])
+    expect(
+      (await cli(app, `/api/review/threads/${thread.id}/state`, { as: 'codex', state: 'resolved' }))
+        .status,
+    ).toBe(200)
+    expect(queue.deliveredThreadIds()).toEqual([])
+    expect((await authorPoll(app)) as unknown as { status: string }).toMatchObject({
+      status: 'timeout',
+    })
   })
 })
 
