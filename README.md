@@ -116,10 +116,10 @@ own; a thread only comes to you when it needs your decision.
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/assets/readme-reviewers-dark.svg">
-  <img alt="Reviewer agents in Diffo. Your agent picked a set of reviewer agents for the change; you open Add reviewer, the set is already ticked, and Start hands it to your agent, which starts three reviewers as sub-agents. juno, the General reviewer, comments on line 13; your agent fixes it and answers, and juno confirms and resolves the thread. remy, the AI slop reviewer, flags a TODO on line 14; your agent disagrees, and remy hands the thread to you, marked Needs your decision. iris finds nothing and is done." src="docs/assets/readme-reviewers.svg" width="100%">
+  <img alt="Reviewer agents in Diffo. Your agent picked a set of three reviewer agents for the change; you open Add reviewer, add Blast radius, Security and Tests, and start six. The reviewer agents sidebar opens with all six at work, each with its own status, while your agent starts them as sub-agents. olin, the General reviewer, comments on line 4; your agent fixes it and answers, and olin confirms and resolves the thread. vera, the AI slop reviewer, flags a TODO on line 5; your agent disagrees, and vera hands the thread to you. You reply: drop the TODO. Your agent removes it, and vera resolves the thread. The other four finish with nothing to flag." src="docs/assets/readme-reviewers.svg" width="100%">
 </picture>
 
-<p align="center"><sub>One bug found, fixed and resolved without you. One product call handed to you.</sub></p>
+<p align="center"><sub>One bug found, fixed and resolved without you. One product call handed to you, and settled with one reply.</sub></p>
 
 ## Review a pull request
 
