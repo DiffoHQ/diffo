@@ -106,6 +106,21 @@ so nothing hides outside the plan.
 
 Too big to read whole? Layer it by **Importance**: [review the paths that matter](#review-the-paths-that-matter).
 
+## Bring in reviewer agents
+
+Want a second pair of eyes before yours? **+ Add reviewer** brings in reviewer agents: other
+AI sessions that read the change and comment on it, each narrow (General, AI slop,
+Blast radius, Security, …). Your agent picks the set that fits the change and starts them
+as sub-agents. They talk to your agent in the threads and settle what they can on their
+own; a thread only comes to you when it needs your decision.
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/assets/readme-reviewers-dark.svg">
+  <img alt="Reviewer agents in Diffo. Your agent picked a set of reviewer agents for the change; you open Add reviewer, the set is already ticked, and Start hands it to your agent, which starts three reviewers as sub-agents. juno, the General reviewer, comments on line 13; your agent fixes it and answers, and juno confirms and resolves the thread. remy, the AI slop reviewer, flags a TODO on line 14; your agent disagrees, and remy hands the thread to you, marked Needs your decision. iris finds nothing and is done." src="docs/assets/readme-reviewers.svg" width="100%">
+</picture>
+
+<p align="center"><sub>One bug found, fixed and resolved without you. One product call handed to you.</sub></p>
+
 ## Review a pull request
 
 When a pull request lands on *your* desk, give your agent the link. It checks the PR out

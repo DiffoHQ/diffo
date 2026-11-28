@@ -7,7 +7,7 @@
  * <style> and @keyframes inside it run. That is the only motion a README can have, and
  * it is all here. No external fonts or images: an SVG loaded as <img> cannot fetch.
  *
- *   pnpm readme:art     → assets/readme-hero{,-dark}.svg, docs/assets/readme-{demo,layers,pr,importance}{,-dark}.svg
+ *   pnpm readme:art     → assets/readme-hero{,-dark}.svg, docs/assets/readme-{demo,layers,pr,importance,reviewers}{,-dark}.svg
  */
 import { writeFileSync } from 'node:fs'
 import { join } from 'node:path'
@@ -2015,6 +2015,505 @@ function importance(a: App, dark: boolean) {
   )
 }
 
+/* ── Reviewer agents: a second AI reads the change, your agent answers ── */
+
+/*
+ * The review is open and the author agent has picked a set of reviewer agents for
+ * the change. The reviewer opens + Add reviewer, the set is already ticked, and
+ * Start hands it to the author agent, which starts each reviewer as a sub-agent.
+ * Three faces join the top bar. juno finds a real bug, the author agent fixes it
+ * and answers, juno confirms and resolves. remy flags a TODO, the two disagree,
+ * and remy hands the thread to you: Needs your decision. iris finds nothing.
+ */
+const REVIEWERS_LOOP = 20
+
+function reviewers(a: App, dark: boolean) {
+  const {
+    PAD,
+    TW,
+    RX,
+    RW,
+    TOP,
+    WH,
+    show,
+    between,
+    flight,
+    keyframes,
+    tx,
+    mono,
+    tline,
+    bullet,
+    termFrame,
+    amber,
+    svg,
+    ROW,
+    codeRow,
+    pointer,
+    css,
+  } = kit(a, dark, REVIEWERS_LOOP)
+
+  // The critters' step, on its own short clock.
+  css.push(
+    `.bob { animation: bob 0.42s ease-in-out infinite alternate; }\n    @keyframes bob { to { transform: translateY(-1.6px); } }`,
+  )
+
+  // The review UI's reviewer colours (--rev-1..3 in src/ui/styles.css).
+  const rev = dark ? ['#b391f5', '#6cb6ff', '#5ccdbd'] : ['#6639ba', '#0b62b8', '#0c6f66']
+  const revWash = dark
+    ? ['rgba(179,145,245,0.14)', 'rgba(108,182,255,0.14)', 'rgba(92,205,189,0.13)']
+    : ['rgba(102,57,186,0.09)', 'rgba(11,98,184,0.09)', 'rgba(12,111,102,0.1)']
+  const R = [
+    { name: 'juno', role: 'General' },
+    { name: 'remy', role: 'AI slop' },
+    { name: 'iris', role: 'Code comments' },
+  ]
+
+  // The scene's clock, in % of the loop.
+  const C = {
+    inAdd: 4,
+    clickAdd: 8,
+    sheet: [9.5, 30] as const,
+    inStart: 21.5,
+    clickStart: 26,
+    req: [27, 31.5] as const, // the request crosses to the author agent
+    poll: 32,
+    task: 33, // + i: each reviewer starts
+    face: 34.5, // + i: each face joins the top bar
+    a1: [39, 43] as const, // juno's comment lands
+    b1: [43.5, 47.5] as const, // remy's comment lands
+    fix: 49,
+    edit: 50.5,
+    a2: [52, 56] as const, // the fix and the answer land
+    a3: 59.5, // juno confirms
+    irisDone: 61,
+    fold: 64, // juno's thread folds to one line
+    b2: [66, 70] as const, // the author agent answers remy
+    b3: 73.5, // remy hands it to you
+    needs: 75,
+  }
+
+  /* ── the author agent's terminal ── */
+  const taskRow = (i: number) => {
+    const y = TOP + 300 + i * 24
+    const r = R[i]!
+    return `<g class="${show(C.task + i)}">
+      <circle cx="${tx + 22}" cy="${y - 5}" r="3.5" fill="${rev[i]}"/>
+      <text x="${tx + 34}" y="${y}" ${mono} fill="${TERM.ink}"><tspan font-weight="700">Task</tspan>(${r.role} · ${r.name})</text>
+    </g>
+    <text class="${between(C.task + i, i === 2 ? C.irisDone : C.a1[0] + i * 4.5)}" x="${PAD + TW - 22}" y="${y}" text-anchor="end" ${mono} fill="${TERM.dim}">reading…</text>
+    <text class="${show(i === 2 ? C.irisDone : C.a1[0] + i * 4.5, 'none')}" x="${PAD + TW - 22}" y="${y}" text-anchor="end" ${mono} fill="${i === 2 ? TERM.add : TERM.dim}">${i === 2 ? 'done ✓' : '1 thread'}</text>`
+  }
+  const term = termFrame(
+    `
+    <rect x="${tx - 8}" y="${TOP + 118}" width="${TW - 28}" height="26" fill="${TERM.promptBg}"/>
+    <text x="${tx}" y="${TOP + 136}" ${mono} fill="${TERM.dim}">❯ <tspan fill="${TERM.ink}" font-weight="700">/diffo</tspan></text>
+    ${bullet(TOP + 170, 'Review is open. I’m listening.', 's-on')}
+    <text x="${tx + 18}" y="${TOP + 192}" ${mono} fill="${TERM.link}" text-decoration="underline">http://localhost:4949</text>
+    <g>
+      <circle cx="${tx + 4}" cy="${TOP + 219}" r="3.5" fill="${TERM.ink}"/>
+      <text x="${tx + 18}" y="${TOP + 224}" ${mono} fill="${TERM.ink}">diffo reviewer --set agent-written</text>
+    </g>
+    ${tline(TOP + 246, '  ⎿ an agent wrote it end to end', 's-on', TERM.dim)}
+
+    <text class="${between(-1, C.poll - 0.5)}" x="${tx}" y="${TOP + 280}" ${mono} fill="${TERM.claude}">✻ Listening for your comments…</text>
+    <g class="${show(C.poll)}">
+      <circle cx="${tx + 4}" cy="${TOP + 275}" r="3.5" fill="${TERM.ink}"/>
+      <text x="${tx + 18}" y="${TOP + 280}" ${mono} fill="${TERM.ink}">Starting 3 reviewer agents</text>
+    </g>
+    ${[0, 1, 2].map(taskRow).join('\n    ')}
+
+    ${bullet(TOP + 404, 'juno is right about line 13. Fixing.', show(C.fix))}
+    <g class="${show(C.edit)}">
+      <circle cx="${tx + 4}" cy="${TOP + 431}" r="3.5" fill="${TERM.add}"/>
+      <text x="${tx + 18}" y="${TOP + 436}" ${mono} fill="${TERM.ink}"><tspan font-weight="700">Update</tspan>(src/scheduler/streak.ts)</text>
+    </g>
+    ${tline(TOP + 458, '  ⎿ compares days, not times · +1 test', show(C.edit + 1), TERM.dim)}
+    ${bullet(TOP + 490, 'remy, line 14: the issue asked for this.', show(C.b2[0] - 1.5))}
+    <text class="${show(C.needs + 1.5)}" x="${tx}" y="${TOP + 524}" ${mono} fill="${TERM.claude}">✻ Listening for your comments…</text>`,
+  )
+
+  /* ── the review ── */
+  const X = RX + 18
+  const XR = RX + RW - 18
+  const HEAD = 52
+  const FC = TOP + HEAD + 18 // the file card
+  const CODE_TOP = FC + 37
+  const A = CODE_TOP + 4 * ROW + 8 // juno's thread, under line 13
+  const MSG = 58 // one message in a thread
+  const A_FOLD = 37
+  // A thread grows a message at a time, and pushes what is under it down.
+  const tall = (n: number) => 36 + n * MSG + 6
+  const L14 = A - 8 // line 14, straight under line 13 until a thread opens between
+  const B = L14 + ROW + 8 // remy's thread, under line 14
+
+  const rows: Array<[number, Seg[]]> = [
+    [
+      10,
+      [
+        ['k', 'export function '],
+        ['f', 'streak'],
+        ['', '(history: Check[]) {'],
+      ],
+    ],
+    [
+      11,
+      [
+        ['k', '  let '],
+        ['', 'run = '],
+        ['n', '0'],
+      ],
+    ],
+    [
+      12,
+      [
+        ['k', '  for '],
+        ['', '('],
+        ['k', 'const '],
+        ['', 'c '],
+        ['k', 'of '],
+        ['', 'history) {'],
+      ],
+    ],
+  ]
+  const L13_OLD: Seg[] = [
+    ['k', '    if '],
+    ['', '(c.doneAt > c.dueAt) '],
+    ['k', 'break'],
+  ]
+  const L13_NEW: Seg[] = [
+    ['k', '    if '],
+    ['', '('],
+    ['f', 'dayOf'],
+    ['', '(c.doneAt) > '],
+    ['f', 'dayOf'],
+    ['', '(c.dueAt)) '],
+    ['k', 'break'],
+  ]
+  const L14_SEGS: Seg[] = [
+    ['k', '    if '],
+    ['', '(c.skipped) '],
+    ['k', 'continue  '],
+    ['n', '// TODO: count skips?'],
+  ]
+
+  // A reviewer agent's face: the critter's, in its colour (Face in AgentsPanel.tsx).
+  const face = (cx: number, cy: number, i: number, eyes: 'open' | 'happy' = 'open', s = 1) => {
+    const t = `translate(${cx - 9 * s} ${cy - 7 * s}) scale(${s})`
+    const cut = a.paper
+    return `<g transform="${t}">
+      <rect x="0" y="0" width="18" height="14" rx="4" fill="${rev[i]}"/>
+      ${
+        eyes === 'open'
+          ? `<rect x="5.1" y="5.1" width="1.8" height="3.1" rx="0.9" fill="${cut}"/><rect x="11.1" y="5.1" width="1.8" height="3.1" rx="0.9" fill="${cut}"/>`
+          : `<path d="M4.8 7.5l1.2-1.4 1.2 1.4M10.8 7.5l1.2-1.4 1.2 1.4" fill="none" stroke="${cut}" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"/>`
+      }
+    </g>`
+  }
+  // A reviewer's avatar in a thread: its initial in its colour.
+  const revAvatar = (cx: number, cy: number, i: number) =>
+    `<circle cx="${cx}" cy="${cy}" r="12" fill="${revWash[i]}" stroke="${rev[i]}" stroke-opacity="0.45"/>
+     <text x="${cx}" y="${cy + 4.5}" text-anchor="middle" font-size="12.5" font-weight="600" fill="${rev[i]}">${R[i]!.name[0]!.toUpperCase()}</text>`
+  const agentAvatar = (cx: number, cy: number) =>
+    `<circle cx="${cx}" cy="${cy}" r="12" fill="${a.attnWash}" stroke="${a.attnLine}"/>
+     <text x="${cx}" y="${cy + 5}" text-anchor="middle" font-size="12" fill="${a.attn}">✦</text>`
+
+  // One message in a thread, at y: who, a note beside the name, the line it says.
+  const message = (
+    y: number,
+    who: 'agent' | number,
+    note: string,
+    text: string,
+    at: number,
+    typing = 0,
+  ) => {
+    const name = who === 'agent' ? 'Author agent' : R[who]!.name
+    const tone = who === 'agent' ? a.attn : rev[who]!
+    const nameW = name.length * 7.6 + 10
+    const dots = typing
+      ? `<g class="${between(at - typing, at)}">
+        ${who === 'agent' ? agentAvatar(X + 40, y + 26) : revAvatar(X + 40, y + 26, who)}
+        <g class="dots" fill="${a.ink3}"><circle cx="${X + 66}" cy="${y + 26}" r="3"/><circle cx="${X + 77}" cy="${y + 26}" r="3"/><circle cx="${X + 88}" cy="${y + 26}" r="3"/></g>
+      </g>`
+      : ''
+    return `${dots}
+      <g class="${show(at)}">
+        ${who === 'agent' ? agentAvatar(X + 40, y + 26) : revAvatar(X + 40, y + 26, who)}
+        <text x="${X + 62}" y="${y + 21}" font-size="13" font-weight="600" fill="${tone}">${name}</text>
+        <text x="${X + 62 + nameW}" y="${y + 21}" font-size="12.5" fill="${a.ink3}">${escapeXml(note)}</text>
+        <text x="${X + 62}" y="${y + 43}" font-size="14" fill="${a.ink}">${escapeXml(text)}</text>
+      </g>`
+  }
+
+  // A thread's header strip: chevron, the reviewer's name tag, what it is on.
+  const threadHead = (y: number, i: number, what: string) => {
+    const tag = R[i]!.name
+    const w = tag.length * 7.2 + 30
+    return `
+        <path d="M${X + 15} ${y + 36}V${y + 10}a10 10 0 0 1 10 -10H${XR - 25}a10 10 0 0 1 10 10V${y + 36}z" fill="${a.fill}"/>
+        <path d="M${X + 30} ${y + 16}l3.5 3.5 3.5-3.5" fill="none" stroke="${a.ink3}" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+        <rect x="${X + 46.5}" y="${y + 8.5}" width="${w}" height="20" rx="10" fill="${revWash[i]}" stroke="${rev[i]}" stroke-opacity="0.4"/>
+        <circle cx="${X + 59}" cy="${y + 18.5}" r="3" fill="${rev[i]}"/>
+        <text x="${X + 67}" y="${y + 22.5}" font-size="12" font-weight="600" fill="${rev[i]}">${tag}</text>
+        <text x="${X + 46 + w + 12}" y="${y + 23}" font-size="13" fill="${a.ink2}">${what}</text>`
+  }
+
+  const QA = [
+    'dueAt is midnight, so a todo done at 09:00 on its due day breaks the streak.',
+    'Right. It compares days now, and a test covers 09:00 on the due day.',
+    'Confirmed: the test fails before the fix and passes after. Resolving.',
+  ]
+  const QB = [
+    'A TODO left in: skipped days are ignored, so a missed week keeps the streak.',
+    'Ignoring skips is what the issue asked for. The code is right.',
+    'Then the TODO or the issue is wrong. That’s a product call, so it’s yours.',
+  ]
+
+  // When juno's thread grows a message: its comment, the agent's typing, juno's.
+  const aGrow = [C.a1[1], C.a2[1] - 3, C.a3 - 2.5] as const
+  const bGrow = [C.b1[1], C.b2[1] - 3, C.b3 - 2.5] as const
+  // How far everything under juno's thread is pushed, at each moment.
+  const push = (n: number) => tall(n) + 16
+  const pushAt = (at: number) =>
+    at >= C.fold + 2
+      ? A_FOLD + 16
+      : at >= aGrow[2]
+        ? push(3)
+        : at >= aGrow[1]
+          ? push(2)
+          : at >= aGrow[0]
+            ? push(1)
+            : 0
+  const ty = (y: number) => `transform: translateY(${y}px)`
+  const below = keyframes(
+    `0%, ${aGrow[0]}% { ${ty(0)}; opacity: 1; } ${aGrow[0] + 1.2}%, ${aGrow[1]}% { ${ty(push(1))}; } ${aGrow[1] + 1.2}%, ${aGrow[2]}% { ${ty(push(2))}; } ${aGrow[2] + 1.2}%, ${C.fold}% { ${ty(push(3))}; } ${C.fold + 2}%, ${RESET}% { ${ty(A_FOLD + 16)}; opacity: 1; } ${RESET + 3}% { ${ty(A_FOLD + 16)}; opacity: 0; } ${RESET + 3.5}% { ${ty(0)}; opacity: 0; } ${RESET + 6}%, 100% { ${ty(0)}; opacity: 1; }`,
+  )
+  // A thread's card, in the size it has grown to.
+  const card = (y: number, grow: readonly number[], until: number) =>
+    grow
+      .map(
+        (at, i) =>
+          `<rect class="${between(at, i < grow.length - 1 ? grow[i + 1]! : until)}" x="${X + 14.5}" y="${y + 0.5}" width="${XR - X - 29}" height="${tall(i + 1)}" rx="10" fill="${a.paper}" stroke="${a.hair}"/>`,
+      )
+      .join('\n        ')
+
+  // Header geometry, right to left: Finish, the agent's chip, the reviewer stack.
+  const chipX = RX + RW - 316.5
+  const addW = 116
+  const addX = chipX - 12 - addW
+  const faceX = (i: number) => chipX - 106 + i * 26
+  const plusX = chipX - 26
+  const HY = TOP + 26 // the header's middle
+
+  // A small critter in a reviewer's colour, walking the header's floor.
+  const critter = (i: number, x0: number, span: number, from: number, to: number) => {
+    const walk = keyframes(
+      `0%, ${from}% { transform: translateX(${x0 + span}px); } ${from + 4}% { transform: translateX(${x0}px); } ${from + 14}% { transform: translateX(${x0 + span * 0.6}px); } ${from + 26}% { transform: translateX(${x0 + span * 0.15}px); } ${from + 38}% { transform: translateX(${x0 + span}px); } ${from + 50}%, 100% { transform: translateX(${x0 + span * 0.4}px); }`,
+    )
+    return `<g class="${between(from, to)}">
+      <g class="${walk}">
+        <g class="bob" style="animation-delay:${i * 0.17}s">
+          <rect x="0" y="${HY - 13}" width="16" height="12" rx="3.5" fill="${rev[i]}"/>
+          <rect x="4.4" y="${HY - 9}" width="1.6" height="2.8" rx="0.8" fill="${a.paper}"/><rect x="10" y="${HY - 9}" width="1.6" height="2.8" rx="0.8" fill="${a.paper}"/>
+          <path d="M5 ${HY - 1}v5M11 ${HY - 1}v5" stroke="${rev[i]}" stroke-width="2" stroke-linecap="round"/>
+        </g>
+      </g>
+    </g>`
+  }
+
+  // A face's corner badge: working (a ring), done (a check), needs you (amber).
+  const badge = (cx: number, cy: number, kind: 'working' | 'done' | 'needs', cls: string) => {
+    const bx = cx + 8
+    const by = cy + 7
+    const inner =
+      kind === 'working'
+        ? `<circle cx="${bx}" cy="${by}" r="2.6" fill="none" stroke="${a.ink3}" stroke-width="1.4" stroke-dasharray="11 5"/>`
+        : kind === 'done'
+          ? `<circle cx="${bx}" cy="${by}" r="3.6" fill="${a.add}"/><path d="M${bx - 1.8} ${by}l1.2 1.2 2.4-2.6" fill="none" stroke="#fff" stroke-width="1.1" stroke-linecap="round" stroke-linejoin="round"/>`
+          : `<circle cx="${bx}" cy="${by}" r="3.6" fill="${amber}"/>`
+    return `<g class="${cls}"><circle cx="${bx}" cy="${by}" r="5" fill="${a.paper}"/>${inner}</g>`
+  }
+
+  const startedAt = (i: number) => C.face + i
+  const doneAt = [C.a3, C.needs, C.irisDone]
+
+  const stack = `
+      <g class="${between(-1, C.face)}">
+        <rect x="${addX + 0.5}" y="${TOP + 12.5}" width="${addW}" height="28" rx="14" fill="${a.paper}" stroke="${a.hair}"/>
+        <path d="M${addX + 16} ${HY}h9M${addX + 20.5} ${HY - 4.5}v9" stroke="${a.ink}" stroke-width="1.6" stroke-linecap="round"/>
+        <text x="${addX + 32}" y="${HY + 4.5}" font-size="13" font-weight="500" fill="${a.ink}">Add reviewer</text>
+      </g>
+      ${[0, 1, 2]
+        .map((i) => {
+          const cx = faceX(i)
+          return `<g class="${show(startedAt(i), 'scale(0.4)')}" style="transform-origin:${cx}px ${HY}px">
+        <circle cx="${cx}" cy="${HY}" r="13" fill="${a.paper}"/>
+        <g class="${between(startedAt(i), doneAt[i]!)}">${face(cx, HY, i)}</g>
+        <g class="${show(doneAt[i]!, 'none')}">${face(cx, HY, i, i === 1 ? 'open' : 'happy')}</g>
+        ${badge(cx, HY, 'working', between(startedAt(i), doneAt[i]!))}
+        ${badge(cx, HY, i === 1 ? 'needs' : 'done', show(doneAt[i]!, 'scale(0.4)'))}
+      </g>`
+        })
+        .join('\n      ')}
+      <g class="${show(C.face + 2.5, 'none')}">
+        <circle cx="${plusX}" cy="${HY}" r="12.5" fill="${a.paper}" stroke="${a.hair}"/>
+        <path d="M${plusX - 4.5} ${HY}h9M${plusX} ${HY - 4.5}v9" stroke="${a.ink2}" stroke-width="1.6" stroke-linecap="round"/>
+      </g>`
+
+  const SX = RX + (RW - 476) / 2 // the sheet
+  const SY = TOP + 78
+  const SW = 476
+  const SH = 470
+  const roleRow = (y: number, name: string, blurb: string, ticked: boolean) => `
+        <g>
+          ${ticked ? `<rect x="${SX + 24}" y="${y - 12}" width="15" height="15" rx="4" fill="${a.brand}"/><path d="M${SX + 27.4} ${y - 4.4}l3 3 5-5.6" fill="none" stroke="#fff" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>` : `<rect x="${SX + 24.5}" y="${y - 11.5}" width="14" height="14" rx="4" fill="none" stroke="${a.ink3}"/>`}
+          <text x="${SX + 50}" y="${y}" font-size="13.5" font-weight="600" fill="${a.ink}">${name}</text>
+          <text x="${SX + 50 + name.length * 7.9 + 10}" y="${y}" font-size="13" fill="${a.ink3}">${escapeXml(blurb)}</text>
+        </g>`
+  const setChip = (x: number, label: string, on: boolean, w: number) => `
+        <rect x="${x + 0.5}" y="${SY + 153.5}" width="${w}" height="27" rx="13.5" fill="${on ? a.addRow : a.paper}" stroke="${on ? a.brand : a.hair}"/>
+        ${on ? `<text x="${x + 13}" y="${SY + 171.5}" font-size="12" fill="${a.brand}">✦</text>` : ''}
+        <text x="${x + (on ? 28 : 13)}" y="${SY + 171.5}" font-size="12.5" font-weight="${on ? 600 : 400}" fill="${on ? a.brand : a.ink}">${label}</text>`
+
+  const sheet = `
+  <g class="${between(C.sheet[0], C.sheet[1])}">
+    <rect x="${RX}" y="${TOP}" width="${RW}" height="${WH}" rx="12" fill="#000" fill-opacity="${dark ? 0.5 : 0.22}"/>
+  </g>
+  <g class="${between(C.sheet[0], C.sheet[1])}">
+   <g class="${show(C.sheet[0], 'translateY(14px) scale(0.98)')}" style="transform-origin:${SX + SW / 2}px ${SY + 40}px" font-family="${SANS}">
+    <g filter="url(#shadow)"><rect x="${SX}" y="${SY}" width="${SW}" height="${SH}" rx="14" fill="${a.paper}"/></g>
+    <rect x="${SX + 0.5}" y="${SY + 0.5}" width="${SW - 1}" height="${SH - 1}" rx="13.5" fill="none" stroke="${dark ? '#3a3a3c' : a.hair}"/>
+    <text x="${SX + 24}" y="${SY + 40}" font-size="18" font-weight="700" fill="${a.ink}">Add reviewer agents</text>
+    <path d="M${SX + SW - 34} ${SY + 28}l9 9M${SX + SW - 25} ${SY + 28}l-9 9" stroke="${a.ink3}" stroke-width="1.6" stroke-linecap="round"/>
+    <text x="${SX + 24}" y="${SY + 70}" font-size="13" fill="${a.ink2}">A second AI reads the change and comments on it. Your agent</text>
+    <text x="${SX + 24}" y="${SY + 89}" font-size="13" fill="${a.ink2}">answers, and you settle what the two cannot.</text>
+    <text x="${SX + 24}" y="${SY + 124}" font-size="11.5" font-weight="600" letter-spacing="0.6" fill="${a.ink3}">REVIEWER AGENTS</text>
+    <text x="${SX + SW - 24}" y="${SY + 124}" text-anchor="end" font-size="12.5" fill="${a.brand}">Edit agents and sets</text>
+    <text x="${SX + 24}" y="${SY + 145}" font-size="11.5" fill="${a.ink3}">Sets</text>
+    ${setChip(SX + 24, 'Agent-written change', true, 176)}
+    ${setChip(SX + 208, 'Refactor', false, 74)}
+    ${setChip(SX + 290, 'UI change', false, 80)}
+    ${setChip(SX + 378, 'Data…', false, 60)}
+    <rect x="${SX + 24}" y="${SY + 192}" width="${SW - 48}" height="30" rx="8" fill="${a.attnWash}"/>
+    <text x="${SX + 36}" y="${SY + 211.5}" font-size="12.5" fill="${a.attn}">✦</text>
+    <text x="${SX + 54}" y="${SY + 211.5}" font-size="12.5" fill="${a.ink}">Your agent picked <tspan font-weight="600">Agent-written change</tspan>: written end to end.</text>
+    ${roleRow(SY + 252, 'General', 'Anything that would bite, bugs first', true)}
+    ${roleRow(SY + 282, 'Blast radius', 'Callers, stored data, config', false)}
+    ${roleRow(SY + 312, 'AI slop', 'Needless guards, shims, debris', true)}
+    ${roleRow(SY + 342, 'Simplicity', 'Less code that does the same', false)}
+    ${roleRow(SY + 372, 'Code comments', 'Comments no longer true', true)}
+    <text x="${SX + 24}" y="${SY + 402}" font-size="12.5" fill="${a.brand}">11 more in the library</text>
+    <path d="M${SX} ${SY + 418.5}h${SW}" stroke="${a.hair}"/>
+    <rect x="${SX + SW - 254}" y="${SY + 429}" width="146" height="30" rx="15" fill="${a.finishBg}"/>
+    <text x="${SX + SW - 181}" y="${SY + 448.5}" text-anchor="middle" font-size="13" font-weight="600" fill="${a.finishFg}">Start 3 reviewers</text>
+    <text x="${SX + SW - 62}" y="${SY + 448.5}" text-anchor="middle" font-size="13" fill="${a.ink2}">Cancel</text>
+   </g>
+  </g>`
+
+  const review = `
+  <g filter="url(#shadow)"><rect x="${RX}" y="${TOP}" width="${RW}" height="${WH}" rx="12" fill="${a.paper}"/></g>
+  <g clip-path="url(#review)" font-family="${SANS}">
+    <path d="M${RX + 20} ${TOP + 21}h14M${RX + 20} ${TOP + 27}h10M${RX + 20} ${TOP + 33}h14" stroke="${a.ink}" stroke-width="1.8" stroke-linecap="round"/>
+    <text x="${RX + 44}" y="${TOP + 33}" font-size="17" font-weight="600" fill="${a.ink}">Diffo</text>
+    <text x="${RX + 102}" y="${TOP + 32}" font-size="13.5" fill="${a.ink}">Daily streaks</text>
+    ${critter(0, RX + 196, 34, startedAt(0) + 1, C.a3)}
+    ${critter(1, RX + 232, 34, startedAt(1) + 1, C.needs)}
+    ${critter(2, RX + 268, 22, startedAt(2) + 1, C.irisDone)}
+    ${stack}
+    <rect x="${chipX}" y="${TOP + 12.5}" width="140" height="28" rx="14" fill="${a.attnWash}" stroke="${a.attnLine}"/>
+    <g fill="${a.attn}"><rect x="${chipX + 14.5}" y="${TOP + 24}" width="2" height="5" rx="1"/><rect x="${chipX + 18.5}" y="${TOP + 22}" width="2" height="9" rx="1"/><rect x="${chipX + 22.5}" y="${TOP + 24}" width="2" height="5" rx="1"/></g>
+    <text class="${between(-1, C.req[1])}" x="${chipX + 31}" y="${TOP + 31}" font-size="12.5" fill="${a.attn}">agent · listening</text>
+    <text class="${between(C.req[1], C.a2[1])}" x="${chipX + 31}" y="${TOP + 31}" font-size="12.5" fill="${a.attn}">agent · working</text>
+    <text class="${between(C.a2[1], C.b2[0])}" x="${chipX + 31}" y="${TOP + 31}" font-size="12.5" fill="${a.attn}">agent · listening</text>
+    <text class="${between(C.b2[0], C.b2[1])}" x="${chipX + 31}" y="${TOP + 31}" font-size="12.5" fill="${a.attn}">agent · working</text>
+    <text class="${show(C.b2[1], 'none')}" x="${chipX + 31}" y="${TOP + 31}" font-size="12.5" fill="${a.attn}">agent · listening</text>
+    <rect x="${RX + RW - 164}" y="${TOP + 11}" width="148" height="31" rx="15.5" fill="${a.finishBg}"/>
+    <text x="${RX + RW - 90}" y="${TOP + 31}" text-anchor="middle" font-size="13" font-weight="600" fill="${a.finishFg}">Finish review</text>
+    <path d="M${RX} ${TOP + HEAD + 0.5}h${RW}" stroke="${a.hair}"/>
+
+    <rect x="${X + 0.5}" y="${FC + 0.5}" width="${XR - X - 1}" height="${WH - HEAD - 36}" rx="10" fill="${a.paper}" stroke="${a.hair}"/>
+    <path d="M${X + 1} ${FC + 10}a9 9 0 0 1 9 -9H${XR - 10}a9 9 0 0 1 9 9V${FC + 36}H${X + 1}z" fill="${a.fill}"/>
+    <path d="M${X} ${FC + 36.5}h${XR - X}" stroke="${a.hair}"/>
+    <path d="M${X + 16} ${FC + 15}l4 4 4-4" fill="none" stroke="${a.ink3}" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
+    <text x="${X + 34}" y="${FC + 23}" font-family="${MONO}" font-size="13.5" fill="${a.ink3}">src/scheduler/<tspan font-weight="700" fill="${a.ink}">streak.ts</tspan></text>
+    <text x="${X + 238}" y="${FC + 23}" font-size="12.5" fill="${a.add}">added</text>
+    <text x="${XR - 18}" y="${FC + 23}" text-anchor="end" font-family="${MONO}" font-size="12.5" fill="${a.add}">+18</text>
+
+    ${rows.map(([n, segs], i) => codeRow(X, XR, CODE_TOP + i * ROW, '', n, segs, 'add')).join('\n    ')}
+    ${codeRow(X, XR, CODE_TOP + 3 * ROW, '', 13, L13_OLD, 'add', between(-1, C.a2[1]))}
+    ${codeRow(X, XR, CODE_TOP + 3 * ROW, '', 13, L13_NEW, 'add', show(C.a2[1], 'none'))}
+    <rect class="${between(C.a2[1], C.a2[1] + 5)}" x="${X + 1}" y="${CODE_TOP + 3 * ROW}" width="${XR - X - 2}" height="${ROW}" fill="${a.add}" fill-opacity="0.16"/>
+
+    <!-- juno's thread: open while the two talk, then folded to its header -->
+    <g class="${show(C.a1[1])}">
+      <g class="${between(C.a1[1], C.fold)}">
+        ${card(A, aGrow, C.fold)}
+        ${threadHead(A, 0, 'General reviewer agent · line 13')}
+        <text class="${between(C.a1[1], C.a3)}" x="${XR - 34}" y="${A + 23}" text-anchor="end" font-size="12.5" fill="${a.ink3}">with the agent</text>
+        <path d="M${X + 15} ${A + 36.5}h${XR - X - 30}" stroke="${a.hair}"/>
+        ${message(A + 38, 0, 'just now', QA[0]!, C.a1[1])}
+        ${message(A + 38 + MSG, 'agent', 'fixed line 13', QA[1]!, C.a2[1], 3)}
+        ${message(A + 38 + 2 * MSG, 0, 'just now', QA[2]!, C.a3, 2.5)}
+      </g>
+      <g class="${show(C.fold, 'none')}">
+        <rect x="${X + 14.5}" y="${A + 0.5}" width="${XR - X - 29}" height="${A_FOLD - 1}" rx="10" fill="${a.paper}" stroke="${a.hair}"/>
+        ${threadHead(A, 0, 'General reviewer agent · line 13')}
+      </g>
+      <g class="${show(C.a3 + 1, 'none')}">
+        <circle cx="${XR - 150}" cy="${A + 18.5}" r="6.5" fill="${a.add}"/>
+        <path d="M${XR - 153} ${A + 18.5}l2 2 4-4.4" fill="none" stroke="#fff" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+        <text x="${XR - 34}" y="${A + 23}" text-anchor="end" font-size="12.5" font-weight="500" fill="${a.add}">Resolved by juno</text>
+      </g>
+    </g>
+
+    <!-- under it, line 14 and remy's thread, which ride up when juno's folds -->
+    <g class="${below}">
+      ${codeRow(X, XR, L14, '', 14, L14_SEGS, 'add')}
+      <g class="${show(C.b1[1])}">
+        ${card(B, bGrow, RESET + 2)}
+        ${threadHead(B, 1, 'AI slop reviewer agent · line 14')}
+        <text class="${between(C.b1[1], C.needs)}" x="${XR - 34}" y="${B + 23}" text-anchor="end" font-size="12.5" fill="${a.ink3}">with the agent</text>
+        <g class="${show(C.needs, 'scale(0.9)')}" style="transform-origin:${XR - 92}px ${B + 18}px">
+          <rect x="${XR - 176}" y="${B + 7.5}" width="142" height="22" rx="11" fill="${a.attnWash}" stroke="${a.attnLine}"/>
+          <circle cx="${XR - 163}" cy="${B + 18.5}" r="3.5" fill="${amber}"/>
+          <text x="${XR - 154}" y="${B + 22.5}" font-size="12" font-weight="600" fill="${a.attn}">Needs your decision</text>
+        </g>
+        <path d="M${X + 15} ${B + 36.5}h${XR - X - 30}" stroke="${a.hair}"/>
+        ${message(B + 38, 1, 'just now', QB[0]!, C.b1[1])}
+        ${message(B + 38 + MSG, 'agent', 'just now', QB[1]!, C.b2[1], 3)}
+        ${message(B + 38 + 2 * MSG, 1, 'asked you', QB[2]!, C.b3, 2.5)}
+      </g>
+    </g>
+  </g>
+  <rect x="${RX + 0.5}" y="${TOP + 0.5}" width="${RW - 1}" height="${WH - 1}" rx="11.5" fill="none" stroke="${dark ? EDGE_DARK : a.hair}"/>
+  ${sheet}
+  ${pointer(addX + 60, HY + 2, C.inAdd, C.clickAdd)}
+  ${pointer(SX + SW - 190, SY + 446, C.inStart, C.clickStart)}`
+
+  /* ── the messages ── */
+  const termEdge = PAD + TW - 10
+  const reviewEdge = X + 6
+  const taskY = (i: number) => TOP + 295 + i * 24
+  const flights = `
+  ${flight({ x: SX + 10, y: SY + 444 }, { x: termEdge, y: TOP + 275 }, C.req[0], C.req[1], 'start 3 reviewers', a.brand, 'arrow-brand')}
+  ${flight({ x: termEdge, y: taskY(0) }, { x: reviewEdge, y: A + 64 }, C.a1[0], C.a1[1], 'juno · line 13', rev[0]!, 'arrow-rev0')}
+  ${flight({ x: termEdge, y: taskY(1) }, { x: reviewEdge, y: B + pushAt(C.b1[1]) + 64 }, C.b1[0], C.b1[1], 'remy · line 14', rev[1]!, 'arrow-rev1')}
+  ${flight({ x: termEdge, y: TOP + 453 }, { x: reviewEdge, y: A + 38 + MSG + 26 }, C.a2[0], C.a2[1], 'fix + answer', a.brand, 'arrow-brand')}
+  ${flight({ x: termEdge, y: TOP + 485 }, { x: reviewEdge, y: B + pushAt(C.b2[1]) + 38 + MSG + 26 }, C.b2[0], C.b2[1], 'answer', a.brand, 'arrow-brand')}`
+
+  // Arrowheads in the reviewers' colours, for their flights.
+  const markers = rev
+    .map(
+      (c, i) =>
+        `<marker id="arrow-rev${i}" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse" markerUnits="userSpaceOnUse"><path d="M2 1.5L8 5L2 8.5" fill="none" stroke="${c}" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></marker>`,
+    )
+    .join('')
+
+  return svg(
+    'Reviewer agents in Diffo. Your agent picked a set of reviewer agents for the change; you open Add reviewer, the set is already ticked, and Start hands it to your agent, which starts three reviewers as sub-agents. Their faces join the top bar. juno, the General reviewer, comments on line 13; your agent fixes it and answers, and juno confirms and resolves the thread. remy, the AI slop reviewer, flags a TODO on line 14; your agent disagrees, and remy hands the thread to you, marked Needs your decision. iris, on code comments, finds nothing and is done.',
+    `<defs>${markers}</defs>\n    ${term}\n    ${review}\n    ${flights}`,
+  )
+}
+
 const root = join(import.meta.dirname, '..')
 for (const [suffix, theme] of [
   ['', light],
@@ -2030,7 +2529,11 @@ for (const [suffix, theme] of [
     join(root, 'docs/assets', `readme-importance${suffix}.svg`),
     importance(app, !!suffix),
   )
+  writeFileSync(
+    join(root, 'docs/assets', `readme-reviewers${suffix}.svg`),
+    reviewers(app, !!suffix),
+  )
 }
 console.log(
-  'wrote assets/readme-hero{,-dark}.svg and docs/assets/readme-{demo,layers,pr,importance}{,-dark}.svg',
+  'wrote assets/readme-hero{,-dark}.svg and docs/assets/readme-{demo,layers,pr,importance,reviewers}{,-dark}.svg',
 )
