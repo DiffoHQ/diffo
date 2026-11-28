@@ -13,6 +13,7 @@ import { GhClient } from './forge/github/gh.js'
 import { parseRemoteUrl, parseTarget, prUrl } from './forge/target.js'
 import type { PrRef } from './forge/types.js'
 import { DiffoDb } from './server/db.js'
+import { failureReason } from './server/failureReason.js'
 import {
   findRepoRoot,
   getBranchName,
@@ -65,6 +66,7 @@ import {
   ensureServer,
   fetchHealth,
   retireServer,
+  ServerStartError,
   settleExistingServer,
 } from './serverLifecycle.js'
 import { apiUrl, reviewUrl } from './serverUrl.js'
@@ -110,7 +112,7 @@ let openKind: ReviewKind | undefined =
  * a fresh open spawns stays quiet, and its failure reaches that CLI as one. The
  * send's own timeout bounds the wait, and nothing here changes how an open fails.
  */
-async function reportOpenFailure(step: FailedStep): Promise<void> {
+async function reportOpenFailure(step: FailedStep, err?: unknown): Promise<void> {
   if (command.kind !== 'run' || process.env.DIFFO_DAEMON) return
   try {
     const db = new DiffoDb()
@@ -118,6 +120,9 @@ async function reportOpenFailure(step: FailedStep): Promise<void> {
       const telemetry = cliTelemetry(db)
       telemetry.reviewFailed({
         step,
+        ...(err === undefined
+          ? {}
+          : { reason: err instanceof ServerStartError ? err.reason : failureReason(err) }),
         agent: detectHarness() ?? 'unknown',
         ...(openKind ? { kind: openKind } : {}),
       })
@@ -359,7 +364,7 @@ async function discoverServer(): Promise<{ port: number; pid: number | null } | 
       SRC_STAMP,
     )
   } catch (err) {
-    await reportOpenFailure('server_start')
+    await reportOpenFailure('server_start', err)
     fail((err as Error).message)
   } finally {
     db.close()
@@ -426,7 +431,8 @@ async function requireServer(
     })
   } catch (err) {
     const message = (err as Error).message
-    await reportOpenFailure(MISSING_BASE.test(message) ? 'base' : 'server_start')
+    if (MISSING_BASE.test(message)) await reportOpenFailure('base')
+    else await reportOpenFailure('server_start', err)
     fail(message)
   }
 }
@@ -1618,7 +1624,7 @@ async function openPullRequest(
     }
     prepared = prepareWorktree(mainRepo, ref, baseBranch, db)
   } catch (err) {
-    await reportOpenFailure('pr_checkout')
+    await reportOpenFailure('pr_checkout', err)
     fail(`could not check the pull request out: ${(err as Error).message}`)
   } finally {
     db.close()
@@ -1786,7 +1792,7 @@ try {
     console.log(`→ ${reviewUrl(err.holder.port)}`)
     process.exit(0)
   }
-  await reportOpenFailure('server_start')
+  await reportOpenFailure('server_start', err)
   throw err
 }
 

@@ -36,6 +36,9 @@ export interface FileChange {
   kind: FileKind
   staged: boolean
   hunks: Hunk[]
+  /** The whole diff was too big to hold, and this file's patch was left out:
+   * shown as a file that changed, without its lines. */
+  tooLarge?: true
   /**
    * Head-side line count, filled in server-side when the head file is readable
    * text. Sizes the expandable gap below the last hunk; null/absent means unknown

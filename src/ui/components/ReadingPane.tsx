@@ -1192,7 +1192,9 @@ export function FileBody({
     return (
       <>
         {fileSection}
-        <div className="file-stub">binary file changed</div>
+        <div className="file-stub">
+          {file.tooLarge ? 'Too large to load in the review.' : 'binary file changed'}
+        </div>
       </>
     )
   }

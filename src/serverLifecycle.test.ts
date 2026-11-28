@@ -1,3 +1,5 @@
+import type { ChildProcess } from 'node:child_process'
+import { EventEmitter } from 'node:events'
 import {
   appendFileSync,
   existsSync,
@@ -20,6 +22,7 @@ import {
   retireServer,
   rotateLog,
   type ServerHealth,
+  ServerStartError,
   serverSpawnArgs,
   settleExistingServer,
 } from './serverLifecycle.js'
@@ -208,7 +211,11 @@ describe('ensureServer', () => {
     const running = await fakeServer({ repo: REPO, version: V })
     db.claimServer(REPO, running.port, 999999)
     let spawned = 0
-    const port = await ensureServer(ensureOpts(path), { spawnDaemon: () => spawned++ })
+    const port = await ensureServer(ensureOpts(path), {
+      spawnDaemon: () => {
+        spawned++
+      },
+    })
     expect(port).toBe(running.port)
     expect(spawned).toBe(0)
     expect(running.shutdownCalls()).toBe(0)
@@ -291,6 +298,106 @@ describe('ensureServer', () => {
     expect(err?.message).toContain("base branch 'nope' doesn't exist in this repo")
     expect(err?.message).not.toContain('older run')
   })
+
+  it('waits on for a daemon still running past the usual limit, and says so', async () => {
+    const { db, path } = tempDb()
+    const statuses: string[] = []
+    const port = await ensureServer(
+      ensureOpts(path, { spawnTimeoutMs: 200, onStatus: (l: string) => statuses.push(l) }),
+      {
+        spawnDaemon: () => {
+          setTimeout(() => {
+            void fakeServer({ repo: REPO, version: V }).then((fresh) => {
+              db.claimServer(REPO, fresh.port, process.pid)
+            })
+          }, 600)
+          return new EventEmitter() as ChildProcess
+        },
+      },
+    )
+    expect((await fetchHealth(port))?.repo).toBe(REPO)
+    expect(statuses.some((s) => s.includes('still starting'))).toBe(true)
+  })
+
+  it('stops waiting the moment the daemon exits, and quotes its error, not the Node banner', async () => {
+    const { path } = tempDb()
+    const logPath = join(tmpdir(), `diffo-lifecycle-crash-${process.pid}.log`)
+    cleanups.push(() => rmSync(logPath, { force: true }))
+    const started = Date.now()
+    const err = await ensureServer(
+      ensureOpts(path, { spawnTimeoutMs: 5000, stillStartingMs: 5000, logPath }),
+      {
+        spawnDaemon: () => {
+          const child = new EventEmitter() as ChildProcess
+          appendFileSync(
+            logPath,
+            [
+              'node:internal/child_process:1119',
+              "TypeError: Cannot read properties of undefined (reading 'x')",
+              '    at startServer (src/server/index.ts:1:1)',
+              '',
+              'Node.js v24.14.1',
+              '',
+            ].join('\n'),
+          )
+          setTimeout(() => child.emit('exit', 1, null), 50)
+          return child
+        },
+      },
+    ).then(
+      () => null,
+      (e: unknown) => e as ServerStartError,
+    )
+    expect(Date.now() - started).toBeLessThan(2000)
+    expect(err?.message).toContain("TypeError: Cannot read properties of undefined (reading 'x')")
+    expect(err?.message).not.toContain('Node.js v')
+    expect(err?.reason).toBe('exited')
+  })
+
+  it('a daemon still starting when the wait runs out is a timeout', async () => {
+    const { path } = tempDb()
+    const err = await ensureServer(
+      ensureOpts(path, { spawnTimeoutMs: 300, stillStartingMs: 300 }),
+      {
+        spawnDaemon: () => new EventEmitter() as ChildProcess,
+      },
+    ).then(
+      () => null,
+      (e: unknown) => e,
+    )
+    expect(err).toBeInstanceOf(ServerStartError)
+    expect((err as ServerStartError).reason).toBe('timeout')
+  })
+
+  it('a daemon that exited is named by its last word, or as exited', async () => {
+    const { path } = tempDb()
+    const logPath = join(tmpdir(), `diffo-lifecycle-exit-${process.pid}.log`)
+    cleanups.push(() => rmSync(logPath, { force: true }))
+    const reasonFor = async (lastWord: string) => {
+      const err = await ensureServer(ensureOpts(path, { spawnTimeoutMs: 300, logPath }), {
+        spawnDaemon: () => {
+          const child = new EventEmitter() as ChildProcess
+          appendFileSync(logPath, `${lastWord}\n`)
+          setTimeout(() => child.emit('exit', 1, null), 20)
+          return child
+        },
+      }).then(
+        () => null,
+        (e: unknown) => e,
+      )
+      return (err as ServerStartError).reason
+    }
+    const crash = [
+      '<ref *1> Error: spawnSync git ENOBUFS',
+      '    at getRawDiff (src/server/git.ts:241:10)',
+      "  code: 'ENOBUFS',",
+      '}',
+      '',
+      'Node.js v24.14.1',
+    ].join('\n')
+    expect(await reasonFor(crash)).toBe('too_large')
+    expect(await reasonFor('TypeError: something unexpected')).toBe('exited')
+  })
 })
 
 describe('settleExistingServer', () => {
@@ -336,7 +443,12 @@ describe('settleExistingServer', () => {
       pid: 4242,
     })
     db.claimServer(REPO, stuck.port, 999999)
-    await expect(settleExistingServer(db, REPO, V)).rejects.toThrow(/would not step aside/)
+    const err = await settleExistingServer(db, REPO, V).then(
+      () => null,
+      (e: unknown) => e,
+    )
+    expect((err as Error).message).toMatch(/would not step aside/)
+    expect((err as ServerStartError).reason).toBe('stuck')
     expect(db.getServer(REPO)).toMatchObject({ port: stuck.port })
   }, 15_000)
 })
@@ -420,9 +532,13 @@ describe('ensureServer — a stuck old build stops everything', () => {
     db.claimServer(REPO, stuck.port, 999999)
 
     let spawned = 0
-    await expect(ensureServer(ensureOpts(path), { spawnDaemon: () => spawned++ })).rejects.toThrow(
-      /stuck on port|would not step aside/,
-    )
+    await expect(
+      ensureServer(ensureOpts(path), {
+        spawnDaemon: () => {
+          spawned++
+        },
+      }),
+    ).rejects.toThrow(/stuck on port|would not step aside/)
     expect(spawned).toBe(0)
     expect(db.getServer(REPO)).toMatchObject({ port: stuck.port })
   }, 15_000)

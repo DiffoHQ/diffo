@@ -1,5 +1,6 @@
 import { createHash } from 'node:crypto'
 import type { DiffLine, FileChange, FileKind, FileStatus, Hunk } from '../shared/types.js'
+import { TOO_LARGE_MARKER } from './git.js'
 
 const IMAGE_EXTENSIONS = new Set([
   '.png',
@@ -37,6 +38,8 @@ interface SectionMeta {
   renamedTo: string | null
   binary: boolean
   symlink: boolean
+  /** The diff was too big to hold and this file's patch was left out. */
+  tooLarge: boolean
 }
 
 function parseSectionMeta(section: string): SectionMeta {
@@ -46,7 +49,8 @@ function parseSectionMeta(section: string): SectionMeta {
   const symlink =
     /^(?:new file|deleted file|new|old) mode 120000$/m.test(section) ||
     /^index [0-9a-f.]+ 120000$/m.test(section)
-  return { renamedFrom, renamedTo, binary, symlink }
+  const tooLarge = section.split('\n').includes(TOO_LARGE_MARKER)
+  return { renamedFrom, renamedTo, binary, symlink, tooLarge }
 }
 
 function splitSections(patch: string): string[] {
@@ -268,15 +272,19 @@ export function parsePatch(patch: string): FileChange[] {
       status = 'modified'
     }
 
-    const kind: FileKind = meta.symlink
-      ? 'symlink'
-      : meta.binary
-        ? isImagePath(path)
-          ? 'image'
-          : 'binary'
-        : isImagePath(path)
-          ? 'image'
-          : 'text'
+    // A file left out of a diff too big to hold has no hunks, like a binary one,
+    // and is reviewed like one: as a file that changed, without its lines.
+    const kind: FileKind = meta.tooLarge
+      ? 'binary'
+      : meta.symlink
+        ? 'symlink'
+        : meta.binary
+          ? isImagePath(path)
+            ? 'image'
+            : 'binary'
+          : isImagePath(path)
+            ? 'image'
+            : 'text'
 
     const seen = new Map<string, number>()
     /*
@@ -286,27 +294,36 @@ export function parsePatch(patch: string): FileChange[] {
      * roll-up and can never satisfy `isDone`. It is also markup that can carry
      * `<script>` and external references, which is what a review is for.
      */
-    const hunks: Hunk[] = meta.binary
-      ? []
-      : parseHunks(sectionLines).map((hunk) => {
-          const lines = hunk.lines
-          const contentKey = lines
-            .filter((l) => l.kind !== 'context')
-            .map((l) => `${l.kind}:${l.text}`)
-            .join('\n')
-          const occurrence = seen.get(contentKey) ?? 0
-          seen.set(contentKey, occurrence + 1)
-          return {
-            id: hunkId(path, lines, occurrence),
-            path,
-            oldStart: hunk.oldStart,
-            newStart: hunk.newStart,
-            lines,
-            ...(hunk.context === null ? {} : { context: hunk.context }),
-          }
-        })
+    const hunks: Hunk[] =
+      meta.binary || meta.tooLarge
+        ? []
+        : parseHunks(sectionLines).map((hunk) => {
+            const lines = hunk.lines
+            const contentKey = lines
+              .filter((l) => l.kind !== 'context')
+              .map((l) => `${l.kind}:${l.text}`)
+              .join('\n')
+            const occurrence = seen.get(contentKey) ?? 0
+            seen.set(contentKey, occurrence + 1)
+            return {
+              id: hunkId(path, lines, occurrence),
+              path,
+              oldStart: hunk.oldStart,
+              newStart: hunk.newStart,
+              lines,
+              ...(hunk.context === null ? {} : { context: hunk.context }),
+            }
+          })
 
-    files.push({ path, oldPath, status, kind, staged: false, hunks })
+    files.push({
+      path,
+      oldPath,
+      status,
+      kind,
+      staged: false,
+      hunks,
+      ...(meta.tooLarge ? { tooLarge: true as const } : {}),
+    })
   }
   return files
 }

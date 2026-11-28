@@ -6,6 +6,7 @@ import type { HarnessName } from '../agentSession.js'
 import { HARNESS_NAMES } from '../agentSession.js'
 import type { ChangesetSpec } from '../shared/types.js'
 import { VERSION } from '../version.js'
+import type { FailureReason } from './failureReason.js'
 
 /**
  * Anonymous usage data, Homebrew-style: on by default, announced in the review
@@ -247,6 +248,8 @@ export type LayersAskKind = 'agent' | 'built-in' | 'custom' | 'one-time' | 'add'
 
 export interface FailedProps {
   step: FailedStep
+  /** What went wrong at that step, one fixed word; absent where there is no error to read. */
+  reason?: FailureReason
   agent: AgentName
   /** Unknown when the open failed before it could tell, e.g. outside a repository. */
   kind?: ReviewKind
@@ -392,6 +395,7 @@ export class Telemetry {
     if (!this.armed()) return
     this.send('review_failed', {
       step: props.step,
+      ...(props.reason ? { reason: props.reason } : {}),
       agent: props.agent,
       ...(props.kind ? { kind: props.kind } : {}),
     })

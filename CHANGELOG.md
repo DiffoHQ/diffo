@@ -19,6 +19,21 @@ Until 1.0, minor versions may break things. When they do, the entry says how to 
   reply from, and **Previous** / **Next** at the bottom move between layers.
   On a wider screen nothing changes.
 
+### Fixed
+
+- **A huge diff opens instead of failing.** A change whose diff was over
+  50 MB (a generated file, a vendored tree) crashed the review server before
+  the review opened. Now the review opens, and a file too big to show reads
+  **Too large to load in the review.** in place of its lines.
+- **A slow start on a large repo no longer fails.** When the review server was
+  still starting after 8 seconds, `diffo` gave up with an error, and a retry
+  found the server already up. Now it says it is still starting and keeps
+  waiting, for up to a minute more. A server that crashes ends the wait at
+  once, and the error quotes what went wrong, not Node's version line.
+- **Usage data says why an open failed.** `review_failed` now carries a
+  `reason`, one fixed word such as `timeout`, `too_large` or `fetch`, never the
+  error's text. See [docs/telemetry.md](docs/telemetry.md).
+
 ## [0.35.0] — 2026-11-26
 
 ### Added
