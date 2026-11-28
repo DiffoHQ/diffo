@@ -7,9 +7,9 @@
  * <style> and @keyframes inside it run. That is the only motion a README can have, and
  * it is all here. No external fonts or images: an SVG loaded as <img> cannot fetch.
  *
- *   pnpm readme:art     → assets/readme-hero{,-dark}.svg, docs/assets/readme-{demo,layers,pr,importance}{,-dark}.svg
+ *   pnpm readme:art     → assets/readme-hero{,-dark}.svg, docs/assets/readme-{demo,layers,pr,importance,reviewers}{,-dark}.svg
  */
-import { writeFileSync } from 'node:fs'
+import { readFileSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 
 type Theme = {
@@ -2015,6 +2015,922 @@ function importance(a: App, dark: boolean) {
   )
 }
 
+/* ── Reviewer agents: a second AI reads the change, your agent answers ── */
+
+/*
+ * The review is open and the author agent has picked a set of reviewer agents for
+ * the change. You open + Add reviewer, the set is already ticked, and Start hands it
+ * to the author agent, which starts each reviewer as a sub-agent. Three faces join
+ * the top bar. olin finds a real bug; the author agent fixes it and answers, olin
+ * confirms and resolves. vera flags a TODO, the author agent disagrees, and vera
+ * hands the thread to you. You answer in the thread, the author agent acts on your
+ * word, and vera resolves. hana finds nothing.
+ *
+ * Drawn in the review UI's current look (src/ui/styles.css): the warm paper and
+ * canvas, Geist and Geist Mono embedded (an SVG inside <img> cannot fetch), solid ink
+ * buttons, and the reviewers' own colours. The clock is in seconds.
+ */
+const REVIEWERS_LOOP = 30
+
+type Ui = {
+  canvas: string
+  paper: string
+  fill: string
+  fill2: string
+  head: string // a thread's header strip
+  ink: string
+  ink2: string
+  ink3: string
+  hair: string
+  brand: string
+  solid: string
+  solidFg: string
+  acc: string
+  accWash: string
+  attn: string
+  attnWash: string
+  attnLine: string
+  add: string
+  addRow: string
+  rev: string[]
+  revWash: string[]
+  k: string
+  f: string
+  n: string
+  c: string
+  stage: [string, string]
+}
+
+const uiLight: Ui = {
+  canvas: '#f4f3f0',
+  paper: '#fdfcfb',
+  fill: '#f1efeb',
+  fill2: '#e7e5df',
+  head: '#eeece7',
+  ink: '#1f1d1a',
+  ink2: '#55524c',
+  ink3: '#6b675f',
+  hair: '#e4e2dc',
+  brand: '#1a7f37',
+  solid: '#1f1d1a',
+  solidFg: '#fdfcfb',
+  acc: '#3d4ccf',
+  accWash: 'rgba(61,76,207,0.06)',
+  attn: '#8a5700',
+  attnWash: '#f7eedb',
+  attnLine: '#e6cfa0',
+  add: '#1f883d',
+  addRow: 'rgba(46,160,67,0.13)',
+  rev: ['#6639ba', '#0b62b8', '#0c6f66', '#a82363', '#b0481c', '#5a6e00'],
+  revWash: [
+    'rgba(102,57,186,0.09)',
+    'rgba(11,98,184,0.09)',
+    'rgba(12,111,102,0.1)',
+    'rgba(168,35,99,0.08)',
+    'rgba(176,72,28,0.08)',
+    'rgba(90,110,0,0.09)',
+  ],
+  k: '#d73a49',
+  f: '#6f42c1',
+  n: '#005cc5',
+  c: '#6a737d',
+  stage: ['#ebe9e4', '#e3e0d9'],
+}
+
+const uiDark: Ui = {
+  canvas: '#161513',
+  paper: '#1d1c1a',
+  fill: '#272623',
+  fill2: '#33312d',
+  head: '#2a2926',
+  ink: '#efede9',
+  ink2: '#c2bfb8',
+  ink3: '#9c988f',
+  hair: '#33312d',
+  brand: '#3fb950',
+  solid: '#efede9',
+  solidFg: '#161513',
+  acc: '#96a2ff',
+  accWash: 'rgba(150,162,255,0.08)',
+  attn: '#e0b050',
+  attnWash: '#372d16',
+  attnLine: '#5c4818',
+  add: '#3fb950',
+  addRow: 'rgba(46,160,67,0.17)',
+  rev: ['#b391f5', '#6cb6ff', '#5ccdbd', '#f28cb8', '#ff9a76', '#b8cf5a'],
+  revWash: [
+    'rgba(179,145,245,0.14)',
+    'rgba(108,182,255,0.14)',
+    'rgba(92,205,189,0.13)',
+    'rgba(242,140,184,0.13)',
+    'rgba(255,154,118,0.13)',
+    'rgba(184,207,90,0.13)',
+  ],
+  k: '#f97583',
+  f: '#b392f0',
+  n: '#79b8ff',
+  c: '#8b949e',
+  stage: ['#2a2824', '#1f1e1b'],
+}
+
+/* Geist and Geist Mono, the review UI's faces, read once and embedded in the file. */
+const fontFaces = (() => {
+  const font = (pkg: string, file: string) =>
+    readFileSync(
+      join(import.meta.dirname, '..', 'node_modules/@fontsource-variable', pkg, 'files', file),
+    ).toString('base64')
+  return `@font-face { font-family: 'G'; font-weight: 100 900; src: url(data:font/woff2;base64,${font('geist', 'geist-latin-wght-normal.woff2')}) format('woff2'); }
+    @font-face { font-family: 'GM'; font-weight: 100 900; src: url(data:font/woff2;base64,${font('geist-mono', 'geist-mono-latin-wght-normal.woff2')}) format('woff2'); }`
+})()
+const G = `'G', ${SANS}`
+const GM = `'GM', ${MONO}`
+
+type Tok = [kind: '' | 'k' | 'f' | 'n' | 'c', text: string]
+
+function reviewers(u: Ui, dark: boolean) {
+  const LOOP_S = REVIEWERS_LOOP
+  // The kit draws its flight labels and pointer from an App palette: lend it ours.
+  const a: App = {
+    ...(dark ? appDark : appLight),
+    paper: u.paper,
+    ink: u.ink,
+    ink2: u.ink2,
+    ink3: u.ink3,
+    hair: u.hair,
+    brand: u.brand,
+  }
+  const {
+    W,
+    H,
+    PAD,
+    TW,
+    RX,
+    RW,
+    TOP,
+    WH,
+    show,
+    between,
+    type,
+    flight,
+    keyframes,
+    tx,
+    mono,
+    tline,
+    bullet,
+    termFrame,
+    amber,
+    svg,
+    pointer,
+    css,
+  } = kit(a, dark, LOOP_S)
+
+  const pct = (s: number) => Number(((s / LOOP_S) * 100).toFixed(2))
+  css.push(fontFaces)
+  css.push(
+    `.spin { animation: spin 0.9s linear infinite; transform-box: fill-box; transform-origin: center; }
+    @keyframes spin { to { transform: rotate(360deg); } }`,
+  )
+
+  const R = [
+    { name: 'olin', role: 'General' },
+    { name: 'vera', role: 'AI slop' },
+    { name: 'hana', role: 'Code comments' },
+    { name: 'ivy', role: 'Security' },
+    { name: 'milo', role: 'Tests' },
+    { name: 'gus', role: 'Blast radius' },
+  ]
+
+  // The scene's clock, in seconds.
+  const C = {
+    inAdd: 0.8,
+    clickAdd: 1.7,
+    sheet: [2.0, 7.3] as const,
+    ticks: [3.7, 4.4, 5.1] as const, // you add Blast radius, Security and Tests
+    clickStart: 6.5,
+    req: [6.9, 7.9] as const, // the request crosses to the author agent
+    poll: 8.0,
+    task: 8.2, // + 0.2 i: each reviewer starts
+    face: 8.3, // + 0.25 i: each face joins the top bar
+    panel: [8.4, 12.9] as const, // the reviewer agents sidebar, open while they all work
+    a1: [9.6, 10.5] as const, // olin's comment lands
+    b1: [10.8, 11.7] as const, // vera's comment lands
+    hanaDone: 11.9,
+    gusDone: 12.3,
+    fix: 13.1,
+    edit: 13.5,
+    a2: [13.8, 14.7] as const, // the fix and the answer land
+    a3: 15.5, // olin confirms
+    ivyDone: 15.8,
+    fold: 16.5, // olin's thread folds to its header
+    b2: [16.8, 17.7] as const, // the author agent answers vera
+    miloDone: 18.0,
+    b3: 18.5, // vera hands it to you
+    inReply: 19.0,
+    clickReply: 19.7,
+    typed: [20.0, 21.7] as const,
+    sent: 21.9,
+    b4: [22.0, 22.9] as const, // your word crosses to the author agent
+    yours: 23.0,
+    drop: 23.3,
+    b5: [23.6, 24.5] as const, // the TODO goes, and the answer lands
+    b6: 25.3, // vera resolves
+  }
+  // When each reviewer is through: its threads settled, or nothing to say.
+  const doneAt = [C.a3, C.b6, C.hanaDone, C.ivyDone, C.miloDone, C.gusDone]
+  // What each one tells the sidebar it is on, until it is through.
+  const doing = [
+    'Reading streak.ts…',
+    'Reading streak.ts…',
+    'Reading the comments in streak.ts…',
+    'Tracing where history comes from…',
+    'Running the streak tests…',
+    'Checking callers of streak()…',
+  ]
+  const DOTS = 0.6 // how long someone is seen typing before their message lands
+
+  /* ── the author agent's terminal ── */
+  const taskRow = (i: number) => {
+    const y = TOP + 280 + i * 20
+    const r = R[i]!
+    const found = i === 0 ? C.a1[0] : i === 1 ? C.b1[0] : doneAt[i]!
+    return `<g class="${show(pct(C.task + 0.2 * i))}">
+      <circle cx="${tx + 22}" cy="${y - 5}" r="3.5" fill="${u.rev[i]}"/>
+      <text x="${tx + 34}" y="${y}" ${mono} fill="${TERM.ink}"><tspan font-weight="700">Task</tspan>(${r.role} · ${r.name})</text>
+    </g>
+    <text class="${between(pct(C.task + 0.2 * i), pct(found))}" x="${PAD + TW - 22}" y="${y}" text-anchor="end" ${mono} fill="${TERM.dim}">reading…</text>
+    <text class="${show(pct(found), 'none')}" x="${PAD + TW - 22}" y="${y}" text-anchor="end" ${mono} fill="${i < 2 ? TERM.dim : TERM.add}">${i < 2 ? '1 thread' : 'done ✓'}</text>`
+  }
+  const term = termFrame(
+    `
+    <rect x="${tx - 8}" y="${TOP + 118}" width="${TW - 28}" height="26" fill="${TERM.promptBg}"/>
+    <text x="${tx}" y="${TOP + 136}" ${mono} fill="${TERM.dim}">❯ <tspan fill="${TERM.ink}" font-weight="700">/diffo</tspan></text>
+    ${bullet(TOP + 170, 'Review is open. I’m listening.', 's-on')}
+    <text x="${tx + 18}" y="${TOP + 192}" ${mono} fill="${TERM.link}" text-decoration="underline">http://localhost:4949</text>
+    <g>
+      <circle cx="${tx + 4}" cy="${TOP + 219}" r="3.5" fill="${TERM.ink}"/>
+      <text x="${tx + 18}" y="${TOP + 224}" ${mono} fill="${TERM.ink}">diffo reviewer --set agent-written</text>
+    </g>
+    <text class="${between(-1, pct(C.poll) - 0.5)}" x="${tx}" y="${TOP + 258}" ${mono} fill="${TERM.claude}">✻ Listening for your comments…</text>
+    <g class="${show(pct(C.poll))}">
+      <circle cx="${tx + 4}" cy="${TOP + 253}" r="3.5" fill="${TERM.ink}"/>
+      <text x="${tx + 18}" y="${TOP + 258}" ${mono} fill="${TERM.ink}">Starting 6 reviewer agents</text>
+    </g>
+    ${R.map((_, i) => taskRow(i)).join('\n    ')}
+
+    ${bullet(TOP + 410, 'olin is right about line 4. Fixing.', show(pct(C.fix)))}
+    <g class="${show(pct(C.edit))}">
+      <circle cx="${tx + 4}" cy="${TOP + 435}" r="3.5" fill="${TERM.add}"/>
+      <text x="${tx + 18}" y="${TOP + 440}" ${mono} fill="${TERM.ink}"><tspan font-weight="700">Update</tspan>(src/scheduler/streak.ts)</text>
+    </g>
+    ${tline(TOP + 462, '  ⎿ compares days, not times · +1 test', show(pct(C.edit) + 1), TERM.dim)}
+    ${bullet(TOP + 492, 'vera, line 5: the issue asked for this.', show(pct(C.b2[0]) - 1.5))}
+    ${bullet(TOP + 520, 'You, on line 5: drop the TODO.', show(pct(C.yours)))}
+    <g class="${show(pct(C.drop))}">
+      <circle cx="${tx + 4}" cy="${TOP + 545}" r="3.5" fill="${TERM.add}"/>
+      <text x="${tx + 18}" y="${TOP + 550}" ${mono} fill="${TERM.ink}"><tspan font-weight="700">Update</tspan>(src/scheduler/streak.ts)</text>
+    </g>
+    <text class="${show(pct(C.b6) + 1)}" x="${tx}" y="${TOP + 580}" ${mono} fill="${TERM.claude}">✻ Listening for your comments…</text>`,
+  )
+
+  /* ── geometry ── */
+  const HY = TOP + 24 // the header's middle
+  const MAIN = TOP + 48 // the paper sheet under the header
+  const X0 = RX + 24 // the file card
+  const X1 = RX + RW - 24
+  const FILE = MAIN + 12
+  const ROW = 26
+  const CODE = FILE + 40
+  const T0 = X0 + 12 // a thread card, inset in the code
+  const T1 = X1 - 12
+  const MSG = 50
+  const HINT = 26
+  const REPLY = 44
+  const BASE = CODE + 4 * ROW // line 5, until a thread opens above it
+  const A = BASE + 8 // olin's thread, under line 4
+  const B = BASE + ROW + 8 // vera's thread, under line 5 (inside the group that is pushed)
+
+  /* ── motion helpers on the seconds clock ── */
+  const ty = (y: number) => `transform: translateY(${y}px)`
+  // A group that steps between offsets: [[at, y], …], the first at 0.
+  const steps = (pts: Array<[number, number]>) => {
+    const y0 = pts[0]![1]
+    const parts = [`0%, ${pct(pts[1]?.[0] ?? 0)}% { ${ty(y0)}; opacity: 1; }`]
+    for (let i = 1; i < pts.length; i++) {
+      const end = i + 1 < pts.length ? `${pct(pts[i + 1]![0])}%` : `${RESET}%`
+      parts.push(
+        `${(pct(pts[i]![0]) + 1.2).toFixed(2)}%, ${end} { ${ty(pts[i]![1])}; opacity: 1; }`,
+      )
+    }
+    const last = pts[pts.length - 1]![1]
+    parts.push(
+      `${RESET + 3}% { ${ty(last)}; opacity: 0; } ${RESET + 3.5}% { ${ty(y0)}; opacity: 0; } ${RESET + 6}%, 100% { ${ty(y0)}; opacity: 1; }`,
+    )
+    return keyframes(parts.join(' '))
+  }
+  // A thread's card, in each size it grows to: [[at, height], …].
+  const card = (y: number, sizes: Array<[number, number]>) =>
+    sizes
+      .map(([at, h], i) => {
+        const until = i + 1 < sizes.length ? pct(sizes[i + 1]![0]) : RESET + 2
+        return `<rect class="${between(pct(at), until)}" x="${T0 + 0.5}" y="${y + 0.5}" width="${T1 - T0 - 1}" height="${h}" rx="10" fill="${u.paper}" stroke="${u.hair}"/>`
+      })
+      .join('\n      ')
+
+  /* ── the review's pieces, as the UI draws them ── */
+  const tone = (k: Tok[0]) =>
+    k === 'k' ? u.k : k === 'f' ? u.f : k === 'n' ? u.n : k === 'c' ? u.c : u.ink
+  const code = (toks: Tok[]) =>
+    toks.map(([k, s]) => `<tspan fill="${tone(k)}">${escapeXml(s)}</tspan>`).join('')
+  // An added line: its number, the green gutter, the sign, the code.
+  const row = (y: number, n: number, toks: Tok[], cls = '') => `<g class="${cls}">
+      <rect x="${X0 + 1}" y="${y}" width="${X1 - X0 - 2}" height="${ROW}" fill="${u.addRow}"/>
+      <rect x="${X0 + 44}" y="${y}" width="2" height="${ROW}" fill="${u.add}"/>
+      <text x="${X0 + 34}" y="${y + 17.5}" text-anchor="end" font-family="${GM}" font-size="11.5" font-weight="500" fill="${u.ink2}">${n}</text>
+      <text x="${X0 + 56}" y="${y + 17.5}" text-anchor="middle" font-family="${GM}" font-size="12.5" fill="${u.add}">+</text>
+      <text x="${X0 + 70}" y="${y + 17.5}" font-family="${GM}" font-size="12.5" xml:space="preserve">${code(toks)}</text>
+    </g>`
+
+  // A reviewer agent's face: the critter's, in its colour (Face in AgentsPanel.tsx).
+  const face = (cx: number, cy: number, i: number, eyes: 'open' | 'happy' = 'open') => {
+    const cut = u.canvas
+    return `<g transform="translate(${cx - 10} ${cy - 8})">
+      <rect x="0" y="0" width="20" height="16" rx="4.5" fill="${u.rev[i]}"/>
+      ${
+        eyes === 'open'
+          ? `<rect x="5.6" y="5.6" width="2" height="3.4" rx="1" fill="${cut}"/><rect x="12.4" y="5.6" width="2" height="3.4" rx="1" fill="${cut}"/>`
+          : `<path d="M5.2 8.4l1.4-1.6 1.4 1.6M12 8.4l1.4-1.6 1.4 1.6" fill="none" stroke="${cut}" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/>`
+      }
+    </g>`
+  }
+  // A face's corner badge: working (a ring), done (a check), needs you (amber).
+  const badge = (cx: number, cy: number, kind: 'working' | 'done' | 'needs', cls: string) => {
+    const bx = cx + 9
+    const by = cy + 7
+    const inner =
+      kind === 'working'
+        ? `<circle class="spin" cx="${bx}" cy="${by}" r="2.7" fill="none" stroke="${u.ink3}" stroke-width="1.3" stroke-dasharray="11 6"/>`
+        : kind === 'done'
+          ? `<circle cx="${bx}" cy="${by}" r="3.8" fill="${u.add}"/><path d="M${bx - 1.9} ${by}l1.3 1.3 2.5-2.7" fill="none" stroke="#fff" stroke-width="1.1" stroke-linecap="round" stroke-linejoin="round"/>`
+          : `<circle cx="${bx}" cy="${by}" r="3.8" fill="${amber}"/>`
+    return `<g class="${cls}"><circle cx="${bx}" cy="${by}" r="5.2" fill="${u.canvas}"/>${inner}</g>`
+  }
+  const sparkle = (x: number, y: number, s: number, stroke: string) =>
+    `<path transform="translate(${x} ${y}) scale(${s})" d="M8 1.8l1.3 3.4 3.4 1.3-3.4 1.3L8 11.2 6.7 7.8 3.3 6.5l3.4-1.3zM12.4 10.6l.6 1.5 1.5.6-1.5.6-.6 1.5-.6-1.5-1.5-.6 1.5-.6z" fill="none" stroke="${stroke}" stroke-width="${1.2 / s + 0.2}" stroke-linejoin="round"/>`
+
+  // An avatar in a thread, centred at (cx, cy).
+  const avatar = (cx: number, cy: number, who: 'agent' | 'you' | number) =>
+    who === 'agent'
+      ? `<circle cx="${cx}" cy="${cy}" r="11" fill="${u.attnWash}" stroke="${u.attnLine}"/>${sparkle(cx - 7, cy - 7, 0.9, u.attn)}`
+      : who === 'you'
+        ? `<circle cx="${cx}" cy="${cy}" r="11" fill="${u.acc}"/><g transform="translate(${cx - 6.4} ${cy - 6.4}) scale(0.8)" fill="none" stroke="#fff" stroke-width="1.6" stroke-linecap="round"><circle cx="8" cy="5.6" r="2.6"/><path d="M3 13.2a5 5 0 0110 0"/></g>`
+        : `<circle cx="${cx}" cy="${cy}" r="11" fill="${u.revWash[who]}"/><text x="${cx}" y="${cy + 4}" text-anchor="middle" font-family="${GM}" font-size="11" font-weight="600" fill="${u.rev[who]}">${R[who]!.name[0]!.toUpperCase()}</text>`
+
+  // One message in a thread, its top at y: who, the role on a reviewer's first word,
+  // when, and the line it says. Typing dots stand in for it until it lands.
+  const message = (
+    y: number,
+    who: 'agent' | 'you' | number,
+    when: string,
+    text: string,
+    at: number,
+    opts: { role?: boolean; rule?: boolean; typing?: boolean } = {},
+  ) => {
+    const ax = T0 + 24
+    const nx = T0 + 44
+    const name =
+      who === 'agent'
+        ? `<text x="${nx}" y="${y + 23}" font-size="13" font-weight="600" fill="${u.attn}">Author agent</text>`
+        : who === 'you'
+          ? `<text x="${nx}" y="${y + 23}" font-size="13" font-weight="600" fill="${u.ink}">You</text>`
+          : `<text x="${nx}" y="${y + 23}" font-family="${GM}" font-size="12.5" font-weight="600" fill="${u.rev[who]}">${R[who]!.name}</text>`
+    const nameW = who === 'agent' ? 88 : who === 'you' ? 30 : 38
+    const role =
+      typeof who === 'number' && opts.role
+        ? `<text x="${nx + nameW}" y="${y + 22.5}" font-size="11" fill="${u.ink3}">${R[who]!.role} reviewer agent</text>`
+        : ''
+    const whenX =
+      nx +
+      nameW +
+      (typeof who === 'number' && opts.role ? (R[who]!.role.length + 15) * 5.35 + 8 : 0)
+    const rule = opts.rule
+      ? `<path d="M${T0 + 1} ${y + 0.5}h${T1 - T0 - 2}" stroke="${u.hair}"/>`
+      : ''
+    const dots = opts.typing
+      ? `<g class="${between(pct(at - DOTS), pct(at))}">
+        ${rule}
+        ${avatar(ax, y + 19, who)}
+        <g class="dots" fill="${u.ink3}"><circle cx="${nx + 4}" cy="${y + 19}" r="2.6"/><circle cx="${nx + 14}" cy="${y + 19}" r="2.6"/><circle cx="${nx + 24}" cy="${y + 19}" r="2.6"/></g>
+      </g>`
+      : ''
+    return `${dots}
+      <g class="${show(pct(at))}">
+        ${rule}
+        ${avatar(ax, y + 19, who)}
+        ${name}
+        ${role}
+        <text x="${whenX}" y="${y + 23}" font-size="12" fill="${u.ink3}">${when}</text>
+        <text x="${nx}" y="${y + 42}" font-size="13.5" fill="${u.ink}">${escapeXml(text)}</text>
+      </g>`
+  }
+
+  // A thread's header strip: chevron and where it is; the state goes on the right.
+  const threadHead = (y: number, where: string, folded = false) => `
+      <path d="M${T0 + 1} ${y + 36}V${y + 10}a9 9 0 0 1 9 -9H${T1 - 10}a9 9 0 0 1 9 9V${y + (folded ? 26 : 36)}${folded ? `a9 9 0 0 1 -9 9H${T0 + 10}a9 9 0 0 1 -9 -9z` : 'z'}" fill="${u.head}"/>
+      ${folded ? '' : `<path d="M${T0 + 1} ${y + 36.5}h${T1 - T0 - 2}" stroke="${u.hair}"/>`}
+      <path d="M${T0 + 14} ${y + 16}l3.5 3.5 3.5-3.5" fill="none" stroke="${u.ink3}" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/>
+      <text x="${T0 + 30}" y="${y + 22.5}" font-size="12" fill="${u.ink3}">${escapeXml(where)}</text>`
+  const mute = (y: number, label: string, cls: string) => {
+    const w = label.length * 6.1 + 18
+    return `<g class="${cls}"><rect x="${T1 - 10 - w}" y="${y + 8}" width="${w}" height="20" rx="8" fill="${u.fill}"/><text x="${T1 - 10 - w / 2}" y="${y + 22}" text-anchor="middle" font-size="11.5" font-weight="500" fill="${u.ink3}">${label}</text></g>`
+  }
+  const resolvedBy = (y: number, name: string, cls: string) =>
+    `<g class="${cls}">
+      <circle cx="${T1 - 120}" cy="${y + 18}" r="6.5" fill="${u.add}"/>
+      <path d="M${T1 - 123} ${y + 18}l2 2 4-4.4" fill="none" stroke="#fff" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+      <text x="${T1 - 12}" y="${y + 22.5}" text-anchor="end" font-size="12" font-weight="500" fill="${u.add}">Resolved by ${name}</text>
+    </g>`
+
+  /* ── the code ── */
+  const lines: Array<[number, Tok[]]> = [
+    [
+      1,
+      [
+        ['k', 'export function '],
+        ['f', 'streak'],
+        ['', '(history: '],
+        ['f', 'Check'],
+        ['', '[]) {'],
+      ],
+    ],
+    [
+      2,
+      [
+        ['k', '  let '],
+        ['', 'run '],
+        ['k', '= '],
+        ['n', '0'],
+      ],
+    ],
+    [
+      3,
+      [
+        ['k', '  for '],
+        ['', '('],
+        ['k', 'const '],
+        ['n', 'c '],
+        ['k', 'of '],
+        ['', 'history) {'],
+      ],
+    ],
+  ]
+  const L4_OLD: Tok[] = [
+    ['k', '    if '],
+    ['', '(c.doneAt '],
+    ['k', '> '],
+    ['', 'c.dueAt) '],
+    ['k', 'break'],
+  ]
+  const L4_NEW: Tok[] = [
+    ['k', '    if '],
+    ['', '('],
+    ['f', 'dayOf'],
+    ['', '(c.doneAt) '],
+    ['k', '> '],
+    ['f', 'dayOf'],
+    ['', '(c.dueAt)) '],
+    ['k', 'break'],
+  ]
+  const L5_OLD: Tok[] = [
+    ['k', '    if '],
+    ['', '(c.skipped) '],
+    ['k', 'continue  '],
+    ['c', '// TODO: count skips?'],
+  ]
+  const L5_NEW: Tok[] = [
+    ['k', '    if '],
+    ['', '(c.skipped) '],
+    ['k', 'continue'],
+  ]
+
+  const QA = [
+    'dueAt is midnight, so a todo done at 09:00 on its due day breaks the streak.',
+    'Right. It compares days now, and a test covers 09:00 on the due day.',
+    'Confirmed: the test fails before the fix and passes after. Resolving.',
+  ]
+  const QB = [
+    'A TODO left in: skipped days are ignored, so a missed week keeps the streak.',
+    'Ignoring skips is what the issue asked for. The code is right.',
+    'Then the TODO or the issue is wrong. That’s a product call, so it’s yours.',
+    'Skips shouldn’t break a streak. Drop the TODO.',
+    'Done: the TODO is gone, and a test pins skips as ignored.',
+  ]
+
+  /* ── how the threads grow, and push what is under them ── */
+  const tall = (n: number) => 36 + n * MSG + 4
+  const aSizes: Array<[number, number]> = [
+    [C.a1[1], tall(1)],
+    [C.a2[1] - DOTS, tall(2)],
+    [C.a3 - DOTS, tall(3)],
+  ]
+  const FOLD = 37
+  const below = steps([
+    [0, 0],
+    ...aSizes.map(([at, h]): [number, number] => [at, h + 16]),
+    [C.fold, FOLD + 16],
+  ])
+  const pushAt = (s: number) =>
+    s >= C.fold ? FOLD + 16 : (aSizes.filter(([at]) => s >= at).pop()?.[1] ?? -16) + 16
+  const bSizes: Array<[number, number]> = [
+    [C.b1[1], tall(1)],
+    [C.b2[1] - DOTS, tall(2)],
+    [C.b3 - DOTS, tall(3)],
+    [C.b3, tall(3) + HINT],
+    [C.clickReply, tall(3) + HINT + REPLY],
+    [C.sent, tall(4) + REPLY],
+    [C.b5[1] - DOTS, tall(5) + REPLY],
+  ]
+  // vera's messages make room for the hint while the thread waits on you.
+  const bShift = steps([
+    [0, 0],
+    [C.b3, HINT],
+    [C.sent, 0],
+  ])
+  const replyAt = steps([
+    [0, 36 + 3 * MSG + 4 + HINT],
+    [C.sent, 36 + 4 * MSG + 4],
+    [C.b5[1] - DOTS, 36 + 5 * MSG + 4],
+  ])
+
+  /* ── the header ── */
+  const toggleX = RX + RW - 26 // the reviewer agents sidebar's toggle
+  const finishX = RX + RW - 180
+  const searchX = finishX - 26
+  const plusX = searchX - 32
+  const moreX = plusX - 27 // "+3": the faces the top bar folds
+  const faceX = (i: number) => moreX - 19 - (2 - i) * 26
+  const addW = 110
+  const addX = plusX + 13 - addW
+  const chipR = faceX(0) - 18 // the agent's chip ends here
+  const chip = (label: string, rest: string, w: number, cls: string) => `<g class="${cls}">
+      <rect x="${chipR - w + 0.5}" y="${HY - 13.5}" width="${w}" height="27" rx="13.5" fill="${u.attnWash}" stroke="${u.attnLine}"/>
+      <g transform="translate(${chipR - w + 10} ${HY - 7})">
+        <rect width="18" height="14" rx="4" fill="${u.attn}"/>
+        <rect x="5" y="4.8" width="1.8" height="3.1" rx="0.9" fill="${u.attnWash}"/><rect x="11.2" y="4.8" width="1.8" height="3.1" rx="0.9" fill="${u.attnWash}"/>
+      </g>
+      <text x="${chipR - w + 35}" y="${HY + 4.5}" font-size="12.5"><tspan font-weight="600" fill="${u.attn}">${label}</tspan>${rest ? `<tspan fill="${u.ink2}"> ${rest}</tspan>` : ''}</text>
+    </g>`
+  const working = [
+    [C.fix, C.a2[1], 'streak.ts:4'],
+    [C.b2[0], C.b2[1], 'streak.ts:5'],
+    [C.yours, C.b5[1], 'streak.ts:5'],
+  ] as const
+  const listening: Array<[number, number]> = [
+    [-1, C.fix],
+    [C.a2[1], C.b2[0]],
+    [C.b2[1], C.yours],
+  ]
+  const chips = `
+    ${listening.map(([s, e]) => chip('Listening', '', 96, between(s < 0 ? -1 : pct(s), pct(e)))).join('\n    ')}
+    ${chip('Listening', '', 96, show(pct(C.b5[1]), 'none'))}
+    ${working.map(([s, e, at]) => chip('Working on', at, 166, between(pct(s), pct(e)))).join('\n    ')}`
+
+  const startedAt = (i: number) => C.face + 0.25 * i
+  const settledAt = [C.a3, C.b3, C.hanaDone]
+  const stack = `
+      <g class="${between(-1, pct(C.face))}">
+        <rect x="${addX + 0.5}" y="${HY - 11.5}" width="${addW}" height="23" rx="11.5" fill="none" stroke="${u.ink}" stroke-dasharray="3 2.5"/>
+        <path d="M${addX + 13} ${HY}h8M${addX + 17} ${HY - 4}v8" stroke="${u.ink}" stroke-width="1.4" stroke-linecap="round"/>
+        <text x="${addX + 27}" y="${HY + 4}" font-size="12" font-weight="500" fill="${u.ink}">Add reviewer</text>
+      </g>
+      ${[0, 1, 2]
+        .map((i) => {
+          const cx = faceX(i)
+          // vera waits on you, then is back at work on your word, then done.
+          const states =
+            i === 1
+              ? `${badge(cx, HY, 'working', between(pct(startedAt(i)), pct(C.b3)))}
+        ${badge(cx, HY, 'needs', between(pct(C.b3), pct(C.sent)))}
+        ${badge(cx, HY, 'working', between(pct(C.sent), pct(C.b6)))}
+        ${badge(cx, HY, 'done', show(pct(C.b6), 'scale(0.4)'))}`
+              : `${badge(cx, HY, 'working', between(pct(startedAt(i)), pct(settledAt[i]!)))}
+        ${badge(cx, HY, 'done', show(pct(settledAt[i]!), 'scale(0.4)'))}`
+          const happyAt = i === 1 ? C.b6 : settledAt[i]!
+          return `<g class="${show(pct(startedAt(i)), 'scale(0.4)')}" style="transform-origin:${cx}px ${HY}px">
+        <g class="${between(pct(startedAt(i)), pct(happyAt))}">${face(cx, HY, i)}</g>
+        <g class="${show(pct(happyAt), 'none')}">${face(cx, HY, i, 'happy')}</g>
+        ${states}
+      </g>`
+        })
+        .join('\n      ')}
+      <text class="${show(pct(startedAt(3)), 'none')}" x="${moreX}" y="${HY + 4}" text-anchor="middle" font-size="11.5" font-weight="500" fill="${u.ink2}">+3</text>
+      <g class="${show(pct(C.face + 0.9), 'none')}">
+        <circle cx="${plusX}" cy="${HY}" r="11.5" fill="none" stroke="${u.ink3}" stroke-dasharray="3 2.5"/>
+        <path d="M${plusX - 4} ${HY}h8M${plusX} ${HY - 4}v8" stroke="${u.ink2}" stroke-width="1.4" stroke-linecap="round"/>
+      </g>`
+
+  const header = `
+    <rect x="${RX + 14}" y="${HY - 13}" width="26" height="26" rx="7" fill="${u.fill}"/>
+    <rect x="${RX + 21}" y="${HY - 6}" width="12" height="12" rx="2.5" fill="none" stroke="${u.ink2}" stroke-width="1.3"/>
+    <path d="M${RX + 25.5} ${HY - 6}v12" stroke="${u.ink2}" stroke-width="1.3"/>
+    <g transform="translate(${RX + 48} ${HY - 14}) scale(1.17)" fill="none" stroke-width="1.7" stroke-linecap="round">
+      <path d="M9.3 7.4H20.4M9.3 12h8M9.3 16.6h10.2" stroke="${u.ink}"/>
+      <path d="M3.3 7.4h2.6M3.3 16.6h2.6M4.6 15.3v2.6" stroke="${u.brand}"/>
+    </g>
+    <text x="${RX + 80}" y="${HY + 5}" font-size="15" font-weight="600" letter-spacing="-0.2" fill="${u.brand}">Diffo</text>
+    <text x="${RX + 126}" y="${HY + 4.5}" font-family="${GM}" font-size="12" fill="${u.ink}">working tree</text>
+    ${chips}
+    ${stack}
+    <g transform="translate(${searchX - 7} ${HY - 7})" fill="none" stroke="${u.ink2}" stroke-width="1.4" stroke-linecap="round"><circle cx="6" cy="6" r="4.6"/><path d="M9.5 9.5l3.6 3.6"/></g>
+    <rect x="${finishX}" y="${HY - 15}" width="104" height="30" rx="8" fill="${u.solid}"/>
+    <text x="${finishX + 52}" y="${HY + 4.5}" text-anchor="middle" font-size="13" font-weight="500" fill="${u.solidFg}">Finish review</text>
+    <g fill="${u.ink2}"><circle cx="${RX + RW - 58}" cy="${HY}" r="1.5"/><circle cx="${RX + RW - 52}" cy="${HY}" r="1.5"/><circle cx="${RX + RW - 46}" cy="${HY}" r="1.5"/></g>
+    <rect class="${between(pct(C.panel[0]), pct(C.panel[1]))}" x="${toggleX - 13}" y="${HY - 13}" width="26" height="26" rx="7" fill="${u.fill}"/>
+    <rect x="${toggleX - 6}" y="${HY - 6}" width="12" height="12" rx="2.5" fill="none" stroke="${u.ink2}" stroke-width="1.3"/>
+    <path d="M${toggleX + 1.5} ${HY - 6}v12" stroke="${u.ink2}" stroke-width="1.3"/>`
+
+  /* ── the Add reviewer agents sheet ── */
+  const SW = 452
+  const SX = RX + (RW - SW) / 2
+  const SY = TOP + 16
+  const SH = 650
+  const setChip = (x: number, y: number, label: string, w: number, on = false) => `
+      <rect x="${x + 0.5}" y="${y + 0.5}" width="${w}" height="26" rx="13" fill="${on ? u.fill : u.paper}" stroke="${on ? u.ink : u.hair}"/>
+      ${on ? sparkle(x + 9, y + 6, 0.85, u.ink3) : ''}
+      <text x="${x + (on ? 26 : 12)}" y="${y + 17.5}" font-size="12" fill="${on ? u.ink : u.ink2}">${label}</text>`
+  // A role in the picker; ticked from the start, or by you at `tickAt`.
+  const roleRow = (i: number, name: string, blurb: string, tickAt?: number) => {
+    const y = SY + 232 + i * 34
+    const on = `<rect x="${SX + 32}" y="${y + 10.5}" width="13" height="13" rx="3" fill="${u.acc}"/><path d="M${SX + 35} ${y + 17}l2.4 2.4 4.4-4.8" fill="none" stroke="#fff" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>`
+    const off = `<rect x="${SX + 32.5}" y="${y + 11}" width="12" height="12" rx="3" fill="${u.paper}" stroke="${u.ink3}"/>`
+    return `
+      ${i > 0 ? `<path d="M${SX + 21} ${y + 0.5}h${SW - 42}" stroke="${u.hair}"/>` : ''}
+      ${tickAt === undefined ? on : `<g class="${between(-1, pct(tickAt))}">${off}</g><g class="${show(pct(tickAt), 'scale(0.6)')}" style="transform-origin:${SX + 38.5}px ${y + 17}px">${on}</g>`}
+      <text x="${SX + 54}" y="${y + 21.5}" font-size="13" font-weight="600" fill="${u.ink}">${name}</text>
+      <text x="${SX + 54 + name.length * 7.7 + 8}" y="${y + 21.5}" font-size="12" fill="${u.ink3}">${escapeXml(blurb)}</text>
+      <text x="${SX + SW - 32}" y="${y + 21}" text-anchor="end" font-size="11" fill="${u.ink3}">View</text>`
+  }
+  const how = (y: number, title: string, sub: string, on: boolean) => `
+      <rect x="${SX + 20.5}" y="${y + 0.5}" width="${SW - 41}" height="44" rx="8" fill="${on ? u.accWash : u.paper}" stroke="${on ? u.acc : u.hair}"/>
+      ${on ? `<circle cx="${SX + 38}" cy="${y + 16}" r="6.5" fill="${u.acc}"/><circle cx="${SX + 38}" cy="${y + 16}" r="2.4" fill="#fff"/>` : `<circle cx="${SX + 38}" cy="${y + 16}" r="6" fill="${u.paper}" stroke="${u.ink3}"/>`}
+      <text x="${SX + 54}" y="${y + 20}" font-size="13" font-weight="600" fill="${u.ink}">${title}</text>
+      <text x="${SX + 54}" y="${y + 36}" font-size="12" fill="${u.ink3}">${sub}</text>`
+
+  const sheet = `
+  <g class="${between(pct(C.sheet[0]), pct(C.sheet[1]))}">
+    <rect x="${RX}" y="${TOP}" width="${RW}" height="${WH}" rx="12" fill="#000" fill-opacity="0.55"/>
+  </g>
+  <g class="${between(pct(C.sheet[0]), pct(C.sheet[1]))}" font-family="${G}">
+   <g class="${show(pct(C.sheet[0]), 'translateY(12px) scale(0.985)')}" style="transform-origin:${SX + SW / 2}px ${SY + 40}px">
+    <g filter="url(#shadow)"><rect x="${SX}" y="${SY}" width="${SW}" height="${SH}" rx="14" fill="${u.paper}"/></g>
+    ${dark ? `<rect x="${SX + 0.5}" y="${SY + 0.5}" width="${SW - 1}" height="${SH - 1}" rx="13.5" fill="none" stroke="${u.hair}"/>` : ''}
+    <text x="${SX + 20}" y="${SY + 36}" font-size="17" font-weight="600" letter-spacing="-0.2" fill="${u.ink}">Add reviewer agents</text>
+    <path d="M${SX + SW - 30} ${SY + 25}l8 8M${SX + SW - 22} ${SY + 25}l-8 8" stroke="${u.ink2}" stroke-width="1.5" stroke-linecap="round"/>
+    <text x="${SX + 20}" y="${SY + 70}" font-size="13.5" fill="${u.ink2}">A second AI reads the change and comments on it. Your agent</text>
+    <text x="${SX + 20}" y="${SY + 90}" font-size="13.5" fill="${u.ink2}">answers, and you settle what the two cannot.</text>
+    <text x="${SX + 20}" y="${SY + 124}" font-size="11" fill="${u.ink3}">Reviewer agents</text>
+    <text x="${SX + SW - 20}" y="${SY + 124}" text-anchor="end" font-size="11" fill="${u.ink3}">Edit agents and sets</text>
+    <text x="${SX + 20}" y="${SY + 150}" font-size="11" fill="${u.ink3}">Sets</text>
+    <g class="${between(-1, pct(C.ticks[0]))}">${setChip(SX + 50, SY + 133, 'Agent-written change', 158, true)}</g>
+    <g class="${show(pct(C.ticks[0]), 'none')}">${setChip(SX + 50, SY + 133, 'Agent-written change', 158)}</g>
+    ${setChip(SX + 214, SY + 133, 'Refactor', 70)}
+    ${setChip(SX + 290, SY + 133, 'New API or command', 132)}
+    ${setChip(SX + 20, SY + 166, 'UI change', 76)}
+    ${setChip(SX + 102, SY + 166, 'Data or settings', 108)}
+    ${setChip(SX + 216, SY + 166, 'Before release', 102)}
+    ${sparkle(SX + 19, SY + 202, 0.8, u.ink3)}
+    <text x="${SX + 36}" y="${SY + 214}" font-size="12" fill="${u.ink2}">Your agent picked <tspan font-weight="600" fill="${u.ink}">Agent-written change</tspan> for this change.</text>
+    <rect x="${SX + 20.5}" y="${SY + 232.5}" width="${SW - 41}" height="${6 * 34}" rx="6" fill="none" stroke="${u.hair}"/>
+    ${roleRow(0, 'General', 'Anything that would bite, bugs first')}
+    ${roleRow(1, 'Blast radius', 'What else this change touches: callers…', C.ticks[0])}
+    ${roleRow(2, 'AI slop', 'What an agent adds that a careful…')}
+    ${roleRow(3, 'Security', 'What an attacker could reach through this', C.ticks[1])}
+    ${roleRow(4, 'Code comments', 'Comments that restate the code…')}
+    ${roleRow(5, 'Tests', 'Whether the tests would catch it breaking', C.ticks[2])}
+    <text x="${SX + 20}" y="${SY + 458}" font-size="11" fill="${u.ink3}">9 more in the library</text>
+    <text x="${SX + 20}" y="${SY + 488}" font-size="11" fill="${u.ink3}">How they join</text>
+    ${how(SY + 498, 'My agent starts them', 'As sub-agents of the agent that wrote the change', true)}
+    ${how(SY + 548, 'Another session', 'Copy a line into any agent session: Codex, a second Claude', false)}
+    <path d="M${SX} ${SY + 604.5}h${SW}" stroke="${u.hair}"/>
+    <rect x="${SX + 20}" y="${SY + 612}" width="128" height="30" rx="8" fill="${u.solid}"/>
+    ${[3, 4, 5, 6]
+      .map((n, i) => {
+        const from = i === 0 ? -1 : pct(C.ticks[i - 1]!)
+        const cls = i === 3 ? show(pct(C.ticks[2]), 'none') : between(from, pct(C.ticks[i]!))
+        return `<text class="${cls}" x="${SX + 84}" y="${SY + 631.5}" text-anchor="middle" font-size="13" font-weight="500" fill="${u.solidFg}">Start ${n} reviewers</text>`
+      })
+      .join('\n    ')}
+    <text x="${SX + 180}" y="${SY + 631.5}" text-anchor="middle" font-size="13" font-weight="500" fill="${u.ink2}">Cancel</text>
+   </g>
+  </g>`
+
+  // The pointer on a path of clicks: [[at, x, y], …], gliding from one to the next.
+  const clicks = (pts: Array<[number, number, number]>) => {
+    const first = pts[0]!
+    const tr = (x: number, y: number) => `transform: translate(${x}px, ${y}px)`
+    const frames = [
+      `0%, ${pct(first[0] - 0.9)}% { ${tr(first[1] - 120, first[2] + 160)}; opacity: 0; }`,
+      `${pct(first[0] - 0.75)}% { opacity: 1; }`,
+    ]
+    for (const [at, x, y] of pts) {
+      frames.push(`${pct(at - 0.25)}% { ${tr(x, y)}; opacity: 1; }`)
+      frames.push(`${pct(at)}% { ${tr(x, y)} scale(0.88); }`)
+      frames.push(`${pct(at + 0.12)}% { ${tr(x, y)}; }`)
+    }
+    const last = pts[pts.length - 1]!
+    frames.push(`${pct(last[0] + 0.5)}%, 100% { ${tr(last[1] + 20, last[2] + 40)}; opacity: 0; }`)
+    const move = keyframes(frames.join(' '))
+    const rings = pts
+      .map(
+        ([at, x, y]) =>
+          `<g class="${between(pct(at), pct(at) + 1.6)}"><circle cx="${x}" cy="${y}" r="12" fill="none" stroke="${amber}" stroke-width="1.5"/></g>`,
+      )
+      .join('')
+    return `${rings}
+    <g class="${move}">
+      <path d="M0 0v17l4.4-4.1 3 6.6 2.7-1.2-3-6.5H13z" fill="${dark ? '#fff' : '#111'}" stroke="${dark ? '#000' : '#fff'}" stroke-width="1.2" stroke-linejoin="round"/>
+    </g>`
+  }
+
+  /* ── the reviewer agents sidebar: all of them at work, beside you ── */
+  const PW = 240
+  const PX = RX + RW - PW
+  const slide = keyframes(
+    `0%, ${pct(C.panel[0])}% { transform: translateX(${PW}px); } ${pct(C.panel[0] + 0.45)}%, ${pct(C.panel[1])}% { transform: none; } ${pct(C.panel[1] + 0.45)}%, 100% { transform: translateX(${PW}px); }`,
+  )
+  const commentAt = [C.a1[1], C.b1[1]]
+  const panelRow = (i: number) => {
+    const y = MAIN + 58 + i * 46
+    const r = R[i]!
+    const at = startedAt(i)
+    const found = commentAt[i]
+    const done = doneAt[i]!
+    const line = (text: string, cls: string) =>
+      `<text class="${cls}" x="${PX + 50}" y="${y + 33}" font-size="12" fill="${u.ink3}">${escapeXml(text)}</text>`
+    const meta = (text: string, cls: string) =>
+      `<text class="${cls}" x="${PX + PW - 14}" y="${y + 15}" text-anchor="end" font-size="11.5" fill="${u.ink3}">${text}</text>`
+    const working = found ?? done
+    return `<g class="${show(pct(at), 'translateX(10px)')}">
+      ${face(PX + 28, y + 14, i)}
+      ${badge(PX + 28, y + 14, 'working', between(pct(at), pct(working)))}
+      ${badge(PX + 28, y + 14, 'done', show(pct(working), 'scale(0.4)'))}
+      <text x="${PX + 50}" y="${y + 15}" font-size="13" font-weight="500" fill="${u.ink}">${r.name}<tspan font-weight="400" fill="${u.ink3}">  ${r.role}</tspan></text>
+      ${meta('&lt;1m', found === undefined ? 's-on' : between(pct(at), pct(found)))}
+      ${found === undefined ? '' : meta('&lt;1m · 1 comment', show(pct(found), 'none'))}
+      ${line(doing[i]!, between(pct(at), pct(working)))}
+      ${line(found === undefined ? 'Done' : 'Waiting for your agent', show(pct(working), 'none'))}
+    </g>`
+  }
+  const panel = `
+    <g class="${slide}">
+      <rect x="${PX}" y="${MAIN}" width="${PW}" height="${WH}" fill="${u.canvas}"/>
+      <path d="M${PX + 0.5} ${MAIN}V${TOP + WH}" stroke="${u.hair}"/>
+      <rect x="${PX + 12}" y="${MAIN + 12}" width="${PW - 24}" height="30" rx="8" fill="${u.fill2}"/>
+      <rect x="${PX + 15}" y="${MAIN + 15}" width="${(PW - 30) / 2}" height="24" rx="6" fill="${u.paper}"/>
+      <text x="${PX + 15 + (PW - 30) / 4}" y="${MAIN + 31.5}" text-anchor="middle" font-size="12.5" font-weight="500" fill="${u.ink}">Reviewers <tspan fill="${u.ink3}">6</tspan></text>
+      <text x="${PX + PW - 15 - (PW - 30) / 4}" y="${MAIN + 31.5}" text-anchor="middle" font-size="12.5" font-weight="500" fill="${u.ink2}">Activity</text>
+      <g clip-path="url(#panel)">${R.map((_, i) => panelRow(i)).join('\n      ')}</g>
+      <g class="${show(pct(startedAt(5)) + 1, 'none')}">
+        <circle cx="${PX + 28}" cy="${MAIN + 58 + 6 * 46 + 14}" r="10.5" fill="none" stroke="${u.ink3}" stroke-dasharray="3 2.5"/>
+        <path d="M${PX + 24} ${MAIN + 58 + 6 * 46 + 14}h8M${PX + 28} ${MAIN + 58 + 6 * 46 + 10}v8" stroke="${u.ink2}" stroke-width="1.4" stroke-linecap="round"/>
+        <text x="${PX + 50}" y="${MAIN + 58 + 6 * 46 + 18}" font-size="13" fill="${u.ink2}">Add reviewer</text>
+      </g>
+    </g>`
+
+  /* ── the threads ── */
+  const threadA = `
+    <g class="${show(pct(C.a1[1]))}">
+      <g class="${between(pct(C.a1[1]), pct(C.fold))}">
+        ${card(A, aSizes)}
+        ${threadHead(A, 'olin’s comment on line 4')}
+        ${mute(A, 'With the agent', between(pct(C.a1[1]), pct(C.a3)))}
+        ${message(A + 36, 0, 'commented just now', QA[0]!, C.a1[1], { role: true })}
+        ${message(A + 36 + MSG, 'agent', 'replied just now', QA[1]!, C.a2[1], { rule: true, typing: true })}
+        ${message(A + 36 + 2 * MSG, 0, 'commented just now', QA[2]!, C.a3, { rule: true, typing: true })}
+      </g>
+      <g class="${show(pct(C.fold), 'none')}">
+        <rect x="${T0 + 0.5}" y="${A + 0.5}" width="${T1 - T0 - 1}" height="${FOLD - 1}" rx="10" fill="${u.paper}" stroke="${u.hair}"/>
+        ${threadHead(A, 'olin’s comment on line 4', true)}
+      </g>
+      ${resolvedBy(A, 'olin', show(pct(C.a3) + 0.8, 'none'))}
+    </g>`
+
+  const replyBox = `
+      <g class="${between(pct(C.clickReply), RESET + 2)}">
+        <g class="${replyAt}">
+          <rect x="${T0 + 12.5}" y="${B + 6.5}" width="${T1 - T0 - 130}" height="30" rx="8" fill="${u.paper}" stroke="${u.ink3}"/>
+          <text class="${between(pct(C.clickReply), pct(C.typed[0]))}" x="${T0 + 24}" y="${B + 26}" font-size="13" fill="${u.ink3}">Reply…</text>
+          <text class="${show(pct(C.sent), 'none')}" x="${T0 + 24}" y="${B + 26}" font-size="13" fill="${u.ink3}">Reply…</text>
+          <g class="${between(pct(C.typed[0]), pct(C.sent))}"><text class="${type(pct(C.typed[0]), pct(C.typed[1]), QB[3]!.length)}" x="${T0 + 24}" y="${B + 26}" font-size="13" fill="${u.ink}">${escapeXml(QB[3]!)}</text></g>
+          <text x="${T1 - 66}" y="${B + 26}" text-anchor="middle" font-size="12.5" font-weight="500" fill="${u.ink2}">Resolve</text>
+          <g transform="translate(${T1 - 30} ${B + 15})" fill="none" stroke="${u.ink3}" stroke-width="1.2" stroke-linecap="round"><path d="M1 2.5h10M4 2.5V1h4v1.5M2.5 2.5l.6 8h5.8l.6-8"/></g>
+        </g>
+      </g>`
+
+  const threadB = `
+      <g class="${show(pct(C.b1[1]))}">
+        ${card(B, bSizes)}
+        ${threadHead(B, 'vera’s comment on line 5')}
+        ${mute(B, 'With the agent', between(pct(C.b1[1]), pct(C.b3)))}
+        <g class="${between(pct(C.b3), pct(C.sent))}">
+          <rect x="${T1 - 10 - 132}" y="${B + 8}" width="132" height="20" rx="8" fill="${u.attnWash}" stroke="${u.attnLine}"/>
+          <text x="${T1 - 10 - 66}" y="${B + 22}" text-anchor="middle" font-size="11" font-weight="600" fill="${u.attn}">needs your decision</text>
+          <text x="${T0 + 14}" y="${B + 54}" font-size="12" font-style="italic" fill="${u.ink3}">vera asks you to decide this one. Reply with your word to hand it back to them, or resolve it.</text>
+          <path d="M${T0 + 1} ${B + 36 + HINT + 0.5}h${T1 - T0 - 2}" stroke="${u.hair}"/>
+        </g>
+        ${mute(B, 'With the agent', between(pct(C.sent), pct(C.b6)))}
+        ${resolvedBy(B, 'vera', show(pct(C.b6), 'none'))}
+        <g class="${bShift}">
+          ${message(B + 36, 1, 'commented just now', QB[0]!, C.b1[1], { role: true })}
+          ${message(B + 36 + MSG, 'agent', 'replied just now', QB[1]!, C.b2[1], { rule: true, typing: true })}
+          ${message(B + 36 + 2 * MSG, 1, 'asked you just now', QB[2]!, C.b3, { rule: true, typing: true })}
+          ${message(B + 36 + 3 * MSG, 'you', 'replied just now', QB[3]!, C.sent, { rule: true })}
+          ${message(B + 36 + 4 * MSG, 'agent', 'replied just now', QB[4]!, C.b5[1], { rule: true, typing: true })}
+          ${replyBox}
+        </g>
+      </g>`
+
+  const review = `
+  <g filter="url(#shadow)"><rect x="${RX}" y="${TOP}" width="${RW}" height="${WH}" rx="12" fill="${u.canvas}"/></g>
+  <g clip-path="url(#review)" font-family="${G}">
+    ${header}
+    <rect x="${RX + 12.5}" y="${MAIN + 0.5}" width="${RW - 25}" height="${WH}" rx="12" fill="${u.paper}" stroke="${u.hair}"/>
+
+    <rect x="${X0 + 0.5}" y="${FILE + 0.5}" width="${X1 - X0 - 1}" height="${WH}" rx="10" fill="${u.paper}" stroke="${u.hair}"/>
+    <path d="M${X0 + 1} ${FILE + 10}a9 9 0 0 1 9 -9H${X1 - 10}a9 9 0 0 1 9 9V${FILE + 40}H${X0 + 1}z" fill="${u.head}"/>
+    <path d="M${X0} ${FILE + 40.5}h${X1 - X0}" stroke="${u.hair}"/>
+    <path d="M${X0 + 14} ${FILE + 18}l3.5 3.5 3.5-3.5" fill="none" stroke="${u.ink3}" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/>
+    <text x="${X0 + 30}" y="${FILE + 25}" font-family="${GM}" font-size="12.5" fill="${u.ink3}">src/scheduler/<tspan font-weight="700" fill="${u.ink}">streak.ts</tspan></text>
+    <text x="${X0 + 214}" y="${FILE + 25}" font-size="11.5" fill="${u.add}">added</text>
+    <text x="${X1 - 98}" y="${FILE + 25}" text-anchor="end" font-family="${GM}" font-size="12" fill="${u.add}">+9</text>
+    <rect x="${X1 - 86.5}" y="${FILE + 7.5}" width="72" height="25" rx="8" fill="${u.paper}" stroke="${u.hair}"/>
+    <rect x="${X1 - 77.5}" y="${FILE + 13.5}" width="12" height="12" rx="3" fill="none" stroke="${u.ink3}"/>
+    <text x="${X1 - 60}" y="${FILE + 24.5}" font-size="12" fill="${u.ink}">Viewed</text>
+
+    ${lines.map(([n, toks], i) => row(CODE + i * ROW, n, toks)).join('\n    ')}
+    ${row(CODE + 3 * ROW, 4, L4_OLD, between(-1, pct(C.a2[1])))}
+    ${row(CODE + 3 * ROW, 4, L4_NEW, show(pct(C.a2[1]), 'none'))}
+    <rect class="${between(pct(C.a2[1]), pct(C.a2[1]) + 5)}" x="${X0 + 1}" y="${CODE + 3 * ROW}" width="${X1 - X0 - 2}" height="${ROW}" fill="${u.add}" fill-opacity="0.18"/>
+
+    ${threadA}
+
+    <!-- under it, line 5 and vera's thread, pushed down as olin's thread grows -->
+    <g class="${below}">
+      ${row(BASE, 5, L5_OLD, between(-1, pct(C.b5[1])))}
+      ${row(BASE, 5, L5_NEW, show(pct(C.b5[1]), 'none'))}
+      <rect class="${between(pct(C.b5[1]), pct(C.b5[1]) + 5)}" x="${X0 + 1}" y="${BASE}" width="${X1 - X0 - 2}" height="${ROW}" fill="${u.add}" fill-opacity="0.18"/>
+      ${threadB}
+    </g>
+    ${panel}
+  </g>
+  <rect x="${RX + 0.5}" y="${TOP + 0.5}" width="${RW - 1}" height="${WH - 1}" rx="11.5" fill="none" stroke="${dark ? EDGE_DARK : u.hair}"/>
+  ${sheet}
+  ${pointer(addX + 58, HY + 2, pct(C.inAdd), pct(C.clickAdd))}
+  ${clicks([
+    [C.ticks[0], SX + 38, SY + 232 + 34 + 17],
+    [C.ticks[1], SX + 38, SY + 232 + 3 * 34 + 17],
+    [C.ticks[2], SX + 38, SY + 232 + 5 * 34 + 17],
+    [C.clickStart, SX + 84, SY + 627],
+  ])}
+  ${pointer(toggleX - 2, HY + 2, pct(C.panel[1] - 0.9), pct(C.panel[1] - 0.15))}
+  ${pointer(T0 + 120, B + pushAt(C.clickReply) + 36 + 3 * MSG + 4 + HINT + 24, pct(C.inReply), pct(C.clickReply))}`
+
+  /* ── the messages ── */
+  const termEdge = PAD + TW - 10
+  const left = T0 + 4
+  const taskY = (i: number) => TOP + 275 + i * 20
+  const bAt = (s: number) => B + pushAt(s)
+  const flights = `
+  ${flight({ x: SX + 10, y: SY + 627 }, { x: termEdge, y: TOP + 275 }, pct(C.req[0]), pct(C.req[1]), 'start 3 reviewers', u.ink2, 'arrow-ink')}
+  ${flight({ x: termEdge, y: taskY(0) }, { x: left, y: A + 56 }, pct(C.a1[0]), pct(C.a1[1]), 'olin · line 4', u.rev[0]!, 'arrow-rev0')}
+  ${flight({ x: termEdge, y: taskY(1) }, { x: left, y: bAt(C.b1[1]) + 56 }, pct(C.b1[0]), pct(C.b1[1]), 'vera · line 5', u.rev[1]!, 'arrow-rev1')}
+  ${flight({ x: termEdge, y: TOP + 457 }, { x: left, y: A + 36 + MSG + 20 }, pct(C.a2[0]), pct(C.a2[1]), 'fix + answer', u.attn, 'arrow-attn')}
+  ${flight({ x: termEdge, y: TOP + 487 }, { x: left, y: bAt(C.b2[1]) + 36 + MSG + 20 }, pct(C.b2[0]), pct(C.b2[1]), 'answer', u.attn, 'arrow-attn')}
+  ${flight({ x: left, y: bAt(C.sent) + 36 + 3 * MSG + 20 }, { x: termEdge, y: TOP + 515 }, pct(C.b4[0]), pct(C.b4[1]), 'your word', u.acc, 'arrow-acc')}
+  ${flight({ x: termEdge, y: TOP + 545 }, { x: left, y: bAt(C.b5[1]) + 36 + 4 * MSG + 20 }, pct(C.b5[0]), pct(C.b5[1]), 'TODO gone', u.attn, 'arrow-attn')}`
+
+  // Arrowheads in the reviewers' and the agent's colours, for their flights.
+  const arrow = (id: string, c: string) =>
+    `<marker id="${id}" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse" markerUnits="userSpaceOnUse"><path d="M2 1.5L8 5L2 8.5" fill="none" stroke="${c}" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></marker>`
+  const markers = [
+    ...u.rev.map((c, i) => arrow(`arrow-rev${i}`, c)),
+    arrow('arrow-attn', u.attn),
+    arrow('arrow-acc', u.acc),
+  ].join('')
+
+  // The stage in the review's warm neutrals, over the kit's green-tinted one.
+  const stage = `<linearGradient id="stage-warm" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="${u.stage[0]}"/><stop offset="1" stop-color="${u.stage[1]}"/></linearGradient>`
+
+  return svg(
+    'Reviewer agents in Diffo. Your agent picked a set of three reviewer agents for the change; you open Add reviewer, add Blast radius, Security and Tests, and start six. The reviewer agents sidebar opens with all six at work, each with its own status, while your agent starts them as sub-agents. olin, the General reviewer, comments on line 4; your agent fixes it and answers, and olin confirms and resolves the thread. vera, the AI slop reviewer, flags a TODO on line 5; your agent disagrees, and vera hands the thread to you. You reply: drop the TODO. Your agent removes it, and vera resolves the thread. The other four finish with nothing to flag.',
+    `<defs>${markers}${stage}<clipPath id="panel"><rect x="${RX + RW - 240}" y="${TOP}" width="${240 - 12}" height="${WH}"/></clipPath></defs>
+    <rect width="${W}" height="${H}" fill="url(#stage-warm)"/>
+    <rect width="${W}" height="${H}" fill="url(#dots)"/>
+    ${term}
+    ${review}
+    ${flights}`,
+  )
+}
+
 const root = join(import.meta.dirname, '..')
 for (const [suffix, theme] of [
   ['', light],
@@ -2030,7 +2946,11 @@ for (const [suffix, theme] of [
     join(root, 'docs/assets', `readme-importance${suffix}.svg`),
     importance(app, !!suffix),
   )
+  writeFileSync(
+    join(root, 'docs/assets', `readme-reviewers${suffix}.svg`),
+    reviewers(suffix ? uiDark : uiLight, !!suffix),
+  )
 }
 console.log(
-  'wrote assets/readme-hero{,-dark}.svg and docs/assets/readme-{demo,layers,pr,importance}{,-dark}.svg',
+  'wrote assets/readme-hero{,-dark}.svg and docs/assets/readme-{demo,layers,pr,importance,reviewers}{,-dark}.svg',
 )

@@ -88,6 +88,16 @@ and its files. You read one at a time; `]` steps to the next, and anything the a
 touches after posting gathers in a *Since your review* layer, so nothing hides outside
 the plan. [Layers](./guide/layers) has the whole of it.
 
+## Reviewer agents
+
+![Reviewer agents in Diffo. Your agent picked a set of three reviewer agents for the change; you open Add reviewer, add Blast radius, Security and Tests, and start six. The reviewer agents sidebar opens with all six at work, each with its own status, while your agent starts them as sub-agents. olin, the General reviewer, comments on line 4; your agent fixes it and answers, and olin confirms and resolves the thread. vera, the AI slop reviewer, flags a TODO on line 5; your agent disagrees, and vera hands the thread to you. You reply: drop the TODO. Your agent removes it, and vera resolves the thread. The other four finish with nothing to flag.](./assets/readme-reviewers.svg){.clip .clip-light .home-clip}
+![Reviewer agents in Diffo. Your agent picked a set of three reviewer agents for the change; you open Add reviewer, add Blast radius, Security and Tests, and start six. The reviewer agents sidebar opens with all six at work, each with its own status, while your agent starts them as sub-agents. olin, the General reviewer, comments on line 4; your agent fixes it and answers, and olin confirms and resolves the thread. vera, the AI slop reviewer, flags a TODO on line 5; your agent disagrees, and vera hands the thread to you. You reply: drop the TODO. Your agent removes it, and vera resolves the thread. The other four finish with nothing to flag.](./assets/readme-reviewers-dark.svg){.clip .clip-dark .home-clip}
+
+**+ Add reviewer** brings in reviewer agents: other AI sessions that read the change and
+comment on it, each narrow. Your agent picks the set that fits and starts them; they argue
+it out with your agent in the threads, and only a decision comes to you.
+[The CLI reference](./reference/cli#reviewer-agent-commands) has the protocol.
+
 ## Pull requests too
 
 ![A pull request in Diffo: you hand the PR link to your agent and it is checked out in a worktree of its own; a Private question on line 13 crosses to your agent, which runs the tests and answers in the thread; a PR comment waits as a draft until Submit review, and then the review crosses to GitHub, while the private thread stays on your machine.](./assets/readme-pr.svg){.clip .clip-light .home-clip}
