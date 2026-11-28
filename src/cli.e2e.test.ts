@@ -1,5 +1,13 @@
 import { type ChildProcess, execFileSync, spawn } from 'node:child_process'
-import { existsSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from 'node:fs'
+import {
+  existsSync,
+  mkdtempSync,
+  readFileSync,
+  realpathSync,
+  rmSync,
+  statSync,
+  writeFileSync,
+} from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -590,5 +598,99 @@ describe.skipIf(!existsSync(cliPath))('diffo binary (e2e smoke)', () => {
     const afterJson = await run(['status', '--json'])
     expect(afterJson.code).toBe(1)
     expect(JSON.parse(afterJson.stdout)).toEqual({ running: false })
+  })
+})
+
+// Straight from src through tsx, so these run without a build. Every run gets
+// its own HOME and $DIFFO_DB: nothing here may touch the real ~/.diffo.
+describe('diffo remote setup / forget / --remote resolution', () => {
+  const tsx = join(repoRoot, 'node_modules', '.bin', 'tsx')
+  const srcCli = join(repoRoot, 'src', 'cli.ts')
+  const KEY = 'e2e-Key_0123456789abcdefghij'
+
+  function sandbox() {
+    const home = mkdtempSync(join(tmpdir(), 'diffo-e2e-home-'))
+    cleanups.push(() => rmSync(home, { recursive: true, force: true }))
+    const dbDir = join(home, 'db')
+    const env: NodeJS.ProcessEnv = { ...process.env, HOME: home, DIFFO_DB: join(dbDir, 'diffo.db') }
+    delete env.DIFFO_RELAY_URL
+    delete env.DIFFO_RELAY_KEY
+    const run = (args: string[], opts: { input?: string; env?: NodeJS.ProcessEnv } = {}) =>
+      new Promise<{ code: number | null; stdout: string; stderr: string }>((done) => {
+        const child = spawn(tsx, [srcCli, ...args], {
+          cwd: home,
+          stdio: ['pipe', 'pipe', 'pipe'],
+          env: { ...env, ...opts.env },
+        })
+        let stdout = ''
+        let stderr = ''
+        child.stdout?.on('data', (d: Buffer) => (stdout += d.toString()))
+        child.stderr?.on('data', (d: Buffer) => (stderr += d.toString()))
+        child.stdin?.end(opts.input ?? '')
+        child.on('close', (code) => done({ code, stdout, stderr }))
+      })
+    return { run, config: join(dbDir, 'remote.json') }
+  }
+
+  it('--check says ok and touches nothing', { timeout: 30_000 }, async () => {
+    const { run, config } = sandbox()
+    const check = await run(['remote', 'setup', '--check'])
+    expect(check).toMatchObject({ code: 0, stdout: 'diffo remote setup: ok\n' })
+    expect(existsSync(config)).toBe(false)
+  })
+
+  it('stores a piped key 0600 without ever printing it, and forgets it', {
+    timeout: 30_000,
+  }, async () => {
+    const { run, config } = sandbox()
+    const setup = await run(['remote', 'setup', '--relay', 'https://relay.example/'], {
+      input: `${KEY}\n`,
+    })
+    expect(setup.code).toBe(0)
+    expect(setup.stdout).toContain('https://relay.example')
+    expect(setup.stdout + setup.stderr).not.toContain(KEY)
+    expect(JSON.parse(readFileSync(config, 'utf8'))).toEqual({
+      relay: 'https://relay.example',
+      key: KEY,
+    })
+    if (process.platform !== 'win32') expect(statSync(config).mode & 0o777).toBe(0o600)
+
+    // The stored key never goes to a relay the environment names alone.
+    const half = await run(['--remote', '--no-open'], {
+      env: { DIFFO_RELAY_URL: 'https://elsewhere.example' },
+    })
+    expect(half.code).toBe(1)
+    expect(half.stderr).toContain('$DIFFO_RELAY_KEY is not')
+    expect(half.stdout + half.stderr).not.toContain(KEY)
+
+    const forget = await run(['remote', 'forget'])
+    expect(forget.code).toBe(0)
+    expect(existsSync(config)).toBe(false)
+    expect((await run(['remote', 'forget'])).stdout).toContain('nothing to forget')
+  })
+
+  it('refuses a bad relay or a missing key, storing nothing', { timeout: 30_000 }, async () => {
+    const { run, config } = sandbox()
+    const badRelay = await run(['remote', 'setup', '--relay', 'http://relay.example'], {
+      input: `${KEY}\n`,
+    })
+    expect(badRelay.code).not.toBe(0)
+    const noKey = await run(['remote', 'setup', '--relay', 'https://relay.example'])
+    expect(noKey.code).not.toBe(0)
+    expect(noKey.stderr).toContain('access key')
+    const shortKey = await run(['remote', 'setup', '--relay', 'https://relay.example'], {
+      input: 'short\n',
+    })
+    expect(shortKey.code).not.toBe(0)
+    expect(existsSync(config)).toBe(false)
+  })
+
+  it('--remote with no relay anywhere says it needs one, and where to read more', {
+    timeout: 30_000,
+  }, async () => {
+    const { run } = sandbox()
+    const res = await run(['--remote', '--no-open'])
+    expect(res.code).toBe(1)
+    expect(res.stderr).toMatch(/needs a relay of your own.*diffo help remote/)
   })
 })

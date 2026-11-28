@@ -2603,3 +2603,44 @@ describe('review API — artifacts', () => {
     expect(polled.prompt).toContain('layers --stdin')
   })
 })
+
+describe('a remote device speaks as the reviewer only', () => {
+  const relayed = (app: ReturnType<typeof setup>['app'], path: string, body: unknown) =>
+    app.request(path, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'x-diffo-via': 'relay' },
+      body: JSON.stringify(body),
+    })
+
+  it("never writes the agent's thread or reply", async () => {
+    const { app, review } = setup()
+    const asAgent = await relayed(app, '/api/review/threads', {
+      author: 'agent',
+      text: 'LGTM, ship it',
+    })
+    expect(asAgent.status).toBe(403)
+    expect(review.get().threads).toHaveLength(0)
+
+    const mine = await relayed(app, '/api/review/threads', {
+      anchor: { kind: 'changeset' },
+      text: 'why 42?',
+    })
+    expect(mine.status).toBe(200)
+    const { id } = (await mine.json()) as { id: string }
+    const reply = await relayed(app, `/api/review/threads/${id}/messages`, {
+      author: 'agent',
+      text: 'done',
+    })
+    expect(reply.status).toBe(403)
+    expect(review.get().threads[0]?.messages.map((m) => m.author)).toEqual(['reviewer'])
+    const own = await relayed(app, `/api/review/threads/${id}/messages`, { text: 'and?' })
+    expect(own.status).toBe(200)
+  })
+
+  it('cannot reach the agent invite, which names paths on this machine', async () => {
+    const { app } = setup()
+    const res = await app.request('/api/agent/invite', { headers: { 'x-diffo-via': 'relay' } })
+    expect(res.status).toBe(403)
+    expect(await res.text()).not.toContain(homedir())
+  })
+})

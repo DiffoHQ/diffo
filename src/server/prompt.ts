@@ -198,6 +198,26 @@ export function buildConnectAsk(isDev: boolean, repoPath: string, home: string):
 }
 
 /**
+ * Remote mode (`--remote`, beta): the review reached from another device
+ * through a relay. Only offered where a relay and its key resolve (the
+ * environment pair, or the one `diffo remote setup` stored), and the printed
+ * link is treated as the key it is.
+ */
+export const REMOTE = {
+  when: "you know the user is following this session from another device (Claude Code's Remote Control, the Claude mobile app, or they say they are away from this machine)",
+  ask: 'ask once: "Open it in remote mode, so you can review on your phone?"',
+  flag: 'on a yes, re-run the same command with `--remote` added',
+  secret:
+    'the printed link is the key to the review until a device pairs on it: the first device to open it and confirm is paired, the link then stops working, and that device can read the code and send you threads until the session ends. An unused link expires on its own. Share it only in this chat, never in a commit, a PR, a file, or anywhere else',
+}
+
+/** The line the open prints for the agent when the review is in remote mode. */
+export const REMOTE_NOTE = `this review is in remote mode: the → link above opens it on another device through a relay. Share that link, not the localhost one; ${REMOTE.secret}`
+
+/** The open's one-line offer, printed only where a relay is configured. */
+export const REMOTE_HINT = `remote mode is available (a relay is configured): when ${REMOTE.when}, ${REMOTE.ask} Then, ${REMOTE.flag}`
+
+/**
  * Payloads must stand alone: an agent can reach a poll without the skill in
  * context (a fresh session, a compacted context), so every instruction to poll
  * restates how to hold the poll — attended, never detached. Mirrors the skill.

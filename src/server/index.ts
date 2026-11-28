@@ -6,6 +6,14 @@ import { type Context, Hono } from 'hono'
 import { stream, streamSSE } from 'hono/streaming'
 import { SRC_STAMP } from '../devStamp.js'
 import type { ForgeClient, PrRef, ReviewEvent } from '../forge/types.js'
+import { relayAllows, relayBodyRefusal } from '../remote/access.js'
+import {
+  createRemoteControl,
+  normalizeRelayUrl,
+  REMOTE_OFF,
+  type RemoteControl,
+  VIA_RELAY_HEADER,
+} from '../remote/tunnel.js'
 import { publicUrl } from '../serverUrl.js'
 import type { FoundPack } from '../share/pack.js'
 import { findHunk, translateHunkAnchor } from '../shared/anchors.js'
@@ -105,6 +113,7 @@ import {
   getHeadFileBytes,
   getHeadSha,
   isAncestor,
+  isTrackedPathAsync,
   MissingBaseError,
   resolveBaseRef,
 } from './git.js'
@@ -234,6 +243,14 @@ export interface UiSettings {
   set(key: string, value: string): void
 }
 
+/** Per-request facts the middleware establishes once, for every route. */
+type AppEnv = {
+  Variables: {
+    /** The request came through the remote-mode relay: the reviewer's role only. */
+    viaRelay: boolean
+  }
+}
+
 export interface ServerContext {
   root: string
   spec: ChangesetSpec
@@ -266,6 +283,8 @@ export interface ServerContext {
   /** Could `diffo share` post from this repo (a GitHub origin `gh` is signed in
    * to)? Finish offers to share only then. Absent ⇒ never. */
   canShare?: () => Promise<boolean>
+  /** Remote mode: the tunnel to a relay, so another device can open this review. */
+  remote?: RemoteControl
 }
 
 export interface PrContext {
@@ -291,7 +310,7 @@ export function createApp(
   review?: ReviewStore,
   queue?: DeliveryQueue,
 ) {
-  const app = new Hono()
+  const app = new Hono<AppEnv>()
 
   // How often each reviewer agent's thread was handed to the author agent again
   // since its last answer (see the batch listener below).
@@ -341,13 +360,15 @@ export function createApp(
   // Origin check; a sibling app behind the same proxy passes neither.
   const LOOPBACK = new Set(['localhost', '127.0.0.1', '[::1]', '::1'])
   const pub = ctx.port === undefined ? undefined : publicUrl(ctx.port)
-  const isAllowedHost = (value: string): boolean => {
-    // Strip a trailing :port — for a bracketed IPv6 host that means everything
-    // after the closing bracket, never the colons inside it.
-    const host = value.startsWith('[')
+  // Strip a trailing :port — for a bracketed IPv6 host that means everything
+  // after the closing bracket, never the colons inside it.
+  const bareHost = (value: string): string =>
+    (value.startsWith('[')
       ? value.replace(/^(\[[^\]]*\])(?::\d+)?$/, '$1')
       : value.replace(/:\d+$/, '')
-    if (LOOPBACK.has(host.toLowerCase())) return true
+    ).toLowerCase()
+  const isAllowedHost = (value: string): boolean => {
+    if (LOOPBACK.has(bareHost(value))) return true
     if (!pub) return false
     // Parse it as the proxy's own scheme would, so case and a default port
     // (`:443` on https) compare equal.
@@ -375,6 +396,27 @@ export function createApp(
       if (!LOOPBACK.has(originUrl.hostname.toLowerCase()) && originUrl.origin !== pub?.origin) {
         return c.text('Forbidden: cross-origin request', 403)
       }
+    }
+    return next()
+  })
+
+  // Remote mode: a request the tunnel brought in from the relay carries the
+  // reviewer's role only. The tunnel always sets the header and drops any copy
+  // the remote device sent, so its absence means a loopback client. This is
+  // the one place the header is read; routes ask `c.get('viaRelay')`.
+  app.use('*', async (c, next) => {
+    const viaRelay = c.req.header(VIA_RELAY_HEADER) !== undefined
+    c.set('viaRelay', viaRelay)
+    if (!viaRelay) return next()
+    if (!relayAllows(c.req.method, c.req.path)) {
+      return c.json({ error: 'not available from a remote device' }, 403)
+    }
+    const method = c.req.method.toUpperCase()
+    if (method !== 'GET' && method !== 'HEAD') {
+      // Read here and cached by Hono, so the route reads the same body.
+      const body: unknown = await c.req.json().catch(() => null)
+      const refusal = relayBodyRefusal(method, c.req.path, body)
+      if (refusal !== null) return c.json({ error: refusal }, 403)
     }
     return next()
   })
@@ -521,6 +563,52 @@ export function createApp(
       ...(SRC_STAMP === null ? {} : { srcStamp: SRC_STAMP }),
     }),
   )
+
+  // Remote mode. The CLI (a loopback client) asks the server to open its
+  // tunnel, or to end it; a request that itself came through the relay may
+  // read the state but never re-point or end the tunnel. The access policy
+  // already refuses those writes; the checks here hold even if it changes.
+  //
+  // Local means this machine, not merely an allowed host: with
+  // `DIFFO_PUBLIC_URL` a reverse proxy's clients pass the host check, and one
+  // of them must not open a tunnel that outlives its own access, nor read the
+  // unpaired link. A proxy shows as its public Host or as forwarding headers.
+  const FORWARDED = ['forwarded', 'x-forwarded-for', 'x-forwarded-host', 'x-real-ip']
+  const isLocal = (c: Context<AppEnv>): boolean => {
+    if (c.get('viaRelay')) return false
+    if (!LOOPBACK.has(bareHost(c.req.header('host') ?? new URL(c.req.url).host))) return false
+    return FORWARDED.every((name) => c.req.header(name) === undefined)
+  }
+  const NOT_LOCAL = { error: 'remote mode is opened and ended from this machine only' }
+  app.get('/api/remote', (c) => {
+    const status = ctx.remote?.status() ?? REMOTE_OFF
+    if (isLocal(c)) return c.json(status)
+    // The link pairs whoever opens it first, so only this machine reads it;
+    // the paired device itself has no use for it either.
+    return c.json({ ...status, url: null, ...(c.get('viaRelay') ? { viaRelay: true } : {}) })
+  })
+  app.post('/api/remote', async (c) => {
+    if (!isLocal(c)) return c.json(NOT_LOCAL, 403)
+    if (!ctx.remote) return c.json({ error: 'remote mode is not available on this server' }, 501)
+    const body = (await c.req.json().catch(() => null)) as { relay?: unknown; key?: unknown } | null
+    const relay = typeof body?.relay === 'string' ? normalizeRelayUrl(body.relay) : null
+    if (!relay)
+      return c.json({ error: 'relay must be an https URL (http only for localhost)' }, 400)
+    // Never echoed back, whatever is wrong with it.
+    const key = typeof body?.key === 'string' ? body.key : ''
+    if (key === '' || key.length > 1024 || /\s/.test(key)) {
+      return c.json({ error: 'need the relay access key' }, 400)
+    }
+    try {
+      return c.json(await ctx.remote.start(relay, key))
+    } catch (err) {
+      return c.json({ error: (err as Error).message }, 502)
+    }
+  })
+  app.delete('/api/remote', (c) => {
+    if (!isLocal(c)) return c.json(NOT_LOCAL, 403)
+    return c.json(ctx.remote?.stop() ?? REMOTE_OFF)
+  })
 
   app.post('/api/shutdown', (c) => {
     setImmediate(() => ctx.onShutdownRequest?.())
@@ -2910,6 +2998,17 @@ export function createApp(
         }
         bytes = getBaseFileBytes(ctx.root, rev, path)
       } else {
+        // From a remote device, the working tree is readable only where git
+        // tracks it or the changeset touches it: an untracked or ignored file
+        // (a `.env`, a key) never leaves this machine.
+        if (
+          side === 'head' &&
+          c.get('viaRelay') &&
+          !store?.get().files.some((f) => f.path === path) &&
+          !(await isTrackedPathAsync(ctx.root, path))
+        ) {
+          return c.json({ error: 'no such file on that side' }, 404)
+        }
         bytes =
           side === 'head'
             ? getHeadFileBytes(ctx.root, path)
@@ -3036,10 +3135,10 @@ export function createApp(
     }),
   )
 
-  const serveIndex = async (c: Context) => {
+  const serveIndex = async (c: Context<AppEnv>) => {
     try {
       const index = await readFile(resolve(ctx.clientDir, 'index.html'))
-      return c.html(markDevIndex(index.toString(), IS_DEV))
+      return c.html(markRelayIndex(markDevIndex(index.toString(), IS_DEV), c.get('viaRelay')))
     } catch {
       return c.text('Client not built; run `pnpm build`', 404)
     }
@@ -3079,6 +3178,17 @@ export function markDevIndex(html: string, isDev: boolean): string {
   return html
     .replace(/<title>[^<]*<\/title>/, '<title>diffo-dev</title>')
     .replace(/<\/head>/, '    <meta name="diffo-env" content="development" />\n  </head>')
+}
+
+/**
+ * A page that reached this server through the remote-mode relay is told so in
+ * its own HTML, the way a dev page is: the reviewer's role only, so the page
+ * leaves out what belongs to the local user (reviewer agents) rather than
+ * offering a control the server will refuse.
+ */
+export function markRelayIndex(html: string, viaRelay: boolean): string {
+  if (!viaRelay || html.includes('name="diffo-via"')) return html
+  return html.replace(/<\/head>/, '    <meta name="diffo-via" content="relay" />\n  </head>')
 }
 
 export function rehydrateQueue(review: ReviewStore, queue: DeliveryQueue): void {
@@ -3243,12 +3353,14 @@ export function startServer(options: ServerContext & { port: number }) {
     idle.start()
   }
   puller?.start()
+  const remote = createRemoteControl(options.port, log)
   const app = createApp(
     {
       ...options,
       ...(prContext ? { pr: prContext } : {}),
       idle,
       telemetry,
+      remote,
       onShutdownRequest: options.onShutdownRequest ?? (() => process.exit(0)),
       uiSettings: {
         get: (key) => db.getUiSetting(key),
@@ -3315,6 +3427,7 @@ export function startServer(options: ServerContext & { port: number }) {
     review,
     queue,
     telemetry,
+    remote,
     stopWatching: async () => {
       clearTimeout(maintenance)
       idle?.stop()

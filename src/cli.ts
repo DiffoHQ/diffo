@@ -12,6 +12,21 @@ import { SRC_STAMP } from './devStamp.js'
 import { GhClient } from './forge/github/gh.js'
 import { parseRemoteUrl, parseTarget, prUrl } from './forge/target.js'
 import type { PrRef } from './forge/types.js'
+import {
+  forgetRemoteConfig,
+  RemoteConfigError,
+  readKeyInput,
+  remoteConfigPath,
+  resolveRelay,
+  writeRemoteConfig,
+} from './remote/config.js'
+import {
+  describeDevice,
+  normalizeRelayUrl,
+  printable,
+  REMOTE_OFF,
+  type RemoteStatus,
+} from './remote/tunnel.js'
 import { DiffoDb } from './server/db.js'
 import {
   findRepoRoot,
@@ -45,6 +60,8 @@ import {
   POLL_NOW_FOREGROUND,
   POLL_STANCE,
   prOpenNote,
+  REMOTE_HINT,
+  REMOTE_NOTE,
   REVIEWER_NEXT_STEP,
   REVIEWER_POLL_STANCE,
   reviewerSetNudge,
@@ -308,6 +325,52 @@ if (command.kind === 'clean') {
   }
   process.exit(0)
 }
+
+// The stored relay is this machine's, not a repo's: these run anywhere.
+if (command.kind === 'remote' && command.action === 'check') {
+  console.log('diffo remote setup: ok')
+  process.exit(0)
+}
+
+if (command.kind === 'remote' && command.action === 'setup') {
+  // Checked before the key is asked for, so a typo costs no paste.
+  const relay = normalizeRelayUrl(command.relay)
+  if (!relay) fail('the relay is not a relay URL (https, or http on localhost)')
+  try {
+    const key = await readKeyInput(process.stdin, process.stderr)
+    if (!key) fail("remote setup needs the relay's access key on stdin; nothing stored")
+    writeRemoteConfig({ relay, key })
+  } catch (err) {
+    // Only RemoteConfigError messages are known to be free of the key.
+    fail(err instanceof RemoteConfigError ? err.message : 'could not store the remote setup')
+  }
+  console.log(`stored the access key for ${relay} in ${remoteConfigPath()}; run \`diffo --remote\``)
+  if (process.env.DIFFO_RELAY_URL?.trim() || process.env.DIFFO_RELAY_KEY?.trim()) {
+    console.log(
+      'note: $DIFFO_RELAY_URL / $DIFFO_RELAY_KEY are set here, and take precedence over it',
+    )
+  }
+  process.exit(0)
+}
+
+if (command.kind === 'remote' && command.action === 'forget') {
+  let removed: boolean
+  try {
+    removed = forgetRemoteConfig()
+  } catch (err) {
+    fail(err instanceof RemoteConfigError ? err.message : 'could not delete the remote setup')
+  }
+  console.log(
+    removed
+      ? `deleted the stored relay and key (${remoteConfigPath()})`
+      : 'no stored relay, nothing to forget',
+  )
+  process.exit(0)
+}
+
+// `--remote` settles its relay before anything else runs: a missing or
+// refused setup costs nothing, and starts nothing.
+const remoteAsk = remoteSetup()
 
 const found = findRepoRoot(process.cwd())
 if (!found) {
@@ -614,6 +677,108 @@ async function getJson(port: number, path: string): Promise<{ status: number; bo
   return { status: res.status, body: await res.json().catch(() => null) }
 }
 
+/** The tunnel the server holds, if any. Null from a server that predates
+ * remote mode, or one that cannot be reached. */
+async function fetchRemote(port: number): Promise<RemoteStatus | null> {
+  try {
+    const res = await fetch(apiUrl(port, '/api/remote'), { signal: AbortSignal.timeout(3_000) })
+    if (!res.ok) return null
+    // Over the defaults: a server built before a field existed still reads
+    // as a whole status.
+    const body = { ...REMOTE_OFF, ...((await res.json()) as Partial<RemoteStatus>) }
+    return body.url ? body : null
+  } catch {
+    return null
+  }
+}
+
+/** `--remote`: the relay and its access key, checked before anything starts.
+ * Never from this command line (see resolveRelay), and no message here ever
+ * repeats the key. */
+function remoteSetup(): { relay: string; key: string } | null {
+  if (command.kind !== 'run' || !command.remote) return null
+  let resolved: ReturnType<typeof resolveRelay>
+  try {
+    resolved = resolveRelay()
+  } catch (err) {
+    fail(err instanceof RemoteConfigError ? err.message : 'could not read the remote setup')
+  }
+  if (!resolved) {
+    fail(
+      '--remote is a private beta and needs a relay of your own, which this machine does not have (`diffo help remote`)',
+    )
+  }
+  return { relay: resolved.relay, key: resolved.key }
+}
+
+/** A relay and key resolve, so remote mode is worth offering. A setup that
+ * cannot be used stays quiet here; `--remote` is where it says why. */
+const relayConfigured = (): boolean => {
+  try {
+    return resolveRelay() !== null
+  } catch {
+    return false
+  }
+}
+
+/** Ask the server to open its tunnel; the session the reviewer pairs a device with. */
+async function openRemote(
+  port: number,
+  setup: { relay: string; key: string },
+): Promise<RemoteStatus> {
+  const { status, body } = await postJson(port, '/api/remote', setup)
+  const res = body as (RemoteStatus & { error?: string }) | null
+  if (status === 404)
+    fail('this diffo server predates remote mode; stop it (`diffo stop`), then re-run')
+  if (status !== 200 || !res?.url)
+    fail(`could not open remote mode: ${res?.error ?? `status ${status}`}`)
+  return res
+}
+
+/** A time to show next to "now": the clock alone today, the date too otherwise. */
+function clock(ms: number): string {
+  const at = new Date(ms)
+  const time = at.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })
+  return at.toDateString() === new Date().toDateString()
+    ? time
+    : `${at.toISOString().slice(0, 10)} ${time}`
+}
+
+/** The open's link lines: the remote link leads when there is one. */
+function printLinks(localUrl: string, remote: RemoteStatus | null): void {
+  if (remote?.url && !remote.claimed && !remote.ended) {
+    console.log(`→ ${remote.url}`)
+    const expiry = remote.expiresAt ? `, and expires at ${clock(remote.expiresAt)} if unused` : ''
+    console.log(
+      `  (remote link, for your phone or another device: it pairs one device${expiry}; on this machine: ${localUrl})`,
+    )
+  } else {
+    console.log(`→ ${localUrl}`)
+  }
+}
+
+/** One line on the remote session, for `diffo status`. The device's user agent
+ * is whatever it claimed, so it is made printable before it reaches a terminal. */
+function describeRemote(remote: RemoteStatus): string {
+  if (remote.ended) return `remote: ended (${remote.ended})`
+  const parts = [`${remote.connected ? 'connected to' : 'reconnecting to'} ${remote.relay}`]
+  parts.push(
+    remote.claimed && remote.device
+      ? `paired with ${describeDevice(remote.device)} at ${clock(remote.device.at)}`
+      : remote.claimed
+        ? 'paired with a device'
+        : 'waiting for a device to pair',
+  )
+  if (remote.expiresAt) parts.push(`session ends ${clock(remote.expiresAt)}`)
+  if (remote.knocks.count > 0) {
+    parts.push(
+      `the used link was tried ${remote.knocks.count} more ${remote.knocks.count === 1 ? 'time' : 'times'}` +
+        (remote.knocks.lastAt ? ` (last at ${clock(remote.knocks.lastAt)})` : ''),
+    )
+  }
+  return `remote: ${parts.join(' · ')}`
+}
+
 if (command.kind === 'status') {
   const db = new DiffoDb()
   let record: ReturnType<DiffoDb['getServer']>
@@ -638,6 +803,7 @@ if (command.kind === 'status') {
   }
   const pid = health?.pid ?? record.pid
   const url = reviewUrl(record.port)
+  const remote = await fetchRemote(record.port)
   if (command.json) {
     console.log(
       JSON.stringify({
@@ -646,6 +812,16 @@ if (command.kind === 'status') {
         pid: pid || null,
         version: health?.version ?? null,
         url,
+        ...(remote
+          ? {
+              remote: {
+                ...remote,
+                device: remote.device
+                  ? { ...remote.device, ua: printable(remote.device.ua) }
+                  : null,
+              },
+            }
+          : {}),
       }),
     )
     process.exit(0)
@@ -659,7 +835,39 @@ if (command.kind === 'status') {
           : ` (this CLI is v${VERSION}, the next \`diffo\` replaces it)`
         : ''),
   )
-  console.log(`→ ${url}`)
+  if (remote) console.log(describeRemote(remote))
+  printLinks(url, remote)
+  process.exit(0)
+}
+
+if (command.kind === 'remote') {
+  const db = new DiffoDb()
+  let record: ReturnType<DiffoDb['getServer']>
+  try {
+    record = db.getServer(repoPath)
+  } finally {
+    db.close()
+  }
+  const health = record ? await fetchHealth(record.port) : null
+  if (!record || assessRunningServer(health, repoPath, VERSION) === 'foreign') {
+    console.log('no diffo server is watching this repo, so remote mode is off')
+    process.exit(0)
+  }
+  let res: Response
+  try {
+    res = await fetch(apiUrl(record.port, '/api/remote'), {
+      method: 'DELETE',
+      signal: AbortSignal.timeout(POST_TIMEOUT_MS),
+    })
+  } catch {
+    fail('lost connection to the diffo server; re-run the command')
+  }
+  if (res.status === 404) {
+    console.log('this diffo server predates remote mode, so it has none to turn off')
+    process.exit(0)
+  }
+  if (!res.ok) fail(`could not turn remote mode off (status ${res.status})`)
+  console.log('remote mode is off: the session is ended, and no other device can reach the review')
   process.exit(0)
 }
 
@@ -1477,8 +1685,16 @@ async function activePresetList(port: number): Promise<Array<{ id: string; blurb
 }
 
 /** Agents read piped stdout; a human's terminal never shows these lines. */
-async function printAgentNextStep(port: number, pr?: PrInfo): Promise<void> {
+async function printAgentNextStep(
+  port: number,
+  pr?: PrInfo,
+  remote?: RemoteStatus | null,
+): Promise<void> {
   if (process.stdout.isTTY) return
+  if (remote) console.log(`remote: ${REMOTE_NOTE}`)
+  // Offered only where this machine has a relay of its own: everyone else's
+  // agent never hears of remote mode.
+  else if (relayConfigured()) console.log(`remote: ${REMOTE_HINT}`)
   // A courtesy that must not block the open: if the review can't be read, the
   // nudge is simply skipped and the base next-step still prints.
   const review = await fetchReviewState(port)
@@ -1689,8 +1905,9 @@ if (existing !== null && takeOverPort === null) {
   await warnSpecMismatch(existing.port, spec)
   await announceOpen(existing.port)
   await announceArrival(existing.port)
-  console.log(`→ ${url}`)
-  await printAgentNextStep(existing.port, prOpen?.pr)
+  const remote = remoteAsk ? await openRemote(existing.port, remoteAsk) : null
+  printLinks(url, remote)
+  await printAgentNextStep(existing.port, prOpen?.pr, remote)
   process.exit(0)
 }
 
@@ -1730,8 +1947,9 @@ if (!command.foreground) {
   await announceArrival(daemonPort)
   const url = reviewUrl(daemonPort)
   await printChangesetSummary(daemonPort)
-  console.log(`→ ${url}`)
-  await printAgentNextStep(daemonPort, prOpen?.pr)
+  const remote = remoteAsk ? await openRemote(daemonPort, remoteAsk) : null
+  printLinks(url, remote)
+  await printAgentNextStep(daemonPort, prOpen?.pr, remote)
   if (command.open) openBrowser(url)
   process.exit(0)
 }
@@ -1814,7 +2032,15 @@ if (stats.files === 0) {
   )
 }
 if (!prOpen) printBaseHint(spec, stats.files)
-console.log(`→ ${url}`)
+let foregroundRemote: RemoteStatus | null = null
+if (remoteAsk) {
+  try {
+    foregroundRemote = await started.remote.start(remoteAsk.relay, remoteAsk.key)
+  } catch (err) {
+    console.error(`diffo: could not open remote mode: ${(err as Error).message}`)
+  }
+}
+printLinks(url, foregroundRemote)
 
 if (command.open) openBrowser(url)
 

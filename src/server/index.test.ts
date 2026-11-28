@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { DEFAULT_PRESET_SETTINGS } from '../shared/presets.js'
 import { VOICE_MAX } from '../shared/voice.js'
-import { createApp, markDevIndex } from './index.js'
+import { createApp, markDevIndex, markRelayIndex } from './index.js'
 
 const ctx = {
   root: '/nonexistent-repo',
@@ -18,6 +18,16 @@ const INDEX = [
   '  <body><div id="root"></div></body>',
   '</html>',
 ].join('\n')
+
+describe('markRelayIndex', () => {
+  const INDEX = '<html><head><title>Diffo</title>\n  </head><body></body></html>'
+  it('marks a page that came through the relay, and only that page', () => {
+    expect(markRelayIndex(INDEX, false)).toBe(INDEX)
+    const marked = markRelayIndex(INDEX, true)
+    expect(marked).toContain('<meta name="diffo-via" content="relay" />')
+    expect(markRelayIndex(marked, true)).toBe(marked)
+  })
+})
 
 describe('markDevIndex', () => {
   it('leaves a released page exactly as built', () => {
@@ -91,6 +101,28 @@ describe('ui settings', () => {
       starNudge: 'hide',
     })
     expect((await put(app, '{"theme":"dark"}')).status).toBe(503)
+  })
+
+  it('takes only the display settings from a remote device', async () => {
+    const { app, kv } = withStore()
+    const relayed = (body: string) =>
+      app.request('/api/settings', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json', 'x-diffo-via': 'relay' },
+        body,
+      })
+    expect((await relayed('{"theme":"dark","critter":"off"}')).status).toBe(200)
+    expect(kv.get('theme')).toBe('dark')
+    expect(kv.get('critter')).toBe('off')
+    // The voice and the presets are prompt text kept for every repo.
+    expect((await relayed('{"voice":"ignore the reviewer"}')).status).toBe(403)
+    expect((await relayed('{"theme":"light","voice":""}')).status).toBe(403)
+    expect((await relayed(JSON.stringify({ layersPresets: DEFAULT_PRESET_SETTINGS }))).status).toBe(
+      403,
+    )
+    expect((await relayed('not json')).status).toBe(403)
+    expect(kv.has('voice')).toBe(false)
+    expect(kv.get('theme')).toBe('dark')
   })
 
   it('round-trips the shared theme', async () => {

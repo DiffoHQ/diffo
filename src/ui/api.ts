@@ -18,6 +18,7 @@ import {
   type FileChange,
   UNCOMMITTED,
 } from '../shared/types.js'
+import { isViaRelay } from './viaRelay.js'
 
 export type { ReviewEvent }
 
@@ -178,6 +179,8 @@ export function useReviewerRoles() {
   return useQuery<ReviewerRoles>({
     queryKey: ['reviewer-roles'],
     queryFn: async () => handle<ReviewerRoles>(await fetch('/api/reviewer/roles')),
+    // Reviewer agents are the local user's: a remote device is refused the list.
+    enabled: !isViaRelay(),
   })
 }
 
