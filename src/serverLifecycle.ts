@@ -1,9 +1,10 @@
-import { spawn } from 'node:child_process'
+import { type ChildProcess, spawn } from 'node:child_process'
 import { createHash } from 'node:crypto'
 import { mkdirSync, openSync, readFileSync, renameSync, statSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { basename, dirname, join, resolve } from 'node:path'
 import { DiffoDb } from './server/db.js'
+import { type FailureReason, failureReason } from './server/failureReason.js'
 import { apiUrl } from './serverUrl.js'
 
 const MAX_LOG_BYTES = 2 * 1024 * 1024
@@ -19,6 +20,17 @@ export interface ServerHealth {
 }
 
 export type ServerAssessment = 'reuse' | 'replace' | 'foreign'
+
+/** The review server did not come up; `reason` is the word usage data carries. */
+export class ServerStartError extends Error {
+  constructor(
+    message: string,
+    readonly reason: FailureReason,
+  ) {
+    super(message)
+    this.name = 'ServerStartError'
+  }
+}
 
 /**
  * `srcStamp` is the dev-build refinement of the version check: a dev server's
@@ -92,14 +104,25 @@ async function waitUntil(
   predicate: () => Promise<boolean>,
   timeoutMs: number,
   stepMs = 120,
+  /** Stop waiting early: nothing more is coming. One last look still runs. */
+  stop: () => boolean = () => false,
 ): Promise<boolean> {
   const deadline = Date.now() + timeoutMs
-  while (Date.now() < deadline) {
+  while (Date.now() < deadline && !stop()) {
     if (await predicate()) return true
     await delay(stepMs)
   }
   return predicate()
 }
+
+/**
+ * How much longer an open waits, past the usual limit, for a daemon that is
+ * still running: a large repository builds its first changeset slowly, and an
+ * error there only sent the user to retry into the server that came up
+ * meanwhile. A daemon that exits ends the wait at once, so this never delays an
+ * error, only a slow start.
+ */
+const STILL_STARTING_MS = 60_000
 
 /**
  * Retire a server we own: ask nicely over HTTP, and only if it lingers (a
@@ -169,10 +192,11 @@ export async function settleExistingServer(
         : `replacing the diffo server from another build (${health?.version ?? 'pre-handshake'} → ${version})`,
     )
     if (!(await retireServer(record.port, record.pid ?? null, health?.pid ?? null))) {
-      throw new Error(
+      throw new ServerStartError(
         `a diffo server from another build is stuck on port ${record.port}` +
           (record.pid ? ` (pid ${record.pid})` : '') +
           ` and would not step aside; stop it, then re-run`,
+        'stuck',
       )
     }
   }
@@ -194,13 +218,17 @@ export interface EnsureServerOptions {
   env?: NodeJS.ProcessEnv
   dbPath?: string
   spawnTimeoutMs?: number
+  /** The extra wait for a daemon still running at `spawnTimeoutMs`. */
+  stillStartingMs?: number
   onStatus?: (line: string) => void
   /** Dev builds: replace a running server started from other source. */
   srcStamp?: string | null
 }
 
 export interface EnsureServerDeps {
-  spawnDaemon?: (opts: EnsureServerOptions) => void
+  /** Returns the child when there is one, so its exit can be told from a slow start. */
+  // biome-ignore lint/suspicious/noConfusingVoidType: test doubles return nothing
+  spawnDaemon?: (opts: EnsureServerOptions) => ChildProcess | void
 }
 
 export function defaultLogPath(repoPath: string): string {
@@ -227,26 +255,39 @@ function logSize(logPath: string): number {
   }
 }
 
-/**
- * The daemon's own last word — only what THIS spawn appended (past `from`),
- * preferring its `diffo:` lines — so a failed handshake names the reason
- * instead of pointing at a file.
- */
-function daemonComplaint(logPath: string, from: number): string | null {
+/** Only what THIS spawn appended to the log (past `from`). */
+function freshLog(logPath: string, from: number): string {
   try {
-    const fresh = readFileSync(logPath).subarray(from).toString('utf-8')
-    const lines = fresh
-      .split('\n')
-      .map((line) => line.trim())
-      .filter(Boolean)
-    const line = lines.filter((l) => l.startsWith('diffo: ')).at(-1) ?? lines.at(-1)
-    return line ? line.replace(/^diffo: /, '').slice(0, 300) : null
+    return readFileSync(logPath).subarray(from).toString('utf-8')
   } catch {
-    return null
+    return ''
   }
 }
 
-function spawnDaemonProcess(opts: EnsureServerOptions): void {
+/**
+ * The daemon's own last word, preferring its `diffo:` lines, so a failed
+ * handshake names the reason instead of pointing at a file.
+ */
+function daemonComplaint(fresh: string): string | null {
+  const lines = fresh
+    .split('\n')
+    .map((line) => line.trim())
+    .filter(Boolean)
+  // A crash ends on Node's version banner; the thrown error's own line, above
+  // the stack, is the one that says what happened.
+  const line =
+    lines.filter((l) => l.startsWith('diffo: ')).at(-1) ??
+    lines.find((l) => /^(?:<ref \*\d+> )?(?:\w+Error|Error)(?: \[\w+\])?: /.test(l)) ??
+    lines.filter((l) => !/^Node\.js v\d/.test(l)).at(-1)
+  return line
+    ? line
+        .replace(/^diffo: /, '')
+        .replace(/^<ref \*\d+> /, '')
+        .slice(0, 300)
+    : null
+}
+
+function spawnDaemonProcess(opts: EnsureServerOptions): ChildProcess {
   mkdirSync(dirname(opts.logPath), { recursive: true })
   rotateLog(opts.logPath)
   const logFd = openSync(opts.logPath, 'a')
@@ -262,6 +303,7 @@ function spawnDaemonProcess(opts: EnsureServerOptions): void {
     },
   )
   child.unref()
+  return child
 }
 
 export async function ensureServer(
@@ -286,12 +328,18 @@ export async function ensureServer(
     mkdirSync(dirname(opts.logPath), { recursive: true })
     rotateLog(opts.logPath)
     const logStart = logSize(opts.logPath)
-    ;(deps.spawnDaemon ?? spawnDaemonProcess)(opts)
+    const child = (deps.spawnDaemon ?? spawnDaemonProcess)(opts)
+    // Unref'd, so this never holds the CLI open; it only tells a daemon that
+    // died from one still starting when the wait below runs out.
+    let exited = false
+    child?.once('exit', () => {
+      exited = true
+    })
 
     // The daemon claims repo→port when it is ready, so the registry row appearing
     // (and answering as our build) IS the startup handshake.
     let port: number | null = null
-    const up = await waitUntil(async () => {
+    const ready = async () => {
       const row = db.getServer(opts.repoPath)
       if (!row) return false
       const health = await fetchHealth(row.port, 500)
@@ -301,13 +349,24 @@ export async function ensureServer(
         return false
       port = row.port
       return true
-    }, opts.spawnTimeoutMs ?? 8000)
+    }
+    let up = await waitUntil(ready, opts.spawnTimeoutMs ?? 8000, 120, () => exited)
+    // Only a daemon this process can see running earns the extra wait.
+    if (!up && child && !exited) {
+      status('the diffo server is still starting (a large repo takes longer), waiting')
+      up = await waitUntil(ready, opts.stillStartingMs ?? STILL_STARTING_MS, 120, () => exited)
+    }
     if (!up || port === null) {
-      const complaint = daemonComplaint(opts.logPath, logStart)
-      throw new Error(
+      const fresh = freshLog(opts.logPath, logStart)
+      const complaint = daemonComplaint(fresh)
+      // The whole of what it wrote, not the last line: a crash ends on Node's
+      // version banner, with the error's code above it.
+      const said = failureReason(fresh)
+      throw new ServerStartError(
         complaint
           ? `the diffo server did not start: ${complaint} (log: ${opts.logPath})`
           : `the diffo server did not start; see ${opts.logPath}`,
+        exited ? (said === 'other' ? 'exited' : said) : 'timeout',
       )
     }
     return port

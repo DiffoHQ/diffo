@@ -1,14 +1,19 @@
 import { execFile, execFileSync } from 'node:child_process'
 import {
   closeSync,
+  createReadStream,
   lstatSync,
+  mkdtempSync,
   openSync,
   readFileSync,
   readlinkSync,
   readSync,
   realpathSync,
+  rmSync,
 } from 'node:fs'
+import { tmpdir } from 'node:os'
 import { basename, join, resolve, sep } from 'node:path'
+import { StringDecoder } from 'node:string_decoder'
 import { promisify } from 'node:util'
 import type { ChangesetSpec } from '../shared/types.js'
 
@@ -230,7 +235,7 @@ function defaultBranch(root: string): string | null {
 export function getRawDiff(root: string, spec: ChangesetSpec): string {
   if (spec.kind === 'working-tree') {
     if (!hasHead(root)) return '' // no commits: everything is untracked
-    return git(root, ['diff', ...DIFF_FLAGS, 'HEAD'])
+    return diffWithin(root, 'HEAD')
   }
   let mergeBase: string
   try {
@@ -238,7 +243,167 @@ export function getRawDiff(root: string, spec: ChangesetSpec): string {
   } catch {
     throw new MissingBaseError(spec.base)
   }
-  return git(root, ['diff', ...DIFF_FLAGS, mergeBase])
+  return diffWithin(root, mergeBase)
+}
+
+// ---------- a diff too big to hold ----------
+
+/** Once the whole diff has outgrown `MAX_BUFFER`, a file whose own patch is over
+ * this is shown as a note instead: past it no page renders it usefully. */
+const MAX_FILE_PATCH_BYTES = 1024 * 1024
+/** What a capped diff keeps in all: under `MAX_BUFFER`, with room for the
+ * untracked half beside it. Files past it are notes too. */
+const MAX_CAPPED_BYTES = 32 * 1024 * 1024
+/** The line a capped file's section carries instead of its hunks. A diff line
+ * inside a hunk always starts with ` `, `+`, `-` or `\`, so git never prints it. */
+export const TOO_LARGE_MARKER = '# diffo: too large to show'
+
+/** The diff's output outgrew the buffer it was read into. */
+export function isOutputOverflow(err: unknown): boolean {
+  const e = err as { code?: unknown; message?: unknown } | null
+  return (
+    e?.code === 'ENOBUFS' ||
+    e?.code === 'ERR_CHILD_PROCESS_STDIO_MAXBUFFER' ||
+    (typeof e?.message === 'string' && /maxBuffer length exceeded|ENOBUFS/.test(e.message))
+  )
+}
+
+/**
+ * Splits a patch into one section per file as it streams by, keeping each
+ * section's header and, while it fits, its body. A section past
+ * `MAX_FILE_PATCH_BYTES`, or past the total, keeps only its header and the
+ * marker: the header is what names the file and says it was added, deleted or
+ * renamed. Nothing past the caps is ever held.
+ */
+class PatchCapper {
+  private readonly out: string[] = []
+  private total = 0
+  private header: string[] | null = null
+  private body: string[] = []
+  private bodyBytes = 0
+  private inBody = false
+  private oversize = false
+  private partial = ''
+
+  push(text: string): void {
+    const lines = (this.partial + text).split('\n')
+    this.partial = lines.pop() ?? ''
+    for (const line of lines) this.line(line)
+  }
+
+  finish(): string {
+    if (this.partial) this.line(this.partial)
+    this.flush()
+    return this.out.join('\n')
+  }
+
+  private line(line: string): void {
+    if (line.startsWith('diff --git ')) {
+      this.flush()
+      this.header = [line]
+      return
+    }
+    if (this.header === null) return
+    if (
+      !this.inBody &&
+      (line.startsWith('@@') || line.startsWith('Binary files ') || line === 'GIT binary patch')
+    ) {
+      this.inBody = true
+    }
+    if (!this.inBody) {
+      this.header.push(line)
+      return
+    }
+    if (this.oversize) return
+    this.bodyBytes += line.length + 1
+    if (this.bodyBytes > MAX_FILE_PATCH_BYTES) {
+      this.oversize = true
+      this.body = []
+      return
+    }
+    this.body.push(line)
+  }
+
+  private flush(): void {
+    if (this.header === null) return
+    const head = this.header.join('\n')
+    const fits = !this.oversize && this.total + head.length + this.bodyBytes <= MAX_CAPPED_BYTES
+    const section = fits ? [head, ...this.body].join('\n') : `${head}\n${TOO_LARGE_MARKER}`
+    this.out.push(section)
+    this.total += section.length + 1
+    this.header = null
+    this.body = []
+    this.bodyBytes = 0
+    this.inBody = false
+    this.oversize = false
+  }
+}
+
+/** The capping on its own, over a patch already in hand: tests. */
+export function capPatchText(patch: string): string {
+  const capper = new PatchCapper()
+  capper.push(patch)
+  return capper.finish()
+}
+
+function withPatchFile<T>(run: (file: string) => T): T {
+  const dir = mkdtempSync(join(tmpdir(), 'diffo-diff-'))
+  const done = () => rmSync(dir, { recursive: true, force: true })
+  let result: T
+  try {
+    result = run(join(dir, 'patch'))
+  } catch (err) {
+    done()
+    throw err
+  }
+  if (result instanceof Promise) return result.finally(done) as T
+  done()
+  return result
+}
+
+/**
+ * `git diff <rev>`, or when that outgrows the buffer, the same diff written to a
+ * file by git itself and read back capped, so one generated file or vendored
+ * tree opens as a review with a note instead of killing the server.
+ */
+function diffWithin(root: string, rev: string): string {
+  try {
+    return git(root, ['diff', ...DIFF_FLAGS, rev])
+  } catch (err) {
+    if (!isOutputOverflow(err)) throw err
+  }
+  return withPatchFile((file) => {
+    git(root, ['diff', ...DIFF_FLAGS, `--output=${file}`, rev])
+    const capper = new PatchCapper()
+    const decoder = new StringDecoder('utf-8')
+    const chunk = Buffer.allocUnsafe(1024 * 1024)
+    const fd = openSync(file, 'r')
+    try {
+      for (let read = readSync(fd, chunk); read > 0; read = readSync(fd, chunk)) {
+        capper.push(decoder.write(chunk.subarray(0, read)))
+      }
+    } finally {
+      closeSync(fd)
+    }
+    capper.push(decoder.end())
+    return capper.finish()
+  })
+}
+
+async function diffWithinAsync(root: string, rev: string): Promise<string> {
+  try {
+    return await gitAsync(root, ['diff', ...DIFF_FLAGS, rev])
+  } catch (err) {
+    if (!isOutputOverflow(err)) throw err
+  }
+  return withPatchFile(async (file) => {
+    await gitAsync(root, ['diff', ...DIFF_FLAGS, `--output=${file}`, rev])
+    const capper = new PatchCapper()
+    for await (const text of createReadStream(file, { encoding: 'utf-8' })) {
+      capper.push(text as string)
+    }
+    return capper.finish()
+  })
 }
 
 export function getStagedPaths(root: string): Set<string> {
@@ -394,7 +559,7 @@ export async function getStagedPathsAsync(root: string): Promise<Set<string>> {
 async function getRawDiffAsync(root: string, spec: ChangesetSpec): Promise<string> {
   if (spec.kind === 'working-tree') {
     if (!(await hasHeadAsync(root))) return '' // no commits: everything is untracked
-    return gitAsync(root, ['diff', ...DIFF_FLAGS, 'HEAD'])
+    return diffWithinAsync(root, 'HEAD')
   }
   let mergeBase: string
   try {
@@ -402,7 +567,7 @@ async function getRawDiffAsync(root: string, spec: ChangesetSpec): Promise<strin
   } catch {
     throw new MissingBaseError(spec.base)
   }
-  return gitAsync(root, ['diff', ...DIFF_FLAGS, mergeBase])
+  return diffWithinAsync(root, mergeBase)
 }
 
 /**

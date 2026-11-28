@@ -281,9 +281,9 @@ describe('Telemetry payloads', () => {
     expect(sent).toEqual([])
   })
 
-  it('review_failed carries the step, the agent and the kind when known — nothing else', () => {
+  it('review_failed carries the step, the reason, the agent and the kind when known — nothing else', () => {
     const { telemetry, sent } = armed()
-    telemetry.reviewFailed({ step: 'pr_fetch', agent: 'claude', kind: 'pr' })
+    telemetry.reviewFailed({ step: 'pr_checkout', reason: 'fetch', agent: 'claude', kind: 'pr' })
     telemetry.reviewFailed({ step: 'not_repo', agent: 'unknown' })
     expect(sent.map((s) => s.body.event)).toEqual(['review_failed', 'review_failed'])
     expect(sent[0]!.body.properties).toEqual({
@@ -296,11 +296,13 @@ describe('Telemetry payloads', () => {
       arch: 'test64',
       node: 24,
       dev: false,
-      step: 'pr_fetch',
+      step: 'pr_checkout',
+      reason: 'fetch',
       agent: 'claude',
       kind: 'pr',
     })
     expect(sent[1]!.body.properties).not.toHaveProperty('kind')
+    expect(sent[1]!.body.properties).not.toHaveProperty('reason')
   })
 
   it('layers_requested carries the kind and two flags, only for a review opened reporting', () => {
